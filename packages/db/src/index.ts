@@ -1,2 +1,11 @@
 export { createDatabase } from './client.js';
-export { consumerUsers, staffAccounts, wechatIdentities } from './schema.js';
+export {
+  consumerUsers,
+  permissions,
+  rolePermissions,
+  roles,
+  staffAccounts,
+  staffDataScopes,
+  staffRoles,
+  wechatIdentities,
+} from './schema.js';

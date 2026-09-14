@@ -8,6 +8,10 @@ import { HttpWeChatAuthProvider } from './auth/wechat-provider.js';
 import { ScryptPasswordHasher } from './auth/password.js';
 import { StaffAuthService } from './auth/staff-auth-service.js';
 import { DrizzleStaffAccountRepository } from './auth/staff-repository.js';
+import {
+  DrizzleStaffAuthorizationRepository,
+  StaffAuthorizationService,
+} from './auth/staff-authorization.js';
 import { StaffSessionService } from './auth/staff-session.js';
 
 const config = loadServiceConfig(process.env);
@@ -27,12 +31,20 @@ const consumerAuth = new ConsumerAuthService(
   new DrizzleConsumerIdentityRepository(db),
   sessions,
 );
+const staffSessions = new StaffSessionService(
+  config.STAFF_SESSION_SECRET,
+  config.STAFF_SESSION_TTL_SECONDS,
+);
 const staffAuth = new StaffAuthService(
   new DrizzleStaffAccountRepository(db),
   new ScryptPasswordHasher(),
-  new StaffSessionService(config.STAFF_SESSION_SECRET, config.STAFF_SESSION_TTL_SECONDS),
+  staffSessions,
 );
-const app = buildApp({ consumerAuth, staffAuth });
+const staffAuthorization = new StaffAuthorizationService(
+  new DrizzleStaffAuthorizationRepository(db),
+  staffSessions,
+);
+const app = buildApp({ consumerAuth, staffAuth, staffAuthorization });
 app.addHook('onClose', async () => pool.end());
 
 try {

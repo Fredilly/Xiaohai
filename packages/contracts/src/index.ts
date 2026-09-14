@@ -23,6 +23,8 @@ export const apiErrorCodeSchema = z.enum([
   'WECHAT_PROVIDER_UNAVAILABLE',
   'WECHAT_RESPONSE_INVALID',
   'STAFF_AUTHENTICATION_FAILED',
+  'STAFF_AUTHENTICATION_REQUIRED',
+  'STAFF_FORBIDDEN',
   'INTERNAL_ERROR',
 ]);
 
@@ -57,6 +59,40 @@ export const staffLoginResponseSchema = z.object({
   session: staffSessionSchema,
 });
 
+export const staffDataScopeTypeSchema = z.enum(['GLOBAL', 'REGION', 'FRANCHISEE', 'STORE']);
+export const staffDataScopeSchema = z.object({
+  type: staffDataScopeTypeSchema,
+  id: z.uuid().nullable(),
+});
+
+export const staffMeResponseSchema = z.object({
+  staff: z.object({ id: z.uuid(), loginIdentifier: z.string() }),
+  permissions: z.array(z.string()),
+  dataScopes: z.array(staffDataScopeSchema),
+});
+
+export const staffAuthorizationProbeQuerySchema = z
+  .object({
+    permission: z.string().trim().min(3).max(128),
+    scopeType: staffDataScopeTypeSchema,
+    scopeId: z.uuid().optional(),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (value.scopeType === 'GLOBAL' && value.scopeId !== undefined) {
+      ctx.addIssue({ code: 'custom', message: 'GLOBAL scope must not include scopeId' });
+    }
+    if (value.scopeType !== 'GLOBAL' && value.scopeId === undefined) {
+      ctx.addIssue({ code: 'custom', message: 'Non-GLOBAL scope requires scopeId' });
+    }
+  });
+
+export const staffAuthorizationProbeResponseSchema = z.object({ allowed: z.literal(true) });
+
 export type StaffLoginRequest = z.infer<typeof staffLoginRequestSchema>;
 export type StaffLoginResponse = z.infer<typeof staffLoginResponseSchema>;
 export type StaffSession = z.infer<typeof staffSessionSchema>;
+export type StaffDataScopeType = z.infer<typeof staffDataScopeTypeSchema>;
+export type StaffDataScope = z.infer<typeof staffDataScopeSchema>;
+export type StaffMeResponse = z.infer<typeof staffMeResponseSchema>;
+export type StaffAuthorizationProbeQuery = z.infer<typeof staffAuthorizationProbeQuerySchema>;
