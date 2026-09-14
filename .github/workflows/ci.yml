@@ -43,5 +43,6 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
+      - run: pnpm --filter @xiaohai/db db:check
       - run: pnpm --filter @xiaohai/db db:migrate
       - run: pnpm test:e2e
