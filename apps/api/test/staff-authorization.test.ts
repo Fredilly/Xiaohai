@@ -15,9 +15,9 @@ const now = () => new Date('2026-09-14T10:00:00.000Z');
 class FakeRepository implements StaffAuthorizationRepository {
   constructor(public context: StaffAuthorizationContext | null) {}
 
-  async loadContext(staffAccountId: string): Promise<StaffAuthorizationContext | null> {
-    if (this.context?.staffAccountId !== staffAccountId) return null;
-    return this.context;
+  loadContext(staffAccountId: string): Promise<StaffAuthorizationContext | null> {
+    if (this.context?.staffAccountId !== staffAccountId) return Promise.resolve(null);
+    return Promise.resolve(this.context);
   }
 }
 
