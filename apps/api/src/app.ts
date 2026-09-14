@@ -2,14 +2,18 @@ import Fastify, { type FastifyBaseLogger, type FastifyInstance } from 'fastify';
 import {
   apiErrorResponseSchema,
   healthResponseSchema,
+  staffLoginRequestSchema,
+  staffLoginResponseSchema,
   wechatLoginRequestSchema,
   wechatLoginResponseSchema,
 } from '@xiaohai/contracts';
 import { ConsumerAuthError } from './auth/errors.js';
 import type { ConsumerAuthService } from './auth/consumer-auth-service.js';
+import type { StaffAuthService } from './auth/staff-auth-service.js';
 
 export interface BuildAppOptions {
   consumerAuth?: ConsumerAuthService;
+  staffAuth?: StaffAuthService;
   logger?: boolean;
   loggerInstance?: FastifyBaseLogger;
 }
@@ -63,6 +67,45 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
       }
     });
   }
+
+  if (options.staffAuth) {
+    app.post('/api/v1/staff/auth/login', async (request, reply) => {
+      const input = staffLoginRequestSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.status(400).send(
+          apiErrorResponseSchema.parse({
+            error: {
+              code: 'INVALID_REQUEST',
+              message: 'Invalid request body',
+              requestId: request.id,
+            },
+          }),
+        );
+      }
+
+      try {
+        return staffLoginResponseSchema.parse(
+          await options.staffAuth!.login(input.data.loginIdentifier, input.data.password),
+        );
+      } catch (error) {
+        const authError =
+          error instanceof ConsumerAuthError ? error : new ConsumerAuthError('INTERNAL_ERROR', 500);
+        request.log.warn(
+          { requestId: request.id, errorCode: authError.code },
+          'Staff login failed',
+        );
+        return reply.status(authError.statusCode).send(
+          apiErrorResponseSchema.parse({
+            error: {
+              code: authError.code,
+              message: publicErrorMessage(authError.code),
+              requestId: request.id,
+            },
+          }),
+        );
+      }
+    });
+  }
   return app;
 }
 
@@ -75,6 +118,8 @@ function publicErrorMessage(code: ConsumerAuthError['code']): string {
       return 'WeChat authentication is temporarily unavailable';
     case 'INVALID_REQUEST':
       return 'Invalid request body';
+    case 'STAFF_AUTHENTICATION_FAILED':
+      return 'Invalid staff credentials or account unavailable';
     case 'INTERNAL_ERROR':
       return 'Internal server error';
   }
