@@ -42,6 +42,11 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Print M2-3 Prettier diff
+        run: |
+          pnpm exec prettier --write apps/api/test/staff-authorization.test.ts apps/api/test/staff-authorization.integration.test.ts
+          git diff -- apps/api/test/staff-authorization.test.ts apps/api/test/staff-authorization.integration.test.ts
+          exit 1
       - run: pnpm check
       - run: pnpm --filter @xiaohai/db db:check
       - run: pnpm --filter @xiaohai/db db:migrate
