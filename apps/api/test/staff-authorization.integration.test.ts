@@ -1,5 +1,6 @@
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
+import { apiErrorResponseSchema } from '@xiaohai/contracts';
 import {
   createDatabase,
   permissions,
@@ -116,7 +117,9 @@ testSuite('staff RBAC and Data Scope PostgreSQL integration', () => {
         headers: authorizationHeader ? { authorization: authorizationHeader } : {},
       });
       expect(response.statusCode).toBe(401);
-      expect(response.json().error.code).toBe('STAFF_AUTHENTICATION_REQUIRED');
+      expect(apiErrorResponseSchema.parse(response.json()).error.code).toBe(
+        'STAFF_AUTHENTICATION_REQUIRED',
+      );
     }
     await app.close();
   });
@@ -150,7 +153,7 @@ testSuite('staff RBAC and Data Scope PostgreSQL integration', () => {
       headers: { authorization: `Bearer ${token}` },
     });
     expect(response.statusCode).toBe(403);
-    expect(response.json().error.code).toBe('STAFF_FORBIDDEN');
+    expect(apiErrorResponseSchema.parse(response.json()).error.code).toBe('STAFF_FORBIDDEN');
 
     await database!.db.insert(rolePermissions).values({ roleId, permissionId });
     await database!.db.delete(staffRoles).where(eq(staffRoles.staffAccountId, staffId));
