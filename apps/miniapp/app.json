@@ -1,9 +1,7 @@
 {
-  "pages": [
-    "pages/index/index"
-  ],
+  "pages": ["pages/index/index"],
   "window": {
-    "navigationBarTitleText": "Xiaohai",
+    "navigationBarTitleText": "小海童话",
     "navigationBarBackgroundColor": "#ffffff",
     "navigationBarTextStyle": "black"
   }
