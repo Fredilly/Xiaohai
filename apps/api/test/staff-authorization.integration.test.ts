@@ -134,8 +134,7 @@ testSuite('staff RBAC and Data Scope PostgreSQL integration', () => {
     });
     const app = buildApp({ staffAuthorization: authorization, logger: false });
     const token = sessions.issue(staffId).token;
-    const url =
-      '/api/v1/staff/authorization/probe?permission=staff.profile.read&scopeType=GLOBAL';
+    const url = '/api/v1/staff/authorization/probe?permission=staff.profile.read&scopeType=GLOBAL';
 
     expect(
       (await app.inject({ method: 'GET', url, headers: { authorization: `Bearer ${token}` } }))
@@ -204,9 +203,7 @@ testSuite('staff RBAC and Data Scope PostgreSQL integration', () => {
     expect((await request(storeA)).statusCode).toBe(200);
     expect((await request(storeB)).statusCode).toBe(403);
 
-    await database!.db
-      .delete(staffDataScopes)
-      .where(eq(staffDataScopes.staffAccountId, staffId));
+    await database!.db.delete(staffDataScopes).where(eq(staffDataScopes.staffAccountId, staffId));
     expect((await request(storeA)).statusCode).toBe(403);
 
     await database!.db.insert(staffDataScopes).values({
@@ -220,9 +217,7 @@ testSuite('staff RBAC and Data Scope PostgreSQL integration', () => {
 
   it('enforces uniqueness, foreign keys, and Data Scope shape constraints', async () => {
     const staffId = await createStaff();
-    await database!.db
-      .insert(roles)
-      .values({ key: 'unique-role', displayName: 'Unique role' });
+    await database!.db.insert(roles).values({ key: 'unique-role', displayName: 'Unique role' });
     await expect(
       database!.db.insert(roles).values({ key: 'unique-role', displayName: 'Duplicate role' }),
     ).rejects.toBeDefined();
