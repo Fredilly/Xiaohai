@@ -72,7 +72,9 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   if (options.staffAuthorization) {
     app.get('/api/v1/staff/me', async (request, reply) => {
       try {
-        const context = await options.staffAuthorization!.authenticate(request.headers.authorization);
+        const context = await options.staffAuthorization!.authenticate(
+          request.headers.authorization,
+        );
         return staffMeResponseSchema.parse({
           staff: { id: context.staffAccountId, loginIdentifier: context.loginIdentifier },
           permissions: context.permissions,
@@ -88,7 +90,9 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
       if (!input.success) return sendInvalidRequest(reply, request.id);
 
       try {
-        const context = await options.staffAuthorization!.authenticate(request.headers.authorization);
+        const context = await options.staffAuthorization!.authenticate(
+          request.headers.authorization,
+        );
         options.staffAuthorization!.requirePermission(context, input.data.permission);
         options.staffAuthorization!.requireDataScope(
           context,
