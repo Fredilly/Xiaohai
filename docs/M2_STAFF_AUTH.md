@@ -15,6 +15,10 @@ This phase establishes staff accounts, password login, Staff Sessions, a minimal
 
 `staff_accounts` contains a UUID primary key, a normalized unique `login_identifier`, `password_hash`, `enabled`, `created_at`, `updated_at`, and nullable `last_login_at`. This phase creates no roles, permissions, staff_roles, or staff_data_scopes.
 
+数据库中 `staff_accounts.login_identifier` 的唯一索引只保证已写入值的唯一性，本身不会执行应用层规范化。因此，所有受控的 Staff Account provisioning、初始化、seed 或其他写入流程，在写入数据库之前都必须复用登录流程使用的同一个 `normalizeStaffLoginIdentifier` 规则：`trim` → Unicode `NFKC` → `lowercase`。禁止直接写入未经该规则规范化的 `login_identifier`。后续如果增加正式的员工账号管理 API，也必须复用同一个 normalization，而不能实现另一套规则。M2-2 当前没有员工账号管理 API，因此首批账号只能通过符合上述要求的受控 provisioning 流程创建；这是本阶段的已知限制，而不是由数据库唯一索引自动解决的问题。
+
+The unique index on `staff_accounts.login_identifier` guarantees only uniqueness of the values actually stored; it does not perform application-level normalization. Therefore, every controlled Staff Account provisioning, initialization, seed, or other write path must reuse the exact same `normalizeStaffLoginIdentifier` rule used by login before writing to the database: `trim` → Unicode `NFKC` → `lowercase`. Writing an unnormalized `login_identifier` directly is not allowed. Any future formal staff account-management API must reuse this same normalization rather than implement a separate rule. M2-2 currently has no staff account-management API, so initial accounts can only be created through controlled provisioning that follows these requirements; this is a known limitation of this milestone and is not something the database unique index solves automatically.
+
 ## API
 ## API
 
