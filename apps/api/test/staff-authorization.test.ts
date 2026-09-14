@@ -83,7 +83,9 @@ describe('StaffAuthorizationService', () => {
       300,
       now,
     );
-    const consumerToken = consumerSessions.issue('44444444-4444-4444-8444-444444444444').token;
+    const consumerToken = consumerSessions.issue(
+      '44444444-4444-4444-8444-444444444444',
+    ).token;
     const { service } = createService(context);
     await expect(service.authenticate(`Bearer ${consumerToken}`)).rejects.toMatchObject({
       code: 'STAFF_AUTHENTICATION_REQUIRED',
@@ -114,7 +116,11 @@ describe('StaffAuthorizationService', () => {
     expect(service.canAccessScope(context, 'REGION', storeId)).toBe(false);
     expect(service.canAccessScope({ ...context, dataScopes: [] }, 'STORE', storeId)).toBe(false);
     expect(
-      service.canAccessScope({ ...context, dataScopes: [{ type: 'GLOBAL', id: null }] }, 'STORE', otherStoreId),
+      service.canAccessScope(
+        { ...context, dataScopes: [{ type: 'GLOBAL', id: null }] },
+        'STORE',
+        otherStoreId,
+      ),
     ).toBe(true);
   });
 });
