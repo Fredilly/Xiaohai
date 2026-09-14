@@ -9,7 +9,7 @@ import {
   type createDatabase,
 } from '@xiaohai/db';
 import { ConsumerAuthError } from './errors.js';
-import { StaffSessionService } from './staff-session.js';
+import type { StaffSessionService } from './staff-session.js';
 
 type Database = ReturnType<typeof createDatabase>['db'];
 
