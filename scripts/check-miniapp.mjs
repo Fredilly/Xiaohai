@@ -25,6 +25,19 @@ if (
 ) {
   throw new Error('Mini Program project config must use miniprogram and the safe tourist AppID.');
 }
+const miniappConfig = await readFile(`${root}/config.ts`, 'utf8');
+for (const environment of ['dev', 'staging', 'production']) {
+  if (!miniappConfig.includes(`${environment}:`)) {
+    throw new Error(`Mini Program API configuration must define ${environment}.`);
+  }
+}
+if (
+  !miniappConfig.includes("dev: 'http://127.0.0.1:3000'") ||
+  !miniappConfig.includes("staging: 'https://staging-api.example.invalid'") ||
+  !miniappConfig.includes("production: 'https://api.example.invalid'")
+) {
+  throw new Error('Mini Program API endpoints must keep safe environment-specific defaults.');
+}
 const ignore = await readFile('.gitignore', 'utf8');
 if (!ignore.includes('apps/miniapp/project.private.config.json')) {
   throw new Error('project.private.config.json must remain ignored.');

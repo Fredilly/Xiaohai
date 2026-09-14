@@ -1,4 +1,4 @@
-import { API_BASE_URL } from '../config';
+import { getApiBaseUrl } from '../config';
 
 interface LoginResponse {
   consumer: { id: string };
@@ -12,7 +12,7 @@ export async function loginWithWeChat(): Promise<LoginResponse> {
   const response = await new Promise<WechatMiniprogram.RequestSuccessCallbackResult>(
     (resolve, reject) => {
       wx.request({
-        url: `${API_BASE_URL}/api/v1/auth/wechat/login`,
+        url: `${getApiBaseUrl()}/api/v1/auth/wechat/login`,
         method: 'POST',
         data: { code: login.code },
         success: resolve,
