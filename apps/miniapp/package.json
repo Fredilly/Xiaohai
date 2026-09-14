@@ -1,0 +1,17 @@
+{
+  "name": "@xiaohai/miniapp",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "tsc --noEmit",
+    "dev": "tsc --noEmit --watch",
+    "lint": "eslint app.ts pages/**/*.ts",
+    "test": "vitest run --passWithNoTests",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/wechat-miniprogram": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}
