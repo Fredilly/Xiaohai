@@ -1,87 +1,125 @@
 # DEVELOPMENT_TASKS.md — 小海童话 2.0 / Xiaohai 2.0 Production V1
 
-Each milestone is reviewed before the next. Done = applicable UI + API + DB + Admin/Store UI + permissions + tests + logs + docs.
+Each phase is reviewed before the next. Each milestone remains independently reviewable.
+每个阶段完成后审核，再进入下一阶段；每个里程碑仍需独立验收。
 
-## M0 Plan / 方案
+Done = applicable UI + API + DB + Admin/Store UI + permissions + tests + logs + docs.
+
+---
+
+## Phase 1 — Foundation / 基础建设
+**Goal / 目标:** Establish the technical base, permissions model and migration path before business features.
+
+### M0 Plan / 方案
 Create and approve `IMPLEMENTATION_PLAN.md`, monorepo design, deployment/envs, migration plan, security risks, CI, external accounts and unresolved decisions.
 
-## M1 Foundation / 基础工程
+### M1 Foundation / 基础工程
 pnpm/Turborepo; native TS Mini Program; React/Vite Admin + Store; Fastify API; worker; PostgreSQL/Drizzle; lint/test/CI; dev/staging; secrets/logging.
 
-## M2 Identity & RBAC / 身份权限
+### M2 Identity & RBAC / 身份权限
 WeChat consumer login; Staff auth; roles/permissions/data scope; permission tests.
 
-## M3 Meiping migration / 美萍迁移工具
+### M3 Meiping migration / 美萍迁移工具
 Books + current stock only. Raw archive, staging, normalization, dedupe, dry-run, batch, exception/reconciliation report and safe rerun.
 
-## M4 Home/CMS / 首页
+---
+
+## Phase 2 — Core Customer Product / 核心用户产品
+**Goal / 目标:** Deliver the first complete customer-facing commerce and content experience.
+
+### M4 Home/CMS / 首页
 Fixed TabBar: 首页 / 胖竹全球 / 我的. Configurable home sections and content.
 
-## M5 Commerce / 商城
+### M5 Commerce / 商城
 Catalog/search/detail/SKU/cart/address/checkout/orders/cancel + Admin.
 
-## M6 WeChat Pay / 微信支付
+### M6 WeChat Pay / 微信支付
 Server payment creation, verification, callback idempotency, ledger, refund, reconciliation, alerts. Production activation requires human approval.
 
-## M7 Stories & Animation / 内容动画
+### M7 Stories & Animation / 内容动画
 Browse/search/detail/free/preview/paid entitlement/playback progress/purchases + media admin/CDN.
 
-## M8 AI Platform / AI基础
+---
+
+## Phase 3 — AI Creation Platform / AI创作平台
+**Goal / 目标:** Build reusable AI infrastructure first, then story, picture-book and animation workflows.
+
+### M8 AI Platform / AI基础
 Adapters, projects/jobs, queue/workers, retry/timeout/cost/moderation/assets/status/admin monitoring.
 
-## M9 Story AI / 故事
+### M9 Story AI / 故事
 Prompt controls, outline, body, rewrite/continue/polish, versions, works.
 
-## M10 Picture Book AI / 绘本
+### M10 Picture Book AI / 绘本
 Pagination, character profile/reference, storyboard, illustration/regenerate, layout, cover, preview. Test character consistency.
 
-## M11 Animation AI / 动画
+### M11 Animation AI / 动画
 Script/storyboard/scenes/async generation/composition/retry/progress/preview/cost limits.
 
-## M12 Pangzhu Stores / 门店
+---
+
+## Phase 4 — Store & Inventory Network / 门店与库存网络
+**Goal / 目标:** Connect physical stores, searchable inventory and operational stock control.
+
+### M12 Pangzhu Stores / 门店
 Regions/franchisees/stores/map/nearby/filter/search/store detail.
 
-## M13 Book + Store Inventory Search / 找书
+### M13 Book + Store Inventory Search / 找书
 Title/author/ISBN/barcode → stores with sell/rent availability → buy/rent/pickup/delivery.
 
-## M14 Inventory Operations / 进销存
+### M14 Inventory Operations / 进销存
 Supplier/procurement/receipt/issue/adjustment/stocktake/transfer/alerts. Concurrency and authorization tests are mandatory.
 
-## M15 Rental / 租借
+### M15 Rental / 租借
 Reserve/pickup/borrow/due/overdue/return/cancel + Store operations.
 
-## M16 Pickup & Delivery / 自提配送
+### M16 Pickup & Delivery / 自提配送
 Pickup codes, verification, delivery zones/fees/orders/provider adapter.
 
-## M17 Franchise / 加盟
+---
+
+## Phase 5 — Business Operations / 商业运营
+**Goal / 目标:** Add franchise, referral, store management, HQ administration and finance controls.
+
+### M17 Franchise / 加盟
 Public application + HQ lead assignment/follow-up/approval/status.
 
-## M18 Referral & Commission / 分享佣金
+### M18 Referral & Commission / 分享佣金
 Attribution, configurable rules, freeze/settle/reverse, refund reversal, ledger, withdrawal. Gate on final business/compliance rules.
 
-## M19 Store Web / 门店端
+### M19 Store Web / 门店端
 Operational UI for stock, orders, pickup, rental, delivery; manager adds procurement/stocktake/transfer/staff/reporting.
 
-## M20 HQ Admin / 总部后台
+### M20 HQ Admin / 总部后台
 Full operational, financial, content, AI, store, RBAC and audit administration.
 
-## M21 Finance/Audit / 财务审计
+### M21 Finance/Audit / 财务审计
 Payment/refund/commission/withdrawal ledger, reconciliation, controlled export, audit.
 
-## M22 Security/Privacy / 安全隐私
+---
+
+## Phase 6 — Production Hardening / 生产加固
+**Goal / 目标:** Prove the system is secure, reliable and usable on real WeChat devices.
+
+### M22 Security/Privacy / 安全隐私
 Threat review, secrets, RBAC abuse tests, uploads, rate limits, PII, child/privacy requirements, moderation.
 
-## M23 Reliability / 性能可靠性
+### M23 Reliability / 性能可靠性
 Load, concurrency, slow queries, queues, CDN, backup/restore, monitoring/alerts.
 
-## M24 WeChat Experience Build / 体验版
+### M24 WeChat Experience Build / 体验版
 DevTools + real iOS/Android + weak network + login/pay/video/AI/map/privacy/share/order flows.
 
-## M25 Launch Readiness / 上线准备
+---
+
+## Phase 7 — Launch & Cutover / 上线与切换
+**Goal / 目标:** Prepare production infrastructure, migrate final inventory and release through WeChat review.
+
+### M25 Launch Readiness / 上线准备
 WeChat主体/类目/备案/域名/支付/隐私/客服/content safety/prod DB/CDN/backups/secrets/accounts.
 
-## M26 Final Meiping Cutover / 最终切换
+### M26 Final Meiping Cutover / 最终切换
 Freeze old inventory → final export → dry-run → exception resolution → import → store reconciliation → owner approval → new system SoT.
 
-## M27 Review & Release / 审核发布
+### M27 Review & Release / 审核发布
 Final experience acceptance → WeChat review → fixes/regression → release → smoke test → production monitoring. Human approval required.
