@@ -36,6 +36,9 @@ jobs:
       NODE_ENV: test
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: git diff --check ${{ github.event.pull_request.base.sha }} ${{ github.event.pull_request.head.sha }}
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
