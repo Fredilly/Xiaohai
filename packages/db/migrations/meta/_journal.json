@@ -8,6 +8,13 @@
       "when": 1789374713733,
       "tag": "0000_messy_loners",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1789379035142,
+      "tag": "0001_giant_arachne",
+      "breakpoints": true
     }
   ]
 }

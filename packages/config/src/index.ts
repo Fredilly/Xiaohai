@@ -13,6 +13,8 @@ const serviceSchema = baseSchema.extend({
   WECHAT_AUTH_TIMEOUT_MS: z.coerce.number().int().min(100).max(30_000).default(5_000),
   CONSUMER_SESSION_SECRET: z.string().min(32),
   CONSUMER_SESSION_TTL_SECONDS: z.coerce.number().int().min(60).max(2_592_000).default(604_800),
+  STAFF_SESSION_SECRET: z.string().min(32),
+  STAFF_SESSION_TTL_SECONDS: z.coerce.number().int().min(60).max(86_400).default(28_800),
 });
 const databaseSchema = baseSchema.extend({ DATABASE_URL: z.url().startsWith('postgresql://') });
 
