@@ -45,4 +45,5 @@ jobs:
       - run: pnpm check
       - run: pnpm --filter @xiaohai/db db:check
       - run: pnpm --filter @xiaohai/db db:migrate
+      - run: pnpm test:integration
       - run: pnpm test:e2e

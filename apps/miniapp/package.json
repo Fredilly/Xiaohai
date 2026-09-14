@@ -5,7 +5,7 @@
   "scripts": {
     "build": "tsc --noEmit",
     "dev": "tsc --noEmit --watch",
-    "lint": "eslint app.ts pages/**/*.ts",
+    "lint": "eslint app.ts config.ts pages/**/*.ts services/**/*.ts",
     "test": "vitest run --passWithNoTests",
     "typecheck": "tsc --noEmit"
   },

@@ -8,12 +8,16 @@
     "dev": "tsx watch src/server.ts",
     "lint": "eslint src test",
     "start": "node dist/server.js",
-    "test": "vitest run",
+    "test": "vitest run --exclude '**/*.integration.test.ts'",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@xiaohai/config": "workspace:*",
     "@xiaohai/contracts": "workspace:*",
+    "@xiaohai/db": "workspace:*",
+    "@xiaohai/domain": "workspace:*",
+    "drizzle-orm": "catalog:",
     "fastify": "catalog:",
     "pino": "catalog:",
     "zod": "catalog:"

@@ -1,0 +1,70 @@
+import { createHmac, timingSafeEqual } from 'node:crypto';
+import { z } from 'zod';
+
+const payloadSchema = z.object({
+  v: z.literal(1),
+  sub: z.uuid(),
+  iat: z.number().int().nonnegative(),
+  exp: z.number().int().positive(),
+});
+
+export interface SessionClaims {
+  consumerUserId: string;
+  issuedAt: Date;
+  expiresAt: Date;
+}
+
+export interface IssuedSession {
+  token: string;
+  expiresAt: Date;
+}
+
+export class ConsumerSessionService {
+  constructor(
+    private readonly secret: string,
+    private readonly ttlSeconds: number,
+    private readonly now: () => Date = () => new Date(),
+  ) {
+    if (Buffer.byteLength(secret, 'utf8') < 32) {
+      throw new Error('Consumer session secret must contain at least 32 bytes');
+    }
+    if (!Number.isInteger(ttlSeconds) || ttlSeconds < 60) {
+      throw new Error('Consumer session TTL must be at least 60 seconds');
+    }
+  }
+
+  issue(consumerUserId: string): IssuedSession {
+    const issuedAt = Math.floor(this.now().getTime() / 1000);
+    const payload = Buffer.from(
+      JSON.stringify({ v: 1, sub: consumerUserId, iat: issuedAt, exp: issuedAt + this.ttlSeconds }),
+    ).toString('base64url');
+    return {
+      token: `${payload}.${this.sign(payload)}`,
+      expiresAt: new Date((issuedAt + this.ttlSeconds) * 1000),
+    };
+  }
+
+  verify(token: string): SessionClaims | null {
+    const [payload, signature, extra] = token.split('.');
+    if (!payload || !signature || extra) return null;
+    const expected = Buffer.from(this.sign(payload));
+    const supplied = Buffer.from(signature);
+    if (expected.length !== supplied.length || !timingSafeEqual(expected, supplied)) return null;
+
+    try {
+      const claims = payloadSchema.parse(JSON.parse(Buffer.from(payload, 'base64url').toString()));
+      if (claims.exp <= Math.floor(this.now().getTime() / 1000)) return null;
+      return {
+        consumerUserId: claims.sub,
+        issuedAt: new Date(claims.iat * 1000),
+        expiresAt: new Date(claims.exp * 1000),
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  private sign(payload: string): string {
+    return createHmac('sha256', this.secret).update(payload).digest('base64url');
+  }
+}

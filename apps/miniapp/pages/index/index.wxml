@@ -1,4 +1,6 @@
 <view class="page">
   <text class="title">{{title}}</text>
   <text class="subtitle">{{subtitle}}</text>
+  <text class="status">{{status}}</text>
+  <button loading="{{isLoading}}" disabled="{{isLoading}}" bindtap="login">微信登录</button>
 </view>

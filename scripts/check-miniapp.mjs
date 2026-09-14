@@ -11,6 +11,8 @@ const required = [
   'pages/index/index.json',
   'pages/index/index.wxml',
   'pages/index/index.wxss',
+  'config.ts',
+  'services/auth.ts',
 ];
 await Promise.all(required.map((path) => access(`${root}/${path}`)));
 
