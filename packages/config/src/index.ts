@@ -8,6 +8,11 @@ const baseSchema = z.object({
 const serviceSchema = baseSchema.extend({
   HOST: z.string().default('127.0.0.1'),
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
+  WECHAT_APP_ID: z.string().min(1),
+  WECHAT_APP_SECRET: z.string().min(1),
+  WECHAT_AUTH_TIMEOUT_MS: z.coerce.number().int().min(100).max(30_000).default(5_000),
+  CONSUMER_SESSION_SECRET: z.string().min(32),
+  CONSUMER_SESSION_TTL_SECONDS: z.coerce.number().int().min(60).max(2_592_000).default(604_800),
 });
 const databaseSchema = baseSchema.extend({ DATABASE_URL: z.url().startsWith('postgresql://') });
 

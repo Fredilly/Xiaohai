@@ -1,5 +1,5 @@
 interface IAppOption {
-  globalData: { foundationReady: boolean };
+  globalData: { foundationReady: boolean; consumerUserId?: string };
 }
 
 App<IAppOption>({

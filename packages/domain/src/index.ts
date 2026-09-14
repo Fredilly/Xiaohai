@@ -1,1 +1,4 @@
-export const domainFoundationVersion = 1 as const;
+export interface ConsumerIdentity {
+  consumerUserId: string;
+  wechatIdentityId: string;
+}

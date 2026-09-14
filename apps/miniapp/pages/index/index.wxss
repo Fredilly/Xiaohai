@@ -16,3 +16,10 @@
   font-size: 28rpx;
   color: #666666;
 }
+
+.status {
+  max-width: 640rpx;
+  font-size: 24rpx;
+  color: #444444;
+  overflow-wrap: anywhere;
+}
