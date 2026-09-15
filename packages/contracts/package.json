@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./dist/index.js"
+    ".": "./dist/index.js",
+    "./commerce": "./dist/commerce.js"
   },
   "types": "./dist/index.d.ts",
   "scripts": {
@@ -13,11 +14,6 @@
     "test": "vitest run --passWithNoTests",
     "typecheck": "tsc --noEmit"
   },
-  "dependencies": {
-    "zod": "catalog:"
-  },
-  "devDependencies": {
-    "typescript": "catalog:",
-    "vitest": "catalog:"
-  }
+  "dependencies": { "zod": "catalog:" },
+  "devDependencies": { "typescript": "catalog:", "vitest": "catalog:" }
 }
