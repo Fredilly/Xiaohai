@@ -25,7 +25,10 @@ export const cmsPages = pgTable(
   },
   (table) => [
     uniqueIndex('cms_pages_key_unique').on(table.key),
-    check('cms_pages_publication_state_check', sql`${table.publicationState} in ('DRAFT', 'PUBLISHED')`),
+    check(
+      'cms_pages_publication_state_check',
+      sql`${table.publicationState} in ('DRAFT', 'PUBLISHED')`,
+    ),
     check('cms_pages_version_positive', sql`${table.version} > 0`),
   ],
 );
@@ -42,9 +45,9 @@ export const cmsSections = pgTable(
     subtitle: text('subtitle'),
     displayOrder: integer('display_order').notNull(),
     enabled: boolean('enabled').notNull().default(true),
-    config: jsonb('config').$type<Record<string, unknown>>().notNull(),
+    config: jsonb('config').$type<unknown>().notNull(),
     mediaUrl: text('media_url'),
-    action: jsonb('action').$type<Record<string, unknown> | null>(),
+    action: jsonb('action').$type<unknown>(),
     publicationState: text('publication_state').notNull().default('DRAFT'),
     version: integer('version').notNull().default(1),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
