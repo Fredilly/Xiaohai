@@ -1,4 +1,5 @@
 export { createDatabase } from './client.js';
+export { cmsPages, cmsSections } from './cms-schema.js';
 export {
   consumerUsers,
   migrationBatches,
