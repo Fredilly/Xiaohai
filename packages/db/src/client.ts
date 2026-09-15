@@ -7,7 +7,13 @@ import * as commerceSchema from './commerce-schema.js';
 import * as paymentSchema from './payment-schema.js';
 import * as contentSchema from './content-schema.js';
 
-const schema = { ...coreSchema, ...cmsSchema, ...commerceSchema, ...paymentSchema, ...contentSchema };
+const schema = {
+  ...coreSchema,
+  ...cmsSchema,
+  ...commerceSchema,
+  ...paymentSchema,
+  ...contentSchema,
+};
 export function createDatabase(env: NodeJS.ProcessEnv = process.env) {
   const config = loadDatabaseConfig(env);
   const pool = new pg.Pool({ connectionString: config.DATABASE_URL });
