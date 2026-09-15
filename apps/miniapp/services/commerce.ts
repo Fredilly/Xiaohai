@@ -7,7 +7,7 @@ export class CommerceApiError extends Error {
 }
 async function request<T>(
   path: string,
-  method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE' = 'GET',
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE' = 'GET',
   data?: object,
 ): Promise<T> {
   const response = await new Promise<WechatMiniprogram.RequestSuccessCallbackResult>(
@@ -64,7 +64,7 @@ export const getCart = () =>
 export const addCartItem = (skuId: string, quantity = 1) =>
   request('/api/v1/commerce/cart/items', 'POST', { skuId, quantity });
 export const updateCartItem = (id: string, quantity: number) =>
-  request('/api/v1/commerce/cart/items/' + id, 'PATCH', { quantity });
+  request('/api/v1/commerce/cart/items/' + id, 'PUT', { quantity });
 export const deleteCartItem = (id: string) =>
   request('/api/v1/commerce/cart/items/' + id, 'DELETE');
 export type Address = {
