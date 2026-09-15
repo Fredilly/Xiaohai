@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { CmsApiError, getCmsHome } from './cms-api';
+import type { CmsApiError } from './cms-api';
+import { getCmsHome } from './cms-api';
 
 describe('Admin M4 CMS API adapter', () => {
   afterEach(() => vi.unstubAllGlobals());
