@@ -28,7 +28,9 @@ testSuite('M3 migration staging PostgreSQL integration', () => {
     const batchId = await createBatch();
     await expect(createBatch()).rejects.toBeDefined();
     const rawValues = { title: '测试图书', inventory: '-1', price: 'bad' };
-    await database!.db.insert(migrationBookStaging).values({ batchId, sourceRowNumber: 1, rawValues });
+    await database!.db
+      .insert(migrationBookStaging)
+      .values({ batchId, sourceRowNumber: 1, rawValues });
     await expect(
       database!.db.insert(migrationBookStaging).values({ batchId, sourceRowNumber: 1, rawValues }),
     ).rejects.toBeDefined();
@@ -46,7 +48,10 @@ testSuite('M3 migration staging PostgreSQL integration', () => {
         validationState: 'ERROR',
         issues: [{ code: 'INVENTORY_NEGATIVE' }],
       })
-      .returning({ rawValues: migrationBookStaging.rawValues, issues: migrationBookStaging.issues });
+      .returning({
+        rawValues: migrationBookStaging.rawValues,
+        issues: migrationBookStaging.issues,
+      });
     expect(row!.rawValues).toEqual(rawValues);
     expect(row!.issues).toEqual([{ code: 'INVENTORY_NEGATIVE' }]);
     await expect(

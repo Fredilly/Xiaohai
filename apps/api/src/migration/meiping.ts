@@ -82,18 +82,36 @@ export function normalizeCanonicalRecord(input: CanonicalMigrationInput): Canoni
   };
 }
 
-function baseIssues(input: CanonicalMigrationInput, record: CanonicalMigrationRecord): MigrationIssue[] {
+function baseIssues(
+  input: CanonicalMigrationInput,
+  record: CanonicalMigrationRecord,
+): MigrationIssue[] {
   const issues: MigrationIssue[] = [];
-  if (!record.title) issues.push({ code: 'TITLE_REQUIRED', severity: 'ERROR', message: '图书名字不能为空' });
+  if (!record.title)
+    issues.push({ code: 'TITLE_REQUIRED', severity: 'ERROR', message: '图书名字不能为空' });
   if (!record.bookCode && !record.internalCode) {
-    issues.push({ code: 'IDENTIFIER_REVIEW', severity: 'WARNING', message: '图书编码和自有编号均缺失，需要人工确认' });
+    issues.push({
+      code: 'IDENTIFIER_REVIEW',
+      severity: 'WARNING',
+      message: '图书编码和自有编号均缺失，需要人工确认',
+    });
   }
-  if (!record.author) issues.push({ code: 'AUTHOR_MISSING', severity: 'WARNING', message: '作者缺失，需要人工确认' });
-  if (!record.publisher) issues.push({ code: 'PUBLISHER_MISSING', severity: 'WARNING', message: '出版社缺失，需要人工确认' });
+  if (!record.author)
+    issues.push({ code: 'AUTHOR_MISSING', severity: 'WARNING', message: '作者缺失，需要人工确认' });
+  if (!record.publisher)
+    issues.push({
+      code: 'PUBLISHER_MISSING',
+      severity: 'WARNING',
+      message: '出版社缺失，需要人工确认',
+    });
   if (normalizeText(input.price) === null) {
     issues.push({ code: 'PRICE_REQUIRED', severity: 'ERROR', message: '价格不能为空' });
   } else if (record.priceMinor === null) {
-    issues.push({ code: 'PRICE_INVALID', severity: 'ERROR', message: '价格必须是最多两位小数的非负十进制金额' });
+    issues.push({
+      code: 'PRICE_INVALID',
+      severity: 'ERROR',
+      message: '价格必须是最多两位小数的非负十进制金额',
+    });
   }
   if (normalizeText(input.inventory) === null) {
     issues.push({ code: 'INVENTORY_REQUIRED', severity: 'ERROR', message: '库存不能为空' });
@@ -126,7 +144,11 @@ export function dryRunCanonicalMigration(inputs: CanonicalMigrationInput[]): Dry
     const fp = fingerprint(row.normalized);
     const duplicateOf = seenFingerprint.get(fp);
     if (duplicateOf !== undefined) {
-      row.issues.push({ code: 'DUPLICATE_ROW', severity: 'WARNING', message: `与 source row ${duplicateOf} 完全重复` });
+      row.issues.push({
+        code: 'DUPLICATE_ROW',
+        severity: 'WARNING',
+        message: `与 source row ${duplicateOf} 完全重复`,
+      });
       row.disposition = 'DUPLICATE';
       continue;
     }
@@ -164,13 +186,17 @@ export function dryRunCanonicalMigration(inputs: CanonicalMigrationInput[]): Dry
   return {
     totalRows: rows.length,
     validRows: rows.filter((row) => row.issues.length === 0).length,
-    warningRows: rows.filter((row) => row.issues.some((issue) => issue.severity === 'WARNING')).length,
+    warningRows: rows.filter((row) => row.issues.some((issue) => issue.severity === 'WARNING'))
+      .length,
     errorRows: rows.filter((row) => row.issues.some((issue) => issue.severity === 'ERROR')).length,
     duplicateOrConflictRows: rows.filter((row) =>
-      row.issues.some((issue) => issue.code === 'DUPLICATE_ROW' || issue.code.endsWith('_CONFLICT')),
+      row.issues.some(
+        (issue) => issue.code === 'DUPLICATE_ROW' || issue.code.endsWith('_CONFLICT'),
+      ),
     ).length,
     importableRows: rows.filter((row) => row.disposition === 'IMPORTABLE').length,
-    reviewRows: rows.filter((row) => row.disposition === 'REVIEW' || row.disposition === 'REJECTED').length,
+    reviewRows: rows.filter((row) => row.disposition === 'REVIEW' || row.disposition === 'REJECTED')
+      .length,
     sourceInventoryTotal,
     plannedInventoryTotal,
     rows,
@@ -194,13 +220,21 @@ export type ReconciliationInput = {
 export function reconcileMigration(input: ReconciliationInput) {
   const mismatches: string[] = [];
   if (input.sourceRowCount !== input.stagingRowCount) mismatches.push('SOURCE_STAGING_ROW_COUNT');
-  if (input.acceptedRowCount + input.rejectedRowCount + input.reviewRowCount !== input.stagingRowCount) {
+  if (
+    input.acceptedRowCount + input.rejectedRowCount + input.reviewRowCount !==
+    input.stagingRowCount
+  ) {
     mismatches.push('STAGING_DISPOSITION_COUNT');
   }
-  if (input.plannedRecordCount !== input.importedRecordCount) mismatches.push('PLANNED_IMPORTED_COUNT');
-  if (input.sourceInventoryTotal !== null && input.sourceInventoryTotal !== input.acceptedInventoryTotal) {
+  if (input.plannedRecordCount !== input.importedRecordCount)
+    mismatches.push('PLANNED_IMPORTED_COUNT');
+  if (
+    input.sourceInventoryTotal !== null &&
+    input.sourceInventoryTotal !== input.acceptedInventoryTotal
+  ) {
     mismatches.push('SOURCE_ACCEPTED_INVENTORY');
   }
-  if (input.acceptedInventoryTotal !== input.importedInventoryTotal) mismatches.push('ACCEPTED_IMPORTED_INVENTORY');
+  if (input.acceptedInventoryTotal !== input.importedInventoryTotal)
+    mismatches.push('ACCEPTED_IMPORTED_INVENTORY');
   return { matched: mismatches.length === 0, mismatches, ...input };
 }
