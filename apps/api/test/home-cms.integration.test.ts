@@ -211,7 +211,7 @@ testSuite('M4 Home/CMS PostgreSQL integration', () => {
       },
     });
     expect(created.statusCode).toBe(201);
-    const section = created.json() as { id: string; version: number };
+    const section = created.json();
     expect(
       (
         await app.inject({
