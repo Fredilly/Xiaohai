@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { UpdateCmsSectionRequest } from '@xiaohai/contracts';
 import type { CmsApiError } from './cms-api';
 import { getCmsHome, updateCmsSection } from './cms-api';
 
@@ -13,17 +14,17 @@ describe('Admin M4 CMS API adapter', () => {
   });
 
   it('sends the validated editable CMS fields with the optimistic-concurrency version', async () => {
-    const input = {
+    const input: UpdateCmsSectionRequest = {
       version: 7,
-      sectionType: 'BANNER' as const,
+      sectionType: 'BANNER',
       title: '运营 Banner',
       subtitle: '副标题',
       displayOrder: 2,
       enabled: false,
-      publicationState: 'PUBLISHED' as const,
+      publicationState: 'PUBLISHED',
       config: { body: '正式内容' },
       mediaUrl: 'https://example.com/banner.jpg',
-      action: { type: 'PREVIEW' as const, target: 'shop' },
+      action: { type: 'PREVIEW', target: 'shop' },
     };
     const response = {
       id: '11111111-1111-4111-8111-111111111111',
