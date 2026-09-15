@@ -42,14 +42,18 @@ export class HomeCmsService {
     const sections = rows.flatMap((row) => {
       const parsed = cmsSectionSchema.safeParse(toSection(row));
       if (!parsed.success) return [];
-      const {
-        publicationState: _publicationState,
-        enabled: _enabled,
-        version: _version,
-        updatedAt: _updatedAt,
-        ...publicSection
-      } = parsed.data;
-      return [publicSection];
+      return [
+        {
+          id: parsed.data.id,
+          sectionType: parsed.data.sectionType,
+          title: parsed.data.title,
+          subtitle: parsed.data.subtitle,
+          displayOrder: parsed.data.displayOrder,
+          config: parsed.data.config,
+          mediaUrl: parsed.data.mediaUrl,
+          action: parsed.data.action,
+        },
+      ];
     });
     return publicHomeResponseSchema.parse({ page: { key: 'HOME', title: page.title }, sections });
   }
