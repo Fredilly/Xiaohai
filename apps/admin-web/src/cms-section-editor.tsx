@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import type { CmsSectionInput } from '@xiaohai/contracts';
+import { cmsSectionTypeSchema, type CmsSectionInput } from '@xiaohai/contracts';
 import {
   defaultConfigJson,
   parseCmsSectionForm,
@@ -54,7 +54,7 @@ export function CmsSectionEditor({
           <select
             value={values.sectionType}
             onChange={(event) => {
-              const sectionType = event.target.value as CmsSectionInput['sectionType'];
+              const sectionType = cmsSectionTypeSchema.parse(event.target.value);
               setValues({ ...values, sectionType, configJson: defaultConfigJson(sectionType) });
             }}
           >
