@@ -198,13 +198,11 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
 }
 
 function sendInvalidRequest(reply: FastifyReply, requestId: string) {
-  return reply
-    .status(400)
-    .send(
-      apiErrorResponseSchema.parse({
-        error: { code: 'INVALID_REQUEST', message: 'Invalid request', requestId },
-      }),
-    );
+  return reply.status(400).send(
+    apiErrorResponseSchema.parse({
+      error: { code: 'INVALID_REQUEST', message: 'Invalid request', requestId },
+    }),
+  );
 }
 
 function sendCmsOrAuthError(
