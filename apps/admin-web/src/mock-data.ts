@@ -34,7 +34,7 @@ export const adminModules: ModulePreview[] = [
     description: '佣金、支付、退款与对账框架',
     status: '前端预览',
   },
-  { key: 'cms', label: 'CMS / 运营', description: '首页内容与运营位框架', status: '前端预览' },
+  { key: 'cms', label: 'CMS / 运营', description: '首页内容与运营位管理', status: '可查看' },
   {
     key: 'staff',
     label: 'Staff / 权限',

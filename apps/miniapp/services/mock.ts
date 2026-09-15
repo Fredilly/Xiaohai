@@ -1,13 +1,5 @@
 export type FeatureCard = { key: string; title: string; subtitle: string; badge?: string };
-export type DemoBook = { title: string; author: string; price: string; note: string };
 export type DemoStore = { name: string; city: string; services: string; note: string };
-
-export const homeFeatures: FeatureCard[] = [
-  { key: 'shop', title: '小海商城', subtitle: '图书、购物车与订单前端骨架', badge: '精选' },
-  { key: 'animation', title: '小海童话动画', subtitle: '动画列表、详情与试看状态' },
-  { key: 'ai', title: '小海AI', subtitle: '故事 · 绘本 · 动画创作', badge: '所享即所想' },
-  { key: 'share', title: '分享与活动', subtitle: '分享入口与佣金说明' },
-];
 
 export const globalFeatures: FeatureCard[] = [
   { key: 'stores', title: '全球门店 / 地图找店', subtitle: '地图能力待正式门店 API 与地图适配器' },
@@ -27,22 +19,6 @@ export const meFeatures: FeatureCard[] = [
   { key: 'member', title: '会员', subtitle: '会员权益占位' },
   { key: 'address', title: '地址', subtitle: '地址管理前端入口' },
   { key: 'settings', title: '设置', subtitle: '账户与基础设置入口' },
-];
-
-export const demoBooks: DemoBook[] = [
-  {
-    title: '森林里的小邮局',
-    author: '小海编辑部',
-    price: '¥39.00',
-    note: 'Demo 图书 · 非真实商品',
-  },
-  { title: '星星落在书页上', author: '胖竹童书', price: '¥45.00', note: 'Demo 图书 · 非真实商品' },
-  {
-    title: '今天也要好好长大',
-    author: '小海编辑部',
-    price: '¥32.00',
-    note: 'Demo 图书 · 非真实商品',
-  },
 ];
 
 export const demoStores: DemoStore[] = [

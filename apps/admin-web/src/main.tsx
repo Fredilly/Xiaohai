@@ -2,6 +2,7 @@ import { StrictMode, useEffect, useMemo, useState, type FormEvent } from 'react'
 import { createRoot } from 'react-dom/client';
 import type { StaffMeResponse } from '@xiaohai/contracts';
 import './styles.css';
+import { CmsManager } from './cms-manager';
 import { getStaffMe, loginStaff } from './staff-auth';
 import { adminModules } from './mock-data';
 
@@ -60,7 +61,15 @@ function Login({ onSignedIn }: { onSignedIn: (token: string) => void }) {
   );
 }
 
-function Shell({ me, onLogout }: { me: StaffMeResponse; onLogout: () => void }) {
+function Shell({
+  me,
+  token,
+  onLogout,
+}: {
+  me: StaffMeResponse;
+  token: string;
+  onLogout: () => void;
+}) {
   const initial = window.location.hash.replace('#/', '') || 'dashboard';
   const [active, setActive] = useState(initial);
   useEffect(() => {
@@ -107,6 +116,8 @@ function Shell({ me, onLogout }: { me: StaffMeResponse; onLogout: () => void }) 
         </header>
         {active === 'dashboard' ? (
           <Dashboard me={me} />
+        ) : active === 'cms' ? (
+          <CmsManager token={token} />
         ) : (
           <Preview title={module.label} description={module.description} me={me} />
         )}
@@ -238,7 +249,7 @@ function App() {
   };
   if (checking) return <main className="center-state">正在验证 Staff Session…</main>;
   if (!token || !me) return <Login onSignedIn={setToken} />;
-  return <Shell me={me} onLogout={logout} />;
+  return <Shell me={me} token={token} onLogout={logout} />;
 }
 
 const root = document.querySelector<HTMLDivElement>('#root');

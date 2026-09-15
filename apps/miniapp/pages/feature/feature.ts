@@ -1,4 +1,5 @@
-import { demoBooks, featureCopy } from '../../services/mock';
+import { featureCopy } from '../../services/mock';
+import { demoBooks } from '../../services/preview-books';
 
 Page({
   data: {

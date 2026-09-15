@@ -1,20 +1,41 @@
 <view class="page">
-  <view class="hero">
-    <text class="eyebrow">XIAOHAI FAIRYTALE 2.0</text>
-    <text class="hero-title">小海童话</text>
-    <text class="hero-subtitle">儿童内容 × 图书阅读 × AI 创作 × 胖竹书店网络</text>
+  <view wx:if="{{loading}}" class="state-card">首页加载中…</view>
+  <view wx:elif="{{error}}" class="state-card">
+    <text class="state-title">首页暂时无法加载</text>
+    <text class="state-copy">你仍可以使用底部导航；稍后重试不会影响登录状态。</text>
+    <button size="mini" bindtap="retry">重新加载</button>
   </view>
-  <view class="section">
-    <view class="section-head"><text class="section-title">探索小海</text><text class="section-note">主要入口</text></view>
-    <view class="grid">
-      <view class="card" wx:for="{{features}}" wx:key="key" data-key="{{item.key}}" bindtap="openFeature">
-        <text class="card-title">{{item.title}}</text><text class="card-subtitle">{{item.subtitle}}</text><text wx:if="{{item.badge}}" class="badge">{{item.badge}}</text>
+  <view wx:elif="{{sections.length === 0}}" class="state-card">
+    <text class="state-title">{{pageTitle}}</text>
+    <text class="state-copy">首页内容正在准备中。</text>
+  </view>
+  <block wx:else wx:for="{{sections}}" wx:key="id">
+    <view wx:if="{{item.sectionType === 'HERO'}}" class="hero">
+      <text wx:if="{{item.config.eyebrow}}" class="eyebrow">{{item.config.eyebrow}}</text>
+      <text class="hero-title">{{item.title}}</text>
+      <text wx:if="{{item.subtitle}}" class="hero-subtitle">{{item.subtitle}}</text>
+    </view>
+    <view wx:elif="{{item.sectionType === 'FEATURE_GRID'}}" class="section">
+      <view class="section-head"><text class="section-title">{{item.title}}</text><text class="section-note">{{item.subtitle}}</text></view>
+      <view class="grid">
+        <view class="card" wx:for="{{item.config.items}}" wx:for-item="entry" wx:key="key" data-target="{{entry.key}}" bindtap="openAction">
+          <text class="card-title">{{entry.title}}</text>
+          <text wx:if="{{entry.subtitle}}" class="card-subtitle">{{entry.subtitle}}</text>
+          <text wx:if="{{entry.badge}}" class="badge">{{entry.badge}}</text>
+        </view>
       </view>
     </view>
-  </view>
-  <view class="section">
-    <view class="section-head"><text class="section-title">本周精选</text><text class="section-note">Frontend demo</text></view>
-    <view class="demo-note">以下内容为前端演示数据，不代表真实商品、库存、订单或支付能力。</view>
-    <view class="book-list"><view class="list-card" wx:for="{{books}}" wx:key="title"><view class="list-main"><text class="list-title">{{item.title}}</text><text class="list-meta">{{item.author}} · {{item.note}}</text></view><text class="price">{{item.price}}</text></view></view>
-  </view>
+    <view wx:elif="{{item.sectionType === 'CONTENT_LIST'}}" class="section">
+      <view class="section-head"><text class="section-title">{{item.title}}</text><text class="section-note">{{item.subtitle}}</text></view>
+      <view class="book-list">
+        <view class="list-card" wx:for="{{item.config.items}}" wx:for-item="entry" wx:key="title">
+          <view class="list-main"><text class="list-title">{{entry.title}}</text><text wx:if="{{entry.subtitle}}" class="list-meta">{{entry.subtitle}}</text></view>
+        </view>
+      </view>
+    </view>
+    <view wx:elif="{{item.sectionType === 'BANNER'}}" class="section banner" data-target="{{item.action.target}}" bindtap="openAction">
+      <text class="section-title">{{item.title}}</text>
+      <text class="card-subtitle">{{item.config.body}}</text>
+    </view>
+  </block>
 </view>
