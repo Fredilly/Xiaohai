@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { AdminHomeResponse, CmsSection } from '@xiaohai/contracts';
+import type { AdminHomeResponse, CmsSection, CmsSectionInput } from '@xiaohai/contracts';
 import {
   CmsApiError,
   createCmsSection,
@@ -8,6 +8,8 @@ import {
   updateCmsPublication,
   updateCmsSection,
 } from './cms-api';
+import { CmsSectionEditor } from './cms-section-editor';
+import { formValuesFromSection, newSectionFormValues } from './cms-section-form';
 
 export function CmsManager({ token }: { token: string }) {
   const [home, setHome] = useState<AdminHomeResponse | null>(null);
@@ -15,6 +17,7 @@ export function CmsManager({ token }: { token: string }) {
     'loading' | 'ready' | 'error' | 'unauthorized' | 'forbidden' | 'conflict'
   >('loading');
   const [message, setMessage] = useState('');
+  const [editor, setEditor] = useState<CmsSection | 'new' | null>(null);
 
   const load = useCallback(async () => {
     setState('loading');
@@ -28,16 +31,18 @@ export function CmsManager({ token }: { token: string }) {
 
   useEffect(() => void load(), [load]);
 
-  async function mutate(action: () => Promise<unknown>) {
+  async function mutate(action: () => Promise<unknown>): Promise<boolean> {
     setMessage('保存中…');
     try {
       await action();
       setMessage('已保存');
       await load();
+      return true;
     } catch (error) {
       const next = errorState(error);
       setState(next);
       setMessage(next === 'conflict' ? '内容已被其他管理员修改，请重新加载后再编辑。' : '保存失败');
+      return false;
     }
   }
 
@@ -62,6 +67,7 @@ export function CmsManager({ token }: { token: string }) {
     );
 
   const sorted = [...home.sections].sort((a, b) => a.displayOrder - b.displayOrder);
+  const editingSection = editor === 'new' ? null : editor;
   return (
     <section className="panel">
       <div className="section-toolbar">
@@ -72,7 +78,7 @@ export function CmsManager({ token }: { token: string }) {
             页面状态：{home.page.publicationState} · version {home.page.version}
           </p>
         </div>
-        <div>
+        <div className="cms-actions">
           <button
             onClick={() =>
               void mutate(() =>
@@ -86,28 +92,26 @@ export function CmsManager({ token }: { token: string }) {
           >
             {home.page.publicationState === 'PUBLISHED' ? '取消发布首页' : '发布首页'}
           </button>
-          <button
-            onClick={() =>
-              void mutate(() =>
-                createCmsSection(token, {
-                  sectionType: 'BANNER',
-                  title: '新运营位',
-                  subtitle: null,
-                  displayOrder: nextOrder(sorted),
-                  enabled: true,
-                  config: { body: '请编辑运营内容' },
-                  mediaUrl: null,
-                  action: null,
-                  publicationState: 'DRAFT',
-                }),
-              )
-            }
-          >
-            新增 Section
-          </button>
+          <button onClick={() => setEditor('new')}>新增 Section</button>
         </div>
       </div>
       {message && <p role="status">{message}</p>}
+      {editor && (
+        <div className="cms-editor-panel">
+          <h3>{editor === 'new' ? '新增 Section' : `编辑：${editor.title}`}</h3>
+          <CmsSectionEditor
+            key={editor === 'new' ? `new-${nextOrder(sorted)}` : editor.id}
+            initialValues={
+              editor === 'new'
+                ? newSectionFormValues(nextOrder(sorted))
+                : formValuesFromSection(editor)
+            }
+            submitLabel={editor === 'new' ? '创建 Section' : '保存 Section'}
+            onCancel={() => setEditor(null)}
+            onSubmit={(input) => saveEditor(input, editingSection)}
+          />
+        </div>
+      )}
       {sorted.length === 0 ? (
         <div className="empty-state">暂无 Section，可先新增一个草稿运营位。</div>
       ) : (
@@ -126,7 +130,7 @@ export function CmsManager({ token }: { token: string }) {
                 </span>
               </div>
               <div className="cms-actions">
-                <button onClick={() => editTitle(section)}>编辑标题</button>
+                <button onClick={() => setEditor(section)}>编辑</button>
                 <button
                   onClick={() =>
                     void mutate(() =>
@@ -166,10 +170,13 @@ export function CmsManager({ token }: { token: string }) {
     </section>
   );
 
-  function editTitle(section: CmsSection) {
-    const title = window.prompt('Section 标题', section.title)?.trim();
-    if (title && title !== section.title)
-      void mutate(() => updateCmsSection(token, section.id, { version: section.version, title }));
+  async function saveEditor(input: CmsSectionInput, section: CmsSection | null): Promise<void> {
+    const saved = await mutate(() =>
+      section
+        ? updateCmsSection(token, section.id, { ...input, version: section.version })
+        : createCmsSection(token, input),
+    );
+    if (saved) setEditor(null);
   }
 
   async function move(index: number, direction: -1 | 1) {
