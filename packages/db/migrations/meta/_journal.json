@@ -2,40 +2,11 @@
   "version": "7",
   "dialect": "postgresql",
   "entries": [
-    {
-      "idx": 0,
-      "version": "7",
-      "when": 1789374713733,
-      "tag": "0000_messy_loners",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "7",
-      "when": 1789379035142,
-      "tag": "0001_giant_arachne",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "7",
-      "when": 1789382400000,
-      "tag": "0002_staff_rbac_data_scope",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "7",
-      "when": 1789441200000,
-      "tag": "0003_meiping_migration_staging",
-      "breakpoints": true
-    },
-    {
-      "idx": 4,
-      "version": "7",
-      "when": 1789443600000,
-      "tag": "0004_home_cms",
-      "breakpoints": true
-    }
+    { "idx": 0, "version": "7", "when": 1789374713733, "tag": "0000_messy_loners", "breakpoints": true },
+    { "idx": 1, "version": "7", "when": 1789379035142, "tag": "0001_giant_arachne", "breakpoints": true },
+    { "idx": 2, "version": "7", "when": 1789382400000, "tag": "0002_staff_rbac_data_scope", "breakpoints": true },
+    { "idx": 3, "version": "7", "when": 1789441200000, "tag": "0003_meiping_migration_staging", "breakpoints": true },
+    { "idx": 4, "version": "7", "when": 1789443600000, "tag": "0004_home_cms", "breakpoints": true },
+    { "idx": 5, "version": "7", "when": 1789453600000, "tag": "0005_commerce_foundation", "breakpoints": true }
   ]
 }
