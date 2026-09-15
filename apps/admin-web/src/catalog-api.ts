@@ -14,12 +14,7 @@ export class CatalogApiError extends Error {
   }
 }
 
-async function call(
-  path: string,
-  token: string,
-  method = 'GET',
-  body?: object,
-): Promise<unknown> {
+async function call(path: string, token: string, method = 'GET', body?: object): Promise<unknown> {
   const response = await fetch(`${base}${path}`, {
     method,
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
