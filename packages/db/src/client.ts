@@ -1,7 +1,10 @@
 import { loadDatabaseConfig } from '@xiaohai/config';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import pg from 'pg';
-import * as schema from './schema.js';
+import * as coreSchema from './schema.js';
+import * as cmsSchema from './cms-schema.js';
+
+const schema = { ...coreSchema, ...cmsSchema };
 
 export function createDatabase(env: NodeJS.ProcessEnv = process.env) {
   const config = loadDatabaseConfig(env);
