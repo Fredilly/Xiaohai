@@ -5,6 +5,7 @@ import {
   parseCmsSectionForm,
   type CmsSectionFormValues,
 } from './cms-section-form';
+import './cms.css';
 
 const sectionTypes: CmsSectionInput['sectionType'][] = [
   'HERO',
