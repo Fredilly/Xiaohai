@@ -3,7 +3,9 @@ import { z } from 'zod';
 export const healthResponseSchema = z.object({ status: z.literal('ok'), service: z.string() });
 export type HealthResponse = z.infer<typeof healthResponseSchema>;
 
-export const wechatLoginRequestSchema = z.object({ code: z.string().trim().min(1).max(128) }).strict();
+export const wechatLoginRequestSchema = z
+  .object({ code: z.string().trim().min(1).max(128) })
+  .strict();
 export const consumerSessionSchema = z.object({ token: z.string().min(1), expiresAt: z.iso.datetime() });
 export const wechatLoginResponseSchema = z.object({
   consumer: z.object({ id: z.uuid() }),
@@ -33,7 +35,10 @@ export type ApiErrorCode = z.infer<typeof apiErrorCodeSchema>;
 export type ApiErrorResponse = z.infer<typeof apiErrorResponseSchema>;
 
 export const staffLoginRequestSchema = z
-  .object({ loginIdentifier: z.string().trim().min(3).max(128), password: z.string().min(8).max(256) })
+  .object({
+    loginIdentifier: z.string().trim().min(3).max(128),
+    password: z.string().min(8).max(256),
+  })
   .strict();
 export const staffSessionSchema = z.object({ token: z.string().min(1), expiresAt: z.iso.datetime() });
 export const staffLoginResponseSchema = z.object({
@@ -71,10 +76,10 @@ export type StaffMeResponse = z.infer<typeof staffMeResponseSchema>;
 export type StaffAuthorizationProbeQuery = z.infer<typeof staffAuthorizationProbeQuerySchema>;
 
 export const cmsPublicationStateSchema = z.enum(['DRAFT', 'PUBLISHED']);
+export const cmsSectionTypeSchema = z.enum(['HERO', 'FEATURE_GRID', 'CONTENT_LIST', 'BANNER']);
 export const cmsActionSchema = z
   .object({ type: z.literal('PREVIEW'), target: z.string().trim().min(1).max(64) })
   .strict();
-const cmsMediaUrlSchema = z.url().max(2048).nullable();
 const heroConfigSchema = z.object({ eyebrow: z.string().trim().max(80).optional() }).strict();
 const featureGridConfigSchema = z
   .object({
@@ -96,50 +101,98 @@ const contentListConfigSchema = z
   .object({
     items: z
       .array(
-        z.object({ title: z.string().trim().min(1).max(120), subtitle: z.string().trim().max(240).optional() }).strict(),
+        z
+          .object({
+            title: z.string().trim().min(1).max(120),
+            subtitle: z.string().trim().max(240).optional(),
+          })
+          .strict(),
       )
       .max(12),
   })
   .strict();
 const bannerConfigSchema = z.object({ body: z.string().trim().min(1).max(500) }).strict();
 
-export const cmsSectionInputSchema = z.discriminatedUnion('sectionType', [
-  z.object({ sectionType: z.literal('HERO'), config: heroConfigSchema }),
-  z.object({ sectionType: z.literal('FEATURE_GRID'), config: featureGridConfigSchema }),
-  z.object({ sectionType: z.literal('CONTENT_LIST'), config: contentListConfigSchema }),
-  z.object({ sectionType: z.literal('BANNER'), config: bannerConfigSchema }),
-]).and(
-  z
-    .object({
-      title: z.string().trim().min(1).max(120),
-      subtitle: z.string().trim().max(240).nullable().optional(),
-      displayOrder: z.number().int().min(0).max(10000),
-      enabled: z.boolean(),
-      mediaUrl: cmsMediaUrlSchema.optional(),
-      action: cmsActionSchema.nullable().optional(),
-      publicationState: cmsPublicationStateSchema,
-    })
-    .strict(),
-);
+const cmsSectionFieldsSchema = z
+  .object({
+    sectionType: cmsSectionTypeSchema,
+    title: z.string().trim().min(1).max(120),
+    subtitle: z.string().trim().max(240).nullable().optional(),
+    displayOrder: z.number().int().min(0).max(10000),
+    enabled: z.boolean(),
+    config: z.unknown(),
+    mediaUrl: z.url().max(2048).nullable().optional(),
+    action: cmsActionSchema.nullable().optional(),
+    publicationState: cmsPublicationStateSchema,
+  })
+  .strict();
 
-export const cmsSectionSchema = cmsSectionInputSchema.and(
-  z.object({ id: z.uuid(), version: z.number().int().positive(), updatedAt: z.iso.datetime() }),
-);
+function validateCmsConfig(
+  value: { sectionType: z.infer<typeof cmsSectionTypeSchema>; config: unknown },
+  ctx: z.RefinementCtx,
+) {
+  const schema = {
+    HERO: heroConfigSchema,
+    FEATURE_GRID: featureGridConfigSchema,
+    CONTENT_LIST: contentListConfigSchema,
+    BANNER: bannerConfigSchema,
+  }[value.sectionType];
+  if (!schema.safeParse(value.config).success)
+    ctx.addIssue({ code: 'custom', path: ['config'], message: 'Invalid config for section type' });
+}
+
+export const cmsSectionInputSchema = cmsSectionFieldsSchema.superRefine(validateCmsConfig);
+export const updateCmsSectionRequestSchema = cmsSectionFieldsSchema
+  .partial()
+  .extend({ version: z.number().int().positive() })
+  .strict();
+export const cmsSectionSchema = cmsSectionFieldsSchema
+  .extend({ id: z.uuid(), version: z.number().int().positive(), updatedAt: z.iso.datetime() })
+  .superRefine(validateCmsConfig);
+export const publicCmsSectionSchema = cmsSectionFieldsSchema
+  .omit({ publicationState: true, enabled: true })
+  .omit({})
+  .extend({ id: z.uuid() })
+  .omit({});
 export const publicHomeResponseSchema = z.object({
   page: z.object({ key: z.literal('HOME'), title: z.string() }),
-  sections: z.array(cmsSectionSchema.omit({ publicationState: true, enabled: true, version: true, updatedAt: true })),
+  sections: z.array(
+    z.object({
+      id: z.uuid(),
+      sectionType: cmsSectionTypeSchema,
+      title: z.string(),
+      subtitle: z.string().nullable().optional(),
+      displayOrder: z.number().int().nonnegative(),
+      config: z.unknown(),
+      mediaUrl: z.url().nullable().optional(),
+      action: cmsActionSchema.nullable().optional(),
+    }),
+  ),
 });
 export const adminHomeResponseSchema = z.object({
-  page: z.object({ key: z.literal('HOME'), title: z.string(), publicationState: cmsPublicationStateSchema, version: z.number().int().positive() }),
+  page: z.object({
+    key: z.literal('HOME'),
+    title: z.string(),
+    publicationState: cmsPublicationStateSchema,
+    version: z.number().int().positive(),
+  }),
   sections: z.array(cmsSectionSchema),
 });
 export const createCmsSectionRequestSchema = cmsSectionInputSchema;
-export const updateCmsSectionRequestSchema = cmsSectionInputSchema.partial().and(
-  z.object({ version: z.number().int().positive() }).strict(),
-);
 export const reorderCmsSectionsRequestSchema = z
   .object({
-    items: z.array(z.object({ id: z.uuid(), version: z.number().int().positive(), displayOrder: z.number().int().min(0).max(10000) }).strict()).min(1).max(100),
+    items: z
+      .array(
+        z
+          .object({
+            id: z.uuid(),
+            version: z.number().int().positive(),
+            displayOrder: z.number().int().min(0).max(10000),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(100),
   })
   .strict()
   .superRefine((value, ctx) => {
