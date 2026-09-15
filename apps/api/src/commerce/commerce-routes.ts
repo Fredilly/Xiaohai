@@ -80,7 +80,7 @@ export function registerCommerceRoutes(
       return fail(request, reply, error);
     }
   });
-  app.patch('/api/v1/commerce/cart/items/:id', async (request, reply) => {
+  app.put('/api/v1/commerce/cart/items/:id', async (request, reply) => {
     const params = z.object({ id: z.uuid() }).safeParse(request.params);
     const input = updateCartItemRequestSchema.safeParse(request.body);
     if (!params.success || !input.success) return invalid(reply, request.id);
