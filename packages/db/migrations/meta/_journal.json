@@ -15,6 +15,13 @@
       "when": 1789379035142,
       "tag": "0001_giant_arachne",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1789382400000,
+      "tag": "0002_staff_rbac_data_scope",
+      "breakpoints": true
     }
   ]
 }
