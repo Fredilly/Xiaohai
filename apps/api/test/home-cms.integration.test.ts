@@ -1,5 +1,6 @@
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
+import { cmsSectionSchema } from '@xiaohai/contracts';
 import {
   cmsPages,
   cmsSections,
@@ -211,7 +212,7 @@ testSuite('M4 Home/CMS PostgreSQL integration', () => {
       },
     });
     expect(created.statusCode).toBe(201);
-    const section = created.json();
+    const section = cmsSectionSchema.parse(created.json());
     expect(
       (
         await app.inject({
