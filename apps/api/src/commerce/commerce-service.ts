@@ -226,6 +226,7 @@ export class CommerceService {
       );
     if (existing) return this.getOrder(consumerUserId, existing.id);
     const preview = await this.checkoutPreview(consumerUserId, addressId);
+    const cartId = await this.getCartId(consumerUserId);
     return this.db.transaction(async (tx) => {
       const [order] = await tx
         .insert(orders)
@@ -239,21 +240,41 @@ export class CommerceService {
           clientRequestId,
         })
         .returning();
-      await tx.insert(orderItems).values(
-        preview.cart.items.map((item) => ({
-          orderId: order!.id,
-          skuId: item.skuId,
-          productNameSnapshot: item.productName,
-          skuNameSnapshot: item.skuName,
-          skuCodeSnapshot: '',
+      const insertedItems = await tx
+        .insert(orderItems)
+        .values(
+          preview.cart.items.map((item) => ({
+            orderId: order!.id,
+            skuId: item.skuId,
+            productNameSnapshot: item.productName,
+            skuNameSnapshot: item.skuName,
+            skuCodeSnapshot: '',
+            unitPriceMinor: item.unitPriceMinor,
+            quantity: item.quantity,
+            lineTotalMinor: item.lineTotalMinor,
+          })),
+        )
+        .returning();
+      await tx.delete(cartItems).where(eq(cartItems.cartId, cartId));
+      const address = order!.addressSnapshot as ReturnType<typeof snapshotAddress>;
+      return {
+        id: order!.id,
+        orderNumber: order!.orderNumber,
+        status: order!.status,
+        subtotalMinor: order!.subtotalMinor,
+        totalMinor: order!.totalMinor,
+        address,
+        items: insertedItems.map((item) => ({
+          id: item.id,
+          productName: item.productNameSnapshot,
+          skuName: item.skuNameSnapshot,
+          skuCode: item.skuCodeSnapshot,
           unitPriceMinor: item.unitPriceMinor,
           quantity: item.quantity,
           lineTotalMinor: item.lineTotalMinor,
         })),
-      );
-      const cartId = await this.getCartId(consumerUserId);
-      await tx.delete(cartItems).where(eq(cartItems.cartId, cartId));
-      return this.getOrder(consumerUserId, order!.id);
+        createdAt: order!.createdAt.toISOString(),
+      };
     });
   }
 
