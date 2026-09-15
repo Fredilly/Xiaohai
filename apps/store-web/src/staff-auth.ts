@@ -1,4 +1,9 @@
-import { staffLoginResponseSchema, type StaffLoginResponse } from '@xiaohai/contracts';
+import {
+  staffLoginResponseSchema,
+  staffMeResponseSchema,
+  type StaffLoginResponse,
+  type StaffMeResponse,
+} from '@xiaohai/contracts';
 
 const viteEnvironment = import.meta.env as { readonly VITE_API_BASE_URL?: unknown };
 const apiBaseUrl =
@@ -17,4 +22,13 @@ export async function loginStaff(
   });
   if (!response.ok) throw new Error('Staff login failed');
   return staffLoginResponseSchema.parse(await response.json());
+}
+
+export async function getStaffMe(token: string): Promise<StaffMeResponse | null> {
+  const response = await fetch(`${apiBaseUrl}/api/v1/staff/me`, {
+    headers: { authorization: `Bearer ${token}` },
+  });
+  if (response.status === 401) return null;
+  if (!response.ok) throw new Error('Staff context failed');
+  return staffMeResponseSchema.parse(await response.json());
 }
