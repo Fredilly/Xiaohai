@@ -13,7 +13,6 @@ import {
   userAddresses,
 } from '@xiaohai/db';
 import { CommerceService } from '../src/commerce/commerce-service.js';
-import type { CommerceError } from '../src/commerce/commerce-service.js';
 const database = process.env.DATABASE_URL ? createDatabase(process.env) : null;
 const suite = database ? describe : describe.skip;
 suite('M5 Commerce PostgreSQL integration', () => {
@@ -83,9 +82,9 @@ suite('M5 Commerce PostgreSQL integration', () => {
     await commerce.addCartItem(a, sellable, 2);
     expect((await commerce.getCart(a)).items).toHaveLength(1);
     expect((await commerce.getCart(b)).items).toHaveLength(0);
-    await expect(commerce.addCartItem(a, disabled, 1)).rejects.toMatchObject<
-      Partial<CommerceError>
-    >({ code: 'NOT_PURCHASABLE' });
+    await expect(commerce.addCartItem(a, disabled, 1)).rejects.toMatchObject({
+      code: 'NOT_PURCHASABLE',
+    });
   });
   it('calculates checkout/order totals from current server SKU price and snapshots the order', async () => {
     const user = await consumer(),
