@@ -1,6 +1,5 @@
 import { loginWithWeChat } from '../../services/auth';
 import { meFeatures } from '../../services/mock';
-
 Page({
   data: {
     features: meFeatures,
@@ -19,11 +18,7 @@ Page({
         status: consumerUserId ? 'Consumer Session 已建立' : '尚未登录',
       });
     } catch {
-      this.setData({
-        consumerUserId: '',
-        isLoggedIn: false,
-        status: '尚未登录',
-      });
+      this.setData({ consumerUserId: '', isLoggedIn: false, status: '尚未登录' });
     }
   },
   async login() {
@@ -48,8 +43,9 @@ Page({
   },
   openFeature(event: WechatMiniprogram.TouchEvent) {
     const key = String(event.currentTarget.dataset.key || '');
-    if (key) {
+    if (key === 'orders') void wx.navigateTo({ url: '/pages/orders/orders' });
+    else if (key === 'address') void wx.navigateTo({ url: '/pages/address/address' });
+    else if (key)
       void wx.navigateTo({ url: `/pages/feature/feature?key=${encodeURIComponent(key)}` });
-    }
   },
 });

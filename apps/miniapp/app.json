@@ -1,5 +1,17 @@
 {
-  "pages": ["pages/index/index", "pages/global/global", "pages/me/me", "pages/feature/feature"],
+  "pages": [
+    "pages/index/index",
+    "pages/global/global",
+    "pages/me/me",
+    "pages/feature/feature",
+    "pages/shop/shop",
+    "pages/product/product",
+    "pages/cart/cart",
+    "pages/address/address",
+    "pages/checkout/checkout",
+    "pages/orders/orders",
+    "pages/order-detail/order-detail"
+  ],
   "window": {
     "navigationBarTitleText": "小海童话",
     "navigationBarBackgroundColor": "#fffaf2",

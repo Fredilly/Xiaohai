@@ -1,0 +1,46 @@
+import { describe, expect, it } from 'vitest';
+import {
+  addCartItemRequestSchema,
+  adminProductInputSchema,
+  createOrderRequestSchema,
+  orderStatusSchema,
+} from './commerce.js';
+describe('M5 commerce contracts', () => {
+  it('rejects invalid cart quantities', () => {
+    expect(
+      addCartItemRequestSchema.safeParse({
+        skuId: '11111111-1111-4111-8111-111111111111',
+        quantity: 0,
+      }).success,
+    ).toBe(false);
+    expect(
+      addCartItemRequestSchema.safeParse({
+        skuId: '11111111-1111-4111-8111-111111111111',
+        quantity: 100,
+      }).success,
+    ).toBe(false);
+  });
+  it('uses explicit order states', () => {
+    expect(orderStatusSchema.safeParse('WHATEVER').success).toBe(false);
+    expect(orderStatusSchema.parse('UNPAID')).toBe('UNPAID');
+  });
+  it('does not accept client price or total on order creation', () => {
+    expect(
+      createOrderRequestSchema.safeParse({
+        addressId: '11111111-1111-4111-8111-111111111111',
+        clientRequestId: 'request-123',
+        totalMinor: 1,
+      }).success,
+    ).toBe(false);
+  });
+  it('requires integer minor-unit admin price', () => {
+    expect(
+      adminProductInputSchema.safeParse({
+        name: 'Book',
+        status: 'ACTIVE',
+        book: null,
+        sku: { code: 'A', name: 'A', priceMinor: 12.5, status: 'ACTIVE', availableForSale: true },
+      }).success,
+    ).toBe(false);
+  });
+});

@@ -1,12 +1,6 @@
 import { getPublicHome, type HomeSection } from '../../services/home';
-
 Page({
-  data: {
-    loading: true,
-    error: false,
-    pageTitle: '小海童话',
-    sections: [] as HomeSection[],
-  },
+  data: { loading: true, error: false, pageTitle: '小海童话', sections: [] as HomeSection[] },
   onLoad() {
     void this.loadHome();
   },
@@ -24,7 +18,8 @@ Page({
   },
   openAction(event: WechatMiniprogram.TouchEvent) {
     const target = String(event.currentTarget.dataset.target ?? '');
-    if (target)
-      void wx.navigateTo({ url: `/pages/feature/feature?key=${encodeURIComponent(target)}` });
+    if (!target) return;
+    if (target === 'shop') void wx.navigateTo({ url: '/pages/shop/shop' });
+    else void wx.navigateTo({ url: `/pages/feature/feature?key=${encodeURIComponent(target)}` });
   },
 });

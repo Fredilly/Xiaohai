@@ -14,6 +14,8 @@ import {
 } from './auth/staff-authorization.js';
 import { StaffSessionService } from './auth/staff-session.js';
 import { HomeCmsService } from './cms/home-cms-service.js';
+import { CommerceService } from './commerce/commerce-service.js';
+import { registerCommerceRoutes } from './commerce/commerce-routes.js';
 
 const config = loadServiceConfig(process.env);
 const { db, pool } = createDatabase(process.env);
@@ -46,9 +48,10 @@ const staffAuthorization = new StaffAuthorizationService(
   staffSessions,
 );
 const homeCms = new HomeCmsService(db);
+const commerce = new CommerceService(db);
 const app = buildApp({ consumerAuth, staffAuth, staffAuthorization, homeCms });
+registerCommerceRoutes(app, { commerce, consumerSessions: sessions, staffAuthorization });
 app.addHook('onClose', async () => pool.end());
-
 try {
   await app.listen({ host: config.HOST, port: config.PORT });
 } catch (error) {
