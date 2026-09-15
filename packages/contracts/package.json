@@ -5,7 +5,8 @@
   "type": "module",
   "exports": {
     ".": "./dist/index.js",
-    "./commerce": "./dist/commerce.js"
+    "./commerce": "./dist/commerce.js",
+    "./payments": "./dist/payments.js"
   },
   "types": "./dist/index.d.ts",
   "scripts": {

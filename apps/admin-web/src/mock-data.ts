@@ -30,9 +30,9 @@ export const adminModules: ModulePreview[] = [
   { key: 'rental', label: '租借', description: '预约、借出、归还与逾期框架', status: '前端预览' },
   {
     key: 'finance',
-    label: '佣金 / 财务',
-    description: '佣金、支付、退款与对账框架',
-    status: '前端预览',
+    label: '支付 / 退款',
+    description: 'M6 支付、整单退款与逐笔对账；不含佣金',
+    status: '可查看',
   },
   { key: 'cms', label: 'CMS / 运营', description: '首页内容与运营位管理', status: '可查看' },
   {

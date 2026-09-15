@@ -213,7 +213,7 @@ export class CommerceService {
       subtotalMinor: cart.subtotalMinor,
       totalMinor: cart.subtotalMinor,
       paymentAvailable: false as const,
-      paymentMessage: '微信支付将在 M6 开放',
+      paymentMessage: '创建订单后可在详情页申请微信支付，需服务端商户配置。',
     };
   }
 
