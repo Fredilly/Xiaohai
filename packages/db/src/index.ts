@@ -1,6 +1,8 @@
 export { createDatabase } from './client.js';
 export {
   consumerUsers,
+  migrationBatches,
+  migrationBookStaging,
   permissions,
   rolePermissions,
   roles,
