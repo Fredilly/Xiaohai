@@ -261,7 +261,7 @@ export class PaymentService {
       )
         throw new PaymentError('PAYMENT_TRANSACTION_CONFLICT');
       if (payment.status === 'SUCCEEDED') return;
-      const reviewRequired = order.status !== 'UNPAID';
+      const reviewRequired = result.trade_state === 'REFUND' || order.status !== 'UNPAID';
       await tx
         .update(payments)
         .set({
@@ -271,7 +271,7 @@ export class PaymentService {
           updatedAt: new Date(),
         })
         .where(eq(payments.id, payment.id));
-      if (order.status === 'UNPAID')
+      if (result.trade_state === 'SUCCESS' && order.status === 'UNPAID')
         await tx
           .update(orders)
           .set({ status: 'PAID', updatedAt: new Date() })

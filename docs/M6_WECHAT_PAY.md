@@ -37,7 +37,7 @@ New permission keys must be provisioned for designated finance staff through exi
 
 支付：`PENDING → SUCCEEDED` 仅接受验签回调或验签查询确认的 SUCCESS/REFUND；`PENDING → CLOSED` 仅接受微信 CLOSED/REVOKED。超时和 HTTP 错误不是支付失败终态，保留原商户单号重试。SUCCEEDED 不回退为 PENDING/CLOSED。
 
-Payment: `PENDING → SUCCEEDED` only from verified SUCCESS/REFUND notifications or queries; `PENDING → CLOSED` only from provider CLOSED/REVOKED. Timeouts/HTTP failures are not terminal payment rejection; retries reuse the merchant number. SUCCEEDED never regresses to PENDING/CLOSED.
+Payment: `PENDING → SUCCEEDED` only from verified SUCCESS/REFUND notifications or queries; `PENDING → CLOSED` only from provider CLOSED/REVOKED. A provider-side `REFUND` is treated as a financial discrepancy and never changes an `UNPAID` order to `PAID`; it is flagged for review/reconciliation. Timeouts/HTTP failures are not terminal payment rejection; retries reuse the merchant number. SUCCEEDED never regresses to PENDING/CLOSED.
 
 订单：支付确认时仅 `UNPAID → PAID`。M5 的 `UNPAID → CANCELLED` 保持；若取消先发生而微信成功晚到，记录已收款流水和 `reviewRequired`，订单保持 CANCELLED，禁止恢复履约。由受控财务整单退款处理，不自动编造退款成功。行锁顺序为 order → payment → refund。
 

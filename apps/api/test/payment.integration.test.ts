@@ -250,7 +250,14 @@ suite('M6 real PostgreSQL payment transactions', () => {
   it('provider-side refund without a local refund is a discrepancy, not MATCHED', async () => {
     const f = await fixture();
     provider.query.mockResolvedValue({ ...f.transaction, trade_state: 'REFUND' });
+
     expect((await service.reconcile(f.payment.id, f.staff.id)).outcome).toBe('REVIEW_REQUIRED');
+
+    const [order] = await db.select().from(orders).where(eq(orders.id, f.order.id));
+    const [payment] = await db.select().from(payments).where(eq(payments.id, f.payment.id));
+
+    expect(order?.status).toBe('UNPAID');
+    expect(payment?.reviewRequired).toBe(true);
   });
   it('reconciliation recovers missed success and records failures without changing money', async () => {
     const f = await fixture();
