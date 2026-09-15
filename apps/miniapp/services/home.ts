@@ -16,20 +16,34 @@ export type HomeResponse = { page: { key: 'HOME'; title: string }; sections: Hom
 export async function getPublicHome(): Promise<HomeResponse> {
   const response = await new Promise<WechatMiniprogram.RequestSuccessCallbackResult>(
     (resolve, reject) => {
-      wx.request({ url: `${getApiBaseUrl()}/api/v1/home`, method: 'GET', success: resolve, fail: reject });
+      wx.request({
+        url: `${getApiBaseUrl()}/api/v1/home`,
+        method: 'GET',
+        success: resolve,
+        fail: reject,
+      });
     },
   );
-  if (response.statusCode !== 200 || !isHomeResponse(response.data)) throw new Error('Home load failed');
+  if (response.statusCode !== 200) throw new Error('Home load failed');
+  return normalizeHomeResponse(response.data);
+}
+
+export function normalizeHomeResponse(value: unknown): HomeResponse {
+  if (!isHomeResponse(value)) throw new Error('Invalid home response');
   return {
-    page: response.data.page,
-    sections: response.data.sections.filter(isKnownSection).sort((a, b) => a.displayOrder - b.displayOrder),
+    page: value.page,
+    sections: value.sections.filter(isKnownSection).sort((a, b) => a.displayOrder - b.displayOrder),
   };
 }
 
 function isHomeResponse(value: unknown): value is HomeResponse {
   if (!value || typeof value !== 'object') return false;
   const candidate = value as Partial<HomeResponse>;
-  return candidate.page?.key === 'HOME' && typeof candidate.page.title === 'string' && Array.isArray(candidate.sections);
+  return (
+    candidate.page?.key === 'HOME' &&
+    typeof candidate.page.title === 'string' &&
+    Array.isArray(candidate.sections)
+  );
 }
 
 function isKnownSection(value: unknown): value is HomeSection {
