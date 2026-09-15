@@ -13,6 +13,7 @@ import {
   StaffAuthorizationService,
 } from './auth/staff-authorization.js';
 import { StaffSessionService } from './auth/staff-session.js';
+import { HomeCmsService } from './cms/home-cms-service.js';
 
 const config = loadServiceConfig(process.env);
 const { db, pool } = createDatabase(process.env);
@@ -44,7 +45,8 @@ const staffAuthorization = new StaffAuthorizationService(
   new DrizzleStaffAuthorizationRepository(db),
   staffSessions,
 );
-const app = buildApp({ consumerAuth, staffAuth, staffAuthorization });
+const homeCms = new HomeCmsService(db);
+const app = buildApp({ consumerAuth, staffAuth, staffAuthorization, homeCms });
 app.addHook('onClose', async () => pool.end());
 
 try {
