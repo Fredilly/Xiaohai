@@ -11,7 +11,9 @@ import {
 
 export function CmsManager({ token }: { token: string }) {
   const [home, setHome] = useState<AdminHomeResponse | null>(null);
-  const [state, setState] = useState<'loading' | 'ready' | 'error' | 'unauthorized' | 'forbidden' | 'conflict'>('loading');
+  const [state, setState] = useState<
+    'loading' | 'ready' | 'error' | 'unauthorized' | 'forbidden' | 'conflict'
+  >('loading');
   const [message, setMessage] = useState('');
 
   const load = useCallback(async () => {
@@ -40,10 +42,24 @@ export function CmsManager({ token }: { token: string }) {
   }
 
   if (state === 'loading') return <section className="panel">正在加载首页 CMS…</section>;
-  if (state === 'unauthorized') return <section className="panel">Staff Session 已失效，请重新登录。</section>;
-  if (state === 'forbidden') return <section className="panel">当前 Staff 没有 cms.home.manage + GLOBAL 权限。</section>;
-  if (state === 'conflict') return <section className="panel"><p>检测到并发修改，未覆盖他人内容。</p><button onClick={() => void load()}>重新加载</button></section>;
-  if (state === 'error' || !home) return <section className="panel"><p>CMS 加载失败。</p><button onClick={() => void load()}>重试</button></section>;
+  if (state === 'unauthorized')
+    return <section className="panel">Staff Session 已失效，请重新登录。</section>;
+  if (state === 'forbidden')
+    return <section className="panel">当前 Staff 没有 cms.home.manage + GLOBAL 权限。</section>;
+  if (state === 'conflict')
+    return (
+      <section className="panel">
+        <p>检测到并发修改，未覆盖他人内容。</p>
+        <button onClick={() => void load()}>重新加载</button>
+      </section>
+    );
+  if (state === 'error' || !home)
+    return (
+      <section className="panel">
+        <p>CMS 加载失败。</p>
+        <button onClick={() => void load()}>重试</button>
+      </section>
+    );
 
   const sorted = [...home.sections].sort((a, b) => a.displayOrder - b.displayOrder);
   return (
@@ -52,31 +68,96 @@ export function CmsManager({ token }: { token: string }) {
         <div>
           <span className="badge">M4 · PostgreSQL CMS</span>
           <h2>首页内容</h2>
-          <p>页面状态：{home.page.publicationState} · version {home.page.version}</p>
+          <p>
+            页面状态：{home.page.publicationState} · version {home.page.version}
+          </p>
         </div>
         <div>
-          <button onClick={() => void mutate(() => updateCmsPublication(token, home.page.publicationState === 'PUBLISHED' ? 'DRAFT' : 'PUBLISHED', home.page.version))}>
+          <button
+            onClick={() =>
+              void mutate(() =>
+                updateCmsPublication(
+                  token,
+                  home.page.publicationState === 'PUBLISHED' ? 'DRAFT' : 'PUBLISHED',
+                  home.page.version,
+                ),
+              )
+            }
+          >
             {home.page.publicationState === 'PUBLISHED' ? '取消发布首页' : '发布首页'}
           </button>
-          <button onClick={() => void mutate(() => createCmsSection(token, {
-            sectionType: 'BANNER', title: '新运营位', subtitle: null, displayOrder: nextOrder(sorted), enabled: true,
-            config: { body: '请编辑运营内容' }, mediaUrl: null, action: null, publicationState: 'DRAFT',
-          }))}>新增 Section</button>
+          <button
+            onClick={() =>
+              void mutate(() =>
+                createCmsSection(token, {
+                  sectionType: 'BANNER',
+                  title: '新运营位',
+                  subtitle: null,
+                  displayOrder: nextOrder(sorted),
+                  enabled: true,
+                  config: { body: '请编辑运营内容' },
+                  mediaUrl: null,
+                  action: null,
+                  publicationState: 'DRAFT',
+                }),
+              )
+            }
+          >
+            新增 Section
+          </button>
         </div>
       </div>
       {message && <p role="status">{message}</p>}
-      {sorted.length === 0 ? <div className="empty-state">暂无 Section，可先新增一个草稿运营位。</div> : (
+      {sorted.length === 0 ? (
+        <div className="empty-state">暂无 Section，可先新增一个草稿运营位。</div>
+      ) : (
         <div className="cms-list">
           {sorted.map((section, index) => (
             <article className="cms-row" key={section.id}>
-              <div><strong>{section.title}</strong><span>{section.sectionType} · order {section.displayOrder} · v{section.version}</span></div>
-              <div><span>{section.enabled ? 'Enabled' : 'Disabled'} · {section.publicationState}</span></div>
+              <div>
+                <strong>{section.title}</strong>
+                <span>
+                  {section.sectionType} · order {section.displayOrder} · v{section.version}
+                </span>
+              </div>
+              <div>
+                <span>
+                  {section.enabled ? 'Enabled' : 'Disabled'} · {section.publicationState}
+                </span>
+              </div>
               <div className="cms-actions">
                 <button onClick={() => editTitle(section)}>编辑标题</button>
-                <button onClick={() => void mutate(() => updateCmsSection(token, section.id, { version: section.version, enabled: !section.enabled }))}>{section.enabled ? '停用' : '启用'}</button>
-                <button onClick={() => void mutate(() => updateCmsSection(token, section.id, { version: section.version, publicationState: section.publicationState === 'PUBLISHED' ? 'DRAFT' : 'PUBLISHED' }))}>{section.publicationState === 'PUBLISHED' ? '取消发布' : '发布'}</button>
-                <button disabled={index === 0} onClick={() => void move(index, -1)}>上移</button>
-                <button disabled={index === sorted.length - 1} onClick={() => void move(index, 1)}>下移</button>
+                <button
+                  onClick={() =>
+                    void mutate(() =>
+                      updateCmsSection(token, section.id, {
+                        version: section.version,
+                        enabled: !section.enabled,
+                      }),
+                    )
+                  }
+                >
+                  {section.enabled ? '停用' : '启用'}
+                </button>
+                <button
+                  onClick={() =>
+                    void mutate(() =>
+                      updateCmsSection(token, section.id, {
+                        version: section.version,
+                        publicationState:
+                          section.publicationState === 'PUBLISHED' ? 'DRAFT' : 'PUBLISHED',
+                      }),
+                    )
+                  }
+                >
+                  {section.publicationState === 'PUBLISHED' ? '取消发布' : '发布'}
+                </button>
+                <button disabled={index === 0} onClick={() => void move(index, -1)}>
+                  上移
+                </button>
+                <button disabled={index === sorted.length - 1} onClick={() => void move(index, 1)}>
+                  下移
+                </button>
               </div>
             </article>
           ))}
@@ -96,9 +177,15 @@ export function CmsManager({ token }: { token: string }) {
     if (target < 0 || target >= sorted.length) return;
     const reordered = [...sorted];
     [reordered[index], reordered[target]] = [reordered[target]!, reordered[index]!];
-    await mutate(() => reorderCmsSections(token, {
-      items: reordered.map((section, order) => ({ id: section.id, version: section.version, displayOrder: order })),
-    }));
+    await mutate(() =>
+      reorderCmsSections(token, {
+        items: reordered.map((section, order) => ({
+          id: section.id,
+          version: section.version,
+          displayOrder: order,
+        })),
+      }),
+    );
   }
 }
 

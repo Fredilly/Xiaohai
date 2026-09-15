@@ -39,7 +39,9 @@ testSuite('M4 Home/CMS PostgreSQL integration', () => {
     await database!.db.delete(staffAccounts);
     await database!.db.delete(roles);
     await database!.db.delete(permissions);
-    await database!.db.insert(cmsPages).values({ key: 'HOME', title: '首页', publicationState: 'PUBLISHED' });
+    await database!.db
+      .insert(cmsPages)
+      .values({ key: 'HOME', title: '首页', publicationState: 'PUBLISHED' });
   });
 
   afterAll(async () => database?.pool.end());
@@ -67,7 +69,9 @@ testSuite('M4 Home/CMS PostgreSQL integration', () => {
         .insert(roles)
         .values({ key: `cms-role-${Math.random()}`, displayName: 'CMS role' })
         .returning({ id: roles.id });
-      await database!.db.insert(rolePermissions).values({ roleId: role!.id, permissionId: permission!.id });
+      await database!.db
+        .insert(rolePermissions)
+        .values({ roleId: role!.id, permissionId: permission!.id });
       await database!.db.insert(staffRoles).values({ staffAccountId: staff!.id, roleId: role!.id });
     }
     return staff!.id;
@@ -97,10 +101,34 @@ testSuite('M4 Home/CMS PostgreSQL integration', () => {
 
   it('returns only published and enabled sections in stable order', async () => {
     const base = { sectionType: 'BANNER', config: { body: 'x' } } as const;
-    await cms.createSection({ ...base, title: 'second', displayOrder: 2, enabled: true, publicationState: 'PUBLISHED' });
-    await cms.createSection({ ...base, title: 'first', displayOrder: 1, enabled: true, publicationState: 'PUBLISHED' });
-    await cms.createSection({ ...base, title: 'disabled', displayOrder: 3, enabled: false, publicationState: 'PUBLISHED' });
-    await cms.createSection({ ...base, title: 'draft', displayOrder: 4, enabled: true, publicationState: 'DRAFT' });
+    await cms.createSection({
+      ...base,
+      title: 'second',
+      displayOrder: 2,
+      enabled: true,
+      publicationState: 'PUBLISHED',
+    });
+    await cms.createSection({
+      ...base,
+      title: 'first',
+      displayOrder: 1,
+      enabled: true,
+      publicationState: 'PUBLISHED',
+    });
+    await cms.createSection({
+      ...base,
+      title: 'disabled',
+      displayOrder: 3,
+      enabled: false,
+      publicationState: 'PUBLISHED',
+    });
+    await cms.createSection({
+      ...base,
+      title: 'draft',
+      displayOrder: 4,
+      enabled: true,
+      publicationState: 'DRAFT',
+    });
     const home = await cms.getPublicHome();
     expect(home.sections.map((section) => section.title)).toEqual(['first', 'second']);
   });
@@ -113,8 +141,12 @@ testSuite('M4 Home/CMS PostgreSQL integration', () => {
       url: '/api/v1/staff/cms/home/sections',
       headers: { authorization: `Bearer ${sessions.issue(staffId).token}` },
       payload: {
-        sectionType: 'FEATURE_GRID', title: 'bad', displayOrder: 0, enabled: true,
-        publicationState: 'DRAFT', config: { items: [{ nope: true }] },
+        sectionType: 'FEATURE_GRID',
+        title: 'bad',
+        displayOrder: 0,
+        enabled: true,
+        publicationState: 'DRAFT',
+        config: { items: [{ nope: true }] },
       },
     });
     expect(response.statusCode).toBe(400);
@@ -125,11 +157,39 @@ testSuite('M4 Home/CMS PostgreSQL integration', () => {
     const noPermissionId = await createStaff();
     const disabledId = await createStaff({ enabled: false });
     const app = buildApp({ staffAuthorization: authorization, homeCms: cms, logger: false });
-    expect((await app.inject({ method: 'GET', url: '/api/v1/staff/cms/home' })).statusCode).toBe(401);
-    expect((await app.inject({ method: 'GET', url: '/api/v1/staff/cms/home', headers: { authorization: `Bearer ${sessions.issue(noPermissionId).token}` } })).statusCode).toBe(403);
-    expect((await app.inject({ method: 'GET', url: '/api/v1/staff/cms/home', headers: { authorization: `Bearer ${sessions.issue(disabledId).token}` } })).statusCode).toBe(401);
-    const consumerToken = new ConsumerSessionService(secret, 300).issue('33333333-3333-4333-8333-333333333333').token;
-    expect((await app.inject({ method: 'GET', url: '/api/v1/staff/cms/home', headers: { authorization: `Bearer ${consumerToken}` } })).statusCode).toBe(401);
+    expect((await app.inject({ method: 'GET', url: '/api/v1/staff/cms/home' })).statusCode).toBe(
+      401,
+    );
+    expect(
+      (
+        await app.inject({
+          method: 'GET',
+          url: '/api/v1/staff/cms/home',
+          headers: { authorization: `Bearer ${sessions.issue(noPermissionId).token}` },
+        })
+      ).statusCode,
+    ).toBe(403);
+    expect(
+      (
+        await app.inject({
+          method: 'GET',
+          url: '/api/v1/staff/cms/home',
+          headers: { authorization: `Bearer ${sessions.issue(disabledId).token}` },
+        })
+      ).statusCode,
+    ).toBe(401);
+    const consumerToken = new ConsumerSessionService(secret, 300).issue(
+      '33333333-3333-4333-8333-333333333333',
+    ).token;
+    expect(
+      (
+        await app.inject({
+          method: 'GET',
+          url: '/api/v1/staff/cms/home',
+          headers: { authorization: `Bearer ${consumerToken}` },
+        })
+      ).statusCode,
+    ).toBe(401);
     await app.close();
   });
 
@@ -138,27 +198,68 @@ testSuite('M4 Home/CMS PostgreSQL integration', () => {
     const token = sessions.issue(staffId).token;
     const app = buildApp({ staffAuthorization: authorization, homeCms: cms, logger: false });
     const created = await app.inject({
-      method: 'POST', url: '/api/v1/staff/cms/home/sections', headers: { authorization: `Bearer ${token}` },
-      payload: { sectionType: 'BANNER', title: '运营位', displayOrder: 0, enabled: true, publicationState: 'DRAFT', config: { body: 'hello' } },
+      method: 'POST',
+      url: '/api/v1/staff/cms/home/sections',
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        sectionType: 'BANNER',
+        title: '运营位',
+        displayOrder: 0,
+        enabled: true,
+        publicationState: 'DRAFT',
+        config: { body: 'hello' },
+      },
     });
     expect(created.statusCode).toBe(201);
     const section = created.json() as { id: string; version: number };
-    expect((await app.inject({ method: 'PATCH', url: `/api/v1/staff/cms/home/sections/${section.id}`, headers: { authorization: `Bearer ${token}` }, payload: { version: section.version, enabled: false } })).statusCode).toBe(200);
-    expect((await app.inject({ method: 'PATCH', url: `/api/v1/staff/cms/home/sections/${section.id}`, headers: { authorization: `Bearer ${token}` }, payload: { version: section.version, title: 'stale' } })).statusCode).toBe(409);
+    expect(
+      (
+        await app.inject({
+          method: 'PATCH',
+          url: `/api/v1/staff/cms/home/sections/${section.id}`,
+          headers: { authorization: `Bearer ${token}` },
+          payload: { version: section.version, enabled: false },
+        })
+      ).statusCode,
+    ).toBe(200);
+    expect(
+      (
+        await app.inject({
+          method: 'PATCH',
+          url: `/api/v1/staff/cms/home/sections/${section.id}`,
+          headers: { authorization: `Bearer ${token}` },
+          payload: { version: section.version, title: 'stale' },
+        })
+      ).statusCode,
+    ).toBe(409);
     await app.close();
   });
 
   it('supports section enable/disable and section/page publish-unpublish semantics', async () => {
     const section = await cms.createSection({
-      sectionType: 'BANNER', title: 'banner', displayOrder: 0, enabled: true,
-      publicationState: 'PUBLISHED', config: { body: 'hello' },
+      sectionType: 'BANNER',
+      title: 'banner',
+      displayOrder: 0,
+      enabled: true,
+      publicationState: 'PUBLISHED',
+      config: { body: 'hello' },
     });
     expect((await cms.getPublicHome()).sections).toHaveLength(1);
-    const disabled = await cms.updateSection(section.id, { version: section.version, enabled: false });
+    const disabled = await cms.updateSection(section.id, {
+      version: section.version,
+      enabled: false,
+    });
     expect((await cms.getPublicHome()).sections).toHaveLength(0);
-    const enabled = await cms.updateSection(section.id, { version: disabled.version, enabled: true, publicationState: 'DRAFT' });
+    const enabled = await cms.updateSection(section.id, {
+      version: disabled.version,
+      enabled: true,
+      publicationState: 'DRAFT',
+    });
     expect((await cms.getPublicHome()).sections).toHaveLength(0);
-    await cms.updateSection(section.id, { version: enabled.version, publicationState: 'PUBLISHED' });
+    await cms.updateSection(section.id, {
+      version: enabled.version,
+      publicationState: 'PUBLISHED',
+    });
     const admin = await cms.getAdminHome();
     await cms.updatePagePublication('DRAFT', admin.page.version);
     expect((await cms.getPublicHome()).sections).toHaveLength(0);

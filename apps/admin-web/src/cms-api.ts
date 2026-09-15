@@ -62,7 +62,12 @@ export async function updateCmsPublication(
   );
 }
 
-async function request(path: string, token: string, method = 'GET', body?: unknown): Promise<unknown> {
+async function request(
+  path: string,
+  token: string,
+  method = 'GET',
+  body?: unknown,
+): Promise<unknown> {
   const response = await fetch(`${apiBaseUrl}${path}`, {
     method,
     headers: {

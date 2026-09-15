@@ -24,6 +24,7 @@ Page({
   },
   openAction(event: WechatMiniprogram.TouchEvent) {
     const target = String(event.currentTarget.dataset.target ?? '');
-    if (target) void wx.navigateTo({ url: `/pages/feature/feature?key=${encodeURIComponent(target)}` });
+    if (target)
+      void wx.navigateTo({ url: `/pages/feature/feature?key=${encodeURIComponent(target)}` });
   },
 });

@@ -6,7 +6,10 @@ export type HealthResponse = z.infer<typeof healthResponseSchema>;
 export const wechatLoginRequestSchema = z
   .object({ code: z.string().trim().min(1).max(128) })
   .strict();
-export const consumerSessionSchema = z.object({ token: z.string().min(1), expiresAt: z.iso.datetime() });
+export const consumerSessionSchema = z.object({
+  token: z.string().min(1),
+  expiresAt: z.iso.datetime(),
+});
 export const wechatLoginResponseSchema = z.object({
   consumer: z.object({ id: z.uuid() }),
   session: consumerSessionSchema,
@@ -40,13 +43,19 @@ export const staffLoginRequestSchema = z
     password: z.string().min(8).max(256),
   })
   .strict();
-export const staffSessionSchema = z.object({ token: z.string().min(1), expiresAt: z.iso.datetime() });
+export const staffSessionSchema = z.object({
+  token: z.string().min(1),
+  expiresAt: z.iso.datetime(),
+});
 export const staffLoginResponseSchema = z.object({
   staff: z.object({ id: z.uuid(), loginIdentifier: z.string() }),
   session: staffSessionSchema,
 });
 export const staffDataScopeTypeSchema = z.enum(['GLOBAL', 'REGION', 'FRANCHISEE', 'STORE']);
-export const staffDataScopeSchema = z.object({ type: staffDataScopeTypeSchema, id: z.uuid().nullable() });
+export const staffDataScopeSchema = z.object({
+  type: staffDataScopeTypeSchema,
+  id: z.uuid().nullable(),
+});
 export const staffMeResponseSchema = z.object({
   staff: z.object({ id: z.uuid(), loginIdentifier: z.string() }),
   permissions: z.array(z.string()),

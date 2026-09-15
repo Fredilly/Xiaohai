@@ -94,7 +94,9 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   if (options.staffAuthorization) {
     app.get('/api/v1/staff/me', async (request, reply) => {
       try {
-        const context = await options.staffAuthorization!.authenticate(request.headers.authorization);
+        const context = await options.staffAuthorization!.authenticate(
+          request.headers.authorization,
+        );
         return staffMeResponseSchema.parse({
           staff: { id: context.staffAccountId, loginIdentifier: context.loginIdentifier },
           permissions: context.permissions,
@@ -109,7 +111,9 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
       const input = staffAuthorizationProbeQuerySchema.safeParse(request.query);
       if (!input.success) return sendInvalidRequest(reply, request.id);
       try {
-        const context = await options.staffAuthorization!.authenticate(request.headers.authorization);
+        const context = await options.staffAuthorization!.authenticate(
+          request.headers.authorization,
+        );
         options.staffAuthorization!.requirePermission(context, input.data.permission);
         options.staffAuthorization!.requireDataScope(
           context,
@@ -179,7 +183,10 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
       try {
         await authorizeCms(request);
         return adminHomeResponseSchema.parse(
-          await options.homeCms!.updatePagePublication(input.data.publicationState, input.data.version),
+          await options.homeCms!.updatePagePublication(
+            input.data.publicationState,
+            input.data.version,
+          ),
         );
       } catch (error) {
         return sendCmsOrAuthError(request, reply, error, 'Staff CMS publication update failed');
@@ -191,37 +198,68 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
 }
 
 function sendInvalidRequest(reply: FastifyReply, requestId: string) {
-  return reply.status(400).send(
-    apiErrorResponseSchema.parse({ error: { code: 'INVALID_REQUEST', message: 'Invalid request', requestId } }),
-  );
+  return reply
+    .status(400)
+    .send(
+      apiErrorResponseSchema.parse({
+        error: { code: 'INVALID_REQUEST', message: 'Invalid request', requestId },
+      }),
+    );
 }
 
-function sendCmsOrAuthError(request: FastifyRequest, reply: FastifyReply, error: unknown, message: string) {
+function sendCmsOrAuthError(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  error: unknown,
+  message: string,
+) {
   if (error instanceof ConsumerAuthError) return sendAuthError(request, reply, error, message);
   return sendCmsError(request, reply, error, message);
 }
 
-function sendCmsError(request: FastifyRequest, reply: FastifyReply, error: unknown, logMessage: string) {
-  const statusCode = error instanceof CmsNotFoundError ? 404 : error instanceof CmsConflictError ? 409 : 500;
-  const code = statusCode === 404 ? 'NOT_FOUND' : statusCode === 409 ? 'CONFLICT' : 'INTERNAL_ERROR';
+function sendCmsError(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  error: unknown,
+  logMessage: string,
+) {
+  const statusCode =
+    error instanceof CmsNotFoundError ? 404 : error instanceof CmsConflictError ? 409 : 500;
+  const code =
+    statusCode === 404 ? 'NOT_FOUND' : statusCode === 409 ? 'CONFLICT' : 'INTERNAL_ERROR';
   request.log.warn({ requestId: request.id, errorCode: code }, logMessage);
   return reply.status(statusCode).send(
     apiErrorResponseSchema.parse({
       error: {
         code,
-        message: statusCode === 404 ? 'CMS resource not found' : statusCode === 409 ? 'CMS content changed; reload and retry' : 'Internal server error',
+        message:
+          statusCode === 404
+            ? 'CMS resource not found'
+            : statusCode === 409
+              ? 'CMS content changed; reload and retry'
+              : 'Internal server error',
         requestId: request.id,
       },
     }),
   );
 }
 
-function sendAuthError(request: FastifyRequest, reply: FastifyReply, error: unknown, logMessage: string) {
-  const authError = error instanceof ConsumerAuthError ? error : new ConsumerAuthError('INTERNAL_ERROR', 500);
+function sendAuthError(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  error: unknown,
+  logMessage: string,
+) {
+  const authError =
+    error instanceof ConsumerAuthError ? error : new ConsumerAuthError('INTERNAL_ERROR', 500);
   request.log.warn({ requestId: request.id, errorCode: authError.code }, logMessage);
   return reply.status(authError.statusCode).send(
     apiErrorResponseSchema.parse({
-      error: { code: authError.code, message: publicErrorMessage(authError.code), requestId: request.id },
+      error: {
+        code: authError.code,
+        message: publicErrorMessage(authError.code),
+        requestId: request.id,
+      },
     }),
   );
 }

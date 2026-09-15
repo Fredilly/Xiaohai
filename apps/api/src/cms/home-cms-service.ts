@@ -23,7 +23,10 @@ export class HomeCmsService {
   async getPublicHome() {
     const page = await this.getHomePage();
     if (page.publicationState !== 'PUBLISHED') {
-      return publicHomeResponseSchema.parse({ page: { key: 'HOME', title: page.title }, sections: [] });
+      return publicHomeResponseSchema.parse({
+        page: { key: 'HOME', title: page.title },
+        sections: [],
+      });
     }
     const rows = await this.db
       .select()
@@ -39,7 +42,13 @@ export class HomeCmsService {
     const sections = rows.flatMap((row) => {
       const parsed = cmsSectionSchema.safeParse(toSection(row));
       if (!parsed.success) return [];
-      const { publicationState: _publicationState, enabled: _enabled, version: _version, updatedAt: _updatedAt, ...publicSection } = parsed.data;
+      const {
+        publicationState: _publicationState,
+        enabled: _enabled,
+        version: _version,
+        updatedAt: _updatedAt,
+        ...publicSection
+      } = parsed.data;
       return [publicSection];
     });
     return publicHomeResponseSchema.parse({ page: { key: 'HOME', title: page.title }, sections });
@@ -101,8 +110,18 @@ export class HomeCmsService {
     try {
       const [updated] = await this.db
         .update(cmsSections)
-        .set({ ...toDatabaseInput(merged), version: sql`${cmsSections.version} + 1`, updatedAt: new Date() })
-        .where(and(eq(cmsSections.id, id), eq(cmsSections.pageId, page.id), eq(cmsSections.version, input.version)))
+        .set({
+          ...toDatabaseInput(merged),
+          version: sql`${cmsSections.version} + 1`,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(cmsSections.id, id),
+            eq(cmsSections.pageId, page.id),
+            eq(cmsSections.version, input.version),
+          ),
+        )
         .returning();
       if (!updated) throw new CmsConflictError('CMS section was modified by another editor');
       return cmsSectionSchema.parse(toSection(updated));
@@ -134,7 +153,11 @@ export class HomeCmsService {
       for (const item of input.items) {
         await tx
           .update(cmsSections)
-          .set({ displayOrder: item.displayOrder, version: sql`${cmsSections.version} + 1`, updatedAt: new Date() })
+          .set({
+            displayOrder: item.displayOrder,
+            version: sql`${cmsSections.version} + 1`,
+            updatedAt: new Date(),
+          })
           .where(and(eq(cmsSections.id, item.id), eq(cmsSections.pageId, page.id)));
       }
     });
