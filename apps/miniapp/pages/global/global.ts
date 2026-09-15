@@ -1,7 +1,7 @@
-import { demoBooks, homeFeatures } from '../../services/mock';
+import { demoStores, globalFeatures } from '../../services/mock';
 
 Page({
-  data: { features: homeFeatures, books: demoBooks },
+  data: { features: globalFeatures, stores: demoStores },
   openFeature(event: WechatMiniprogram.TouchEvent) {
     const key = String(event.currentTarget.dataset.key ?? '');
     if (key) void wx.navigateTo({ url: `/pages/feature/feature?key=${encodeURIComponent(key)}` });

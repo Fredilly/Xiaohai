@@ -1,6 +1,20 @@
 <view class="page">
-  <text class="title">{{title}}</text>
-  <text class="subtitle">{{subtitle}}</text>
-  <text class="status">{{status}}</text>
-  <button loading="{{isLoading}}" disabled="{{isLoading}}" bindtap="login">微信登录</button>
+  <view class="hero">
+    <text class="eyebrow">XIAOHAI FAIRYTALE 2.0</text>
+    <text class="hero-title">小海童话</text>
+    <text class="hero-subtitle">儿童内容 × 图书阅读 × AI 创作 × 胖竹书店网络</text>
+  </view>
+  <view class="section">
+    <view class="section-head"><text class="section-title">探索小海</text><text class="section-note">主要入口</text></view>
+    <view class="grid">
+      <view class="card" wx:for="{{features}}" wx:key="key" data-key="{{item.key}}" bindtap="openFeature">
+        <text class="card-title">{{item.title}}</text><text class="card-subtitle">{{item.subtitle}}</text><text wx:if="{{item.badge}}" class="badge">{{item.badge}}</text>
+      </view>
+    </view>
+  </view>
+  <view class="section">
+    <view class="section-head"><text class="section-title">本周精选</text><text class="section-note">Frontend demo</text></view>
+    <view class="demo-note">以下内容为前端演示数据，不代表真实商品、库存、订单或支付能力。</view>
+    <view class="book-list"><view class="list-card" wx:for="{{books}}" wx:key="title"><view class="list-main"><text class="list-title">{{item.title}}</text><text class="list-meta">{{item.author}} · {{item.note}}</text></view><text class="price">{{item.price}}</text></view></view>
+  </view>
 </view>

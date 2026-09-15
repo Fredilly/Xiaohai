@@ -1,0 +1,5 @@
+<view class="page">
+  <view class="hero hero-soft"><text class="eyebrow">PANGZHU GLOBAL</text><text class="hero-title">胖竹全球</text><text class="hero-subtitle">从附近书店到全球门店网络。地图、真实门店与库存将在正式 API 完成后接入。</text></view>
+  <view class="grid"><view class="card" wx:for="{{features}}" wx:key="key" data-key="{{item.key}}" bindtap="openFeature"><text class="card-title">{{item.title}}</text><text class="card-subtitle">{{item.subtitle}}</text><text class="badge">前端预览</text></view></view>
+  <view class="section"><view class="section-head"><text class="section-title">门店示例</text><text class="section-note">Demo data</text></view><view class="demo-note">示例门店只用于验证卡片、空状态与导航，不代表真实营业信息或库存。</view><view class="store-list"><view class="list-card" wx:for="{{stores}}" wx:key="name"><view class="list-main"><text class="list-title">{{item.name}}</text><text class="list-meta">{{item.city}} · {{item.services}}</text><text class="list-meta">{{item.note}}</text></view></view></view></view>
+</view>
