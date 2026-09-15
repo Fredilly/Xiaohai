@@ -1,20 +1,5 @@
 {
-  "pages": ["pages/index/index", "pages/global/global", "pages/me/me", "pages/feature/feature"],
-  "window": {
-    "navigationBarTitleText": "小海童话",
-    "navigationBarBackgroundColor": "#fffaf2",
-    "navigationBarTextStyle": "black",
-    "backgroundColor": "#f7f4ed"
-  },
-  "tabBar": {
-    "color": "#7a766d",
-    "selectedColor": "#315d45",
-    "backgroundColor": "#ffffff",
-    "borderStyle": "white",
-    "list": [
-      { "pagePath": "pages/index/index", "text": "首页" },
-      { "pagePath": "pages/global/global", "text": "胖竹全球" },
-      { "pagePath": "pages/me/me", "text": "我的" }
-    ]
-  }
+  "pages": ["pages/index/index", "pages/global/global", "pages/me/me", "pages/feature/feature", "pages/shop/shop", "pages/product/product", "pages/cart/cart", "pages/address/address", "pages/checkout/checkout", "pages/orders/orders", "pages/order-detail/order-detail"],
+  "window": { "navigationBarTitleText": "小海童话", "navigationBarBackgroundColor": "#fffaf2", "navigationBarTextStyle": "black", "backgroundColor": "#f7f4ed" },
+  "tabBar": { "color": "#7a766d", "selectedColor": "#315d45", "backgroundColor": "#ffffff", "borderStyle": "white", "list": [ { "pagePath": "pages/index/index", "text": "首页" }, { "pagePath": "pages/global/global", "text": "胖竹全球" }, { "pagePath": "pages/me/me", "text": "我的" } ] }
 }
