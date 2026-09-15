@@ -8,7 +8,10 @@ import { HttpWeChatAuthProvider } from './auth/wechat-provider.js';
 import { ScryptPasswordHasher } from './auth/password.js';
 import { StaffAuthService } from './auth/staff-auth-service.js';
 import { DrizzleStaffAccountRepository } from './auth/staff-repository.js';
-import { DrizzleStaffAuthorizationRepository, StaffAuthorizationService } from './auth/staff-authorization.js';
+import {
+  DrizzleStaffAuthorizationRepository,
+  StaffAuthorizationService,
+} from './auth/staff-authorization.js';
 import { StaffSessionService } from './auth/staff-session.js';
 import { HomeCmsService } from './cms/home-cms-service.js';
 import { CommerceService } from './commerce/commerce-service.js';
@@ -16,15 +19,42 @@ import { registerCommerceRoutes } from './commerce/commerce-routes.js';
 
 const config = loadServiceConfig(process.env);
 const { db, pool } = createDatabase(process.env);
-const provider = new HttpWeChatAuthProvider(config.WECHAT_APP_ID, config.WECHAT_APP_SECRET, config.WECHAT_AUTH_TIMEOUT_MS);
-const sessions = new ConsumerSessionService(config.CONSUMER_SESSION_SECRET, config.CONSUMER_SESSION_TTL_SECONDS);
-const consumerAuth = new ConsumerAuthService(config.WECHAT_APP_ID, provider, new DrizzleConsumerIdentityRepository(db), sessions);
-const staffSessions = new StaffSessionService(config.STAFF_SESSION_SECRET, config.STAFF_SESSION_TTL_SECONDS);
-const staffAuth = new StaffAuthService(new DrizzleStaffAccountRepository(db), new ScryptPasswordHasher(), staffSessions);
-const staffAuthorization = new StaffAuthorizationService(new DrizzleStaffAuthorizationRepository(db), staffSessions);
+const provider = new HttpWeChatAuthProvider(
+  config.WECHAT_APP_ID,
+  config.WECHAT_APP_SECRET,
+  config.WECHAT_AUTH_TIMEOUT_MS,
+);
+const sessions = new ConsumerSessionService(
+  config.CONSUMER_SESSION_SECRET,
+  config.CONSUMER_SESSION_TTL_SECONDS,
+);
+const consumerAuth = new ConsumerAuthService(
+  config.WECHAT_APP_ID,
+  provider,
+  new DrizzleConsumerIdentityRepository(db),
+  sessions,
+);
+const staffSessions = new StaffSessionService(
+  config.STAFF_SESSION_SECRET,
+  config.STAFF_SESSION_TTL_SECONDS,
+);
+const staffAuth = new StaffAuthService(
+  new DrizzleStaffAccountRepository(db),
+  new ScryptPasswordHasher(),
+  staffSessions,
+);
+const staffAuthorization = new StaffAuthorizationService(
+  new DrizzleStaffAuthorizationRepository(db),
+  staffSessions,
+);
 const homeCms = new HomeCmsService(db);
 const commerce = new CommerceService(db);
 const app = buildApp({ consumerAuth, staffAuth, staffAuthorization, homeCms });
 registerCommerceRoutes(app, { commerce, consumerSessions: sessions, staffAuthorization });
 app.addHook('onClose', async () => pool.end());
-try { await app.listen({ host: config.HOST, port: config.PORT }); } catch (error) { app.log.error({ err: error }, 'API startup failed'); process.exitCode = 1; }
+try {
+  await app.listen({ host: config.HOST, port: config.PORT });
+} catch (error) {
+  app.log.error({ err: error }, 'API startup failed');
+  process.exitCode = 1;
+}

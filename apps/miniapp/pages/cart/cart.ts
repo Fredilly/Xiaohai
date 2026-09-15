@@ -1,2 +1,35 @@
-import { deleteCartItem,getCart,updateCartItem } from '../../services/commerce';
-Page({data:{cart:null as Awaited<ReturnType<typeof getCart>>|null,loading:true,error:false},onShow(){void this.load();},async load(){try{this.setData({cart:await getCart(),loading:false,error:false});}catch{this.setData({loading:false,error:true});}},async plus(e:WechatMiniprogram.TouchEvent){const item=this.data.cart?.items.find(i=>i.id===e.currentTarget.dataset.id);if(item&&item.quantity<99){await updateCartItem(item.id,item.quantity+1);void this.load();}},async minus(e:WechatMiniprogram.TouchEvent){const item=this.data.cart?.items.find(i=>i.id===e.currentTarget.dataset.id);if(item&&item.quantity>1){await updateCartItem(item.id,item.quantity-1);void this.load();}},async remove(e:WechatMiniprogram.TouchEvent){await deleteCartItem(String(e.currentTarget.dataset.id));void this.load();},checkout(){void wx.navigateTo({url:'/pages/checkout/checkout'});}});
+import { deleteCartItem, getCart, updateCartItem } from '../../services/commerce';
+Page({
+  data: { cart: null as Awaited<ReturnType<typeof getCart>> | null, loading: true, error: false },
+  onShow() {
+    void this.load();
+  },
+  async load() {
+    try {
+      this.setData({ cart: await getCart(), loading: false, error: false });
+    } catch {
+      this.setData({ loading: false, error: true });
+    }
+  },
+  async plus(e: WechatMiniprogram.TouchEvent) {
+    const item = this.data.cart?.items.find((i) => i.id === e.currentTarget.dataset.id);
+    if (item && item.quantity < 99) {
+      await updateCartItem(item.id, item.quantity + 1);
+      void this.load();
+    }
+  },
+  async minus(e: WechatMiniprogram.TouchEvent) {
+    const item = this.data.cart?.items.find((i) => i.id === e.currentTarget.dataset.id);
+    if (item && item.quantity > 1) {
+      await updateCartItem(item.id, item.quantity - 1);
+      void this.load();
+    }
+  },
+  async remove(e: WechatMiniprogram.TouchEvent) {
+    await deleteCartItem(String(e.currentTarget.dataset.id));
+    void this.load();
+  },
+  checkout() {
+    void wx.navigateTo({ url: '/pages/checkout/checkout' });
+  },
+});
