@@ -6,7 +6,8 @@
   "exports": {
     ".": "./dist/index.js",
     "./commerce": "./dist/commerce.js",
-    "./payments": "./dist/payments.js"
+    "./payments": "./dist/payments.js",
+    "./content": "./dist/content.js"
   },
   "types": "./dist/index.d.ts",
   "scripts": {
@@ -15,11 +16,6 @@
     "test": "vitest run --passWithNoTests",
     "typecheck": "tsc --noEmit"
   },
-  "dependencies": {
-    "zod": "catalog:"
-  },
-  "devDependencies": {
-    "typescript": "catalog:",
-    "vitest": "catalog:"
-  }
+  "dependencies": { "zod": "catalog:" },
+  "devDependencies": { "typescript": "catalog:", "vitest": "catalog:" }
 }

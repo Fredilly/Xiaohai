@@ -1,0 +1,22 @@
+import { z } from 'zod';
+
+export const accessModeSchema = z.enum(['FREE', 'PREVIEW', 'PAID']);
+export const publicationStatusSchema = z.enum(['DRAFT', 'PUBLISHED', 'UNPUBLISHED']);
+export const mediaStatusSchema = z.enum(['PENDING', 'READY', 'DISABLED']);
+export const contentQuerySchema = z.object({ q: z.string().trim().max(100).optional(), category: z.string().trim().max(80).optional() });
+export const episodeSchema = z.object({ id: z.uuid(), episodeNumber: z.number().int().positive(), title: z.string(), description: z.string().nullable(), accessMode: accessModeSchema, previewSeconds: z.number().int().positive().nullable(), durationSeconds: z.number().int().nonnegative().nullable() });
+export const seriesSummarySchema = z.object({ id: z.uuid(), slug: z.string(), title: z.string(), description: z.string().nullable(), category: z.string(), coverUrl: z.string().nullable() });
+export const seriesDetailSchema = seriesSummarySchema.extend({ episodes: z.array(episodeSchema), recommendations: z.array(seriesSummarySchema) });
+export const contentListResponseSchema = z.object({ series: z.array(seriesSummarySchema) });
+export const playbackAccessSchema = z.object({ episodeId: z.uuid(), access: z.enum(['FULL','PREVIEW','LOCKED']), playbackUrl: z.string().url().nullable(), previewSeconds: z.number().int().positive().nullable(), resumePositionSeconds: z.number().int().nonnegative() });
+export const progressUpdateSchema = z.object({ positionSeconds: z.number().int().nonnegative(), completed: z.boolean() }).strict();
+export const progressSchema = progressUpdateSchema.extend({ episodeId: z.uuid(), updatedAt: z.string() });
+export const continueWatchingSchema = z.object({ items: z.array(z.object({ series: seriesSummarySchema, episode: episodeSchema, progress: progressSchema })) });
+export const entitlementListSchema = z.object({ series: z.array(seriesSummarySchema.extend({ grantedAt: z.string() })) });
+export const mediaInputSchema = z.object({ provider: z.string().trim().min(1).max(80), objectKey: z.string().trim().min(1).max(500), playbackUrl: z.string().url().nullable(), mimeType: z.string().trim().min(1).max(120), byteSize: z.number().int().nonnegative().nullable(), durationSeconds: z.number().int().nonnegative().nullable(), status: mediaStatusSchema }).strict();
+export const seriesInputSchema = z.object({ slug: z.string().trim().min(1).max(120), title: z.string().trim().min(1).max(200), description: z.string().max(4000).nullable(), category: z.string().trim().min(1).max(80), coverUrl: z.string().url().nullable(), status: publicationStatusSchema }).strict();
+export const episodeInputSchema = z.object({ seriesId: z.uuid(), mediaAssetId: z.uuid().nullable(), episodeNumber: z.number().int().positive(), title: z.string().trim().min(1).max(200), description: z.string().max(4000).nullable(), accessMode: accessModeSchema, previewSeconds: z.number().int().positive().nullable(), status: publicationStatusSchema }).strict().superRefine((v, ctx) => { if (v.accessMode === 'PREVIEW' && !v.previewSeconds) ctx.addIssue({ code: 'custom', message: 'previewSeconds required for PREVIEW', path: ['previewSeconds'] }); });
+export const contentErrorSchema = z.object({ error: z.object({ code: z.enum(['CONSUMER_AUTHENTICATION_REQUIRED','STAFF_AUTHENTICATION_REQUIRED','STAFF_FORBIDDEN','NOT_FOUND','CONTENT_LOCKED','MEDIA_UNAVAILABLE','INVALID_REQUEST','INTERNAL_ERROR']), message: z.string(), requestId: z.string() }) });
+export type SeriesSummary = z.infer<typeof seriesSummarySchema>;
+export type SeriesDetail = z.infer<typeof seriesDetailSchema>;
+export type PlaybackAccess = z.infer<typeof playbackAccessSchema>;
