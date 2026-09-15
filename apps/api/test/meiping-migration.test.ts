@@ -41,10 +41,22 @@ describe('M3 canonical Meiping migration boundary', () => {
     expect(parsePriceMinor('abc')).toBeNull();
   });
 
+  it('keeps price minor units within the PostgreSQL integer staging range', () => {
+    expect(parsePriceMinor('21474836.47')).toBe(2147483647);
+    expect(parsePriceMinor('21474836.48')).toBeNull();
+  });
+
   it('parses integer inventory and preserves negative values for explicit validation', () => {
     expect(parseInventory('10')).toBe(10);
     expect(parseInventory('-2')).toBe(-2);
     expect(parseInventory('1.5')).toBeNull();
+  });
+
+  it('keeps inventory within the PostgreSQL integer staging range', () => {
+    expect(parseInventory('-2147483648')).toBe(-2147483648);
+    expect(parseInventory('2147483647')).toBe(2147483647);
+    expect(parseInventory('-2147483649')).toBeNull();
+    expect(parseInventory('2147483648')).toBeNull();
   });
 
   it('reports missing, malformed, and negative data instead of silently discarding it', () => {
@@ -69,6 +81,17 @@ describe('M3 canonical Meiping migration boundary', () => {
     expect(report.rows[2]!.issues.map((issue) => issue.code)).toContain('BOOK_CODE_CONFLICT');
     expect(report.rows[3]!.issues.map((issue) => issue.code)).toContain('INTERNAL_CODE_CONFLICT');
     expect(report.duplicateOrConflictRows).toBe(3);
+  });
+
+  it('rejects an invalid duplicate instead of letting duplicate classification hide errors', () => {
+    const invalid = { ...valid, title: '', inventory: '-1' };
+    const report = dryRunCanonicalMigration([invalid, { ...invalid }]);
+
+    expect(report.rows[0]!.disposition).toBe('REJECTED');
+    expect(report.rows[1]!.disposition).toBe('REJECTED');
+    expect(report.rows[1]!.issues.map((issue) => issue.code)).toEqual(
+      expect.arrayContaining(['TITLE_REQUIRED', 'INVENTORY_NEGATIVE', 'DUPLICATE_ROW']),
+    );
   });
 
   it('routes uncertain bibliographic data to review', () => {
