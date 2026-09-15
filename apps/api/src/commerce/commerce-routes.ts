@@ -235,13 +235,11 @@ export function registerCommerceRoutes(
 }
 class CommerceAuthError extends Error {}
 function invalid(reply: FastifyReply, requestId: string) {
-  return reply
-    .status(400)
-    .send(
-      commerceErrorResponseSchema.parse({
-        error: { code: 'INVALID_REQUEST', message: 'Invalid request', requestId },
-      }),
-    );
+  return reply.status(400).send(
+    commerceErrorResponseSchema.parse({
+      error: { code: 'INVALID_REQUEST', message: 'Invalid request', requestId },
+    }),
+  );
 }
 function fail(request: FastifyRequest, reply: FastifyReply, error: unknown) {
   let status = 500;
@@ -277,13 +275,11 @@ function fail(request: FastifyRequest, reply: FastifyReply, error: unknown) {
             : 409;
   }
   request.log.warn({ requestId: request.id, errorCode: code }, 'Commerce request failed');
-  return reply
-    .status(status)
-    .send(
-      commerceErrorResponseSchema.parse({
-        error: { code, message: publicMessage(code), requestId: request.id },
-      }),
-    );
+  return reply.status(status).send(
+    commerceErrorResponseSchema.parse({
+      error: { code, message: publicMessage(code), requestId: request.id },
+    }),
+  );
 }
 function publicMessage(code: string) {
   switch (code) {

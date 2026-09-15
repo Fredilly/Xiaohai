@@ -239,20 +239,18 @@ export class CommerceService {
           clientRequestId,
         })
         .returning();
-      await tx
-        .insert(orderItems)
-        .values(
-          preview.cart.items.map((item) => ({
-            orderId: order!.id,
-            skuId: item.skuId,
-            productNameSnapshot: item.productName,
-            skuNameSnapshot: item.skuName,
-            skuCodeSnapshot: '',
-            unitPriceMinor: item.unitPriceMinor,
-            quantity: item.quantity,
-            lineTotalMinor: item.lineTotalMinor,
-          })),
-        );
+      await tx.insert(orderItems).values(
+        preview.cart.items.map((item) => ({
+          orderId: order!.id,
+          skuId: item.skuId,
+          productNameSnapshot: item.productName,
+          skuNameSnapshot: item.skuName,
+          skuCodeSnapshot: '',
+          unitPriceMinor: item.unitPriceMinor,
+          quantity: item.quantity,
+          lineTotalMinor: item.lineTotalMinor,
+        })),
+      );
       const cartId = await this.getCartId(consumerUserId);
       await tx.delete(cartItems).where(eq(cartItems.cartId, cartId));
       return this.getOrder(consumerUserId, order!.id);
