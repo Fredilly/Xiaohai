@@ -5,7 +5,10 @@ Page({
   data: { features: meFeatures, status: '尚未登录', isLoading: false, consumerUserId: '' },
   onShow() {
     const consumerUserId = getApp<IAppOption>().globalData.consumerUserId ?? '';
-    this.setData({ consumerUserId, status: consumerUserId ? 'Consumer Session 已建立' : '尚未登录' });
+    this.setData({
+      consumerUserId,
+      status: consumerUserId ? 'Consumer Session 已建立' : '尚未登录',
+    });
   },
   async login() {
     this.setData({ isLoading: true, status: '登录中…' });
