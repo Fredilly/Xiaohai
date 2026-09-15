@@ -224,6 +224,33 @@ testSuite('staff RBAC and Data Scope PostgreSQL integration', () => {
     await expect(
       database!.db.insert(roles).values({ key: 'unique-role', displayName: 'Duplicate role' }),
     ).rejects.toBeDefined();
+
+    await database!.db.insert(staffDataScopes).values({
+      staffAccountId: staffId,
+      scopeType: 'GLOBAL',
+      scopeId: null,
+    });
+    await expect(
+      database!.db.insert(staffDataScopes).values({
+        staffAccountId: staffId,
+        scopeType: 'GLOBAL',
+        scopeId: null,
+      }),
+    ).rejects.toBeDefined();
+
+    await database!.db.insert(staffDataScopes).values({
+      staffAccountId: staffId,
+      scopeType: 'STORE',
+      scopeId: storeA,
+    });
+    await expect(
+      database!.db.insert(staffDataScopes).values({
+        staffAccountId: staffId,
+        scopeType: 'STORE',
+        scopeId: storeA,
+      }),
+    ).rejects.toBeDefined();
+
     await expect(
       database!.db.insert(staffDataScopes).values({
         staffAccountId: staffId,

@@ -60,6 +60,8 @@ CREATE INDEX "staff_roles_role_id_idx" ON "staff_roles" USING btree ("role_id");
 --> statement-breakpoint
 CREATE UNIQUE INDEX "staff_data_scopes_staff_type_id_unique" ON "staff_data_scopes" USING btree ("staff_account_id","scope_type","scope_id");
 --> statement-breakpoint
+CREATE UNIQUE INDEX "staff_data_scopes_staff_global_unique" ON "staff_data_scopes" USING btree ("staff_account_id") WHERE "scope_type" = 'GLOBAL';
+--> statement-breakpoint
 CREATE INDEX "staff_data_scopes_staff_account_id_idx" ON "staff_data_scopes" USING btree ("staff_account_id");
 --> statement-breakpoint
 CREATE INDEX "staff_data_scopes_target_idx" ON "staff_data_scopes" USING btree ("scope_type","scope_id");

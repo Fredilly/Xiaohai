@@ -132,6 +132,9 @@ export const staffDataScopes = pgTable(
       table.scopeType,
       table.scopeId,
     ),
+    uniqueIndex('staff_data_scopes_staff_global_unique')
+      .on(table.staffAccountId)
+      .where(sql`${table.scopeType} = 'GLOBAL'`),
     index('staff_data_scopes_staff_account_id_idx').on(table.staffAccountId),
     index('staff_data_scopes_target_idx').on(table.scopeType, table.scopeId),
   ],
