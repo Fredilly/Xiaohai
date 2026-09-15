@@ -45,6 +45,9 @@ export type DryRunReport = {
   rows: EvaluatedMigrationRow[];
 };
 
+const POSTGRES_INTEGER_MIN = -2147483648n;
+const POSTGRES_INTEGER_MAX = 2147483647n;
+
 export function normalizeText(value: unknown): string | null {
   if (value === null || value === undefined) return null;
   if (typeof value !== 'string' && typeof value !== 'number') return null;
@@ -60,14 +63,15 @@ export function parsePriceMinor(value: unknown): number | null {
   const yuan = BigInt(match[1]!);
   const fraction = BigInt((match[2] ?? '').padEnd(2, '0'));
   const minor = yuan * 100n + fraction;
-  return minor <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(minor) : null;
+  return minor <= POSTGRES_INTEGER_MAX ? Number(minor) : null;
 }
 
 export function parseInventory(value: unknown): number | null {
   const text = normalizeText(value);
   if (text === null || !/^-?\d+$/.test(text)) return null;
-  const parsed = Number(text);
-  return Number.isSafeInteger(parsed) ? parsed : null;
+  const parsed = BigInt(text);
+  if (parsed < POSTGRES_INTEGER_MIN || parsed > POSTGRES_INTEGER_MAX) return null;
+  return Number(parsed);
 }
 
 export function normalizeCanonicalRecord(input: CanonicalMigrationInput): CanonicalMigrationRecord {
@@ -110,13 +114,17 @@ function baseIssues(
     issues.push({
       code: 'PRICE_INVALID',
       severity: 'ERROR',
-      message: '价格必须是最多两位小数的非负十进制金额',
+      message: '价格必须是最多两位小数且可存入 staging integer 的非负十进制金额',
     });
   }
   if (normalizeText(input.inventory) === null) {
     issues.push({ code: 'INVENTORY_REQUIRED', severity: 'ERROR', message: '库存不能为空' });
   } else if (record.inventory === null) {
-    issues.push({ code: 'INVENTORY_INVALID', severity: 'ERROR', message: '库存必须是安全整数' });
+    issues.push({
+      code: 'INVENTORY_INVALID',
+      severity: 'ERROR',
+      message: '库存必须是可存入 staging integer 的整数',
+    });
   } else if (record.inventory < 0) {
     issues.push({ code: 'INVENTORY_NEGATIVE', severity: 'ERROR', message: '库存不能为负数' });
   }
@@ -149,7 +157,9 @@ export function dryRunCanonicalMigration(inputs: CanonicalMigrationInput[]): Dry
         severity: 'WARNING',
         message: `与 source row ${duplicateOf} 完全重复`,
       });
-      row.disposition = 'DUPLICATE';
+      row.disposition = row.issues.some((issue) => issue.severity === 'ERROR')
+        ? 'REJECTED'
+        : 'DUPLICATE';
       continue;
     }
     seenFingerprint.set(fp, row.sourceRowNumber);
