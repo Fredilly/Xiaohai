@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { UpdateCmsSectionRequest } from '@xiaohai/contracts';
-import type { CmsApiError } from './cms-api';
 import { getCmsHome, updateCmsSection } from './cms-api';
 
 describe('Admin M4 CMS API adapter', () => {
@@ -9,7 +8,7 @@ describe('Admin M4 CMS API adapter', () => {
   it('maps HTTP authorization/conflict statuses without treating UI as a security boundary', async () => {
     for (const status of [401, 403, 409]) {
       vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status }));
-      await expect(getCmsHome('token')).rejects.toMatchObject<CmsApiError>({ status });
+      await expect(getCmsHome('token')).rejects.toMatchObject({ status });
     }
   });
 

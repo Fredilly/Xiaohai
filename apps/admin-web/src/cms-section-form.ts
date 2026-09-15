@@ -1,8 +1,4 @@
-import {
-  cmsSectionInputSchema,
-  type CmsSection,
-  type CmsSectionInput,
-} from '@xiaohai/contracts';
+import { cmsSectionInputSchema, type CmsSection, type CmsSectionInput } from '@xiaohai/contracts';
 
 export type CmsSectionFormValues = {
   sectionType: CmsSectionInput['sectionType'];

@@ -277,6 +277,10 @@ function publicErrorMessage(code: ConsumerAuthError['code']): string {
       return 'Staff authentication required';
     case 'STAFF_FORBIDDEN':
       return 'Staff access forbidden';
+    case 'NOT_FOUND':
+      return 'Resource not found';
+    case 'CONFLICT':
+      return 'Resource conflict';
     case 'INTERNAL_ERROR':
       return 'Internal server error';
   }
