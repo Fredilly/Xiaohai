@@ -9,33 +9,35 @@
     <text class="state-title">{{pageTitle}}</text>
     <text class="state-copy">首页内容正在准备中。</text>
   </view>
-  <block wx:else wx:for="{{sections}}" wx:key="id">
-    <view wx:if="{{item.sectionType === 'HERO'}}" class="hero">
-      <text wx:if="{{item.config.eyebrow}}" class="eyebrow">{{item.config.eyebrow}}</text>
-      <text class="hero-title">{{item.title}}</text>
-      <text wx:if="{{item.subtitle}}" class="hero-subtitle">{{item.subtitle}}</text>
-    </view>
-    <view wx:elif="{{item.sectionType === 'FEATURE_GRID'}}" class="section">
-      <view class="section-head"><text class="section-title">{{item.title}}</text><text class="section-note">{{item.subtitle}}</text></view>
-      <view class="grid">
-        <view class="card" wx:for="{{item.config.items}}" wx:for-item="entry" wx:key="key" data-target="{{entry.key}}" bindtap="openAction">
-          <text class="card-title">{{entry.title}}</text>
-          <text wx:if="{{entry.subtitle}}" class="card-subtitle">{{entry.subtitle}}</text>
-          <text wx:if="{{entry.badge}}" class="badge">{{entry.badge}}</text>
+  <block wx:else>
+    <block wx:for="{{sections}}" wx:key="id">
+      <view wx:if="{{item.sectionType === 'HERO'}}" class="hero">
+        <text wx:if="{{item.config.eyebrow}}" class="eyebrow">{{item.config.eyebrow}}</text>
+        <text class="hero-title">{{item.title}}</text>
+        <text wx:if="{{item.subtitle}}" class="hero-subtitle">{{item.subtitle}}</text>
+      </view>
+      <view wx:elif="{{item.sectionType === 'FEATURE_GRID'}}" class="section">
+        <view class="section-head"><text class="section-title">{{item.title}}</text><text class="section-note">{{item.subtitle}}</text></view>
+        <view class="grid">
+          <view class="card" wx:for="{{item.config.items}}" wx:for-item="entry" wx:key="key" data-target="{{entry.key}}" bindtap="openAction">
+            <text class="card-title">{{entry.title}}</text>
+            <text wx:if="{{entry.subtitle}}" class="card-subtitle">{{entry.subtitle}}</text>
+            <text wx:if="{{entry.badge}}" class="badge">{{entry.badge}}</text>
+          </view>
         </view>
       </view>
-    </view>
-    <view wx:elif="{{item.sectionType === 'CONTENT_LIST'}}" class="section">
-      <view class="section-head"><text class="section-title">{{item.title}}</text><text class="section-note">{{item.subtitle}}</text></view>
-      <view class="book-list">
-        <view class="list-card" wx:for="{{item.config.items}}" wx:for-item="entry" wx:key="title">
-          <view class="list-main"><text class="list-title">{{entry.title}}</text><text wx:if="{{entry.subtitle}}" class="list-meta">{{entry.subtitle}}</text></view>
+      <view wx:elif="{{item.sectionType === 'CONTENT_LIST'}}" class="section">
+        <view class="section-head"><text class="section-title">{{item.title}}</text><text class="section-note">{{item.subtitle}}</text></view>
+        <view class="book-list">
+          <view class="list-card" wx:for="{{item.config.items}}" wx:for-item="entry" wx:key="title">
+            <view class="list-main"><text class="list-title">{{entry.title}}</text><text wx:if="{{entry.subtitle}}" class="list-meta">{{entry.subtitle}}</text></view>
+          </view>
         </view>
       </view>
-    </view>
-    <view wx:elif="{{item.sectionType === 'BANNER'}}" class="section banner" data-target="{{item.action.target}}" bindtap="openAction">
-      <text class="section-title">{{item.title}}</text>
-      <text class="card-subtitle">{{item.config.body}}</text>
-    </view>
+      <view wx:elif="{{item.sectionType === 'BANNER'}}" class="section banner" data-target="{{item.action.target}}" bindtap="openAction">
+        <text class="section-title">{{item.title}}</text>
+        <text class="card-subtitle">{{item.config.body}}</text>
+      </view>
+    </block>
   </block>
 </view>
