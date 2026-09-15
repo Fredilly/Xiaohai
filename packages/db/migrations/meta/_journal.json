@@ -43,6 +43,13 @@
       "when": 1789453600000,
       "tag": "0005_commerce_foundation",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1789461914242,
+      "tag": "0006_wechat_pay",
+      "breakpoints": true
     }
   ]
 }

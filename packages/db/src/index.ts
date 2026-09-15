@@ -1,4 +1,12 @@
 export { createDatabase } from './client.js';
+export {
+  payments,
+  refunds,
+  paymentCallbacks,
+  paymentLedger,
+  reconciliationRuns,
+  reconciliationItems,
+} from './payment-schema.js';
 export { cmsPages, cmsSections } from './cms-schema.js';
 export {
   books,

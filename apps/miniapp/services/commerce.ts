@@ -5,7 +5,7 @@ export class CommerceApiError extends Error {
     super(`Commerce API ${status}`);
   }
 }
-async function request<T>(
+export async function request<T>(
   path: string,
   method: 'GET' | 'POST' | 'PUT' | 'DELETE' = 'GET',
   data?: object,
