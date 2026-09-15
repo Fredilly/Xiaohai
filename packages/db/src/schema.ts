@@ -3,6 +3,8 @@ import {
   boolean,
   check,
   index,
+  integer,
+  jsonb,
   pgTable,
   primaryKey,
   text,
@@ -49,7 +51,6 @@ export const staffAccounts = pgTable(
   },
   (table) => [uniqueIndex('staff_accounts_login_identifier_unique').on(table.loginIdentifier)],
 );
-
 export const roles = pgTable(
   'roles',
   {
@@ -62,7 +63,6 @@ export const roles = pgTable(
   },
   (table) => [uniqueIndex('roles_key_unique').on(table.key)],
 );
-
 export const permissions = pgTable(
   'permissions',
   {
@@ -75,7 +75,6 @@ export const permissions = pgTable(
   },
   (table) => [uniqueIndex('permissions_key_unique').on(table.key)],
 );
-
 export const staffRoles = pgTable(
   'staff_roles',
   {
@@ -92,7 +91,6 @@ export const staffRoles = pgTable(
     index('staff_roles_role_id_idx').on(table.roleId),
   ],
 );
-
 export const rolePermissions = pgTable(
   'role_permissions',
   {
@@ -109,7 +107,6 @@ export const rolePermissions = pgTable(
     index('role_permissions_permission_id_idx').on(table.permissionId),
   ],
 );
-
 export const staffDataScopes = pgTable(
   'staff_data_scopes',
   {
@@ -137,5 +134,71 @@ export const staffDataScopes = pgTable(
       .where(sql`${table.scopeType} = 'GLOBAL'`),
     index('staff_data_scopes_staff_account_id_idx').on(table.staffAccountId),
     index('staff_data_scopes_target_idx').on(table.scopeType, table.scopeId),
+  ],
+);
+
+export const migrationBatches = pgTable(
+  'migration_batches',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    sourceType: text('source_type').notNull(),
+    sourceReference: text('source_reference').notNull(),
+    rawReference: text('raw_reference'),
+    checksum: text('checksum').notNull(),
+    status: text('status').notNull().default('STAGED'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('migration_batches_source_checksum_unique').on(table.sourceType, table.checksum),
+    check(
+      'migration_batches_status_check',
+      sql`${table.status} in ('STAGED', 'DRY_RUN', 'REVIEW', 'IMPORT_PLANNED', 'IMPORTED', 'RECONCILED', 'FAILED')`,
+    ),
+  ],
+);
+
+export const migrationBookStaging = pgTable(
+  'migration_book_staging',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    batchId: uuid('batch_id')
+      .notNull()
+      .references(() => migrationBatches.id, { onDelete: 'cascade' }),
+    sourceRowNumber: integer('source_row_number').notNull(),
+    rawValues: jsonb('raw_values').$type<Record<string, unknown>>().notNull(),
+    normalizedValues: jsonb('normalized_values').$type<Record<string, unknown>>(),
+    validationState: text('validation_state').notNull().default('PENDING'),
+    importState: text('import_state').notNull().default('NOT_PLANNED'),
+    issues: jsonb('issues')
+      .$type<unknown[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    fingerprint: text('fingerprint'),
+    normalizedPriceMinor: integer('normalized_price_minor'),
+    normalizedInventory: integer('normalized_inventory'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('migration_book_staging_batch_row_unique').on(table.batchId, table.sourceRowNumber),
+    index('migration_book_staging_batch_idx').on(table.batchId),
+    check('migration_book_staging_source_row_positive', sql`${table.sourceRowNumber} > 0`),
+    check(
+      'migration_book_staging_price_nonnegative',
+      sql`${table.normalizedPriceMinor} is null or ${table.normalizedPriceMinor} >= 0`,
+    ),
+    check(
+      'migration_book_staging_inventory_nonnegative',
+      sql`${table.normalizedInventory} is null or ${table.normalizedInventory} >= 0`,
+    ),
+    check(
+      'migration_book_staging_validation_state_check',
+      sql`${table.validationState} in ('PENDING', 'VALID', 'WARNING', 'ERROR', 'DUPLICATE', 'CONFLICT')`,
+    ),
+    check(
+      'migration_book_staging_import_state_check',
+      sql`${table.importState} in ('NOT_PLANNED', 'PLANNED', 'IMPORTED', 'SKIPPED', 'FAILED')`,
+    ),
   ],
 );
