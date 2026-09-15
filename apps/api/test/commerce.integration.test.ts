@@ -12,7 +12,8 @@ import {
   skus,
   userAddresses,
 } from '@xiaohai/db';
-import { CommerceError, CommerceService } from '../src/commerce/commerce-service.js';
+import { CommerceService } from '../src/commerce/commerce-service.js';
+import type { CommerceError } from '../src/commerce/commerce-service.js';
 const database = process.env.DATABASE_URL ? createDatabase(process.env) : null;
 const suite = database ? describe : describe.skip;
 suite('M5 Commerce PostgreSQL integration', () => {
