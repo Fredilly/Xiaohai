@@ -45,6 +45,7 @@ Page({
     const key = String(event.currentTarget.dataset.key || '');
     if (key === 'orders') void wx.navigateTo({ url: '/pages/orders/orders' });
     else if (key === 'address') void wx.navigateTo({ url: '/pages/address/address' });
+    else if (key === 'works') void wx.navigateTo({ url: '/pages/story-works/story-works' });
     else if (key)
       void wx.navigateTo({ url: `/pages/feature/feature?key=${encodeURIComponent(key)}` });
   },

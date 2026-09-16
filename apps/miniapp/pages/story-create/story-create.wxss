@@ -1,0 +1,47 @@
+.form-card {
+  background: #fff;
+  border: 1rpx solid #ebe5da;
+  border-radius: 24rpx;
+  padding: 26rpx;
+}
+
+.field-label {
+  display: block;
+  margin: 24rpx 0 10rpx;
+  font-size: 24rpx;
+  font-weight: 700;
+}
+
+.field-label:first-child {
+  margin-top: 0;
+}
+
+.field-input,
+.field-textarea {
+  box-sizing: border-box;
+  width: 100%;
+  border: 1rpx solid #ded8cd;
+  border-radius: 16rpx;
+  background: #faf8f3;
+  padding: 18rpx;
+  font-size: 25rpx;
+}
+
+.field-textarea {
+  min-height: 220rpx;
+}
+
+.secondary-btn {
+  margin-top: 20rpx;
+  border: 1rpx solid #d9d2c6;
+  border-radius: 18rpx;
+  background: #fff;
+  color: #315d45;
+  font-size: 25rpx;
+}
+
+.error-note {
+  margin-top: 18rpx;
+  color: #9a463b;
+  font-size: 23rpx;
+}

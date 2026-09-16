@@ -20,6 +20,7 @@ Page({
     const target = String(event.currentTarget.dataset.target ?? '');
     if (!target) return;
     if (target === 'shop') void wx.navigateTo({ url: '/pages/shop/shop' });
+    else if (target === 'ai') void wx.navigateTo({ url: '/pages/story-create/story-create' });
     else void wx.navigateTo({ url: `/pages/feature/feature?key=${encodeURIComponent(target)}` });
   },
 });

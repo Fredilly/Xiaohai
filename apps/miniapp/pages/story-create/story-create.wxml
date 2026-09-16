@@ -1,0 +1,76 @@
+<view class="page">
+  <view class="hero">
+    <text class="eyebrow">小海 AI · STORY</text>
+    <text class="hero-title">把一个想法变成故事</text>
+    <text class="hero-subtitle">
+      先告诉小海故事想讲什么，再生成大纲、正文，并继续改写、续写或润色。
+    </text>
+  </view>
+
+  <view wx:if="{{!isLoggedIn}}" class="state-card">
+    <text class="state-title">请先登录</text>
+    <text class="state-copy">故事作品会保存在你的账号下。</text>
+    <button class="primary-btn" bindtap="goLogin">前往登录</button>
+  </view>
+
+  <block wx:else>
+    <view class="form-card">
+      <text class="field-label">作品标题 · 可选</text>
+      <input
+        class="field-input"
+        placeholder="例如：森林里的小灯塔"
+        value="{{title}}"
+        data-field="title"
+        bindinput="input"
+      />
+
+      <text class="field-label">你的故事想法</text>
+      <textarea
+        class="field-textarea"
+        placeholder="例如：一只小狐狸第一次独自帮助迷路的小鸟回家……"
+        value="{{idea}}"
+        maxlength="2000"
+        data-field="idea"
+        bindinput="input"
+      />
+
+      <text class="field-label">适合年龄</text>
+      <input
+        class="field-input"
+        value="{{ageRange}}"
+        data-field="ageRange"
+        bindinput="input"
+      />
+
+      <text class="field-label">故事主题</text>
+      <input
+        class="field-input"
+        placeholder="例如：勇气与互助"
+        value="{{theme}}"
+        data-field="theme"
+        bindinput="input"
+      />
+
+      <text class="field-label">故事风格</text>
+      <input
+        class="field-input"
+        value="{{style}}"
+        data-field="style"
+        bindinput="input"
+      />
+
+      <view wx:if="{{errorMessage}}" class="error-note">{{errorMessage}}</view>
+
+      <button
+        class="primary-btn"
+        loading="{{loading}}"
+        disabled="{{loading}}"
+        bindtap="submit"
+      >
+        创建故事
+      </button>
+    </view>
+
+    <button class="secondary-btn" bindtap="openWorks">查看我的 AI 作品</button>
+  </block>
+</view>

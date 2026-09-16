@@ -10,7 +10,7 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
-import { staffAccounts } from './schema.js';
+import { consumerUsers, staffAccounts } from './schema.js';
 
 export const aiProjects = pgTable(
   'ai_projects',
@@ -18,13 +18,27 @@ export const aiProjects = pgTable(
     id: uuid('id').primaryKey().defaultRandom(),
     projectType: text('project_type').notNull().default('PLATFORM_SANDBOX'),
     title: text('title').notNull(),
-    createdByStaffAccountId: uuid('created_by_staff_account_id')
-      .notNull()
-      .references(() => staffAccounts.id, { onDelete: 'restrict' }),
+    createdByStaffAccountId: uuid('created_by_staff_account_id').references(
+      () => staffAccounts.id,
+      { onDelete: 'restrict' },
+    ),
+    createdByConsumerUserId: uuid('created_by_consumer_user_id').references(
+      () => consumerUsers.id,
+      { onDelete: 'restrict' },
+    ),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [check('ai_projects_type_check', sql`${t.projectType} in ('PLATFORM_SANDBOX')`)],
+  (t) => [
+    check('ai_projects_type_check', sql`${t.projectType} in ('PLATFORM_SANDBOX','STORY')`),
+    check(
+      'ai_projects_owner_check',
+      sql`(${t.createdByStaffAccountId} is not null and ${t.createdByConsumerUserId} is null)
+        or (${t.createdByStaffAccountId} is null and ${t.createdByConsumerUserId} is not null)`,
+    ),
+    index('ai_projects_staff_creator_idx').on(t.createdByStaffAccountId),
+    index('ai_projects_consumer_creator_idx').on(t.createdByConsumerUserId),
+  ],
 );
 
 export const aiJobs = pgTable(
@@ -38,7 +52,17 @@ export const aiJobs = pgTable(
     provider: text('provider').notNull(),
     model: text('model').notNull(),
     status: text('status').notNull().default('QUEUED'),
-    input: jsonb('input').$type<{ prompt: string }>().notNull(),
+    input: jsonb('input')
+      .$type<{
+        prompt: string;
+        context?: {
+          kind: 'STORY';
+          workId: string;
+          operation: 'OUTLINE' | 'BODY' | 'REWRITE' | 'CONTINUE' | 'POLISH';
+          sourceVersionId?: string | null;
+        };
+      }>()
+      .notNull(),
     result: jsonb('result').$type<{ text?: string; assetReferences?: string[] }>(),
     moderation: jsonb('moderation').$type<{
       input: string;
@@ -63,7 +87,10 @@ export const aiJobs = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
-    check('ai_jobs_type_check', sql`${t.jobType} in ('PLATFORM_TEXT')`),
+    check(
+      'ai_jobs_type_check',
+      sql`${t.jobType} in ('PLATFORM_TEXT','STORY_OUTLINE','STORY_BODY','STORY_REWRITE','STORY_CONTINUE','STORY_POLISH')`,
+    ),
     check('ai_jobs_provider_check', sql`${t.provider} in ('MOCK','DEEPSEEK')`),
     check(
       'ai_jobs_status_check',
