@@ -55,6 +55,8 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
+      - name: Verify built workspace imports with plain Node
+        run: pnpm --filter @xiaohai/api exec node -e "Promise.all([import('@xiaohai/config'), import('@xiaohai/contracts'), import('@xiaohai/db'), import('@xiaohai/domain')])"
       - run: pnpm --filter @xiaohai/db db:check
       - run: pnpm --filter @xiaohai/db db:migrate
       - run: pnpm test:integration

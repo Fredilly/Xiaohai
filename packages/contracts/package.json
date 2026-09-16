@@ -4,13 +4,48 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./dist/index.js",
-    "./commerce": "./dist/commerce.js",
-    "./payments": "./dist/payments.js",
-    "./content": "./dist/content.js",
-    "./ai": "./dist/ai.js",
-    "./story": "./dist/story.js",
-    "./picture-book": "./dist/picture-book.js"
+    ".": {
+      "types": "./src/index.ts",
+      "development": "./src/index.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./commerce": {
+      "types": "./src/commerce.ts",
+      "development": "./src/commerce.ts",
+      "import": "./dist/commerce.js",
+      "default": "./dist/commerce.js"
+    },
+    "./payments": {
+      "types": "./src/payments.ts",
+      "development": "./src/payments.ts",
+      "import": "./dist/payments.js",
+      "default": "./dist/payments.js"
+    },
+    "./content": {
+      "types": "./src/content.ts",
+      "development": "./src/content.ts",
+      "import": "./dist/content.js",
+      "default": "./dist/content.js"
+    },
+    "./ai": {
+      "types": "./src/ai.ts",
+      "development": "./src/ai.ts",
+      "import": "./dist/ai.js",
+      "default": "./dist/ai.js"
+    },
+    "./story": {
+      "types": "./src/story.ts",
+      "development": "./src/story.ts",
+      "import": "./dist/story.js",
+      "default": "./dist/story.js"
+    },
+    "./picture-book": {
+      "types": "./src/picture-book.ts",
+      "development": "./src/picture-book.ts",
+      "import": "./dist/picture-book.js",
+      "default": "./dist/picture-book.js"
+    }
   },
   "types": "./dist/index.d.ts",
   "scripts": {
