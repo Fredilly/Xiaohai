@@ -92,6 +92,29 @@ export const episodeInputSchema = z
         path: ['previewSeconds'],
       });
   });
+export const adminSeriesSchema = seriesInputSchema.extend({
+  id: z.uuid(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+export const adminMediaSchema = mediaInputSchema.extend({
+  id: z.uuid(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+export const adminEpisodeSchema = episodeInputSchema.extend({
+  id: z.uuid(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+export const adminContentResponseSchema = z.object({
+  series: z.array(adminSeriesSchema),
+  media: z.array(adminMediaSchema),
+});
+
 export const contentErrorSchema = z.object({
   error: z.object({
     code: z.enum([
@@ -111,3 +134,11 @@ export const contentErrorSchema = z.object({
 export type SeriesSummary = z.infer<typeof seriesSummarySchema>;
 export type SeriesDetail = z.infer<typeof seriesDetailSchema>;
 export type PlaybackAccess = z.infer<typeof playbackAccessSchema>;
+
+export type SeriesInput = z.infer<typeof seriesInputSchema>;
+export type MediaInput = z.infer<typeof mediaInputSchema>;
+export type EpisodeInput = z.infer<typeof episodeInputSchema>;
+export type AdminSeries = z.infer<typeof adminSeriesSchema>;
+export type AdminMedia = z.infer<typeof adminMediaSchema>;
+export type AdminEpisode = z.infer<typeof adminEpisodeSchema>;
+export type AdminContentResponse = z.infer<typeof adminContentResponseSchema>;
