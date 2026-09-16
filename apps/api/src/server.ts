@@ -29,6 +29,8 @@ import { registerStoryRoutes } from './story/story-routes.js';
 import { PictureBookService } from './picture-book/picture-book-service.js';
 import { registerPictureBookRoutes } from './picture-book/picture-book-routes.js';
 import { RedisImageQueue } from './picture-book/image-queue.js';
+import { AnimationService } from './animation/animation-service.js';
+import { registerAnimationRoutes } from './animation/animation-routes.js';
 
 const config = loadServiceConfig(process.env);
 const { db, pool } = createDatabase(process.env);
@@ -116,6 +118,22 @@ const pictureBook = new PictureBookService(
 
 registerPictureBookRoutes(app, {
   pictureBook,
+  consumerSessions: sessions,
+});
+
+registerAnimationRoutes(app, {
+  animation: new AnimationService(
+    db,
+    aiQueue,
+    {
+      enabled: config.ANIMATION_AI_ENABLED,
+      provider: config.ANIMATION_AI_PROVIDER,
+      model: config.ANIMATION_AI_MODEL,
+      maxAttempts: config.ANIMATION_AI_MAX_ATTEMPTS,
+      timeoutMs: config.ANIMATION_AI_TIMEOUT_MS,
+    },
+    app.log,
+  ),
   consumerSessions: sessions,
 });
 

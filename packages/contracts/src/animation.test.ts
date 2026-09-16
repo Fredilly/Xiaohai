@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   animationCompositionSchema,
+  animationPlanningRequestSchema,
   animationSceneGenerationSchema,
   animationScriptPlanSchema,
   animationStoryboardPlanSchema,
@@ -28,6 +29,15 @@ describe('M11 Animation contracts', () => {
         provider: 'CLIENT_PROVIDER',
         model: 'client-model',
         consumerUserId: id,
+      }).success,
+    ).toBe(false);
+
+    expect(
+      animationPlanningRequestSchema.safeParse({
+        operation: 'SCRIPT',
+        provider: 'CLIENT_PROVIDER',
+        model: 'client-model',
+        cost: 1,
       }).success,
     ).toBe(false);
   });

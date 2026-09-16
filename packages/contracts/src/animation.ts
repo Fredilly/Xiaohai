@@ -231,6 +231,31 @@ export const animationDetailSchema = z
   })
   .strict();
 
+export const animationListSchema = z.object({ animations: z.array(animationSchema) }).strict();
+
+export const animationGenerationAcceptedSchema = z
+  .object({
+    animationId: z.uuid(),
+    jobId: z.uuid(),
+    operation: animationPlanningOperationSchema,
+    status: z.literal('QUEUED'),
+  })
+  .strict();
+
+export const applyAnimationJobRequestSchema = z.object({ jobId: z.uuid() }).strict();
+
+export const animationJobStatusSchema = z
+  .object({
+    jobId: z.uuid(),
+    animationId: z.uuid(),
+    operation: animationPlanningOperationSchema,
+    status: z.enum(['QUEUED', 'RUNNING', 'SUCCEEDED', 'FAILED', 'CANCELLED']),
+    generatedText: z.string().nullable(),
+    applied: z.boolean(),
+    lastErrorCode: z.string().nullable(),
+  })
+  .strict();
+
 export type AnimationStatus = z.infer<typeof animationStatusSchema>;
 export type AnimationAsyncStatus = z.infer<typeof animationAsyncStatusSchema>;
 export type CreateAnimationRequest = z.infer<typeof createAnimationRequestSchema>;
@@ -244,3 +269,7 @@ export type AnimationScene = z.infer<typeof animationSceneSchema>;
 export type AnimationSceneGeneration = z.infer<typeof animationSceneGenerationSchema>;
 export type AnimationComposition = z.infer<typeof animationCompositionSchema>;
 export type AnimationDetail = z.infer<typeof animationDetailSchema>;
+export type AnimationList = z.infer<typeof animationListSchema>;
+export type AnimationGenerationAccepted = z.infer<typeof animationGenerationAcceptedSchema>;
+export type ApplyAnimationJobRequest = z.infer<typeof applyAnimationJobRequestSchema>;
+export type AnimationJobStatus = z.infer<typeof animationJobStatusSchema>;
