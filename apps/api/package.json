@@ -6,7 +6,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "predev": "[ -f ../../.env ] || cp ../../.env.example ../../.env",
-    "dev": "node --env-file ../../.env --import tsx/esm --watch src/server.ts",
+    "dev": "node --env-file ../../.env --conditions=development --import tsx/esm --watch src/server.ts",
     "lint": "eslint src test",
     "start": "node dist/server.js",
     "test": "vitest run --exclude '**/*.integration.test.ts'",
