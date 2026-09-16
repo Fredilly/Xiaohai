@@ -11,6 +11,7 @@
   },
   "devDependencies": {
     "@types/wechat-miniprogram": "catalog:",
+    "@xiaohai/contracts": "workspace:*",
     "typescript": "catalog:",
     "vitest": "catalog:"
   }

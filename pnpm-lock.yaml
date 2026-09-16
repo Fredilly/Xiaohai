@@ -172,6 +172,9 @@ importers:
       '@types/wechat-miniprogram':
         specifier: 'catalog:'
         version: 3.4.10
+      '@xiaohai/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
       typescript:
         specifier: 'catalog:'
         version: 5.9.3

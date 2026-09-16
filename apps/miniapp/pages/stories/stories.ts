@@ -28,7 +28,7 @@ Page({
     void this.load();
   },
   open(e: WechatMiniprogram.TouchEvent) {
-    wx.navigateTo({
+    void wx.navigateTo({
       url: `/pages/story-detail/story-detail?id=${String(e.currentTarget.dataset.id)}`,
     });
   },

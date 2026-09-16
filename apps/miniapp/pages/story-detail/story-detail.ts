@@ -12,6 +12,8 @@ Page({
     }
   },
   play(e: WechatMiniprogram.TouchEvent) {
-    wx.navigateTo({ url: `/pages/playback/playback?id=${String(e.currentTarget.dataset.id)}` });
+    void wx.navigateTo({
+      url: `/pages/playback/playback?id=${String(e.currentTarget.dataset.id)}`,
+    });
   },
 });
