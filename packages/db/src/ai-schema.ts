@@ -30,7 +30,10 @@ export const aiProjects = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
-    check('ai_projects_type_check', sql`${t.projectType} in ('PLATFORM_SANDBOX','STORY')`),
+    check(
+      'ai_projects_type_check',
+      sql`${t.projectType} in ('PLATFORM_SANDBOX','STORY','PICTURE_BOOK')`,
+    ),
     check(
       'ai_projects_owner_check',
       sql`(${t.createdByStaffAccountId} is not null and ${t.createdByConsumerUserId} is null)
