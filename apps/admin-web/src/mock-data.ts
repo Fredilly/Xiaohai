@@ -26,7 +26,7 @@ export const adminModules: ModulePreview[] = [
     description: 'M7 Series、Episode 与媒体元数据管理',
     status: '可查看',
   },
-  { key: 'ai', label: 'AI', description: 'AI 项目、任务与审核框架', status: '前端预览' },
+  { key: 'ai', label: 'AI', description: 'M8 Provider-neutral 作业与审核监控', status: '可查看' },
   { key: 'rental', label: '租借', description: '预约、借出、归还与逾期框架', status: '前端预览' },
   {
     key: 'finance',

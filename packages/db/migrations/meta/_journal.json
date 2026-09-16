@@ -57,6 +57,13 @@
       "when": 1789467000000,
       "tag": "0007_stories_animation",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1789526584191,
+      "tag": "0008_ai_platform",
+      "breakpoints": true
     }
   ]
 }

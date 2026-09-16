@@ -21,6 +21,9 @@ import { PaymentService } from './payments/payment-service.js';
 import { registerPaymentRoutes } from './payments/payment-routes.js';
 import { ContentService } from './content/content-service.js';
 import { registerContentRoutes } from './content/content-routes.js';
+import { RedisAiQueue } from './ai/ai-queue.js';
+import { AiPlatformService } from './ai/ai-service.js';
+import { registerAiRoutes } from './ai/ai-routes.js';
 
 const config = loadServiceConfig(process.env);
 const { db, pool } = createDatabase(process.env);
@@ -63,7 +66,14 @@ registerPaymentRoutes(app, {
   staffAuthorization,
 });
 registerContentRoutes(app, { content, consumerSessions: sessions, staffAuthorization });
-app.addHook('onClose', async () => pool.end());
+const aiQueue = new RedisAiQueue(config.REDIS_URL, () =>
+  app.log.error({ errorCode: 'REDIS_UNAVAILABLE' }, 'AI queue Redis error'),
+);
+registerAiRoutes(app, { ai: new AiPlatformService(db, aiQueue), staffAuthorization });
+app.addHook('onClose', async () => {
+  await aiQueue.close();
+  await pool.end();
+});
 try {
   await app.listen({ host: config.HOST, port: config.PORT });
 } catch (error) {

@@ -8,6 +8,7 @@ export default defineConfig({
     './src/commerce-schema.ts',
     './src/payment-schema.ts',
     './src/content-schema.ts',
+    './src/ai-schema.ts',
   ],
   out: './migrations',
   dbCredentials: {
