@@ -13,7 +13,10 @@
     "pages/order-detail/order-detail",
     "pages/stories/stories",
     "pages/story-detail/story-detail",
-    "pages/playback/playback"
+    "pages/playback/playback",
+    "pages/story-create/story-create",
+    "pages/story-works/story-works",
+    "pages/story-work/story-work"
   ],
   "window": {
     "navigationBarTitleText": "小海童话",
@@ -27,9 +30,18 @@
     "backgroundColor": "#ffffff",
     "borderStyle": "white",
     "list": [
-      { "pagePath": "pages/index/index", "text": "首页" },
-      { "pagePath": "pages/global/global", "text": "胖竹全球" },
-      { "pagePath": "pages/me/me", "text": "我的" }
+      {
+        "pagePath": "pages/index/index",
+        "text": "首页"
+      },
+      {
+        "pagePath": "pages/global/global",
+        "text": "胖竹全球"
+      },
+      {
+        "pagePath": "pages/me/me",
+        "text": "我的"
+      }
     ]
   }
 }

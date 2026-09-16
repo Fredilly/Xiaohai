@@ -1,0 +1,115 @@
+<view class="page">
+  <view wx:if="{{loading}}" class="state-card">
+    <text class="state-title">正在加载故事</text>
+  </view>
+
+  <view wx:elif="{{!work}}" class="state-card">
+    <text class="state-title">无法打开作品</text>
+    <text class="state-copy">{{errorMessage}}</text>
+    <button class="primary-btn" bindtap="retryLoad">重新加载</button>
+  </view>
+
+  <block wx:else>
+    <view class="hero hero-soft">
+      <text class="eyebrow">STORY WORKSPACE</text>
+      <text class="hero-title">{{work.title}}</text>
+      <text class="hero-subtitle">
+        {{work.controls.theme}} · {{work.controls.ageRange}} · {{work.controls.style}}
+      </text>
+    </view>
+
+    <view class="idea-card">
+      <text class="card-title">故事想法</text>
+      <text class="content-text">{{work.controls.idea}}</text>
+    </view>
+
+    <view class="section">
+      <view class="section-head">
+        <text class="section-title">AI 创作</text>
+        <text class="section-note">版本会自动保留</text>
+      </view>
+
+      <textarea
+        class="instruction"
+        placeholder="可选：告诉小海这次想怎么修改"
+        value="{{instruction}}"
+        maxlength="1000"
+        bindinput="inputInstruction"
+      />
+
+      <view class="action-grid">
+        <button
+          class="action-btn"
+          data-operation="OUTLINE"
+          disabled="{{generating}}"
+          bindtap="generate"
+        >
+          生成大纲
+        </button>
+
+        <button
+          class="action-btn"
+          data-operation="BODY"
+          disabled="{{generating || !latestOutlineId}}"
+          bindtap="generate"
+        >
+          生成正文
+        </button>
+
+        <button
+          class="action-btn secondary"
+          data-operation="REWRITE"
+          disabled="{{generating || !latestBodyId}}"
+          bindtap="generate"
+        >
+          改写
+        </button>
+
+        <button
+          class="action-btn secondary"
+          data-operation="CONTINUE"
+          disabled="{{generating || !latestBodyId}}"
+          bindtap="generate"
+        >
+          续写
+        </button>
+
+        <button
+          class="action-btn secondary"
+          data-operation="POLISH"
+          disabled="{{generating || !latestBodyId}}"
+          bindtap="generate"
+        >
+          润色
+        </button>
+      </view>
+
+      <view wx:if="{{statusText}}" class="status-note">{{statusText}}</view>
+      <view wx:if="{{errorMessage}}" class="error-note">{{errorMessage}}</view>
+    </view>
+
+    <view class="section">
+      <view class="section-head">
+        <text class="section-title">版本历史</text>
+        <text class="section-note">{{versions.length}} 个版本</text>
+      </view>
+
+      <view wx:if="{{versions.length === 0}}" class="state-card">
+        <text class="state-title">还没有内容版本</text>
+        <text class="state-copy">先生成一个故事大纲。</text>
+      </view>
+
+      <view wx:else class="version-list">
+        <view wx:for="{{versions}}" wx:key="id" class="version-card">
+          <view class="version-head">
+            <text class="version-title">第 {{item.versionNumber}} 版</text>
+            <text class="badge">{{item.operation}}</text>
+          </view>
+
+          <text class="version-kind">{{item.contentKind}}</text>
+          <text class="content-text">{{item.content}}</text>
+        </view>
+      </view>
+    </view>
+  </block>
+</view>

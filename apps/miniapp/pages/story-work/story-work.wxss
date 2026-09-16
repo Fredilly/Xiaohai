@@ -1,0 +1,93 @@
+.idea-card,
+.version-card {
+  background: #fff;
+  border: 1rpx solid #ebe5da;
+  border-radius: 24rpx;
+  padding: 24rpx;
+}
+
+.content-text {
+  display: block;
+  white-space: pre-wrap;
+  font-size: 25rpx;
+  line-height: 1.8;
+}
+
+.instruction {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 160rpx;
+  border: 1rpx solid #ded8cd;
+  border-radius: 18rpx;
+  background: #fff;
+  padding: 18rpx;
+  font-size: 24rpx;
+}
+
+.action-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14rpx;
+  margin-top: 18rpx;
+}
+
+.action-btn {
+  margin: 0;
+  border: 0;
+  border-radius: 16rpx;
+  background: #315d45;
+  color: #fff;
+  font-size: 23rpx;
+}
+
+.action-btn.secondary {
+  background: #fff;
+  color: #315d45;
+  border: 1rpx solid #cfd9d1;
+}
+
+.action-btn[disabled] {
+  opacity: 0.45;
+}
+
+.status-note,
+.error-note {
+  margin-top: 18rpx;
+  padding: 16rpx;
+  border-radius: 14rpx;
+  font-size: 22rpx;
+}
+
+.status-note {
+  background: #edf3ee;
+  color: #315d45;
+}
+
+.error-note {
+  background: #fff0ec;
+  color: #93483c;
+}
+
+.version-list {
+  display: flex;
+  flex-direction: column;
+  gap: 18rpx;
+}
+
+.version-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.version-title {
+  font-size: 27rpx;
+  font-weight: 800;
+}
+
+.version-kind {
+  display: block;
+  margin: 10rpx 0 16rpx;
+  color: #817d74;
+  font-size: 21rpx;
+}
