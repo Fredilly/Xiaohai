@@ -24,15 +24,63 @@ export class ProviderError extends Error {
 }
 export class MockAiProvider implements AiProvider {
   readonly name = 'MOCK' as const;
+
   generate(input: AiProviderInput): Promise<AiProviderResult> {
     if (input.signal.aborted) throw new ProviderError('PROVIDER_TIMEOUT');
+
+    let text = `[mock:${input.model}] ${input.prompt}`;
+
+    if (input.prompt.includes('XIAOHAI_TASK=PICTURE_BOOK_CHARACTERS')) {
+      text = JSON.stringify({
+        characters: [
+          {
+            name: '小狐狸',
+            role: 'MAIN',
+            description: '勇敢、温柔，喜欢帮助朋友的小狐狸',
+            visualPrompt: 'orange fox, green scarf, round brown eyes, small white tail tip',
+          },
+          {
+            name: '小鸟',
+            role: 'SUPPORTING',
+            description: '一只迷路但很有礼貌的小鸟',
+            visualPrompt: 'small blue bird, pale yellow chest, tiny red satchel',
+          },
+        ],
+      });
+    } else if (input.prompt.includes('XIAOHAI_TASK=PICTURE_BOOK_STORYBOARD')) {
+      text = JSON.stringify({
+        cover: {
+          sceneDescription: '晨光森林里的小狐狸与小鸟',
+          illustrationPrompt:
+            'storybook cover, orange fox with green scarf and small blue bird with red satchel, forest sunrise',
+          layoutPreset: 'AUTO',
+        },
+        pages: [
+          {
+            storyText: '清晨，小狐狸沿着森林小路出发。',
+            sceneDescription: '森林入口，晨光穿过树叶。',
+            illustrationPrompt:
+              'orange fox with green scarf and round brown eyes walking on a forest path, morning light',
+            layoutPreset: 'AUTO',
+          },
+          {
+            storyText: '它遇见了迷路的小鸟，并决定帮助它回家。',
+            sceneDescription: '小狐狸蹲下来安慰背着红色小包的小鸟。',
+            illustrationPrompt:
+              'orange fox with green scarf beside small blue bird with pale yellow chest and tiny red satchel',
+            layoutPreset: 'AUTO',
+          },
+        ],
+      });
+    }
+
     return Promise.resolve({
-      text: `[mock:${input.model}] ${input.prompt}`,
+      text,
       assetReferences: [],
       usage: {
         inputTokens: input.prompt.length,
-        outputTokens: input.prompt.length + 8,
-        totalTokens: input.prompt.length * 2 + 8,
+        outputTokens: text.length,
+        totalTokens: input.prompt.length + text.length,
       },
       costMetadata: { source: 'MOCK', billable: false },
     });

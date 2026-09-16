@@ -26,6 +26,8 @@ import { AiPlatformService } from './ai/ai-service.js';
 import { registerAiRoutes } from './ai/ai-routes.js';
 import { StoryService } from './story/story-service.js';
 import { registerStoryRoutes } from './story/story-routes.js';
+import { PictureBookService } from './picture-book/picture-book-service.js';
+import { registerPictureBookRoutes } from './picture-book/picture-book-routes.js';
 
 const config = loadServiceConfig(process.env);
 const { db, pool } = createDatabase(process.env);
@@ -90,6 +92,25 @@ registerStoryRoutes(app, {
   story,
   consumerSessions: sessions,
 });
+
+const pictureBook = new PictureBookService(
+  db,
+  aiQueue,
+  {
+    enabled: config.PICTURE_BOOK_AI_ENABLED,
+    provider: config.PICTURE_BOOK_AI_PROVIDER,
+    model: config.PICTURE_BOOK_AI_MODEL,
+    maxAttempts: config.PICTURE_BOOK_AI_MAX_ATTEMPTS,
+    timeoutMs: config.PICTURE_BOOK_AI_TIMEOUT_MS,
+  },
+  app.log,
+);
+
+registerPictureBookRoutes(app, {
+  pictureBook,
+  consumerSessions: sessions,
+});
+
 app.addHook('onClose', async () => {
   await aiQueue.close();
   await pool.end();

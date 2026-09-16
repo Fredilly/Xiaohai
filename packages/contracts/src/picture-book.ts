@@ -136,3 +136,94 @@ export type CharacterProfile = z.infer<typeof characterProfileSchema>;
 export type PictureBookIllustration = z.infer<typeof pictureBookIllustrationSchema>;
 export type PictureBookPage = z.infer<typeof pictureBookPageSchema>;
 export type PictureBookDetail = z.infer<typeof pictureBookDetailSchema>;
+
+export const pictureBookTextOperationSchema = z.enum(['CHARACTERS', 'STORYBOARD']);
+
+export const pictureBookGenerateRequestSchema = z
+  .object({
+    operation: pictureBookTextOperationSchema,
+  })
+  .strict();
+
+export const pictureBookGenerationAcceptedSchema = z
+  .object({
+    pictureBookId: z.uuid(),
+    jobId: z.uuid(),
+    operation: pictureBookTextOperationSchema,
+    status: z.literal('QUEUED'),
+  })
+  .strict();
+
+export const applyPictureBookJobRequestSchema = z
+  .object({
+    jobId: z.uuid(),
+  })
+  .strict();
+
+export const pictureBookCharacterDraftSchema = z
+  .object({
+    name: z.string().trim().min(1).max(80),
+    role: pictureBookCharacterRoleSchema,
+    description: z.string().trim().min(1).max(1000),
+    visualPrompt: z.string().trim().min(1).max(2000),
+  })
+  .strict();
+
+export const pictureBookCharacterPlanSchema = z
+  .object({
+    characters: z.array(pictureBookCharacterDraftSchema).min(1).max(12),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    const names = value.characters.map((character) => character.name);
+    if (new Set(names).size !== names.length) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['characters'],
+        message: 'Character names must be unique',
+      });
+    }
+  });
+
+export const pictureBookStoryboardPageDraftSchema = z
+  .object({
+    storyText: z.string().trim().min(1).max(3000),
+    sceneDescription: z.string().trim().min(1).max(2000),
+    illustrationPrompt: z.string().trim().min(1).max(3000),
+    layoutPreset: z.string().trim().min(1).max(64).optional(),
+  })
+  .strict();
+
+export const pictureBookStoryboardPlanSchema = z
+  .object({
+    cover: z
+      .object({
+        sceneDescription: z.string().trim().min(1).max(2000),
+        illustrationPrompt: z.string().trim().min(1).max(3000),
+        layoutPreset: z.string().trim().min(1).max(64).optional(),
+      })
+      .strict(),
+    pages: z.array(pictureBookStoryboardPageDraftSchema).min(1).max(40),
+  })
+  .strict();
+
+export const pictureBookJobStatusSchema = z
+  .object({
+    jobId: z.uuid(),
+    pictureBookId: z.uuid(),
+    operation: pictureBookTextOperationSchema,
+    status: z.enum(['QUEUED', 'RUNNING', 'SUCCEEDED', 'FAILED', 'CANCELLED']),
+    generatedText: z.string().nullable(),
+    applied: z.boolean(),
+    lastErrorCode: z.string().nullable(),
+  })
+  .strict();
+
+export type PictureBookTextOperation = z.infer<typeof pictureBookTextOperationSchema>;
+export type PictureBookGenerateRequest = z.infer<typeof pictureBookGenerateRequestSchema>;
+export type PictureBookGenerationAccepted = z.infer<typeof pictureBookGenerationAcceptedSchema>;
+export type PictureBookCharacterDraft = z.infer<typeof pictureBookCharacterDraftSchema>;
+export type PictureBookCharacterPlan = z.infer<typeof pictureBookCharacterPlanSchema>;
+export type PictureBookStoryboardPageDraft = z.infer<typeof pictureBookStoryboardPageDraftSchema>;
+export type PictureBookStoryboardPlan = z.infer<typeof pictureBookStoryboardPlanSchema>;
+export type PictureBookJobStatus = z.infer<typeof pictureBookJobStatusSchema>;

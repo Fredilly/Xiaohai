@@ -58,12 +58,18 @@ export const aiJobs = pgTable(
     input: jsonb('input')
       .$type<{
         prompt: string;
-        context?: {
-          kind: 'STORY';
-          workId: string;
-          operation: 'OUTLINE' | 'BODY' | 'REWRITE' | 'CONTINUE' | 'POLISH';
-          sourceVersionId?: string | null;
-        };
+        context?:
+          | {
+              kind: 'STORY';
+              workId: string;
+              operation: 'OUTLINE' | 'BODY' | 'REWRITE' | 'CONTINUE' | 'POLISH';
+              sourceVersionId?: string | null;
+            }
+          | {
+              kind: 'PICTURE_BOOK';
+              pictureBookId: string;
+              operation: 'CHARACTERS' | 'STORYBOARD';
+            };
       }>()
       .notNull(),
     result: jsonb('result').$type<{ text?: string; assetReferences?: string[] }>(),
@@ -92,7 +98,7 @@ export const aiJobs = pgTable(
   (t) => [
     check(
       'ai_jobs_type_check',
-      sql`${t.jobType} in ('PLATFORM_TEXT','STORY_OUTLINE','STORY_BODY','STORY_REWRITE','STORY_CONTINUE','STORY_POLISH')`,
+      sql`${t.jobType} in ('PLATFORM_TEXT','STORY_OUTLINE','STORY_BODY','STORY_REWRITE','STORY_CONTINUE','STORY_POLISH','PICTURE_BOOK_CHARACTERS','PICTURE_BOOK_STORYBOARD')`,
     ),
     check('ai_jobs_provider_check', sql`${t.provider} in ('MOCK','DEEPSEEK')`),
     check(

@@ -24,6 +24,14 @@ const serviceSchema = baseSchema.extend({
   STORY_AI_MODEL: z.string().trim().min(1).max(128).default('mock-story-v1'),
   STORY_AI_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(10).default(3),
   STORY_AI_TIMEOUT_MS: z.coerce.number().int().min(1000).max(300000).default(30000),
+  PICTURE_BOOK_AI_ENABLED: z
+    .string()
+    .default('false')
+    .transform((value) => value === 'true'),
+  PICTURE_BOOK_AI_PROVIDER: z.enum(['MOCK', 'DEEPSEEK']).default('MOCK'),
+  PICTURE_BOOK_AI_MODEL: z.string().trim().min(1).max(128).default('mock-picture-book-v1'),
+  PICTURE_BOOK_AI_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(10).default(3),
+  PICTURE_BOOK_AI_TIMEOUT_MS: z.coerce.number().int().min(1000).max(300000).default(30000),
 });
 const databaseSchema = baseSchema.extend({ DATABASE_URL: z.url().startsWith('postgresql://') });
 

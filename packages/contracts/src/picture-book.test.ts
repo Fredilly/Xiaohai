@@ -100,3 +100,58 @@ describe('picture-book contracts', () => {
     ).toBe(true);
   });
 });
+
+describe('picture-book AI planning contracts', () => {
+  it('accepts strict character planning output', async () => {
+    const { pictureBookCharacterPlanSchema } = await import('./picture-book.js');
+
+    expect(
+      pictureBookCharacterPlanSchema.safeParse({
+        characters: [
+          {
+            name: '小狐狸',
+            role: 'MAIN',
+            description: '一只勇敢又温柔的小狐狸',
+            visualPrompt: 'orange fox, green scarf, round eyes',
+          },
+        ],
+      }).success,
+    ).toBe(true);
+
+    expect(
+      pictureBookCharacterPlanSchema.safeParse({
+        characters: [],
+      }).success,
+    ).toBe(false);
+  });
+
+  it('accepts storyboard output without trusting provider page numbers', async () => {
+    const { pictureBookStoryboardPlanSchema } = await import('./picture-book.js');
+
+    expect(
+      pictureBookStoryboardPlanSchema.safeParse({
+        cover: {
+          sceneDescription: '森林晨光中的小狐狸',
+          illustrationPrompt: 'storybook cover, forest sunrise, little fox',
+        },
+        pages: [
+          {
+            storyText: '清晨，小狐狸离开了家。',
+            sceneDescription: '小狐狸站在森林小路入口。',
+            illustrationPrompt: 'little fox on forest path, morning light',
+          },
+        ],
+      }).success,
+    ).toBe(true);
+
+    expect(
+      pictureBookStoryboardPlanSchema.safeParse({
+        cover: {
+          sceneDescription: '封面',
+          illustrationPrompt: 'cover',
+        },
+        pages: [],
+      }).success,
+    ).toBe(false);
+  });
+});
