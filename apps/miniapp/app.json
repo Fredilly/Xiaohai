@@ -10,7 +10,10 @@
     "pages/address/address",
     "pages/checkout/checkout",
     "pages/orders/orders",
-    "pages/order-detail/order-detail"
+    "pages/order-detail/order-detail",
+    "pages/stories/stories",
+    "pages/story-detail/story-detail",
+    "pages/playback/playback"
   ],
   "window": {
     "navigationBarTitleText": "小海童话",

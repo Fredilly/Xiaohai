@@ -19,6 +19,8 @@ import { registerCommerceRoutes } from './commerce/commerce-routes.js';
 import { loadWeChatPayProvider } from './payments/wechat-pay.js';
 import { PaymentService } from './payments/payment-service.js';
 import { registerPaymentRoutes } from './payments/payment-routes.js';
+import { ContentService } from './content/content-service.js';
+import { registerContentRoutes } from './content/content-routes.js';
 
 const config = loadServiceConfig(process.env);
 const { db, pool } = createDatabase(process.env);
@@ -52,6 +54,7 @@ const staffAuthorization = new StaffAuthorizationService(
 );
 const homeCms = new HomeCmsService(db);
 const commerce = new CommerceService(db);
+const content = new ContentService(db);
 const app = buildApp({ consumerAuth, staffAuth, staffAuthorization, homeCms });
 registerCommerceRoutes(app, { commerce, consumerSessions: sessions, staffAuthorization });
 registerPaymentRoutes(app, {
@@ -59,6 +62,7 @@ registerPaymentRoutes(app, {
   consumerSessions: sessions,
   staffAuthorization,
 });
+registerContentRoutes(app, { content, consumerSessions: sessions, staffAuthorization });
 app.addHook('onClose', async () => pool.end());
 try {
   await app.listen({ host: config.HOST, port: config.PORT });

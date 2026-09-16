@@ -21,6 +21,13 @@ export {
   orderItems,
 } from './commerce-schema.js';
 export {
+  mediaAssets,
+  animationSeries,
+  animationEpisodes,
+  contentEntitlements,
+  playbackProgress,
+} from './content-schema.js';
+export {
   consumerUsers,
   migrationBatches,
   migrationBookStaging,

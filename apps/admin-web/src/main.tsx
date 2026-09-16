@@ -5,6 +5,7 @@ import './styles.css';
 import { CmsManager } from './cms-manager';
 import { CatalogManager } from './catalog-manager';
 import { PaymentsManager } from './payments-manager';
+import { ContentManager } from './content-manager';
 import { getStaffMe, loginStaff } from './staff-auth';
 import { adminModules } from './mock-data';
 const tokenKey = 'staff_session_token';
@@ -110,6 +111,8 @@ function Shell({
           <PaymentsManager token={token} />
         ) : active === 'catalog' ? (
           <CatalogManager token={token} />
+        ) : active === 'content' ? (
+          <ContentManager token={token} />
         ) : (
           <Preview title={module.label} description={module.description} me={me} />
         )}
@@ -123,7 +126,7 @@ function Dashboard({ me }: { me: StaffMeResponse }) {
       <section className="hero">
         <div>
           <span className="badge">Production milestones</span>
-          <h2>M4 CMS + M5 Commerce + M6 WeChat Pay</h2>
+          <h2>M4 CMS + M5 Commerce + M6 WeChat Pay + M7 Stories & Animation</h2>
           <p>商城金额由服务端计算；支付须经商户配置和人工上线验收。</p>
         </div>
         <div className="hero-note">

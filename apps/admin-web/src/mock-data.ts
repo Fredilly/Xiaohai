@@ -23,8 +23,8 @@ export const adminModules: ModulePreview[] = [
   {
     key: 'content',
     label: '动画 / 内容',
-    description: '故事、动画与媒体内容框架',
-    status: '前端预览',
+    description: 'M7 Series、Episode 与媒体元数据管理',
+    status: '可查看',
   },
   { key: 'ai', label: 'AI', description: 'AI 项目、任务与审核框架', status: '前端预览' },
   { key: 'rental', label: '租借', description: '预约、借出、归还与逾期框架', status: '前端预览' },
