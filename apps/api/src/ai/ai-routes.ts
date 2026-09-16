@@ -70,7 +70,7 @@ function fail(request: FastifyRequest, reply: FastifyReply, error: unknown) {
     code = error.code;
   } else if (error instanceof AiPlatformError) {
     code = error.code;
-    status = code === 'NOT_FOUND' ? 404 : code === 'QUEUE_UNAVAILABLE' ? 503 : 409;
+    status = code === 'NOT_FOUND' ? 404 : 409;
   }
   request.log.warn({ requestId: request.id, errorCode: code }, 'AI platform request failed');
   return reply.status(status).send({ error: { code, message: code, requestId: request.id } });

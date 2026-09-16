@@ -4,6 +4,7 @@ import type { AiProvider } from './ai-provider.js';
 import { ProviderError } from './ai-provider.js';
 import type { ModerationAdapter } from './moderation.js';
 type Db = ReturnType<typeof createDatabase>['db'];
+type ModerationMetadata = { input: string; output?: string; reasonCodes: string[] };
 export class AiJobProcessor {
   constructor(
     private readonly db: Db,
@@ -81,7 +82,13 @@ export class AiJobProcessor {
       return { job, attempt: attempt! };
     });
     if (!claimed) return null;
-    const inputModeration = await this.moderation.moderate(claimed.job.input.prompt, 'INPUT');
+    let inputModeration;
+    try {
+      inputModeration = await this.moderation.moderate(claimed.job.input.prompt, 'INPUT');
+    } catch {
+      await this.finishFailure(claimed, 'MODERATION_UNAVAILABLE', null, true);
+      return claimed.job.id;
+    }
     if (inputModeration.status === 'BLOCKED') {
       await this.finishFailure(
         claimed,
@@ -91,59 +98,12 @@ export class AiJobProcessor {
       );
       return claimed.job.id;
     }
+    let result;
     try {
-      const result = await this.provider.generate({
+      result = await this.provider.generate({
         model: claimed.job.model,
         prompt: claimed.job.input.prompt,
         signal: AbortSignal.timeout(claimed.job.timeoutMs),
-      });
-      const outputModeration = await this.moderation.moderate(result.text, 'OUTPUT');
-      if (outputModeration.status === 'BLOCKED') {
-        await this.finishFailure(
-          claimed,
-          'MODERATION_BLOCKED',
-          {
-            input: inputModeration.status,
-            output: outputModeration.status,
-            reasonCodes: outputModeration.reasonCodes,
-          },
-          false,
-        );
-        return claimed.job.id;
-      }
-      await this.db.transaction(async (tx) => {
-        const [updated] = await tx
-          .update(aiJobs)
-          .set({
-            status: 'SUCCEEDED',
-            result: { text: result.text, assetReferences: result.assetReferences },
-            moderation: {
-              input: inputModeration.status,
-              output: outputModeration.status,
-              reasonCodes: [...inputModeration.reasonCodes, ...outputModeration.reasonCodes],
-            },
-            usage: result.usage,
-            costMetadata: result.costMetadata,
-            completedAt: new Date(),
-            updatedAt: new Date(),
-          })
-          .where(and(eq(aiJobs.id, claimed.job.id), eq(aiJobs.status, 'RUNNING')))
-          .returning({ id: aiJobs.id });
-        await tx
-          .update(aiJobAttempts)
-          .set({
-            status: updated ? 'SUCCEEDED' : 'CANCELLED',
-            providerRequestId: result.providerRequestId,
-            usage: result.usage,
-            costMetadata: result.costMetadata,
-            moderation: {
-              input: inputModeration.status,
-              output: outputModeration.status,
-              reasonCodes: [...inputModeration.reasonCodes, ...outputModeration.reasonCodes],
-            },
-            finishedAt: new Date(),
-          })
-          .where(eq(aiJobAttempts.id, claimed.attempt.id));
       });
     } catch (error) {
       const code = error instanceof ProviderError ? error.code : 'PROVIDER_UNAVAILABLE';
@@ -153,14 +113,77 @@ export class AiJobProcessor {
         { input: inputModeration.status, reasonCodes: inputModeration.reasonCodes },
         true,
       );
+      return claimed.job.id;
     }
+    let outputModeration;
+    try {
+      outputModeration = await this.moderation.moderate(result.text, 'OUTPUT');
+    } catch {
+      await this.finishFailure(
+        claimed,
+        'MODERATION_UNAVAILABLE',
+        { input: inputModeration.status, reasonCodes: inputModeration.reasonCodes },
+        true,
+        result,
+      );
+      return claimed.job.id;
+    }
+    if (outputModeration.status === 'BLOCKED') {
+      await this.finishFailure(
+        claimed,
+        'MODERATION_BLOCKED',
+        {
+          input: inputModeration.status,
+          output: outputModeration.status,
+          reasonCodes: outputModeration.reasonCodes,
+        },
+        false,
+        result,
+      );
+      return claimed.job.id;
+    }
+    await this.db.transaction(async (tx) => {
+      const [updated] = await tx
+        .update(aiJobs)
+        .set({
+          status: 'SUCCEEDED',
+          result: { text: result.text, assetReferences: result.assetReferences },
+          moderation: {
+            input: inputModeration.status,
+            output: outputModeration.status,
+            reasonCodes: [...inputModeration.reasonCodes, ...outputModeration.reasonCodes],
+          },
+          usage: result.usage,
+          costMetadata: result.costMetadata,
+          completedAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(and(eq(aiJobs.id, claimed.job.id), eq(aiJobs.status, 'RUNNING')))
+        .returning({ id: aiJobs.id });
+      await tx
+        .update(aiJobAttempts)
+        .set({
+          status: updated ? 'SUCCEEDED' : 'CANCELLED',
+          providerRequestId: result.providerRequestId,
+          usage: result.usage,
+          costMetadata: result.costMetadata,
+          moderation: {
+            input: inputModeration.status,
+            output: outputModeration.status,
+            reasonCodes: [...inputModeration.reasonCodes, ...outputModeration.reasonCodes],
+          },
+          finishedAt: new Date(),
+        })
+        .where(eq(aiJobAttempts.id, claimed.attempt.id));
+    });
     return claimed.job.id;
   }
   private async finishFailure(
     claimed: { job: typeof aiJobs.$inferSelect; attempt: typeof aiJobAttempts.$inferSelect },
     code: string,
-    moderation: { input: string; output?: string; reasonCodes: string[] },
+    moderation: ModerationMetadata | null,
     retryable: boolean,
+    providerResult?: Awaited<ReturnType<AiProvider['generate']>>,
   ) {
     await this.db.transaction(async (tx) => {
       const [current] = await tx
@@ -172,7 +195,15 @@ export class AiJobProcessor {
       if (current?.status === 'CANCELLED') {
         await tx
           .update(aiJobAttempts)
-          .set({ status: 'CANCELLED', errorCode: 'CANCELLED', moderation, finishedAt: new Date() })
+          .set({
+            status: 'CANCELLED',
+            errorCode: 'CANCELLED',
+            moderation,
+            providerRequestId: providerResult?.providerRequestId,
+            usage: providerResult?.usage,
+            costMetadata: providerResult?.costMetadata,
+            finishedAt: new Date(),
+          })
           .where(eq(aiJobAttempts.id, claimed.attempt.id));
         return;
       }
@@ -182,6 +213,9 @@ export class AiJobProcessor {
           status: code === 'PROVIDER_TIMEOUT' ? 'TIMED_OUT' : 'FAILED',
           errorCode: code,
           moderation,
+          providerRequestId: providerResult?.providerRequestId,
+          usage: providerResult?.usage,
+          costMetadata: providerResult?.costMetadata,
           finishedAt: new Date(),
         })
         .where(eq(aiJobAttempts.id, claimed.attempt.id));
@@ -194,6 +228,8 @@ export class AiJobProcessor {
           ),
           lastErrorCode: code,
           moderation,
+          usage: providerResult?.usage,
+          costMetadata: providerResult?.costMetadata,
           completedAt: terminal ? new Date() : null,
           updatedAt: new Date(),
         })

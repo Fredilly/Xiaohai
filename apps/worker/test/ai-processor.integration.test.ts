@@ -4,7 +4,7 @@ import { eq, inArray } from 'drizzle-orm';
 import { aiJobAttempts, aiJobs, aiProjects, createDatabase, staffAccounts } from '@xiaohai/db';
 import { AiJobProcessor } from '../src/ai-processor.js';
 import { MockAiProvider, ProviderError, type AiProvider } from '../src/ai-provider.js';
-import { BaselineModerationAdapter } from '../src/moderation.js';
+import { BaselineModerationAdapter, type ModerationAdapter } from '../src/moderation.js';
 
 const database = process.env.DATABASE_URL ? createDatabase(process.env) : null;
 const suite = database ? describe : describe.skip;
@@ -106,5 +106,67 @@ suite('M8 worker PostgreSQL integration', () => {
     const [attempt] = await db.select().from(aiJobAttempts).where(eq(aiJobAttempts.jobId, job.id));
     expect(saved).toMatchObject({ status: 'QUEUED', lastErrorCode: 'WORKER_LEASE_EXPIRED' });
     expect(attempt).toMatchObject({ status: 'TIMED_OUT', errorCode: 'WORKER_LEASE_EXPIRED' });
+  });
+
+  it('retries input moderation failures and leaves no running rows at max attempts', async () => {
+    const job = await queued(2);
+    const unavailable: ModerationAdapter = {
+      moderate: () => Promise.reject(new Error('moderation unavailable')),
+    };
+    const processor = new AiJobProcessor(db, new MockAiProvider(), unavailable);
+    await processor.processOne();
+    let [saved] = await db.select().from(aiJobs).where(eq(aiJobs.id, job.id));
+    expect(saved).toMatchObject({ status: 'QUEUED', lastErrorCode: 'MODERATION_UNAVAILABLE' });
+    await db
+      .update(aiJobs)
+      .set({ runAfter: new Date(0) })
+      .where(eq(aiJobs.id, job.id));
+    await processor.processOne();
+    [saved] = await db.select().from(aiJobs).where(eq(aiJobs.id, job.id));
+    const attempts = await db.select().from(aiJobAttempts).where(eq(aiJobAttempts.jobId, job.id));
+    expect(saved).toMatchObject({ status: 'FAILED', lastErrorCode: 'MODERATION_UNAVAILABLE' });
+    expect(saved!.moderation).toBeNull();
+    expect(attempts).toHaveLength(2);
+    expect(attempts.every((attempt) => attempt.status === 'FAILED')).toBe(true);
+    expect(attempts.every((attempt) => attempt.errorCode === 'MODERATION_UNAVAILABLE')).toBe(true);
+    expect(attempts.every((attempt) => attempt.moderation === null)).toBe(true);
+  });
+
+  it('classifies output moderation failures and preserves provider usage metadata', async () => {
+    const job = await queued(1);
+    const provider: AiProvider = {
+      name: 'MOCK',
+      generate: () =>
+        Promise.resolve({
+          text: 'provider result',
+          assetReferences: [],
+          providerRequestId: 'provider-request-8',
+          usage: { inputTokens: 2, outputTokens: 3, totalTokens: 5 },
+          costMetadata: { source: 'integration', amountMinor: 7 },
+        }),
+    };
+    const moderation: ModerationAdapter = {
+      moderate: (_text, phase) =>
+        phase === 'INPUT'
+          ? Promise.resolve({ status: 'PASSED', reasonCodes: [] })
+          : Promise.reject(new Error('output moderation unavailable')),
+    };
+    await new AiJobProcessor(db, provider, moderation).processOne();
+    const [saved] = await db.select().from(aiJobs).where(eq(aiJobs.id, job.id));
+    const [attempt] = await db.select().from(aiJobAttempts).where(eq(aiJobAttempts.jobId, job.id));
+    expect(saved).toMatchObject({
+      status: 'FAILED',
+      lastErrorCode: 'MODERATION_UNAVAILABLE',
+      usage: { totalTokens: 5 },
+      costMetadata: { source: 'integration', amountMinor: 7 },
+    });
+    expect(attempt).toMatchObject({
+      status: 'FAILED',
+      errorCode: 'MODERATION_UNAVAILABLE',
+      providerRequestId: 'provider-request-8',
+      usage: { totalTokens: 5 },
+      costMetadata: { source: 'integration', amountMinor: 7 },
+    });
+    expect(attempt!.errorCode).not.toBe('PROVIDER_UNAVAILABLE');
   });
 });

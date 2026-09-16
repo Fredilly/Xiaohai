@@ -69,7 +69,7 @@ registerContentRoutes(app, { content, consumerSessions: sessions, staffAuthoriza
 const aiQueue = new RedisAiQueue(config.REDIS_URL, () =>
   app.log.error({ errorCode: 'REDIS_UNAVAILABLE' }, 'AI queue Redis error'),
 );
-registerAiRoutes(app, { ai: new AiPlatformService(db, aiQueue), staffAuthorization });
+registerAiRoutes(app, { ai: new AiPlatformService(db, aiQueue, app.log), staffAuthorization });
 app.addHook('onClose', async () => {
   await aiQueue.close();
   await pool.end();

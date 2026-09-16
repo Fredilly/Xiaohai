@@ -7,14 +7,18 @@ import type { AiQueue } from './ai-queue.js';
 type Db = ReturnType<typeof createDatabase>['db'];
 type Input = z.infer<typeof createAiJobRequestSchema>;
 export class AiPlatformError extends Error {
-  constructor(readonly code: 'NOT_FOUND' | 'INVALID_AI_JOB_STATE' | 'QUEUE_UNAVAILABLE') {
+  constructor(readonly code: 'NOT_FOUND' | 'INVALID_AI_JOB_STATE') {
     super(code);
   }
 }
+type AiPlatformLogger = {
+  warn(bindings: Record<string, unknown>, message: string): void;
+};
 export class AiPlatformService {
   constructor(
     private readonly db: Db,
     private readonly queue: AiQueue,
+    private readonly logger?: AiPlatformLogger,
   ) {}
   async enqueue(staffId: string, input: Input) {
     const job = await this.db.transaction(async (tx) => {
@@ -38,7 +42,10 @@ export class AiPlatformService {
     try {
       await this.queue.notify(job.id);
     } catch {
-      throw new AiPlatformError('QUEUE_UNAVAILABLE');
+      this.logger?.warn(
+        { event: 'AI_QUEUE_NOTIFY_FAILED', jobId: job.id, operation: 'enqueue' },
+        'AI queue notification failed; PostgreSQL polling will recover the job',
+      );
     }
     return this.get(job.id);
   }
@@ -91,7 +98,10 @@ export class AiPlatformService {
     try {
       await this.queue.notify(id);
     } catch {
-      throw new AiPlatformError('QUEUE_UNAVAILABLE');
+      this.logger?.warn(
+        { event: 'AI_QUEUE_NOTIFY_FAILED', jobId: id, operation: 'retry' },
+        'AI queue notification failed; PostgreSQL polling will recover the job',
+      );
     }
     return this.get(id);
   }
