@@ -174,4 +174,11 @@ Page({
     this.setData({ loading: true });
     void this.load();
   },
+
+  createPictureBook() {
+    if (!this.data.latestBodyId || !this.data.work) return;
+    void wx.navigateTo({
+      url: `/pages/picture-book-create/picture-book-create?workId=${encodeURIComponent(this.data.workId)}&versionId=${encodeURIComponent(this.data.latestBodyId)}&title=${encodeURIComponent(this.data.work.title)}`,
+    });
+  },
 });

@@ -3,6 +3,12 @@ export { aiProjects, aiJobs, aiJobAttempts } from './ai-schema.js';
 export { resetAiJobAttemptBudget } from './ai-job-state.js';
 export { works, workVersions } from './works-schema.js';
 export {
+  pictureBooks,
+  characterProfiles,
+  workPages,
+  workPageIllustrations,
+} from './picture-book-schema.js';
+export {
   payments,
   refunds,
   paymentCallbacks,

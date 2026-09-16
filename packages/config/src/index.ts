@@ -24,6 +24,21 @@ const serviceSchema = baseSchema.extend({
   STORY_AI_MODEL: z.string().trim().min(1).max(128).default('mock-story-v1'),
   STORY_AI_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(10).default(3),
   STORY_AI_TIMEOUT_MS: z.coerce.number().int().min(1000).max(300000).default(30000),
+  PICTURE_BOOK_AI_ENABLED: z
+    .string()
+    .default('false')
+    .transform((value) => value === 'true'),
+  PICTURE_BOOK_AI_PROVIDER: z.enum(['MOCK', 'DEEPSEEK']).default('MOCK'),
+  PICTURE_BOOK_AI_MODEL: z.string().trim().min(1).max(128).default('mock-picture-book-v1'),
+  PICTURE_BOOK_AI_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(10).default(3),
+  PICTURE_BOOK_AI_TIMEOUT_MS: z.coerce.number().int().min(1000).max(300000).default(30000),
+  PICTURE_BOOK_IMAGE_ENABLED: z
+    .string()
+    .default('false')
+    .transform((value) => value === 'true'),
+  PICTURE_BOOK_IMAGE_PROVIDER: z.enum(['MOCK']).default('MOCK'),
+  PICTURE_BOOK_IMAGE_MODEL: z.string().trim().min(1).max(128).default('mock-image-v1'),
+  PICTURE_BOOK_IMAGE_TIMEOUT_MS: z.coerce.number().int().min(1000).max(300000).default(30000),
 });
 const databaseSchema = baseSchema.extend({ DATABASE_URL: z.url().startsWith('postgresql://') });
 
@@ -39,6 +54,13 @@ const workerSchema = baseSchema.extend({
   DEEPSEEK_API_KEY: z.string().min(1).optional(),
   DEEPSEEK_BASE_URL: z.url().startsWith('https://').default('https://api.deepseek.com'),
   AI_WORKER_POLL_MS: z.coerce.number().int().min(100).max(60000).default(1000),
+  PICTURE_BOOK_IMAGE_ENABLED: z
+    .string()
+    .default('false')
+    .transform((value) => value === 'true'),
+  PICTURE_BOOK_IMAGE_PROVIDER: z.enum(['MOCK']).default('MOCK'),
+  PICTURE_BOOK_IMAGE_MODEL: z.string().trim().min(1).max(128).default('mock-image-v1'),
+  PICTURE_BOOK_IMAGE_TIMEOUT_MS: z.coerce.number().int().min(1000).max(300000).default(30000),
 });
 export const loadWorkerConfig = (env: NodeJS.ProcessEnv) => {
   const config = workerSchema.parse(env);

@@ -9,7 +9,8 @@
     "./payments": "./dist/payments.js",
     "./content": "./dist/content.js",
     "./ai": "./dist/ai.js",
-    "./story": "./dist/story.js"
+    "./story": "./dist/story.js",
+    "./picture-book": "./dist/picture-book.js"
   },
   "types": "./dist/index.d.ts",
   "scripts": {

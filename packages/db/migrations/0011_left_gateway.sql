@@ -1,0 +1,2 @@
+ALTER TABLE "ai_jobs" DROP CONSTRAINT "ai_jobs_type_check";--> statement-breakpoint
+ALTER TABLE "ai_jobs" ADD CONSTRAINT "ai_jobs_type_check" CHECK ("ai_jobs"."job_type" in ('PLATFORM_TEXT','STORY_OUTLINE','STORY_BODY','STORY_REWRITE','STORY_CONTINUE','STORY_POLISH','PICTURE_BOOK_CHARACTERS','PICTURE_BOOK_STORYBOARD'));
