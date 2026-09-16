@@ -115,6 +115,13 @@ CREATE TABLE "animation_scenes" (
 	CONSTRAINT "animation_scenes_dialogue_check" CHECK (jsonb_typeof("animation_scenes"."dialogue") = 'array')
 );
 --> statement-breakpoint
+CREATE UNIQUE INDEX "ai_projects_id_consumer_unique" ON "ai_projects" USING btree ("id","created_by_consumer_user_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "works_id_consumer_unique" ON "works" USING btree ("id","consumer_user_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "work_versions_id_work_unique" ON "work_versions" USING btree ("id","work_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "ai_jobs_id_project_unique" ON "ai_jobs" USING btree ("id","project_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "animation_scenes_id_animation_unique" ON "animation_scenes" USING btree ("id","animation_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "animation_scene_generations_id_animation_unique" ON "animation_scene_generations" USING btree ("id","animation_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "animation_compositions_id_animation_unique" ON "animation_compositions" USING btree ("id","animation_id");--> statement-breakpoint
 ALTER TABLE "ai_jobs" DROP CONSTRAINT "ai_jobs_type_check";--> statement-breakpoint
 ALTER TABLE "ai_projects" DROP CONSTRAINT "ai_projects_type_check";--> statement-breakpoint
 ALTER TABLE "ai_animations" ADD CONSTRAINT "ai_animations_consumer_user_id_consumer_users_id_fk" FOREIGN KEY ("consumer_user_id") REFERENCES "public"."consumer_users"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
@@ -147,18 +154,11 @@ CREATE UNIQUE INDEX "animation_characters_animation_sort_unique" ON "animation_c
 CREATE INDEX "animation_characters_animation_idx" ON "animation_characters" USING btree ("animation_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "animation_composition_inputs_order_unique" ON "animation_composition_inputs" USING btree ("composition_id","scene_order");--> statement-breakpoint
 CREATE UNIQUE INDEX "animation_compositions_animation_revision_unique" ON "animation_compositions" USING btree ("animation_id","revision_number");--> statement-breakpoint
-CREATE UNIQUE INDEX "animation_compositions_id_animation_unique" ON "animation_compositions" USING btree ("id","animation_id");--> statement-breakpoint
 CREATE INDEX "animation_compositions_animation_status_idx" ON "animation_compositions" USING btree ("animation_id","status");--> statement-breakpoint
 CREATE UNIQUE INDEX "animation_scene_generations_scene_revision_unique" ON "animation_scene_generations" USING btree ("scene_id","revision_number");--> statement-breakpoint
-CREATE UNIQUE INDEX "animation_scene_generations_id_animation_unique" ON "animation_scene_generations" USING btree ("id","animation_id");--> statement-breakpoint
 CREATE INDEX "animation_scene_generations_claim_idx" ON "animation_scene_generations" USING btree ("status","created_at");--> statement-breakpoint
 CREATE INDEX "animation_scene_generations_scene_status_idx" ON "animation_scene_generations" USING btree ("scene_id","status");--> statement-breakpoint
 CREATE UNIQUE INDEX "animation_scenes_animation_number_unique" ON "animation_scenes" USING btree ("animation_id","scene_number");--> statement-breakpoint
-CREATE UNIQUE INDEX "animation_scenes_id_animation_unique" ON "animation_scenes" USING btree ("id","animation_id");--> statement-breakpoint
 CREATE INDEX "animation_scenes_animation_idx" ON "animation_scenes" USING btree ("animation_id","scene_number");--> statement-breakpoint
-CREATE UNIQUE INDEX "ai_jobs_id_project_unique" ON "ai_jobs" USING btree ("id","project_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "ai_projects_id_consumer_unique" ON "ai_projects" USING btree ("id","created_by_consumer_user_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "work_versions_id_work_unique" ON "work_versions" USING btree ("id","work_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "works_id_consumer_unique" ON "works" USING btree ("id","consumer_user_id");--> statement-breakpoint
 ALTER TABLE "ai_jobs" ADD CONSTRAINT "ai_jobs_type_check" CHECK ("ai_jobs"."job_type" in ('PLATFORM_TEXT','STORY_OUTLINE','STORY_BODY','STORY_REWRITE','STORY_CONTINUE','STORY_POLISH','PICTURE_BOOK_CHARACTERS','PICTURE_BOOK_STORYBOARD','ANIMATION_SCRIPT','ANIMATION_STORYBOARD'));--> statement-breakpoint
 ALTER TABLE "ai_projects" ADD CONSTRAINT "ai_projects_type_check" CHECK ("ai_projects"."project_type" in ('PLATFORM_SANDBOX','STORY','PICTURE_BOOK','ANIMATION'));
