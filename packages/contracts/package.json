@@ -8,7 +8,8 @@
     "./commerce": "./dist/commerce.js",
     "./payments": "./dist/payments.js",
     "./content": "./dist/content.js",
-    "./ai": "./dist/ai.js"
+    "./ai": "./dist/ai.js",
+    "./story": "./dist/story.js"
   },
   "types": "./dist/index.d.ts",
   "scripts": {
