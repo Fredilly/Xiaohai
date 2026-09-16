@@ -5,6 +5,7 @@ describe('MockImageProvider', () => {
   it('returns a deterministic storage reference and never image binary', async () => {
     const provider = new MockImageProvider();
     const input = {
+      generationKey: 'illustration-revision-id',
       model: 'mock-image-v1',
       prompt: 'fox in a forest',
       consistency: [
@@ -21,5 +22,8 @@ describe('MockImageProvider', () => {
     expect(first).toEqual(second);
     expect(first.objectKey).toMatch(/^picture-books\/mock\/[a-f0-9]{64}\.png$/);
     expect(JSON.stringify(first)).not.toMatch(/base64|data:image/i);
+
+    const nextRevision = await provider.generate({ ...input, generationKey: 'next-revision-id' });
+    expect(nextRevision.objectKey).not.toBe(first.objectKey);
   });
 });

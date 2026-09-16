@@ -7,6 +7,7 @@ export type ImageConsistencyReference = {
 };
 
 export type ImageGenerationInput = {
+  generationKey: string;
   model: string;
   prompt: string;
   consistency: ImageConsistencyReference[];
@@ -40,6 +41,7 @@ export class MockImageProvider implements ImageProvider {
     const digest = createHash('sha256')
       .update(
         JSON.stringify({
+          generationKey: input.generationKey,
           model: input.model,
           prompt: input.prompt,
           consistency: input.consistency,

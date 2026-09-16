@@ -43,6 +43,7 @@ export class ImageJobProcessor {
 
     try {
       const result = await this.provider.generate({
+        generationKey: claimed.id,
         model: claimed.model,
         prompt: claimed.prompt,
         consistency: claimed.consistency,

@@ -7,6 +7,7 @@ export interface ImageQueue {
 
 export class RedisImageQueue implements ImageQueue {
   private readonly client: RedisClientType;
+  private connecting: Promise<unknown> | null = null;
 
   constructor(url: string, onError: () => void = () => {}) {
     this.client = createClient({ url });
@@ -14,7 +15,12 @@ export class RedisImageQueue implements ImageQueue {
   }
 
   async notify(illustrationId: string) {
-    if (!this.client.isOpen) await this.client.connect();
+    if (!this.client.isOpen) {
+      this.connecting ??= this.client.connect().finally(() => {
+        this.connecting = null;
+      });
+      await this.connecting;
+    }
     await this.client.lPush('xiaohai:image:jobs', illustrationId);
   }
 
