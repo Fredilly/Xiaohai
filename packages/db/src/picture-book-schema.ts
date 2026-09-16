@@ -3,6 +3,7 @@ import {
   check,
   index,
   integer,
+  jsonb,
   pgTable,
   text,
   timestamp,
@@ -131,7 +132,19 @@ export const workPageIllustrations = pgTable(
       .references(() => workPages.id, { onDelete: 'cascade' }),
     revisionNumber: integer('revision_number').notNull(),
     prompt: text('prompt').notNull(),
+    provider: text('provider').notNull().default('MOCK'),
+    model: text('model').notNull(),
+    consistency: jsonb('consistency')
+      .$type<
+        Array<{
+          consistencyKey: string;
+          visualPrompt: string;
+          referenceMediaAssetId: string | null;
+        }>
+      >()
+      .notNull(),
     status: text('status').notNull().default('QUEUED'),
+    errorCode: text('error_code'),
     sourceAiJobId: uuid('source_ai_job_id').references(() => aiJobs.id, {
       onDelete: 'restrict',
     }),
@@ -145,6 +158,7 @@ export const workPageIllustrations = pgTable(
     uniqueIndex('work_page_illustrations_page_revision_unique').on(t.pageId, t.revisionNumber),
     index('work_page_illustrations_page_status_idx').on(t.pageId, t.status),
     check('work_page_illustrations_revision_check', sql`${t.revisionNumber} > 0`),
+    check('work_page_illustrations_provider_check', sql`${t.provider} in ('MOCK')`),
     check(
       'work_page_illustrations_status_check',
       sql`${t.status} in ('QUEUED','RUNNING','READY','FAILED')`,

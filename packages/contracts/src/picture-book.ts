@@ -53,7 +53,10 @@ export const pictureBookIllustrationSchema = z
     pageId: z.uuid(),
     revisionNumber: z.number().int().positive(),
     prompt: z.string().min(1),
+    provider: z.string().min(1),
+    model: z.string().min(1),
     status: pictureBookIllustrationStatusSchema,
+    errorCode: z.string().nullable(),
     sourceAiJobId: z.uuid().nullable(),
     mediaAssetId: z.uuid().nullable(),
     createdAt: z.iso.datetime(),
@@ -227,3 +230,19 @@ export type PictureBookCharacterPlan = z.infer<typeof pictureBookCharacterPlanSc
 export type PictureBookStoryboardPageDraft = z.infer<typeof pictureBookStoryboardPageDraftSchema>;
 export type PictureBookStoryboardPlan = z.infer<typeof pictureBookStoryboardPlanSchema>;
 export type PictureBookJobStatus = z.infer<typeof pictureBookJobStatusSchema>;
+
+export const pictureBookIllustrationAcceptedSchema = z
+  .object({
+    pictureBookId: z.uuid(),
+    pageId: z.uuid(),
+    illustrationId: z.uuid(),
+    revisionNumber: z.number().int().positive(),
+    status: z.literal('QUEUED'),
+  })
+  .strict();
+
+export const pictureBookIllustrationListSchema = z
+  .object({ illustrations: z.array(pictureBookIllustrationSchema) })
+  .strict();
+
+export type PictureBookIllustrationAccepted = z.infer<typeof pictureBookIllustrationAcceptedSchema>;

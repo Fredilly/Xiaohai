@@ -1,6 +1,6 @@
 {
-  "id": "7a68c188-fedb-47d3-ac64-5a64147e496c",
-  "prevId": "8ab50258-c8b0-4115-9b26-a1d64672d6a8",
+  "id": "b9b74bed-3d1c-4e73-97e5-80fb7a571d62",
+  "prevId": "7a68c188-fedb-47d3-ac64-5a64147e496c",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -4567,12 +4567,37 @@
           "primaryKey": false,
           "notNull": true
         },
+        "provider": {
+          "name": "provider",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'MOCK'"
+        },
+        "model": {
+          "name": "model",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "consistency": {
+          "name": "consistency",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
         "status": {
           "name": "status",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "default": "'QUEUED'"
+        },
+        "error_code": {
+          "name": "error_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "source_ai_job_id": {
           "name": "source_ai_job_id",
@@ -4681,6 +4706,10 @@
         "work_page_illustrations_revision_check": {
           "name": "work_page_illustrations_revision_check",
           "value": "\"work_page_illustrations\".\"revision_number\" > 0"
+        },
+        "work_page_illustrations_provider_check": {
+          "name": "work_page_illustrations_provider_check",
+          "value": "\"work_page_illustrations\".\"provider\" in ('MOCK')"
         },
         "work_page_illustrations_status_check": {
           "name": "work_page_illustrations_status_check",

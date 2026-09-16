@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import {
   aiJobs,
   aiProjects,
@@ -18,6 +18,7 @@ import {
   type PictureBookTextOperation,
 } from '@xiaohai/contracts/picture-book';
 import type { AiQueue } from '../ai/ai-queue.js';
+import type { ImageQueue } from './image-queue.js';
 
 type Db = ReturnType<typeof createDatabase>['db'];
 
@@ -27,6 +28,9 @@ export type PictureBookAiConfig = {
   model: string;
   maxAttempts: number;
   timeoutMs: number;
+  imageEnabled: boolean;
+  imageProvider: 'MOCK';
+  imageModel: string;
 };
 
 type PictureBookLogger = {
@@ -58,9 +62,109 @@ export class PictureBookService {
   constructor(
     private readonly db: Db,
     private readonly queue: AiQueue,
+    private readonly imageQueue: ImageQueue,
     private readonly config: PictureBookAiConfig,
     private readonly logger?: PictureBookLogger,
   ) {}
+
+  async generateIllustration(consumerUserId: string, pictureBookId: string, pageId: string) {
+    if (!this.config.imageEnabled) throw new PictureBookError('FEATURE_DISABLED');
+
+    const illustration = await this.db.transaction(async (tx) => {
+      const [page] = await tx
+        .select({ page: workPages, book: pictureBooks })
+        .from(workPages)
+        .innerJoin(pictureBooks, eq(pictureBooks.id, workPages.pictureBookId))
+        .where(
+          and(
+            eq(workPages.id, pageId),
+            eq(workPages.pictureBookId, pictureBookId),
+            eq(pictureBooks.consumerUserId, consumerUserId),
+          ),
+        )
+        .for('update');
+
+      if (!page) throw new PictureBookError('NOT_FOUND');
+      if (!page.page.illustrationPrompt) throw new PictureBookError('INVALID_STATE');
+
+      const characters = await tx
+        .select()
+        .from(characterProfiles)
+        .where(eq(characterProfiles.pictureBookId, pictureBookId))
+        .orderBy(asc(characterProfiles.sortOrder));
+
+      const [revision] = await tx
+        .select({
+          value: sql<number>`coalesce(max(${workPageIllustrations.revisionNumber}), 0) + 1`,
+        })
+        .from(workPageIllustrations)
+        .where(eq(workPageIllustrations.pageId, pageId));
+
+      const [created] = await tx
+        .insert(workPageIllustrations)
+        .values({
+          pageId,
+          revisionNumber: Number(revision!.value),
+          prompt: page.page.illustrationPrompt,
+          provider: this.config.imageProvider,
+          model: this.config.imageModel,
+          consistency: characters.map((character) => ({
+            consistencyKey: character.consistencyKey,
+            visualPrompt: character.visualPrompt,
+            referenceMediaAssetId: character.referenceMediaAssetId,
+          })),
+        })
+        .returning();
+
+      await tx
+        .update(pictureBooks)
+        .set({ status: 'ILLUSTRATING', updatedAt: new Date() })
+        .where(eq(pictureBooks.id, pictureBookId));
+      return created!;
+    });
+
+    try {
+      await this.imageQueue.notify(illustration.id);
+    } catch {
+      this.logger?.warn(
+        { event: 'PICTURE_BOOK_IMAGE_QUEUE_NOTIFY_FAILED', illustrationId: illustration.id },
+        'Image queue notification failed; PostgreSQL polling will recover the illustration',
+      );
+    }
+
+    return {
+      pictureBookId,
+      pageId,
+      illustrationId: illustration.id,
+      revisionNumber: illustration.revisionNumber,
+      status: 'QUEUED' as const,
+    };
+  }
+
+  async listIllustrations(consumerUserId: string, pictureBookId: string, pageId: string) {
+    await this.requireOwnedPage(consumerUserId, pictureBookId, pageId);
+    const rows = await this.db
+      .select()
+      .from(workPageIllustrations)
+      .where(eq(workPageIllustrations.pageId, pageId))
+      .orderBy(asc(workPageIllustrations.revisionNumber));
+    return { illustrations: rows.map((row) => this.viewIllustration(row)) };
+  }
+
+  private async requireOwnedPage(consumerUserId: string, pictureBookId: string, pageId: string) {
+    const [row] = await this.db
+      .select({ id: workPages.id })
+      .from(workPages)
+      .innerJoin(pictureBooks, eq(pictureBooks.id, workPages.pictureBookId))
+      .where(
+        and(
+          eq(workPages.id, pageId),
+          eq(workPages.pictureBookId, pictureBookId),
+          eq(pictureBooks.consumerUserId, consumerUserId),
+        ),
+      );
+    if (!row) throw new PictureBookError('NOT_FOUND');
+  }
 
   async createPictureBook(consumerUserId: string, input: CreatePictureBookRequest) {
     const [source] = await this.db
@@ -594,7 +698,10 @@ export class PictureBookService {
       pageId: illustration.pageId,
       revisionNumber: illustration.revisionNumber,
       prompt: illustration.prompt,
+      provider: illustration.provider,
+      model: illustration.model,
       status: illustration.status as 'QUEUED' | 'RUNNING' | 'READY' | 'FAILED',
+      errorCode: illustration.errorCode,
       sourceAiJobId: illustration.sourceAiJobId,
       mediaAssetId: illustration.mediaAssetId,
       createdAt: illustration.createdAt.toISOString(),

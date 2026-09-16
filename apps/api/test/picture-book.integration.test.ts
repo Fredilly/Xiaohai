@@ -4,9 +4,11 @@ import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   aiJobs,
   aiProjects,
+  characterProfiles,
   consumerUsers,
   createDatabase,
   pictureBooks,
+  workPageIllustrations,
   workPages,
   workVersions,
   works,
@@ -35,6 +37,9 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
     model: 'server-controlled-picture-book-model',
     maxAttempts: 2,
     timeoutMs: 5_000,
+    imageEnabled: true,
+    imageProvider: 'MOCK',
+    imageModel: 'server-controlled-image-model',
   };
 
   const resetDatabase = async () => {
@@ -68,8 +73,10 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
     close: () => Promise.resolve(),
   };
 
+  const imageQueue = queue;
+
   function service(overrides: Partial<PictureBookAiConfig> = {}) {
-    return new PictureBookService(db, queue, { ...config, ...overrides });
+    return new PictureBookService(db, queue, imageQueue, { ...config, ...overrides });
   }
 
   async function createApp(pictureBook = service()) {
@@ -263,6 +270,32 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
       accepted,
       detail: await pictureBook.applyJob(userId, pictureBookId, accepted.jobId),
     };
+  }
+
+  async function applyStoryboard(
+    pictureBook: PictureBookService,
+    userId: string,
+    pictureBookId: string,
+  ) {
+    await applyCharacters(pictureBook, userId, pictureBookId);
+    const accepted = await pictureBook.generate(userId, pictureBookId, { operation: 'STORYBOARD' });
+    await succeed(
+      accepted.jobId,
+      JSON.stringify({
+        cover: {
+          sceneDescription: '森林封面',
+          illustrationPrompt: 'orange fox and blue bird in a forest',
+        },
+        pages: [
+          {
+            storyText: '小狐狸遇见了小鸟。',
+            sceneDescription: '森林小路',
+            illustrationPrompt: 'orange fox meets a small blue bird',
+          },
+        ],
+      }),
+    );
+    return pictureBook.applyJob(userId, pictureBookId, accepted.jobId);
   }
 
   it('requires Consumer Session, isolates ownership and only accepts owned BODY sources', async () => {
@@ -574,5 +607,77 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
       );
 
     expect(jobs).toHaveLength(0);
+  });
+
+  it('allocates immutable illustration revisions concurrently with server-controlled configuration', async () => {
+    const pictureBook = service();
+    const alice = await createUser();
+    const { book } = await createBook(pictureBook, alice);
+    const detail = await applyStoryboard(pictureBook, alice, book.id);
+    const page = detail.pages[0]!;
+
+    const [first, second] = await Promise.all([
+      pictureBook.generateIllustration(alice, book.id, page.id),
+      pictureBook.generateIllustration(alice, book.id, page.id),
+    ]);
+
+    expect([first.revisionNumber, second.revisionNumber].sort()).toEqual([1, 2]);
+    const revisions = await pictureBook.listIllustrations(alice, book.id, page.id);
+    expect(revisions.illustrations.map((row) => row.revisionNumber)).toEqual([1, 2]);
+    expect(revisions.illustrations.every((row) => row.provider === 'MOCK')).toBe(true);
+    expect(
+      revisions.illustrations.every((row) => row.model === 'server-controlled-image-model'),
+    ).toBe(true);
+    expect(notifications).toEqual(
+      expect.arrayContaining([first.illustrationId, second.illustrationId]),
+    );
+
+    const [character] = await db
+      .select()
+      .from(characterProfiles)
+      .where(eq(characterProfiles.pictureBookId, book.id));
+    const [stored] = await db
+      .select()
+      .from(workPageIllustrations)
+      .where(eq(workPageIllustrations.id, first.illustrationId));
+    expect(stored!.consistency[0]).toMatchObject({
+      consistencyKey: character!.consistencyKey,
+      visualPrompt: character!.visualPrompt,
+      referenceMediaAssetId: null,
+    });
+  });
+
+  it('fails illustration requests closed, enforces ownership and rejects provider/model input', async () => {
+    const pictureBook = service();
+    const app = await createApp(pictureBook);
+    try {
+      const alice = await createUser();
+      const bob = await createUser();
+      const { book } = await createBook(pictureBook, alice);
+      const detail = await applyStoryboard(pictureBook, alice, book.id);
+      const page = detail.pages[0]!;
+
+      const injected = await app.inject({
+        method: 'POST',
+        url: `/api/v1/ai/picture-books/${book.id}/pages/${page.id}/illustrations`,
+        headers: { authorization: `Bearer ${token(alice)}` },
+        payload: { provider: 'DEEPSEEK', model: 'client-model' },
+      });
+      expect(injected.statusCode).toBe(400);
+
+      const foreign = await app.inject({
+        method: 'POST',
+        url: `/api/v1/ai/picture-books/${book.id}/pages/${page.id}/illustrations`,
+        headers: { authorization: `Bearer ${token(bob)}` },
+        payload: {},
+      });
+      expect(foreign.statusCode).toBe(404);
+
+      await expect(
+        service({ imageEnabled: false }).generateIllustration(alice, book.id, page.id),
+      ).rejects.toMatchObject({ code: 'FEATURE_DISABLED' });
+    } finally {
+      await app.close();
+    }
   });
 });

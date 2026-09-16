@@ -6,6 +6,8 @@ import {
   pictureBookDetailSchema,
   pictureBookGenerateRequestSchema,
   pictureBookGenerationAcceptedSchema,
+  pictureBookIllustrationAcceptedSchema,
+  pictureBookIllustrationListSchema,
   pictureBookJobStatusSchema,
   pictureBookListSchema,
   pictureBookSchema,
@@ -122,6 +124,51 @@ export function registerPictureBookRoutes(
       return fail(request, reply, error);
     }
   });
+
+  for (const suffix of ['illustrations', 'illustrations/regenerate']) {
+    app.post(`/api/v1/ai/picture-books/:bookId/pages/:pageId/${suffix}`, async (request, reply) => {
+      const params = z.object({ bookId: z.uuid(), pageId: z.uuid() }).safeParse(request.params);
+      const body = z
+        .object({})
+        .strict()
+        .safeParse(request.body ?? {});
+      if (!params.success || !body.success) return invalid(reply, request.id);
+      try {
+        return reply
+          .status(202)
+          .send(
+            pictureBookIllustrationAcceptedSchema.parse(
+              await options.pictureBook.generateIllustration(
+                consumer(request),
+                params.data.bookId,
+                params.data.pageId,
+              ),
+            ),
+          );
+      } catch (error) {
+        return fail(request, reply, error);
+      }
+    });
+  }
+
+  app.get(
+    '/api/v1/ai/picture-books/:bookId/pages/:pageId/illustrations',
+    async (request, reply) => {
+      const params = z.object({ bookId: z.uuid(), pageId: z.uuid() }).safeParse(request.params);
+      if (!params.success) return invalid(reply, request.id);
+      try {
+        return pictureBookIllustrationListSchema.parse(
+          await options.pictureBook.listIllustrations(
+            consumer(request),
+            params.data.bookId,
+            params.data.pageId,
+          ),
+        );
+      } catch (error) {
+        return fail(request, reply, error);
+      }
+    },
+  );
 }
 
 function invalid(reply: FastifyReply, requestId: string) {
