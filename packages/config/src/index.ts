@@ -15,9 +15,29 @@ const serviceSchema = baseSchema.extend({
   CONSUMER_SESSION_TTL_SECONDS: z.coerce.number().int().min(60).max(2_592_000).default(604_800),
   STAFF_SESSION_SECRET: z.string().min(32),
   STAFF_SESSION_TTL_SECONDS: z.coerce.number().int().min(60).max(86_400).default(28_800),
+  REDIS_URL: z.url().startsWith('redis://'),
 });
 const databaseSchema = baseSchema.extend({ DATABASE_URL: z.url().startsWith('postgresql://') });
 
 export const loadServiceConfig = (env: NodeJS.ProcessEnv) => serviceSchema.parse(env);
-export const loadWorkerConfig = (env: NodeJS.ProcessEnv) => baseSchema.parse(env);
+const workerSchema = baseSchema.extend({
+  DATABASE_URL: z.url().startsWith('postgresql://'),
+  REDIS_URL: z.url().startsWith('redis://'),
+  AI_PROVIDER: z.enum(['MOCK', 'DEEPSEEK']).default('MOCK'),
+  AI_MOCK_ENABLED: z
+    .string()
+    .default('false')
+    .transform((value) => value === 'true'),
+  DEEPSEEK_API_KEY: z.string().min(1).optional(),
+  DEEPSEEK_BASE_URL: z.url().startsWith('https://').default('https://api.deepseek.com'),
+  AI_WORKER_POLL_MS: z.coerce.number().int().min(100).max(60000).default(1000),
+});
+export const loadWorkerConfig = (env: NodeJS.ProcessEnv) => {
+  const config = workerSchema.parse(env);
+  if (config.AI_PROVIDER === 'MOCK' && !config.AI_MOCK_ENABLED)
+    throw new Error('AI Mock Provider is disabled');
+  if (config.AI_PROVIDER === 'DEEPSEEK' && !config.DEEPSEEK_API_KEY)
+    throw new Error('DeepSeek API key is required');
+  return config;
+};
 export const loadDatabaseConfig = (env: NodeJS.ProcessEnv) => databaseSchema.parse(env);

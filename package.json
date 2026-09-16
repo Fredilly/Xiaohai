@@ -15,7 +15,7 @@
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
-    "test:integration": "pnpm --filter @xiaohai/api test:integration",
+    "test:integration": "pnpm --filter @xiaohai/api test:integration && pnpm --filter @xiaohai/worker test:integration",
     "test:e2e": "playwright test",
     "check:workspace": "node scripts/check-workspace.mjs",
     "check:secrets": "node scripts/check-secrets.mjs",

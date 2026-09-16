@@ -9,11 +9,16 @@
     "lint": "eslint src test",
     "start": "node dist/index.js",
     "test": "vitest run",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@xiaohai/config": "workspace:*",
-    "pino": "catalog:"
+    "@xiaohai/db": "workspace:*",
+    "drizzle-orm": "catalog:",
+    "pino": "catalog:",
+    "redis": "^5.12.1",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@types/node": "catalog:",
