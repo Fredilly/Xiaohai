@@ -40,6 +40,13 @@ const serviceSchema = baseSchema.extend({
   ANIMATION_AI_MODEL: z.string().trim().min(1).max(128).default('mock-animation-v1'),
   ANIMATION_AI_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(10).default(3),
   ANIMATION_AI_TIMEOUT_MS: z.coerce.number().int().min(1000).max(300000).default(30000),
+  ANIMATION_VIDEO_ENABLED: z
+    .string()
+    .default('false')
+    .transform((value) => value === 'true'),
+  ANIMATION_VIDEO_PROVIDER: z.enum(['MOCK']).default('MOCK'),
+  ANIMATION_VIDEO_MODEL: z.string().trim().min(1).max(128).default('mock-video-v1'),
+  ANIMATION_VIDEO_TIMEOUT_MS: z.coerce.number().int().min(1000).max(300000).default(30000),
   PICTURE_BOOK_IMAGE_ENABLED: z
     .string()
     .default('false')
@@ -69,6 +76,13 @@ const workerSchema = baseSchema.extend({
   PICTURE_BOOK_IMAGE_PROVIDER: z.enum(['MOCK']).default('MOCK'),
   PICTURE_BOOK_IMAGE_MODEL: z.string().trim().min(1).max(128).default('mock-image-v1'),
   PICTURE_BOOK_IMAGE_TIMEOUT_MS: z.coerce.number().int().min(1000).max(300000).default(30000),
+  ANIMATION_VIDEO_ENABLED: z
+    .string()
+    .default('false')
+    .transform((value) => value === 'true'),
+  ANIMATION_VIDEO_PROVIDER: z.enum(['MOCK']).default('MOCK'),
+  ANIMATION_VIDEO_MODEL: z.string().trim().min(1).max(128).default('mock-video-v1'),
+  ANIMATION_VIDEO_TIMEOUT_MS: z.coerce.number().int().min(1000).max(300000).default(30000),
 });
 export const loadWorkerConfig = (env: NodeJS.ProcessEnv) => {
   const config = workerSchema.parse(env);

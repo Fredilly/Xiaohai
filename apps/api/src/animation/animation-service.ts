@@ -1,4 +1,4 @@
-import { and, asc, desc, eq } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import {
   aiAnimations,
   aiJobs,
@@ -20,6 +20,7 @@ import {
   type CreateAnimationRequest,
 } from '@xiaohai/contracts/animation';
 import type { AiQueue } from '../ai/ai-queue.js';
+import type { VideoQueue } from './video-queue.js';
 
 type Db = ReturnType<typeof createDatabase>['db'];
 
@@ -29,6 +30,12 @@ export type AnimationAiConfig = {
   model: string;
   maxAttempts: number;
   timeoutMs: number;
+};
+
+export type AnimationVideoConfig = {
+  enabled: boolean;
+  provider: 'MOCK';
+  model: string;
 };
 
 type AnimationLogger = { warn(bindings: Record<string, unknown>, message: string): void };
@@ -59,6 +66,8 @@ export class AnimationService {
     private readonly queue: AiQueue,
     private readonly config: AnimationAiConfig,
     private readonly logger?: AnimationLogger,
+    private readonly videoQueue?: VideoQueue,
+    private readonly videoConfig?: AnimationVideoConfig,
   ) {}
 
   async createAnimation(consumerUserId: string, input: CreateAnimationRequest) {
@@ -182,6 +191,104 @@ export class AnimationService {
       animationId: animation.id,
       jobId: job!.id,
       operation: input.operation,
+      status: 'QUEUED' as const,
+    };
+  }
+
+  async generateScene(consumerUserId: string, animationId: string, sceneId: string) {
+    const videoConfig = this.videoConfig;
+    const videoQueue = this.videoQueue;
+
+    if (!videoConfig?.enabled || !videoQueue) {
+      throw new AnimationError('FEATURE_DISABLED');
+    }
+
+    const generation = await this.db.transaction(async (tx) => {
+      const [animation] = await tx
+        .select()
+        .from(aiAnimations)
+        .where(
+          and(eq(aiAnimations.id, animationId), eq(aiAnimations.consumerUserId, consumerUserId)),
+        )
+        .for('update');
+
+      if (!animation) throw new AnimationError('NOT_FOUND');
+
+      if (animation.status !== 'STORYBOARD_READY' && animation.status !== 'GENERATING') {
+        throw new AnimationError('INVALID_STATE');
+      }
+
+      const [scene] = await tx
+        .select()
+        .from(animationScenes)
+        .where(and(eq(animationScenes.id, sceneId), eq(animationScenes.animationId, animation.id)))
+        .for('update');
+
+      if (!scene) throw new AnimationError('NOT_FOUND');
+
+      const [active] = await tx
+        .select({ id: animationSceneGenerations.id })
+        .from(animationSceneGenerations)
+        .where(
+          and(
+            eq(animationSceneGenerations.sceneId, scene.id),
+            inArray(animationSceneGenerations.status, ['QUEUED', 'RUNNING']),
+          ),
+        )
+        .limit(1);
+
+      if (active) throw new AnimationError('INVALID_STATE');
+
+      const [revision] = await tx
+        .select({
+          value: sql<number>`coalesce(max(${animationSceneGenerations.revisionNumber}), 0) + 1`,
+        })
+        .from(animationSceneGenerations)
+        .where(eq(animationSceneGenerations.sceneId, scene.id));
+
+      const [created] = await tx
+        .insert(animationSceneGenerations)
+        .values({
+          animationId: animation.id,
+          sceneId: scene.id,
+          revisionNumber: Number(revision!.value),
+          provider: videoConfig.provider,
+          model: videoConfig.model,
+        })
+        .returning();
+
+      if (animation.status === 'STORYBOARD_READY') {
+        await tx
+          .update(aiAnimations)
+          .set({
+            status: 'GENERATING',
+            updatedAt: new Date(),
+          })
+          .where(eq(aiAnimations.id, animation.id));
+      }
+
+      return created!;
+    });
+
+    try {
+      await videoQueue.notify(generation.id);
+    } catch {
+      this.logger?.warn(
+        {
+          event: 'ANIMATION_VIDEO_QUEUE_NOTIFY_FAILED',
+          generationId: generation.id,
+          animationId,
+          sceneId,
+        },
+        'Animation video queue notification failed; PostgreSQL polling will recover the generation',
+      );
+    }
+
+    return {
+      animationId,
+      sceneId,
+      generationId: generation.id,
+      revisionNumber: generation.revisionNumber,
       status: 'QUEUED' as const,
     };
   }

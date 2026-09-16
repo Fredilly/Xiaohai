@@ -6,8 +6,10 @@ import {
   animationJobStatusSchema,
   animationListSchema,
   animationPlanningRequestSchema,
+  animationSceneGenerationAcceptedSchema,
   animationSchema,
   applyAnimationJobRequestSchema,
+  createAnimationSceneGenerationRequestSchema,
   createAnimationRequestSchema,
 } from '@xiaohai/contracts/animation';
 import type { ConsumerSessionService } from '../auth/session.js';
@@ -78,6 +80,35 @@ export function registerAnimationRoutes(
       return fail(request, reply, error);
     }
   });
+  app.post('/api/v1/ai/animations/:id/scenes/:sceneId/generations', async (request, reply) => {
+    const params = z
+      .object({
+        id: z.uuid(),
+        sceneId: z.uuid(),
+      })
+      .safeParse(request.params);
+
+    const input = createAnimationSceneGenerationRequestSchema.safeParse(request.body ?? {});
+
+    if (!params.success || !input.success) return invalid(reply, request.id);
+
+    try {
+      return reply
+        .status(202)
+        .send(
+          animationSceneGenerationAcceptedSchema.parse(
+            await options.animation.generateScene(
+              consumer(request),
+              params.data.id,
+              params.data.sceneId,
+            ),
+          ),
+        );
+    } catch (error) {
+      return fail(request, reply, error);
+    }
+  });
+
   app.get('/api/v1/ai/animations/jobs/:id', async (request, reply) => {
     const params = z.object({ id: z.uuid() }).safeParse(request.params);
     if (!params.success) return invalid(reply, request.id);

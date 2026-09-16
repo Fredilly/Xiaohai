@@ -242,6 +242,18 @@ export const animationGenerationAcceptedSchema = z
   })
   .strict();
 
+export const createAnimationSceneGenerationRequestSchema = z.object({}).strict();
+
+export const animationSceneGenerationAcceptedSchema = z
+  .object({
+    animationId: z.uuid(),
+    sceneId: z.uuid(),
+    generationId: z.uuid(),
+    revisionNumber: z.number().int().positive(),
+    status: z.literal('QUEUED'),
+  })
+  .strict();
+
 export const applyAnimationJobRequestSchema = z.object({ jobId: z.uuid() }).strict();
 
 export const animationJobStatusSchema = z
@@ -271,5 +283,11 @@ export type AnimationComposition = z.infer<typeof animationCompositionSchema>;
 export type AnimationDetail = z.infer<typeof animationDetailSchema>;
 export type AnimationList = z.infer<typeof animationListSchema>;
 export type AnimationGenerationAccepted = z.infer<typeof animationGenerationAcceptedSchema>;
+export type CreateAnimationSceneGenerationRequest = z.infer<
+  typeof createAnimationSceneGenerationRequestSchema
+>;
+export type AnimationSceneGenerationAccepted = z.infer<
+  typeof animationSceneGenerationAcceptedSchema
+>;
 export type ApplyAnimationJobRequest = z.infer<typeof applyAnimationJobRequestSchema>;
 export type AnimationJobStatus = z.infer<typeof animationJobStatusSchema>;

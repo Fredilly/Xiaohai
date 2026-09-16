@@ -31,6 +31,7 @@ import { registerPictureBookRoutes } from './picture-book/picture-book-routes.js
 import { RedisImageQueue } from './picture-book/image-queue.js';
 import { AnimationService } from './animation/animation-service.js';
 import { registerAnimationRoutes } from './animation/animation-routes.js';
+import { RedisVideoQueue } from './animation/video-queue.js';
 
 const config = loadServiceConfig(process.env);
 const { db, pool } = createDatabase(process.env);
@@ -121,6 +122,10 @@ registerPictureBookRoutes(app, {
   consumerSessions: sessions,
 });
 
+const videoQueue = new RedisVideoQueue(config.REDIS_URL, () =>
+  app.log.error({ errorCode: 'REDIS_UNAVAILABLE' }, 'Animation video queue Redis error'),
+);
+
 registerAnimationRoutes(app, {
   animation: new AnimationService(
     db,
@@ -133,6 +138,12 @@ registerAnimationRoutes(app, {
       timeoutMs: config.ANIMATION_AI_TIMEOUT_MS,
     },
     app.log,
+    videoQueue,
+    {
+      enabled: config.ANIMATION_VIDEO_ENABLED,
+      provider: config.ANIMATION_VIDEO_PROVIDER,
+      model: config.ANIMATION_VIDEO_MODEL,
+    },
   ),
   consumerSessions: sessions,
 });
@@ -140,6 +151,7 @@ registerAnimationRoutes(app, {
 app.addHook('onClose', async () => {
   await aiQueue.close();
   await imageQueue.close();
+  await videoQueue.close();
   await pool.end();
 });
 try {
