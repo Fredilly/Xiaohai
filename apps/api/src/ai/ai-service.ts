@@ -1,5 +1,11 @@
 import { and, count, desc, eq, inArray } from 'drizzle-orm';
-import { aiJobAttempts, aiJobs, aiProjects, type createDatabase } from '@xiaohai/db';
+import {
+  aiJobAttempts,
+  aiJobs,
+  aiProjects,
+  resetAiJobAttemptBudget,
+  type createDatabase,
+} from '@xiaohai/db';
 import type { z } from 'zod';
 import type { createAiJobRequestSchema } from '@xiaohai/contracts/ai';
 import type { AiQueue } from './ai-queue.js';
@@ -82,19 +88,8 @@ export class AiPlatformService {
     return this.get(id);
   }
   async retry(id: string) {
-    const [updated] = await this.db
-      .update(aiJobs)
-      .set({
-        status: 'QUEUED',
-        runAfter: new Date(),
-        startedAt: null,
-        completedAt: null,
-        lastErrorCode: null,
-        updatedAt: new Date(),
-      })
-      .where(and(eq(aiJobs.id, id), eq(aiJobs.status, 'FAILED')))
-      .returning();
-    if (!updated) throw new AiPlatformError('INVALID_AI_JOB_STATE');
+    if (!(await resetAiJobAttemptBudget(this.db, id)))
+      throw new AiPlatformError('INVALID_AI_JOB_STATE');
     try {
       await this.queue.notify(id);
     } catch {

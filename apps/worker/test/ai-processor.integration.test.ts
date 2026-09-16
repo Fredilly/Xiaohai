@@ -1,7 +1,14 @@
 import { randomUUID } from 'node:crypto';
-import { afterAll, afterEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 import { eq, inArray } from 'drizzle-orm';
-import { aiJobAttempts, aiJobs, aiProjects, createDatabase, staffAccounts } from '@xiaohai/db';
+import {
+  aiJobAttempts,
+  aiJobs,
+  aiProjects,
+  createDatabase,
+  resetAiJobAttemptBudget,
+  staffAccounts,
+} from '@xiaohai/db';
 import { AiJobProcessor } from '../src/ai-processor.js';
 import { MockAiProvider, ProviderError, type AiProvider } from '../src/ai-provider.js';
 import { BaselineModerationAdapter, type ModerationAdapter } from '../src/moderation.js';
@@ -77,6 +84,37 @@ suite('M8 worker PostgreSQL integration', () => {
     const attempts = await db.select().from(aiJobAttempts).where(eq(aiJobAttempts.jobId, job.id));
     expect(saved).toMatchObject({ status: 'FAILED', lastErrorCode: 'PROVIDER_UNAVAILABLE' });
     expect(attempts).toHaveLength(2);
+  });
+
+  it('executes a fresh budget after manual retry and preserves exhausted attempts', async () => {
+    const job = await queued(1);
+    const generate = vi
+      .fn<AiProvider['generate']>()
+      .mockRejectedValueOnce(new ProviderError('PROVIDER_UNAVAILABLE'))
+      .mockResolvedValueOnce({
+        text: 'manual retry executed',
+        assetReferences: [],
+        usage: { totalTokens: 4 },
+        costMetadata: { source: 'regression' },
+      });
+    const processor = new AiJobProcessor(
+      db,
+      { name: 'MOCK', generate },
+      new BaselineModerationAdapter(),
+    );
+    await processor.processOne();
+    let [saved] = await db.select().from(aiJobs).where(eq(aiJobs.id, job.id));
+    expect(saved!.status).toBe('FAILED');
+    expect(await resetAiJobAttemptBudget(db, job.id)).toBe(true);
+
+    await processor.processOne();
+
+    [saved] = await db.select().from(aiJobs).where(eq(aiJobs.id, job.id));
+    const attempts = await db.select().from(aiJobAttempts).where(eq(aiJobAttempts.jobId, job.id));
+    expect(saved).toMatchObject({ status: 'SUCCEEDED', attemptBudgetStart: 1 });
+    expect(generate).toHaveBeenCalledTimes(2);
+    expect(attempts).toHaveLength(2);
+    expect(attempts.map((attempt) => attempt.attemptNumber)).toEqual([1, 2]);
   });
 
   it('records provider timeouts as timed-out attempts', async () => {

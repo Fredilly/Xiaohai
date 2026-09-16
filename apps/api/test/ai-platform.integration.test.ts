@@ -107,6 +107,38 @@ suite('M8 AI platform PostgreSQL integration', () => {
     await db.update(aiJobs).set({ status: 'RUNNING' });
     expect((await service.cancel(result.id)).status).toBe('CANCELLED');
   });
+  it('manual retry advances the budget start without deleting attempt history', async () => {
+    const created = await service.enqueue(await staff(), {
+      projectTitle: 'Manual retry budget',
+      prompt: 'platform probe',
+      provider: 'MOCK',
+      model: 'mock-v1',
+      timeoutMs: 1000,
+      maxAttempts: 1,
+    });
+    await db.insert(aiJobAttempts).values({
+      jobId: created.id,
+      attemptNumber: 1,
+      status: 'FAILED',
+      errorCode: 'PROVIDER_UNAVAILABLE',
+      finishedAt: new Date(),
+    });
+    await db.update(aiJobs).set({ status: 'FAILED' }).where(eq(aiJobs.id, created.id));
+    const historyBeforeRetry = await db
+      .select()
+      .from(aiJobAttempts)
+      .where(eq(aiJobAttempts.jobId, created.id));
+    expect(historyBeforeRetry).toHaveLength(1);
+
+    expect((await service.retry(created.id)).status).toBe('QUEUED');
+    const [retried] = await db.select().from(aiJobs).where(eq(aiJobs.id, created.id));
+    const historyAfterRetry = await db
+      .select()
+      .from(aiJobAttempts)
+      .where(eq(aiJobAttempts.jobId, created.id));
+    expect(retried).toMatchObject({ status: 'QUEUED', attemptBudgetStart: 1 });
+    expect(historyAfterRetry).toEqual(historyBeforeRetry);
+  });
   it('database rejects invalid states, attempts and broken foreign keys', async () => {
     const result = await service.enqueue(await staff(), {
       projectTitle: 'P',

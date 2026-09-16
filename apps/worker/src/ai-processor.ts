@@ -59,7 +59,8 @@ export class AiJobProcessor {
         .from(aiJobAttempts)
         .where(eq(aiJobAttempts.jobId, job.id));
       const attemptNumber = (total?.value ?? 0) + 1;
-      if (attemptNumber > job.maxAttempts) {
+      const attemptsInCurrentBudget = (total?.value ?? 0) - job.attemptBudgetStart;
+      if (attemptsInCurrentBudget >= job.maxAttempts) {
         await tx
           .update(aiJobs)
           .set({

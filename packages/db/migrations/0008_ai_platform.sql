@@ -21,6 +21,7 @@ CREATE TABLE "ai_jobs" (
   "usage" jsonb,
   "cost_metadata" jsonb,
   "max_attempts" integer DEFAULT 3 NOT NULL,
+  "attempt_budget_start" integer DEFAULT 0 NOT NULL,
   "timeout_ms" integer DEFAULT 30000 NOT NULL,
   "run_after" timestamptz DEFAULT now() NOT NULL,
   "started_at" timestamptz,
@@ -33,6 +34,7 @@ CREATE TABLE "ai_jobs" (
   CONSTRAINT "ai_jobs_provider_check" CHECK ("provider" in ('MOCK','DEEPSEEK')),
   CONSTRAINT "ai_jobs_status_check" CHECK ("status" in ('QUEUED','RUNNING','SUCCEEDED','FAILED','CANCELLED')),
   CONSTRAINT "ai_jobs_attempts_check" CHECK ("max_attempts" between 1 and 10),
+  CONSTRAINT "ai_jobs_attempt_budget_start_check" CHECK ("attempt_budget_start" >= 0),
   CONSTRAINT "ai_jobs_timeout_check" CHECK ("timeout_ms" between 1000 and 300000)
 );
 CREATE INDEX "ai_jobs_claim_idx" ON "ai_jobs" ("status","run_after","created_at");
