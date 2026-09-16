@@ -322,6 +322,26 @@ suite('M9 Story AI PostgreSQL integration and ownership', () => {
       sourceVersionId: firstSave.id,
     });
 
+    const continueJob = await story.generate(alice, aliceWork.id, {
+      operation: 'CONTINUE',
+      sourceVersionId: bodyVersion.id,
+    });
+
+    await succeed(continueJob.jobId, '然后他们在回家的路上遇见了一群萤火虫。');
+
+    const continueVersion = await story.saveVersion(alice, aliceWork.id, continueJob.jobId);
+
+    expect(continueVersion).toMatchObject({
+      versionNumber: 3,
+      contentKind: 'BODY',
+      operation: 'CONTINUE',
+      sourceVersionId: bodyVersion.id,
+    });
+
+    expect(continueVersion.content).toBe(
+      '这是根据大纲生成的完整故事正文。\n\n然后他们在回家的路上遇见了一群萤火虫。',
+    );
+
     await expect(story.getWork(bob, aliceWork.id)).rejects.toMatchObject({ code: 'NOT_FOUND' });
 
     await expect(story.saveVersion(bob, aliceWork.id, bodyJob.jobId)).rejects.toMatchObject({

@@ -231,15 +231,36 @@ export class StoryService {
         throw new StoryError('JOB_NOT_READY');
       }
 
+      let sourceContent: string | null = null;
+
       if (context.sourceVersionId) {
         const [source] = await tx
-          .select({ id: workVersions.id })
+          .select({
+            id: workVersions.id,
+            content: workVersions.content,
+            contentKind: workVersions.contentKind,
+          })
           .from(workVersions)
           .where(
             and(eq(workVersions.id, context.sourceVersionId), eq(workVersions.workId, work.id)),
           );
 
         if (!source) throw new StoryError('INVALID_JOB_STATE');
+
+        if (context.operation === 'BODY' && source.contentKind !== 'OUTLINE') {
+          throw new StoryError('INVALID_JOB_STATE');
+        }
+
+        if (
+          ['REWRITE', 'CONTINUE', 'POLISH'].includes(context.operation) &&
+          source.contentKind !== 'BODY'
+        ) {
+          throw new StoryError('INVALID_JOB_STATE');
+        }
+
+        sourceContent = source.content;
+      } else if (context.operation !== 'OUTLINE') {
+        throw new StoryError('INVALID_JOB_STATE');
       }
 
       const [latest] = await tx
@@ -248,6 +269,11 @@ export class StoryService {
         .where(eq(workVersions.workId, work.id))
         .orderBy(desc(workVersions.versionNumber))
         .limit(1);
+
+      const versionContent =
+        context.operation === 'CONTINUE' && sourceContent
+          ? `${sourceContent}\n\n${job.result.text}`
+          : job.result.text;
 
       const [created] = await tx
         .insert(workVersions)
@@ -258,7 +284,7 @@ export class StoryService {
           operation: context.operation,
           sourceVersionId: context.sourceVersionId,
           sourceAiJobId: job.id,
-          content: job.result.text,
+          content: versionContent,
         })
         .returning();
 
@@ -345,7 +371,8 @@ export class StoryService {
       OUTLINE: '请生成结构清晰的故事大纲，包含开端、发展、转折和结尾。',
       BODY: '请严格参考大纲写成完整儿童故事正文。',
       REWRITE: '请根据参考正文和本次要求进行改写，输出完整正文。',
-      CONTINUE: '请在保持人物、情节和语言风格连续的前提下续写正文。',
+      CONTINUE:
+        '请在保持人物、情节和语言风格连续的前提下续写正文，只输出新增续写片段，不要重复参考正文。',
       POLISH: '请润色参考正文，提升流畅度、童趣和可读性，不改变核心情节。',
     }[input.operation];
 

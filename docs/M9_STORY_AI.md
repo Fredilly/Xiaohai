@@ -81,6 +81,8 @@ BODY must reference an OUTLINE version from the same work.
 
 REWRITE, CONTINUE and POLISH must reference a BODY version from the same work.
 
+A `CONTINUE` job generates only the new continuation segment. When it is persisted, the service combines the source BODY and the new segment so every saved BODY version remains a complete story body rather than an isolated continuation fragment.
+
 M10/M11 page, scene, character and media structures are intentionally not implemented in M9.
 
 ## Consumer ownership / 用户隔离
