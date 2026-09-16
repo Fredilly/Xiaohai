@@ -36,6 +36,10 @@ Page({
     void wx.navigateTo({ url: '/pages/story-create/story-create' });
   },
 
+  openPictureBooks() {
+    void wx.navigateTo({ url: '/pages/picture-books/picture-books' });
+  },
+
   retry() {
     void this.load();
   },

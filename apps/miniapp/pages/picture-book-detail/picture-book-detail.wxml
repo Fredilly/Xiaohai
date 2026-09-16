@@ -1,0 +1,34 @@
+<view class="page">
+  <view wx:if="{{loading}}" class="state-card">正在加载绘本…</view>
+  <view wx:elif="{{!detail}}" class="state-card"><text>{{error}}</text><button bindtap="load">重试</button></view>
+  <block wx:else>
+    <view class="hero hero-soft"><text class="eyebrow">PICTURE BOOK</text><text class="hero-title">{{detail.pictureBook.title}}</text><text>{{detail.pictureBook.status}}</text></view>
+    <view wx:if="{{error}}" class="error-note">{{error}}</view>
+    <view class="section">
+      <view class="section-head"><text class="section-title">角色设定</text><text class="section-note">{{detail.characters.length}} 个角色</text></view>
+      <button wx:if="{{detail.characters.length === 0}}" class="primary-btn" data-operation="CHARACTERS" loading="{{busy}}" disabled="{{busy}}" bindtap="generatePlan">生成角色设定</button>
+      <view wx:for="{{detail.characters}}" wx:key="id" class="state-card character-card"><text class="card-title">{{item.name}}</text><text>{{item.description}}</text><text class="muted">{{item.visualPrompt}}</text><text class="muted">Consistency {{item.consistencyKey}}</text></view>
+    </view>
+    <view class="section">
+      <view class="section-head"><text class="section-title">分页与整书预览</text><text class="section-note">{{detail.pages.length}} 页</text></view>
+      <button wx:if="{{detail.characters.length > 0 && detail.pages.length === 0}}" class="primary-btn" data-operation="STORYBOARD" loading="{{busy}}" disabled="{{busy}}" bindtap="generatePlan">生成分页分镜</button>
+      <view wx:if="{{detail.pages.length === 0}}" class="state-card">完成角色设定后生成分页。</view>
+      <view wx:for="{{detail.pages}}" wx:key="id" class="page-card">
+        <text wx:if="{{item.pageKind === 'COVER'}}" class="page-heading">封面</text>
+        <text wx:else class="page-heading">第 {{item.pageNumber}} 页</text>
+        <text wx:if="{{item.storyText}}" class="story-copy">{{item.storyText}}</text>
+        <text class="muted">{{item.sceneDescription}}</text>
+        <view wx:if="{{item.illustrations.length === 0}}" class="image-placeholder">尚未生成插画</view>
+        <view wx:else class="revision-list">
+          <view wx:for="{{item.illustrations}}" wx:for-item="revision" wx:key="id" class="revision-card">
+            <text>Revision {{revision.revisionNumber}} · {{revision.status}}</text>
+            <text wx:if="{{revision.mediaAssetId}}" class="muted">Media {{revision.mediaAssetId}}</text>
+            <text wx:if="{{revision.errorCode}}" class="error-note">{{revision.errorCode}}</text>
+          </view>
+        </view>
+        <button wx:if="{{item.illustrations.length === 0}}" data-page-id="{{item.id}}" data-regenerate="false" disabled="{{busy}}" bindtap="illustrate">生成本页插画</button>
+        <button wx:else data-page-id="{{item.id}}" data-regenerate="true" disabled="{{busy}}" bindtap="illustrate">重新生成（保留历史）</button>
+      </view>
+    </view>
+  </block>
+</view>

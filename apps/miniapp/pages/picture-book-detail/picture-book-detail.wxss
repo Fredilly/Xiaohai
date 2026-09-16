@@ -1,0 +1,33 @@
+.character-card,
+.page-card {
+  margin-bottom: 18rpx;
+}
+.character-card text,
+.page-card text {
+  display: block;
+  margin-top: 8rpx;
+}
+.page-card {
+  background: #fff;
+  border: 1rpx solid #ebe5da;
+  border-radius: 24rpx;
+  padding: 24rpx;
+}
+.page-heading {
+  font-size: 30rpx;
+  font-weight: 800;
+}
+.story-copy {
+  font-size: 26rpx;
+  line-height: 1.8;
+}
+.image-placeholder,
+.revision-card {
+  margin: 18rpx 0;
+  padding: 22rpx;
+  border-radius: 16rpx;
+  background: #f7f4ed;
+}
+.revision-list {
+  margin-top: 14rpx;
+}
