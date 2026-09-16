@@ -52,7 +52,17 @@ export const aiJobs = pgTable(
     provider: text('provider').notNull(),
     model: text('model').notNull(),
     status: text('status').notNull().default('QUEUED'),
-    input: jsonb('input').$type<{ prompt: string }>().notNull(),
+    input: jsonb('input')
+      .$type<{
+        prompt: string;
+        context?: {
+          kind: 'STORY';
+          workId: string;
+          operation: 'OUTLINE' | 'BODY' | 'REWRITE' | 'CONTINUE' | 'POLISH';
+          sourceVersionId?: string | null;
+        };
+      }>()
+      .notNull(),
     result: jsonb('result').$type<{ text?: string; assetReferences?: string[] }>(),
     moderation: jsonb('moderation').$type<{
       input: string;

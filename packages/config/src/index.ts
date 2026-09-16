@@ -16,6 +16,14 @@ const serviceSchema = baseSchema.extend({
   STAFF_SESSION_SECRET: z.string().min(32),
   STAFF_SESSION_TTL_SECONDS: z.coerce.number().int().min(60).max(86_400).default(28_800),
   REDIS_URL: z.url().startsWith('redis://'),
+  STORY_AI_ENABLED: z
+    .string()
+    .default('false')
+    .transform((value) => value === 'true'),
+  STORY_AI_PROVIDER: z.enum(['MOCK', 'DEEPSEEK']).default('MOCK'),
+  STORY_AI_MODEL: z.string().trim().min(1).max(128).default('mock-story-v1'),
+  STORY_AI_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(10).default(3),
+  STORY_AI_TIMEOUT_MS: z.coerce.number().int().min(1000).max(300000).default(30000),
 });
 const databaseSchema = baseSchema.extend({ DATABASE_URL: z.url().startsWith('postgresql://') });
 

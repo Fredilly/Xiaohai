@@ -24,6 +24,8 @@ import { registerContentRoutes } from './content/content-routes.js';
 import { RedisAiQueue } from './ai/ai-queue.js';
 import { AiPlatformService } from './ai/ai-service.js';
 import { registerAiRoutes } from './ai/ai-routes.js';
+import { StoryService } from './story/story-service.js';
+import { registerStoryRoutes } from './story/story-routes.js';
 
 const config = loadServiceConfig(process.env);
 const { db, pool } = createDatabase(process.env);
@@ -70,6 +72,24 @@ const aiQueue = new RedisAiQueue(config.REDIS_URL, () =>
   app.log.error({ errorCode: 'REDIS_UNAVAILABLE' }, 'AI queue Redis error'),
 );
 registerAiRoutes(app, { ai: new AiPlatformService(db, aiQueue, app.log), staffAuthorization });
+
+const story = new StoryService(
+  db,
+  aiQueue,
+  {
+    enabled: config.STORY_AI_ENABLED,
+    provider: config.STORY_AI_PROVIDER,
+    model: config.STORY_AI_MODEL,
+    maxAttempts: config.STORY_AI_MAX_ATTEMPTS,
+    timeoutMs: config.STORY_AI_TIMEOUT_MS,
+  },
+  app.log,
+);
+
+registerStoryRoutes(app, {
+  story,
+  consumerSessions: sessions,
+});
 app.addHook('onClose', async () => {
   await aiQueue.close();
   await pool.end();

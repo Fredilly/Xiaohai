@@ -87,6 +87,16 @@ export const saveStoryVersionRequestSchema = z
   })
   .strict();
 
+export const storyJobStatusSchema = z.object({
+  jobId: z.uuid(),
+  workId: z.uuid(),
+  operation: storyOperationSchema,
+  status: z.enum(['QUEUED', 'RUNNING', 'SUCCEEDED', 'FAILED', 'CANCELLED']),
+  generatedText: z.string().nullable(),
+  savedVersionId: z.uuid().nullable(),
+  lastErrorCode: z.string().nullable(),
+});
+
 export type StoryOperation = z.infer<typeof storyOperationSchema>;
 export type StoryContentKind = z.infer<typeof storyContentKindSchema>;
 export type StoryControls = z.infer<typeof storyControlsSchema>;
@@ -96,3 +106,4 @@ export type StoryWork = z.infer<typeof storyWorkSchema>;
 export type StoryVersion = z.infer<typeof storyVersionSchema>;
 export type StoryWorkDetail = z.infer<typeof storyWorkDetailSchema>;
 export type StoryGenerationAccepted = z.infer<typeof storyGenerationAcceptedSchema>;
+export type StoryJobStatus = z.infer<typeof storyJobStatusSchema>;
