@@ -1,4 +1,5 @@
 export { createDatabase } from './client.js';
+export { aiProjects, aiJobs, aiJobAttempts } from './ai-schema.js';
 export {
   payments,
   refunds,

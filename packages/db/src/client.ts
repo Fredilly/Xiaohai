@@ -6,6 +6,7 @@ import * as cmsSchema from './cms-schema.js';
 import * as commerceSchema from './commerce-schema.js';
 import * as paymentSchema from './payment-schema.js';
 import * as contentSchema from './content-schema.js';
+import * as aiSchema from './ai-schema.js';
 
 const schema = {
   ...coreSchema,
@@ -13,6 +14,7 @@ const schema = {
   ...commerceSchema,
   ...paymentSchema,
   ...contentSchema,
+  ...aiSchema,
 };
 export function createDatabase(env: NodeJS.ProcessEnv = process.env) {
   const config = loadDatabaseConfig(env);
