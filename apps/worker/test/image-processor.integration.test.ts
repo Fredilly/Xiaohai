@@ -41,15 +41,38 @@ suite('M10 image worker PostgreSQL integration', () => {
         style: 'storybook',
       })
       .returning();
-    const [job] = await db
+    const [outlineJob] = await db
       .insert(aiJobs)
       .values({
         projectId: project!.id,
         provider: 'MOCK',
         model: 'fixture',
         status: 'SUCCEEDED',
-        input: { prompt: 'fixture' },
-        result: { text: 'fixture', assetReferences: [] },
+        input: { prompt: 'fixture outline' },
+        result: { text: 'fixture outline', assetReferences: [] },
+        completedAt: new Date(),
+      })
+      .returning();
+    const [outlineVersion] = await db
+      .insert(workVersions)
+      .values({
+        workId: work!.id,
+        versionNumber: 1,
+        contentKind: 'OUTLINE',
+        operation: 'OUTLINE',
+        sourceAiJobId: outlineJob!.id,
+        content: 'fixture outline',
+      })
+      .returning();
+    const [bodyJob] = await db
+      .insert(aiJobs)
+      .values({
+        projectId: project!.id,
+        provider: 'MOCK',
+        model: 'fixture',
+        status: 'SUCCEEDED',
+        input: { prompt: 'fixture body' },
+        result: { text: 'fixture story', assetReferences: [] },
         completedAt: new Date(),
       })
       .returning();
@@ -57,10 +80,11 @@ suite('M10 image worker PostgreSQL integration', () => {
       .insert(workVersions)
       .values({
         workId: work!.id,
-        versionNumber: 1,
+        versionNumber: 2,
         contentKind: 'BODY',
         operation: 'BODY',
-        sourceAiJobId: job!.id,
+        sourceVersionId: outlineVersion!.id,
+        sourceAiJobId: bodyJob!.id,
         content: 'fixture story',
       })
       .returning();
@@ -119,7 +143,7 @@ suite('M10 image worker PostgreSQL integration', () => {
   }
 
   afterEach(async () => {
-    await database!.pool.query(`TRUNCATE TABLE consumer_users CASCADE`);
+    await database!.pool.query(`TRUNCATE TABLE media_assets, consumer_users CASCADE`);
   });
   afterAll(async () => database?.pool.end());
 
