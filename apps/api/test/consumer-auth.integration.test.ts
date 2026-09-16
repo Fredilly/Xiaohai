@@ -12,8 +12,7 @@ const testSuite = hasDatabase ? describe : describe.skip;
 
 testSuite('consumer auth PostgreSQL integration', () => {
   beforeEach(async () => {
-    await database!.db.delete(wechatIdentities);
-    await database!.db.delete(consumerUsers);
+    await database!.pool.query('TRUNCATE TABLE consumer_users CASCADE');
   });
   afterAll(async () => database?.pool.end());
 
