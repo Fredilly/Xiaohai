@@ -86,10 +86,12 @@ suite('M8 worker PostgreSQL integration', () => {
     expect(attempts).toHaveLength(2);
   });
 
-  it('executes a fresh budget after manual retry and preserves exhausted attempts', async () => {
-    const job = await queued(1);
+  it('executes a full fresh budget after manual retry and preserves exhausted attempts', async () => {
+    const job = await queued(2);
     const generate = vi
       .fn<AiProvider['generate']>()
+      .mockRejectedValueOnce(new ProviderError('PROVIDER_UNAVAILABLE'))
+      .mockRejectedValueOnce(new ProviderError('PROVIDER_UNAVAILABLE'))
       .mockRejectedValueOnce(new ProviderError('PROVIDER_UNAVAILABLE'))
       .mockResolvedValueOnce({
         text: 'manual retry executed',
@@ -102,19 +104,53 @@ suite('M8 worker PostgreSQL integration', () => {
       { name: 'MOCK', generate },
       new BaselineModerationAdapter(),
     );
+
     await processor.processOne();
+    await db
+      .update(aiJobs)
+      .set({ runAfter: new Date(0) })
+      .where(eq(aiJobs.id, job.id));
+    await processor.processOne();
+
     let [saved] = await db.select().from(aiJobs).where(eq(aiJobs.id, job.id));
-    expect(saved!.status).toBe('FAILED');
+    expect(saved).toMatchObject({
+      status: 'FAILED',
+      attemptBudgetStart: 0,
+    });
+
     expect(await resetAiJobAttemptBudget(db, job.id)).toBe(true);
+
+    [saved] = await db.select().from(aiJobs).where(eq(aiJobs.id, job.id));
+    expect(saved).toMatchObject({
+      status: 'QUEUED',
+      attemptBudgetStart: 2,
+    });
 
     await processor.processOne();
 
     [saved] = await db.select().from(aiJobs).where(eq(aiJobs.id, job.id));
+    expect(saved).toMatchObject({
+      status: 'QUEUED',
+      lastErrorCode: 'PROVIDER_UNAVAILABLE',
+      attemptBudgetStart: 2,
+    });
+
+    await db
+      .update(aiJobs)
+      .set({ runAfter: new Date(0) })
+      .where(eq(aiJobs.id, job.id));
+    await processor.processOne();
+
+    [saved] = await db.select().from(aiJobs).where(eq(aiJobs.id, job.id));
     const attempts = await db.select().from(aiJobAttempts).where(eq(aiJobAttempts.jobId, job.id));
-    expect(saved).toMatchObject({ status: 'SUCCEEDED', attemptBudgetStart: 1 });
-    expect(generate).toHaveBeenCalledTimes(2);
-    expect(attempts).toHaveLength(2);
-    expect(attempts.map((attempt) => attempt.attemptNumber)).toEqual([1, 2]);
+
+    expect(saved).toMatchObject({
+      status: 'SUCCEEDED',
+      attemptBudgetStart: 2,
+    });
+    expect(generate).toHaveBeenCalledTimes(4);
+    expect(attempts).toHaveLength(4);
+    expect(attempts.map((attempt) => attempt.attemptNumber)).toEqual([1, 2, 3, 4]);
   });
 
   it('records provider timeouts as timed-out attempts', async () => {

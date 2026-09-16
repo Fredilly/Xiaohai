@@ -192,7 +192,9 @@ export class AiJobProcessor {
         .from(aiJobs)
         .where(eq(aiJobs.id, claimed.job.id))
         .for('update');
-      const terminal = !retryable || claimed.attempt.attemptNumber >= claimed.job.maxAttempts;
+      const attemptsUsedInCurrentBudget =
+        claimed.attempt.attemptNumber - claimed.job.attemptBudgetStart;
+      const terminal = !retryable || attemptsUsedInCurrentBudget >= claimed.job.maxAttempts;
       if (current?.status === 'CANCELLED') {
         await tx
           .update(aiJobAttempts)
