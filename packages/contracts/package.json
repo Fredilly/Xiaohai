@@ -45,6 +45,12 @@
       "development": "./src/picture-book.ts",
       "import": "./dist/picture-book.js",
       "default": "./dist/picture-book.js"
+    },
+    "./animation": {
+      "types": "./src/animation.ts",
+      "development": "./src/animation.ts",
+      "import": "./dist/animation.js",
+      "default": "./dist/animation.js"
     }
   },
   "types": "./dist/index.d.ts",

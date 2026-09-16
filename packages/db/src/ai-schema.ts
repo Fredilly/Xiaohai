@@ -32,7 +32,7 @@ export const aiProjects = pgTable(
   (t) => [
     check(
       'ai_projects_type_check',
-      sql`${t.projectType} in ('PLATFORM_SANDBOX','STORY','PICTURE_BOOK')`,
+      sql`${t.projectType} in ('PLATFORM_SANDBOX','STORY','PICTURE_BOOK','ANIMATION')`,
     ),
     check(
       'ai_projects_owner_check',
@@ -41,6 +41,7 @@ export const aiProjects = pgTable(
     ),
     index('ai_projects_staff_creator_idx').on(t.createdByStaffAccountId),
     index('ai_projects_consumer_creator_idx').on(t.createdByConsumerUserId),
+    uniqueIndex('ai_projects_id_consumer_unique').on(t.id, t.createdByConsumerUserId),
   ],
 );
 
@@ -69,6 +70,11 @@ export const aiJobs = pgTable(
               kind: 'PICTURE_BOOK';
               pictureBookId: string;
               operation: 'CHARACTERS' | 'STORYBOARD';
+            }
+          | {
+              kind: 'ANIMATION';
+              animationId: string;
+              operation: 'SCRIPT' | 'STORYBOARD';
             };
       }>()
       .notNull(),
@@ -98,7 +104,7 @@ export const aiJobs = pgTable(
   (t) => [
     check(
       'ai_jobs_type_check',
-      sql`${t.jobType} in ('PLATFORM_TEXT','STORY_OUTLINE','STORY_BODY','STORY_REWRITE','STORY_CONTINUE','STORY_POLISH','PICTURE_BOOK_CHARACTERS','PICTURE_BOOK_STORYBOARD')`,
+      sql`${t.jobType} in ('PLATFORM_TEXT','STORY_OUTLINE','STORY_BODY','STORY_REWRITE','STORY_CONTINUE','STORY_POLISH','PICTURE_BOOK_CHARACTERS','PICTURE_BOOK_STORYBOARD','ANIMATION_SCRIPT','ANIMATION_STORYBOARD')`,
     ),
     check('ai_jobs_provider_check', sql`${t.provider} in ('MOCK','DEEPSEEK')`),
     check(
@@ -110,6 +116,7 @@ export const aiJobs = pgTable(
     check('ai_jobs_timeout_check', sql`${t.timeoutMs} between 1000 and 300000`),
     index('ai_jobs_claim_idx').on(t.status, t.runAfter, t.createdAt),
     index('ai_jobs_project_created_idx').on(t.projectId, t.createdAt),
+    uniqueIndex('ai_jobs_id_project_unique').on(t.id, t.projectId),
   ],
 );
 
