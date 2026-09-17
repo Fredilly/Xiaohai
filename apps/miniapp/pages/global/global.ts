@@ -10,6 +10,9 @@ type StoreMarker = {
   height: number;
 };
 
+type InputEvent = { detail: { value?: string } };
+type PickerEvent = { detail: { value?: string | number } };
+
 Page({
   data: {
     loading: false,
@@ -20,8 +23,8 @@ Page({
     selectedRegionIndex: 0,
     stores: [] as PublicStore[],
     nearbyMode: false,
-    latitude: undefined as number | undefined,
-    longitude: undefined as number | undefined,
+    latitude: null as number | null,
+    longitude: null as number | null,
     mapLatitude: 30.657,
     mapLongitude: 104.066,
     markers: [] as StoreMarker[],
@@ -47,8 +50,8 @@ Page({
     }
   },
 
-  onQueryInput(event: WechatMiniprogram.Input) {
-    this.setData({ query: event.detail.value });
+  onQueryInput(event: InputEvent) {
+    this.setData({ query: String(event.detail.value ?? '') });
   },
 
   async submitSearch() {
@@ -60,8 +63,8 @@ Page({
     await this.refreshStores();
   },
 
-  async onRegionChange(event: WechatMiniprogram.PickerChange) {
-    this.setData({ selectedRegionIndex: Number(event.detail.value) });
+  async onRegionChange(event: PickerEvent) {
+    this.setData({ selectedRegionIndex: Number(event.detail.value ?? 0) });
     await this.refreshStores();
   },
 
@@ -90,7 +93,7 @@ Page({
   },
 
   async disableNearby() {
-    this.setData({ nearbyMode: false, latitude: undefined, longitude: undefined });
+    this.setData({ nearbyMode: false, latitude: null, longitude: null });
     await this.refreshStores();
   },
 
@@ -104,8 +107,8 @@ Page({
       const stores = await listStores({
         q: this.data.query || undefined,
         regionId: selectedRegion?.id,
-        latitude: this.data.nearbyMode ? this.data.latitude : undefined,
-        longitude: this.data.nearbyMode ? this.data.longitude : undefined,
+        latitude: this.data.nearbyMode ? (this.data.latitude ?? undefined) : undefined,
+        longitude: this.data.nearbyMode ? (this.data.longitude ?? undefined) : undefined,
         radiusKm: this.data.nearbyMode ? 50 : undefined,
       });
       this.applyStores(stores);
