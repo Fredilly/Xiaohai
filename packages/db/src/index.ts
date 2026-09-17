@@ -25,6 +25,7 @@ export {
   reconciliationItems,
 } from './payment-schema.js';
 export { cmsPages, cmsSections } from './cms-schema.js';
+export { DEFAULT_LOCAL_HOME_SECTIONS, seedLocalHomeCms } from './seed-local-home.js';
 export {
   books,
   bookEditions,

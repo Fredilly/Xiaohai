@@ -62,6 +62,13 @@ const migration = spawnSync('pnpm', ['--filter', '@xiaohai/db', 'db:migrate'], {
 });
 if (migration.status !== 0) process.exit(migration.status ?? 1);
 
+console.log('Ensuring local Home CMS has safe default content...');
+const homeSeed = spawnSync('pnpm', ['--filter', '@xiaohai/db', 'db:seed-local-home'], {
+  cwd: root,
+  stdio: 'inherit',
+});
+if (homeSeed.status !== 0) process.exit(homeSeed.status ?? 1);
+
 if (!(await isPortOpen(6379))) {
   console.warn(
     'Redis is not running on 127.0.0.1:6379. Home/CMS can still run, but Redis-backed features may be unavailable.',
