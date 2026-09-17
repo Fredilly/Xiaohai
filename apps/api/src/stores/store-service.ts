@@ -1,4 +1,4 @@
-import { and, asc, eq, ilike, isNull, or } from 'drizzle-orm';
+import { and, asc, eq, ilike, isNull, or, sql } from 'drizzle-orm';
 import {
   createFranchiseeRequestSchema,
   createRegionRequestSchema,
@@ -51,6 +51,34 @@ export class StoreNetworkService {
   }
 
   async listPublicStores(input: PublicStoreQuery) {
+    const latitude = input.latitude;
+    const longitude = input.longitude;
+    const radiusKm = input.radiusKm ?? 50;
+    const limit = input.limit ?? 50;
+
+    const distanceSql =
+      latitude !== undefined && longitude !== undefined
+        ? sql<number>`6371 * 2 * asin(
+            least(
+              1,
+              sqrt(
+                power(sin(radians(${stores.latitude} - ${latitude}) / 2), 2) +
+                cos(radians(${latitude})) *
+                cos(radians(${stores.latitude})) *
+                power(sin(radians(${stores.longitude} - ${longitude}) / 2), 2)
+              )
+            )
+          )`
+        : null;
+
+    const serviceCondition = input.service
+      ? sql`exists (
+          select 1
+          from jsonb_array_elements_text(${stores.services}) as service_item(value)
+          where lower(service_item.value) = lower(${input.service})
+        )`
+      : undefined;
+
     const rows = await this.db
       .select({
         id: stores.id,
@@ -86,31 +114,15 @@ export class StoreNetworkService {
           input.country
             ? or(ilike(stores.countryCode, input.country), ilike(stores.countryName, input.country))
             : undefined,
+          serviceCondition,
+          distanceSql ? sql`${distanceSql} <= ${radiusKm}` : undefined,
         ),
       )
-      .orderBy(asc(stores.name));
+      .orderBy(distanceSql ? asc(distanceSql) : asc(stores.name), asc(stores.name))
+      .limit(limit);
 
-    const serviceFilter = input.service?.toLocaleLowerCase();
-    const latitude = input.latitude;
-    const longitude = input.longitude;
-    const radiusKm = input.radiusKm ?? 50;
-
-    const items = rows.flatMap((row) => {
-      const services = normalizeServices(row.services);
-      if (
-        serviceFilter &&
-        !services.some((service) => service.toLocaleLowerCase() === serviceFilter)
-      ) {
-        return [];
-      }
-
-      const distanceKm =
-        latitude !== undefined && longitude !== undefined
-          ? haversineKm(latitude, longitude, row.latitude, row.longitude)
-          : null;
-      if (distanceKm !== null && distanceKm > radiusKm) return [];
-
-      return [
+    return publicStoresResponseSchema.parse({
+      stores: rows.map((row) =>
         publicStoreSchema.parse({
           id: row.id,
           code: row.code,
@@ -131,20 +143,14 @@ export class StoreNetworkService {
           longitude: row.longitude,
           phone: row.phone,
           openingHoursText: row.openingHoursText,
-          services,
-          distanceKm,
+          services: normalizeServices(row.services),
+          distanceKm:
+            latitude !== undefined && longitude !== undefined
+              ? haversineKm(latitude, longitude, row.latitude, row.longitude)
+              : null,
         }),
-      ];
+      ),
     });
-
-    if (latitude !== undefined && longitude !== undefined) {
-      items.sort(
-        (a, b) =>
-          (a.distanceKm ?? Number.POSITIVE_INFINITY) - (b.distanceKm ?? Number.POSITIVE_INFINITY),
-      );
-    }
-
-    return publicStoresResponseSchema.parse({ stores: items });
   }
 
   async getPublicStore(id: string) {

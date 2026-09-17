@@ -78,6 +78,7 @@ export const publicStoreQuerySchema = z
     latitude: optionalNumber(z.number().min(-90).max(90)),
     longitude: optionalNumber(z.number().min(-180).max(180)),
     radiusKm: optionalNumber(z.number().positive().max(200)),
+    limit: optionalNumber(z.number().int().min(1).max(100)),
   })
   .strict()
   .superRefine((value, ctx) => {

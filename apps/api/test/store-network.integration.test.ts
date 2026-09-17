@@ -216,6 +216,19 @@ testSuite('M12 store network PostgreSQL integration', () => {
       region: { id: network.chengduRegion.id },
     });
 
+    const limited = await app.inject({
+      method: 'GET',
+      url: '/api/v1/stores?limit=1',
+    });
+    expect(limited.statusCode).toBe(200);
+    expect(publicStoresResponseSchema.parse(limited.json()).stores).toHaveLength(1);
+
+    const invalidLimit = await app.inject({
+      method: 'GET',
+      url: '/api/v1/stores?limit=101',
+    });
+    expect(invalidLimit.statusCode).toBe(400);
+
     response = await app.inject({
       method: 'GET',
       url: `/api/v1/stores/${network.inactiveStore.id}`,

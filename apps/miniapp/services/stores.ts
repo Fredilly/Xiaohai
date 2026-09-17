@@ -10,6 +10,7 @@ type StoreQuery = {
   latitude?: number;
   longitude?: number;
   radiusKm?: number;
+  limit?: number;
 };
 
 async function request<T>(path: string): Promise<T> {
@@ -44,6 +45,7 @@ function buildQuery(input: StoreQuery) {
   append('latitude', input.latitude);
   append('longitude', input.longitude);
   append('radiusKm', input.radiusKm);
+  append('limit', input.limit);
   return params.length ? `?${params.join('&')}` : '';
 }
 

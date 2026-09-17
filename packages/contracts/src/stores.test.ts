@@ -41,6 +41,13 @@ describe('M12 store network contracts', () => {
     ).toBe(false);
   });
 
+  it('bounds public store query result limits', () => {
+    expect(publicStoreQuerySchema.safeParse({ limit: '50' }).success).toBe(true);
+    expect(publicStoreQuerySchema.safeParse({ limit: '100' }).success).toBe(true);
+    expect(publicStoreQuerySchema.safeParse({ limit: '0' }).success).toBe(false);
+    expect(publicStoreQuerySchema.safeParse({ limit: '101' }).success).toBe(false);
+  });
+
   it('keeps M13 inventory fields outside the M12 store write contract', () => {
     expect(createStoreRequestSchema.safeParse({ ...storeInput, inventory: 100 }).success).toBe(
       false,
