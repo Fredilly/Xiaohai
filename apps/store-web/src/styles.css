@@ -10,8 +10,61 @@ body {
   margin: 0;
 }
 button,
-input {
+input,
+select {
   font: inherit;
+}
+.inventory-table {
+  display: grid;
+  gap: 6px;
+  margin: 22px 0;
+}
+.inventory-row {
+  display: grid;
+  grid-template-columns: 2fr 1fr 70px;
+  gap: 12px;
+  padding: 12px;
+  background: #faf9f5;
+  border-radius: 10px;
+  align-items: center;
+}
+.inventory-row.heading {
+  font-weight: 800;
+  background: #eef1e9;
+}
+.inventory-row span:first-child {
+  display: grid;
+  gap: 3px;
+}
+.inventory-row small {
+  color: #777;
+  overflow-wrap: anywhere;
+}
+.operation-form {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr 2fr auto;
+  gap: 10px;
+  align-items: end;
+}
+.operation-form label {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.operation-form input,
+.operation-form select {
+  border: 1px solid #d5cdbf;
+  border-radius: 9px;
+  padding: 10px;
+  min-width: 0;
+}
+.operation-form button {
+  border: 0;
+  border-radius: 9px;
+  background: #4e5c3f;
+  color: #fff;
+  padding: 11px 14px;
 }
 button {
   cursor: pointer;
@@ -242,6 +295,9 @@ button {
   }
   .quick-grid {
     grid-template-columns: repeat(2, 1fr);
+  }
+  .operation-form {
+    grid-template-columns: 1fr 1fr;
   }
 }
 @media (max-width: 560px) {

@@ -9,8 +9,8 @@ export const storeModules = [
   {
     key: 'inventory',
     label: '库存',
-    description: '库存查看、盘点、调拨入口框架',
-    status: '前端预览',
+    description: '库存余额、出库与调整的最小操作入口',
+    status: 'M14 已接入',
   },
   {
     key: 'rental',

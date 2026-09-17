@@ -113,6 +113,13 @@
       "when": 1789627965228,
       "tag": "0015_long_kang",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1789638847407,
+      "tag": "0016_petite_sasquatch",
+      "breakpoints": true
     }
   ]
 }
