@@ -48,7 +48,7 @@ function buildQuery(input: StoreQuery) {
 }
 
 export const listRegions = () =>
-  request<{ regions: PublicRegion[] }>('/api/v1/regions').then((result) => result.regions);
+  request<{ regions: PublicRegion[] }>('/api/v1/stores/regions').then((result) => result.regions);
 
 export const listStores = (query: StoreQuery = {}) =>
   request<{ stores: PublicStore[] }>(`/api/v1/stores${buildQuery(query)}`).then(
