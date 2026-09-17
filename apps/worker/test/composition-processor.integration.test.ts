@@ -44,6 +44,31 @@ suite('M11 composition worker PostgreSQL integration', () => {
         style: 'Warm',
       })
       .returning();
+    const [outlineJob] = await db
+      .insert(aiJobs)
+      .values({
+        projectId: storyProject!.id,
+        jobType: 'STORY_OUTLINE',
+        provider: 'MOCK',
+        model: 'fixture',
+        status: 'SUCCEEDED',
+        input: { prompt: 'outline' },
+        result: { text: 'outline', assetReferences: [] },
+      })
+      .returning();
+
+    const [outlineVersion] = await db
+      .insert(workVersions)
+      .values({
+        workId: work!.id,
+        versionNumber: 1,
+        contentKind: 'OUTLINE',
+        operation: 'OUTLINE',
+        sourceAiJobId: outlineJob!.id,
+        content: 'outline',
+      })
+      .returning();
+
     const [storyJob] = await db
       .insert(aiJobs)
       .values({
@@ -60,9 +85,10 @@ suite('M11 composition worker PostgreSQL integration', () => {
       .insert(workVersions)
       .values({
         workId: work!.id,
-        versionNumber: 1,
+        versionNumber: 2,
         contentKind: 'BODY',
         operation: 'BODY',
+        sourceVersionId: outlineVersion!.id,
         sourceAiJobId: storyJob!.id,
         content: 'body',
       })
