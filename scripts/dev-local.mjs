@@ -36,20 +36,13 @@ if (!existsSync(envPath)) {
     process.exit(1);
   }
   copyFileSync(envExamplePath, envPath);
-  console.log(
-    'Created .env from .env.example. Fill in any local secrets you need.',
-  );
+  console.log('Created .env from .env.example. Fill in any local secrets you need.');
 }
 
 if (!(await isPortOpen(5432))) {
-  if (
-    process.platform === 'darwin' &&
-    existsSync('/Applications/Postgres.app')
-  ) {
+  if (process.platform === 'darwin' && existsSync('/Applications/Postgres.app')) {
     console.log('PostgreSQL is not running. Starting Postgres.app...');
-    const result = spawnSync('open', ['/Applications/Postgres.app'], {
-      stdio: 'inherit',
-    });
+    const result = spawnSync('open', ['/Applications/Postgres.app'], { stdio: 'inherit' });
     if (result.status !== 0 || !(await waitForPort(5432))) {
       console.error('Postgres.app did not become ready on 127.0.0.1:5432.');
       process.exit(1);
@@ -63,14 +56,10 @@ if (!(await isPortOpen(5432))) {
 }
 
 console.log('PostgreSQL is ready. Applying migrations...');
-const migration = spawnSync(
-  'pnpm',
-  ['--filter', '@xiaohai/db', 'db:migrate'],
-  {
-    cwd: root,
-    stdio: 'inherit',
-  },
-);
+const migration = spawnSync('pnpm', ['--filter', '@xiaohai/db', 'db:migrate'], {
+  cwd: root,
+  stdio: 'inherit',
+});
 if (migration.status !== 0) process.exit(migration.status ?? 1);
 
 if (!(await isPortOpen(6379))) {
