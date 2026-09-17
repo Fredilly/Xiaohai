@@ -27,6 +27,9 @@
       <button class="primary-btn" disabled="{{!latestBodyId}}" bindtap="createPictureBook">
         从最新正文创建绘本
       </button>
+      <button class="primary-btn" disabled="{{!latestBodyId}}" bindtap="createAnimation">
+        从最新正文创建 AI 动画
+      </button>
       <text wx:if="{{!latestBodyId}}" class="section-note">请先生成并保存故事正文</text>
     </view>
 

@@ -30,7 +30,35 @@ export class MockAiProvider implements AiProvider {
 
     let text = `[mock:${input.model}] ${input.prompt}`;
 
-    if (input.prompt.includes('XIAOHAI_TASK=PICTURE_BOOK_CHARACTERS')) {
+    if (input.prompt.includes('XIAOHAI_TASK=ANIMATION_SCRIPT')) {
+      text = JSON.stringify({
+        title: '森林里的小灯塔动画',
+        synopsis: '小狐狸帮助迷路的小鸟找到回家的方向。',
+        script: '清晨，小狐狸在森林里遇见迷路的小鸟。它们一起寻找线索，最终抵达温暖的鸟巢。',
+      });
+    } else if (input.prompt.includes('XIAOHAI_TASK=ANIMATION_STORYBOARD')) {
+      text = JSON.stringify({
+        characters: [
+          {
+            name: '小狐狸',
+            role: 'MAIN',
+            description: '勇敢温柔的小狐狸',
+            visualPrompt: 'orange fox, green scarf, round brown eyes',
+          },
+        ],
+        scenes: [
+          {
+            scriptText: '小狐狸走进晨光森林。',
+            narration: '清晨，森林醒来了。',
+            dialogue: [{ speaker: '小狐狸', text: '今天也要帮助朋友。' }],
+            visualDescription: '晨光穿过树叶，小狐狸走在林间小路。',
+            generationPrompt:
+              'cinematic child-safe forest, orange fox with green scarf, morning light',
+            plannedDurationMs: 5000,
+          },
+        ],
+      });
+    } else if (input.prompt.includes('XIAOHAI_TASK=PICTURE_BOOK_CHARACTERS')) {
       text = JSON.stringify({
         characters: [
           {

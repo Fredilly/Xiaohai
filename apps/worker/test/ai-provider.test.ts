@@ -64,6 +64,32 @@ describe('AI provider adapters', () => {
     });
   });
 
+  it('returns deterministic structured Animation fixtures for M11 planning tasks', async () => {
+    const provider = new MockAiProvider();
+    const signal = new AbortController().signal;
+    const script = await provider.generate({
+      model: 'mock-animation-v1',
+      prompt: 'XIAOHAI_TASK=ANIMATION_SCRIPT',
+      signal,
+    });
+    const storyboard = await provider.generate({
+      model: 'mock-animation-v1',
+      prompt: 'XIAOHAI_TASK=ANIMATION_STORYBOARD',
+      signal,
+    });
+
+    const scriptPlan = JSON.parse(script.text) as { title: unknown; script: unknown };
+    const storyboardPlan = JSON.parse(storyboard.text) as {
+      characters: Array<{ visualPrompt: unknown }>;
+      scenes: Array<{ plannedDurationMs: unknown; generationPrompt: unknown }>;
+    };
+    expect(typeof scriptPlan.title).toBe('string');
+    expect(typeof scriptPlan.script).toBe('string');
+    expect(typeof storyboardPlan.characters[0]?.visualPrompt).toBe('string');
+    expect(typeof storyboardPlan.scenes[0]?.plannedDurationMs).toBe('number');
+    expect(typeof storyboardPlan.scenes[0]?.generationPrompt).toBe('string');
+  });
+
   it('maps DeepSeek fields without leaking the API key into results', async () => {
     const http = vi.fn<typeof fetch>().mockResolvedValue(
       new Response(

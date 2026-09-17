@@ -35,6 +35,7 @@ export const works = pgTable(
   (t) => [
     check('works_type_check', sql`${t.workType} in ('STORY')`),
     uniqueIndex('works_ai_project_unique').on(t.aiProjectId),
+    uniqueIndex('works_id_consumer_unique').on(t.id, t.consumerUserId),
     index('works_consumer_updated_idx').on(t.consumerUserId, t.updatedAt),
   ],
 );
@@ -61,6 +62,7 @@ export const workVersions = pgTable(
   (t) => [
     uniqueIndex('work_versions_work_number_unique').on(t.workId, t.versionNumber),
     uniqueIndex('work_versions_ai_job_unique').on(t.sourceAiJobId),
+    uniqueIndex('work_versions_id_work_unique').on(t.id, t.workId),
     index('work_versions_work_created_idx').on(t.workId, t.createdAt),
     check('work_versions_number_check', sql`${t.versionNumber} > 0`),
     check('work_versions_kind_check', sql`${t.contentKind} in ('OUTLINE','BODY')`),

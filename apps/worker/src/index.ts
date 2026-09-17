@@ -7,6 +7,10 @@ import { DeepSeekAiProvider, MockAiProvider } from './ai-provider.js';
 import { BaselineModerationAdapter } from './moderation.js';
 import { ImageJobProcessor } from './image-processor.js';
 import { MockImageProvider } from './image-provider.js';
+import { VideoJobProcessor } from './video-processor.js';
+import { MockVideoProvider } from './video-provider.js';
+import { CompositionProcessor } from './composition-processor.js';
+import { MockCompositionProvider } from './composition-provider.js';
 
 const config = loadWorkerConfig(process.env);
 const logger = pino({ level: config.LOG_LEVEL });
@@ -25,6 +29,20 @@ const imageProvider = new MockImageProvider();
 const imageProcessor = config.PICTURE_BOOK_IMAGE_ENABLED
   ? new ImageJobProcessor(db, imageProvider, config.PICTURE_BOOK_IMAGE_TIMEOUT_MS)
   : null;
+
+const videoProvider = new MockVideoProvider();
+const videoProcessor = config.ANIMATION_VIDEO_ENABLED
+  ? new VideoJobProcessor(
+      db,
+      videoProvider,
+      config.ANIMATION_VIDEO_TIMEOUT_MS,
+      new BaselineModerationAdapter(),
+    )
+  : null;
+const compositionProvider = new MockCompositionProvider();
+const compositionProcessor = config.ANIMATION_COMPOSITION_ENABLED
+  ? new CompositionProcessor(db, compositionProvider, config.ANIMATION_COMPOSITION_TIMEOUT_MS)
+  : null;
 await processor.recoverStale();
 let stopping = false;
 const stop = () => {
@@ -35,16 +53,29 @@ process.on('SIGINT', stop);
 while (!stopping) {
   try {
     // Redis is the wake-up queue; PostgreSQL claim is authoritative and recovers lost notifications.
-    await redis.brPop(
-      imageProcessor ? ['xiaohai:ai:jobs', 'xiaohai:image:jobs'] : ['xiaohai:ai:jobs'],
-      config.AI_WORKER_POLL_MS / 1000,
-    );
+    const queues = ['xiaohai:ai:jobs'];
+    if (imageProcessor) queues.push('xiaohai:image:jobs');
+    if (videoProcessor) queues.push('xiaohai:animation:jobs');
+    if (compositionProcessor) queues.push('xiaohai:animation:compositions');
+
+    await redis.brPop(queues, config.AI_WORKER_POLL_MS / 1000);
     const jobId = await processor.processOne();
     if (jobId) logger.info({ jobId, provider: provider.name }, 'AI job processed');
     const illustrationId = await imageProcessor?.processOne();
     if (illustrationId) {
       logger.info({ illustrationId, provider: imageProvider.name }, 'Image job processed');
     }
+
+    const generationId = await videoProcessor?.processOne();
+    if (generationId) {
+      logger.info({ generationId, provider: videoProvider.name }, 'Animation video job processed');
+    }
+    const compositionId = await compositionProcessor?.processOne();
+    if (compositionId)
+      logger.info(
+        { compositionId, provider: compositionProvider.name },
+        'Animation composition processed',
+      );
   } catch {
     logger.error({ errorCode: 'AI_WORKER_ITERATION_FAILED' }, 'AI worker iteration failed');
   }
