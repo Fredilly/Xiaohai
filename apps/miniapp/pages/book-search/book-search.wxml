@@ -1,0 +1,95 @@
+<view class="page">
+  <view class="hero hero-soft">
+    <text class="eyebrow">BOOK FINDER</text>
+    <text class="hero-title">找书</text>
+    <text class="hero-subtitle">按书名、作者、出版社、ISBN 或图书编码搜索，直接查看哪些胖竹门店有货。</text>
+  </view>
+
+  <view class="search-card card">
+    <view class="search-row">
+      <input
+        class="search-input"
+        value="{{query}}"
+        placeholder="书名 / 作者 / ISBN / 编码"
+        bindinput="onQueryInput"
+        confirm-type="search"
+        bindconfirm="submitSearch"
+      />
+      <button class="search-btn" size="mini" bindtap="submitSearch" loading="{{loading}}">搜索</button>
+    </view>
+    <view class="filter-row">
+      <picker mode="selector" range="{{availabilityNames}}" value="{{selectedAvailabilityIndex}}" bindchange="onAvailabilityChange">
+        <view class="filter-pill">{{availabilityNames[selectedAvailabilityIndex]}}</view>
+      </picker>
+      <button class="filter-pill button-pill" size="mini" bindtap="scanBookCode">扫码</button>
+      <button wx:if="{{!nearbyMode}}" class="filter-pill button-pill" size="mini" bindtap="useNearby">附近有货</button>
+      <button wx:else class="filter-pill button-pill active" size="mini" bindtap="disableNearby">退出附近</button>
+    </view>
+  </view>
+
+  <view wx:if="{{errorMessage}}" class="demo-note">{{errorMessage}}</view>
+
+  <view wx:if="{{!searched}}" class="state-card">
+    <text class="state-title">输入一本书开始查找</text>
+    <text class="state-copy">也可以直接点击“搜索”查看当前有货图书，或扫码输入 ISBN / 条码 / 图书编码。</text>
+  </view>
+
+  <view wx:elif="{{loading && items.length === 0}}" class="state-card">
+    <text class="state-title">正在查找门店库存</text>
+    <text class="state-copy">请稍候。</text>
+  </view>
+
+  <view wx:elif="{{!loading && items.length === 0}}" class="state-card">
+    <text class="state-title">没有找到有货门店</text>
+    <text class="state-copy">可以更换关键词、切换可售/可租筛选，或关闭附近筛选后再试。</text>
+  </view>
+
+  <view wx:else class="section">
+    <view class="section-head">
+      <text class="section-title">有货结果</text>
+      <text class="section-note">{{items.length}} 条</text>
+    </view>
+
+    <view class="inventory-list">
+      <view class="inventory-card" wx:for="{{items}}" wx:key="key">
+        <view class="book-row">
+          <image wx:if="{{item.product.coverUrl}}" class="cover" src="{{item.product.coverUrl}}" mode="aspectFill" />
+          <view wx:else class="cover cover-placeholder">书</view>
+          <view class="book-main">
+            <text class="book-title">{{item.book.title}}</text>
+            <text class="book-meta">{{item.book.author}}</text>
+            <text wx:if="{{item.book.publisher}}" class="book-meta">{{item.book.publisher}}</text>
+            <text wx:if="{{item.book.isbn}}" class="book-meta">ISBN {{item.book.isbn}}</text>
+            <text class="book-meta">编码 {{item.sku.code}}</text>
+          </view>
+          <text class="price">{{item.priceText}}</text>
+        </view>
+
+        <view class="store-block" data-id="{{item.store.id}}" bindtap="openStore">
+          <view class="store-heading">
+            <text class="store-name">{{item.store.name}}</text>
+            <text wx:if="{{item.distanceText}}" class="distance">{{item.distanceText}}</text>
+          </view>
+          <text class="book-meta">{{item.store.city}} · {{item.store.addressLine}}</text>
+        </view>
+
+        <view class="chips inventory-chips">
+          <text class="chip">可用 {{item.stock.available}}</text>
+          <text wx:if="{{item.sellAvailable}}" class="chip available-chip">可购买</text>
+          <text wx:if="{{item.rentAvailable}}" class="chip available-chip">可租借</text>
+        </view>
+
+        <view class="action-row">
+          <button size="mini" class="action-btn" data-id="{{item.store.id}}" bindtap="openStore">门店</button>
+          <button wx:if="{{item.sellAvailable}}" size="mini" class="action-btn primary" data-id="{{item.product.id}}" bindtap="openProduct">购买</button>
+          <button wx:if="{{item.rentAvailable}}" size="mini" class="action-btn" data-flow="租借" bindtap="showDeferredFlow">租借</button>
+          <button size="mini" class="action-btn" data-flow="自提/配送" bindtap="showDeferredFlow">自提/配送</button>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <view class="demo-note">
+    当前 M13 只提供真实库存搜索。租借流程在 M15、自提与配送流程在 M16 接入，当前入口不会伪造未完成的后端能力。
+  </view>
+</view>

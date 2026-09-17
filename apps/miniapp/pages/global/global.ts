@@ -136,6 +136,10 @@ Page({
     });
   },
 
+  openBookSearch() {
+    void wx.navigateTo({ url: '/pages/book-search/book-search' });
+  },
+
   openStore(event: WechatMiniprogram.TouchEvent) {
     const id = String(event.currentTarget.dataset.id ?? '');
     if (id)
