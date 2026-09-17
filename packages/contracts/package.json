@@ -57,6 +57,12 @@
       "development": "./src/stores.ts",
       "import": "./dist/stores.js",
       "default": "./dist/stores.js"
+    },
+    "./inventory": {
+      "types": "./src/inventory.ts",
+      "development": "./src/inventory.ts",
+      "import": "./dist/inventory.js",
+      "default": "./dist/inventory.js"
     }
   },
   "types": "./dist/index.d.ts",

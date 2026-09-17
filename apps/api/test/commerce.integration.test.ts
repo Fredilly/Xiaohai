@@ -10,6 +10,7 @@ import {
   orders,
   products,
   skus,
+  storeInventory,
   userAddresses,
 } from '@xiaohai/db';
 import { CommerceService } from '../src/commerce/commerce-service.js';
@@ -23,6 +24,7 @@ suite('M5 Commerce PostgreSQL integration', () => {
     await database!.db.delete(cartItems);
     await database!.db.delete(carts);
     await database!.db.delete(userAddresses);
+    await database!.db.delete(storeInventory);
     await database!.db.delete(skus);
     await database!.db.delete(products);
     await database!.db.delete(bookEditions);

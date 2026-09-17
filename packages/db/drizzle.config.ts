@@ -13,6 +13,7 @@ export default defineConfig({
     './src/picture-book-schema.ts',
     './src/animation-schema.ts',
     './src/store-schema.ts',
+    './src/inventory-schema.ts',
   ],
   out: './migrations',
   dbCredentials: {

@@ -45,6 +45,7 @@ export {
   playbackProgress,
 } from './content-schema.js';
 export { regions, franchisees, stores, storeStaff } from './store-schema.js';
+export { storeInventory } from './inventory-schema.js';
 export {
   consumerUsers,
   migrationBatches,

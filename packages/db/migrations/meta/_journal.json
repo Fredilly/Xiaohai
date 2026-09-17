@@ -106,6 +106,13 @@
       "when": 1789618800000,
       "tag": "0014_pangzhu_stores",
       "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1789627965228,
+      "tag": "0015_long_kang",
+      "breakpoints": true
     }
   ]
 }

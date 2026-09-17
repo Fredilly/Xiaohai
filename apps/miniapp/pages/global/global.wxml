@@ -5,6 +5,12 @@
     <text class="hero-subtitle">查找真实营业门店，按区域筛选或查看附近门店，并进入门店详情与导航。</text>
   </view>
 
+  <view class="card find-book-card" bindtap="openBookSearch">
+    <text class="card-title">找书</text>
+    <text class="card-subtitle">按书名、作者、ISBN 或图书编码查看哪些门店当前有货。</text>
+    <button class="primary-btn" catchtap="openBookSearch">开始找书</button>
+  </view>
+
   <view class="store-search card">
     <view class="search-row">
       <input class="search-input" value="{{query}}" placeholder="搜索门店名称" bindinput="onQueryInput" confirm-type="search" bindconfirm="submitSearch" />

@@ -1,0 +1,168 @@
+.search-card {
+  min-height: 0;
+}
+
+.search-row {
+  display: flex;
+  gap: 14rpx;
+  align-items: center;
+}
+
+.search-input {
+  flex: 1;
+  min-width: 0;
+  height: 72rpx;
+  padding: 0 20rpx;
+  border-radius: 18rpx;
+  background: #f7f4ed;
+  font-size: 25rpx;
+}
+
+.search-btn {
+  margin: 0;
+  border: 0;
+  background: #315d45;
+  color: #fff;
+}
+
+.filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+  margin-top: 18rpx;
+}
+
+.filter-pill {
+  min-height: 52rpx;
+  display: flex;
+  align-items: center;
+  padding: 0 16rpx;
+  border: 1rpx solid #e3ddd2;
+  border-radius: 999rpx;
+  background: #fff;
+  color: #5f625e;
+  font-size: 21rpx;
+}
+
+.button-pill {
+  margin: 0;
+  line-height: 50rpx;
+}
+
+.button-pill.active {
+  background: #edf3ee;
+  color: #315d45;
+  border-color: #b7c9bc;
+}
+
+.inventory-list {
+  display: flex;
+  flex-direction: column;
+  gap: 18rpx;
+}
+
+.inventory-card {
+  padding: 24rpx;
+  border-radius: 24rpx;
+  background: #fff;
+  border: 1rpx solid #ebe5da;
+  box-shadow: 0 8rpx 24rpx rgba(55, 45, 30, 0.04);
+}
+
+.book-row {
+  display: flex;
+  gap: 18rpx;
+  align-items: flex-start;
+}
+
+.cover {
+  width: 92rpx;
+  height: 126rpx;
+  flex: none;
+  border-radius: 12rpx;
+  background: #efe9df;
+}
+
+.cover-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #8b877e;
+  font-size: 30rpx;
+  font-weight: 800;
+}
+
+.book-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.book-title {
+  display: block;
+  font-size: 29rpx;
+  line-height: 1.45;
+  font-weight: 800;
+}
+
+.book-meta {
+  display: block;
+  margin-top: 6rpx;
+  color: #817d74;
+  font-size: 21rpx;
+  line-height: 1.5;
+}
+
+.store-block {
+  margin-top: 20rpx;
+  padding: 18rpx;
+  border-radius: 16rpx;
+  background: #f8f6f1;
+}
+
+.store-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14rpx;
+}
+
+.store-name {
+  font-size: 24rpx;
+  font-weight: 800;
+}
+
+.distance {
+  flex: none;
+  font-size: 20rpx;
+  color: #315d45;
+}
+
+.inventory-chips {
+  margin-top: 16rpx;
+}
+
+.available-chip {
+  background: #edf3ee;
+  color: #315d45;
+  border-color: #c9d8cc;
+}
+
+.action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10rpx;
+  margin-top: 18rpx;
+}
+
+.action-btn {
+  margin: 0;
+  border: 1rpx solid #ded8cd;
+  background: #fff;
+  color: #4e514d;
+}
+
+.action-btn.primary {
+  background: #315d45;
+  color: #fff;
+  border-color: #315d45;
+}
