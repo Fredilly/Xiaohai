@@ -5,7 +5,7 @@ on:
     branches: [intern/m12-pangzhu-stores]
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   format:
@@ -19,7 +19,7 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Format M12 files and print exact output
+      - name: Format M12 files
         shell: bash
         run: |
           files=(
@@ -32,9 +32,12 @@ jobs:
             packages/db/src/store-schema.ts
           )
           pnpm exec prettier --write "${files[@]}"
-          for file in "${files[@]}"; do
-            echo "===== M12_FORMAT_BEGIN:$file ====="
-            base64 -w 0 "$file"
-            echo
-            echo "===== M12_FORMAT_END:$file ====="
-          done
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add "${files[@]}"
+          if git diff --cached --quiet; then
+            echo "No formatting changes needed."
+          else
+            git commit -m "style(m12): apply repository Prettier formatting"
+            git push origin HEAD:intern/m12-pangzhu-stores
+          fi
