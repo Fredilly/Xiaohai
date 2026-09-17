@@ -28,6 +28,7 @@ import type { StaffAuthorizationContext } from '../auth/staff-authorization.js';
 type Database = ReturnType<typeof createDatabase>['db'];
 
 export type StoreNetworkErrorCode = 'NOT_FOUND' | 'CONFLICT' | 'SCOPE_MISMATCH';
+
 export class StoreNetworkError extends Error {
   constructor(readonly code: StoreNetworkErrorCode) {
     super(code);
@@ -140,7 +141,11 @@ export class StoreNetworkService {
     });
 
     if (latitude !== undefined && longitude !== undefined) {
-      items.sort((a, b) => (a.distanceKm ?? Number.POSITIVE_INFINITY) - (b.distanceKm ?? Number.POSITIVE_INFINITY));
+      items.sort(
+        (a, b) =>
+          (a.distanceKm ?? Number.POSITIVE_INFINITY) -
+          (b.distanceKm ?? Number.POSITIVE_INFINITY),
+      );
     }
 
     return publicStoresResponseSchema.parse({ stores: items });
@@ -182,6 +187,7 @@ export class StoreNetworkService {
       .limit(1);
 
     if (!row) throw new StoreNetworkError('NOT_FOUND');
+
     return publicStoreSchema.parse({
       id: row.id,
       code: row.code,
@@ -217,6 +223,7 @@ export class StoreNetworkService {
   async createRegion(context: StaffAuthorizationContext, raw: CreateRegionRequest) {
     if (!hasGlobal(context)) throw new StoreNetworkError('SCOPE_MISMATCH');
     const input = createRegionRequestSchema.parse(raw);
+
     try {
       const [created] = await this.db.insert(regions).values(input).returning();
       if (!created) throw new StoreNetworkError('CONFLICT');
@@ -245,7 +252,10 @@ export class StoreNetworkService {
   async createFranchisee(context: StaffAuthorizationContext, raw: CreateFranchiseeRequest) {
     const input = createFranchiseeRequestSchema.parse(raw);
     await this.requireRegionExists(input.regionId);
-    if (!canAccessRegion(context, input.regionId)) throw new StoreNetworkError('SCOPE_MISMATCH');
+    if (!canAccessRegion(context, input.regionId)) {
+      throw new StoreNetworkError('SCOPE_MISMATCH');
+    }
+
     try {
       const [created] = await this.db.insert(franchisees).values(input).returning();
       if (!created) throw new StoreNetworkError('CONFLICT');
@@ -261,7 +271,10 @@ export class StoreNetworkService {
     raw: UpdateFranchiseeRequest,
   ) {
     const current = await this.requireFranchisee(id);
-    if (!canAccessFranchisee(context, current)) throw new StoreNetworkError('SCOPE_MISMATCH');
+    if (!canAccessFranchisee(context, current)) {
+      throw new StoreNetworkError('SCOPE_MISMATCH');
+    }
+
     const input = updateFranchiseeRequestSchema.parse(raw);
     const [updated] = await this.db
       .update(franchisees)
@@ -275,13 +288,17 @@ export class StoreNetworkService {
   async createStore(context: StaffAuthorizationContext, raw: CreateStoreRequest) {
     const input = createStoreRequestSchema.parse(raw);
     await this.requireRegionExists(input.regionId);
-    const franchisee = input.franchiseeId ? await this.requireFranchisee(input.franchiseeId) : null;
+    const franchisee = input.franchiseeId
+      ? await this.requireFranchisee(input.franchiseeId)
+      : null;
+
     if (franchisee && franchisee.regionId !== input.regionId) {
       throw new StoreNetworkError('SCOPE_MISMATCH');
     }
     if (!canCreateStore(context, input.regionId, franchisee?.id ?? null)) {
       throw new StoreNetworkError('SCOPE_MISMATCH');
     }
+
     try {
       const [created] = await this.db
         .insert(stores)
@@ -296,7 +313,10 @@ export class StoreNetworkService {
 
   async updateStore(context: StaffAuthorizationContext, id: string, raw: UpdateStoreRequest) {
     const current = await this.requireStaffStoreRow(id);
-    if (!canAccessStore(context, current)) throw new StoreNetworkError('SCOPE_MISMATCH');
+    if (!canAccessStore(context, current)) {
+      throw new StoreNetworkError('SCOPE_MISMATCH');
+    }
+
     const input = updateStoreRequestSchema.parse(raw);
     const [updated] = await this.db
       .update(stores)
@@ -313,7 +333,7 @@ export class StoreNetworkService {
     return toStaffStore(row);
   }
 
-  private async loadStaffStoreRows() {
+  async loadStaffStoreRows() {
     return await this.db
       .select({
         id: stores.id,
@@ -346,6 +366,16 @@ export class StoreNetworkService {
       .orderBy(asc(stores.name));
   }
 
+  async requireFranchisee(id: string) {
+    const [row] = await this.db
+      .select()
+      .from(franchisees)
+      .where(eq(franchisees.id, id))
+      .limit(1);
+    if (!row) throw new StoreNetworkError('NOT_FOUND');
+    return row;
+  }
+
   private async requireStaffStoreRow(id: string) {
     const rows = await this.loadStaffStoreRows();
     const row = rows.find((candidate) => candidate.id === id);
@@ -354,14 +384,12 @@ export class StoreNetworkService {
   }
 
   private async requireRegionExists(id: string) {
-    const [row] = await this.db.select({ id: regions.id }).from(regions).where(eq(regions.id, id)).limit(1);
+    const [row] = await this.db
+      .select({ id: regions.id })
+      .from(regions)
+      .where(eq(regions.id, id))
+      .limit(1);
     if (!row) throw new StoreNetworkError('NOT_FOUND');
-  }
-
-  private async requireFranchisee(id: string) {
-    const [row] = await this.db.select().from(franchisees).where(eq(franchisees.id, id)).limit(1);
-    if (!row) throw new StoreNetworkError('NOT_FOUND');
-    return row;
   }
 }
 
@@ -411,12 +439,19 @@ function normalizeServices(value: unknown): string[] {
 function hasGlobal(context: StaffAuthorizationContext) {
   return context.dataScopes.some((scope) => scope.type === 'GLOBAL');
 }
-function hasScope(context: StaffAuthorizationContext, type: 'REGION' | 'FRANCHISEE' | 'STORE', id: string) {
+
+function hasScope(
+  context: StaffAuthorizationContext,
+  type: 'REGION' | 'FRANCHISEE' | 'STORE',
+  id: string,
+) {
   return context.dataScopes.some((scope) => scope.type === type && scope.id === id);
 }
+
 function canAccessRegion(context: StaffAuthorizationContext, regionId: string) {
   return hasGlobal(context) || hasScope(context, 'REGION', regionId);
 }
+
 function canAccessFranchisee(context: StaffAuthorizationContext, row: FranchiseeRow) {
   return (
     hasGlobal(context) ||
@@ -424,6 +459,7 @@ function canAccessFranchisee(context: StaffAuthorizationContext, row: Franchisee
     hasScope(context, 'FRANCHISEE', row.id)
   );
 }
+
 function canAccessStore(context: StaffAuthorizationContext, row: StaffStoreRow) {
   return (
     hasGlobal(context) ||
@@ -432,6 +468,7 @@ function canAccessStore(context: StaffAuthorizationContext, row: StaffStoreRow) 
     hasScope(context, 'STORE', row.id)
   );
 }
+
 function canCreateStore(
   context: StaffAuthorizationContext,
   regionId: string,
