@@ -16,7 +16,7 @@
     "build": "tsc -p tsconfig.json",
     "db:check": "drizzle-kit check",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "tsx src/migrate.ts",
+    "db:migrate": "node --env-file-if-exists ../../.env --import tsx/esm src/migrate.ts",
     "lint": "eslint src drizzle.config.ts",
     "test": "vitest run --passWithNoTests",
     "typecheck": "tsc --noEmit"
