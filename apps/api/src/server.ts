@@ -33,6 +33,8 @@ import { AnimationService } from './animation/animation-service.js';
 import { registerAnimationRoutes } from './animation/animation-routes.js';
 import { RedisVideoQueue } from './animation/video-queue.js';
 import { RedisCompositionQueue } from './animation/composition-queue.js';
+import { StoreNetworkService } from './stores/store-service.js';
+import { registerStoreRoutes } from './stores/store-routes.js';
 
 const config = loadServiceConfig(process.env);
 const { db, pool } = createDatabase(process.env);
@@ -75,6 +77,7 @@ registerPaymentRoutes(app, {
   staffAuthorization,
 });
 registerContentRoutes(app, { content, consumerSessions: sessions, staffAuthorization });
+registerStoreRoutes(app, { stores: new StoreNetworkService(db), staffAuthorization });
 const aiQueue = new RedisAiQueue(config.REDIS_URL, () =>
   app.log.error({ errorCode: 'REDIS_UNAVAILABLE' }, 'AI queue Redis error'),
 );

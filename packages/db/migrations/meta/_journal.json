@@ -99,6 +99,13 @@
       "when": 1789550981573,
       "tag": "0013_animation_ai",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1789618800000,
+      "tag": "0014_pangzhu_stores",
+      "breakpoints": true
     }
   ]
 }

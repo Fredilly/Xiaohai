@@ -1,0 +1,55 @@
+<view class="page">
+  <view wx:if="{{loading}}" class="state-card">
+    <text class="state-title">正在加载门店</text>
+    <text class="state-copy">请稍候。</text>
+  </view>
+
+  <view wx:elif="{{error || !store}}" class="state-card">
+    <text class="state-title">门店信息不可用</text>
+    <text class="state-copy">门店可能已暂停营业，或网络暂时不可用。</text>
+  </view>
+
+  <block wx:else>
+    <view class="hero hero-soft">
+      <text class="eyebrow">PANGZHU STORE</text>
+      <text class="hero-title">{{store.name}}</text>
+      <text class="hero-subtitle">{{store.city}} · {{store.region.name}}</text>
+    </view>
+
+    <map
+      class="detail-map"
+      latitude="{{store.latitude}}"
+      longitude="{{store.longitude}}"
+      scale="15"
+      markers="{{markers}}"
+    />
+
+    <view class="section">
+      <view class="list-card detail-card">
+        <view class="detail-row">
+          <text class="detail-label">地址</text>
+          <text class="detail-value">{{store.addressLine}}</text>
+        </view>
+        <view class="detail-row" wx:if="{{store.openingHoursText}}">
+          <text class="detail-label">营业时间</text>
+          <text class="detail-value">{{store.openingHoursText}}</text>
+        </view>
+        <view class="detail-row" wx:if="{{store.phone}}">
+          <text class="detail-label">联系电话</text>
+          <text class="detail-value">{{store.phone}}</text>
+        </view>
+        <view class="detail-row">
+          <text class="detail-label">服务项目</text>
+          <view class="chips service-chips">
+            <text class="chip" wx:for="{{store.services}}" wx:key="*this">{{item}}</text>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <view class="action-row">
+      <button class="primary-btn action-btn" bindtap="navigate">地图导航</button>
+      <button wx:if="{{store.phone}}" class="secondary-btn action-btn" bindtap="callStore">联系门店</button>
+    </view>
+  </block>
+</view>
