@@ -22,7 +22,8 @@
     "pages/picture-book-detail/picture-book-detail",
     "pages/animations/animations",
     "pages/animation-create/animation-create",
-    "pages/animation-detail/animation-detail"
+    "pages/animation-detail/animation-detail",
+    "pages/store-detail/store-detail"
   ],
   "window": {
     "navigationBarTitleText": "小海童话",
@@ -30,6 +31,12 @@
     "navigationBarTextStyle": "black",
     "backgroundColor": "#f7f4ed"
   },
+  "permission": {
+    "scope.userLocation": {
+      "desc": "用于查找附近的胖竹书店"
+    }
+  },
+  "requiredPrivateInfos": ["getLocation"],
   "tabBar": {
     "color": "#7a766d",
     "selectedColor": "#315d45",
