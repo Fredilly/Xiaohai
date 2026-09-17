@@ -42,7 +42,9 @@ describe('M12 store network contracts', () => {
   });
 
   it('keeps M13 inventory fields outside the M12 store write contract', () => {
-    expect(createStoreRequestSchema.safeParse({ ...storeInput, inventory: 100 }).success).toBe(false);
+    expect(createStoreRequestSchema.safeParse({ ...storeInput, inventory: 100 }).success).toBe(
+      false,
+    );
     expect(updateStoreRequestSchema.safeParse({ inventory: 100 }).success).toBe(false);
   });
 

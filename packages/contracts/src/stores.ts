@@ -94,9 +94,19 @@ export const publicStoreQuerySchema = z
     }
   });
 
-const codeSchema = z.string().trim().min(1).max(64).regex(/^[A-Za-z0-9_-]+$/);
+const codeSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(64)
+  .regex(/^[A-Za-z0-9_-]+$/);
 const nameSchema = z.string().trim().min(1).max(160);
-const countryCodeSchema = z.string().trim().min(2).max(8).transform((value) => value.toUpperCase());
+const countryCodeSchema = z
+  .string()
+  .trim()
+  .min(2)
+  .max(8)
+  .transform((value) => value.toUpperCase());
 
 export const createRegionRequestSchema = z
   .object({

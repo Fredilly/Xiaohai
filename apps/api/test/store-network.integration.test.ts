@@ -156,7 +156,10 @@ testSuite('M12 store network PostgreSQL integration', () => {
   ) {
     const [staff] = await database!.db
       .insert(staffAccounts)
-      .values({ loginIdentifier: `m12-${crypto.randomUUID()}@example.com`, passwordHash: 'test-only' })
+      .values({
+        loginIdentifier: `m12-${crypto.randomUUID()}@example.com`,
+        passwordHash: 'test-only',
+      })
       .returning({ id: staffAccounts.id });
     const [role] = await database!.db
       .insert(roles)
@@ -164,13 +167,18 @@ testSuite('M12 store network PostgreSQL integration', () => {
       .returning({ id: roles.id });
     const permissionRows = await database!.db
       .insert(permissions)
-      .values(permissionKeys.map((key) => ({ key: `${key}-${crypto.randomUUID()}`, displayName: key })))
+      .values(
+        permissionKeys.map((key) => ({ key: `${key}-${crypto.randomUUID()}`, displayName: key })),
+      )
       .returning({ id: permissions.id, key: permissions.key });
 
     for (let index = 0; index < permissionKeys.length; index += 1) {
       const actualKey = permissionKeys[index]!;
       const row = permissionRows[index]!;
-      await database!.db.update(permissions).set({ key: actualKey }).where(eq(permissions.id, row.id));
+      await database!.db
+        .update(permissions)
+        .set({ key: actualKey })
+        .where(eq(permissions.id, row.id));
       await database!.db.insert(rolePermissions).values({ roleId: role!.id, permissionId: row.id });
     }
 

@@ -84,10 +84,7 @@ export class StoreNetworkService {
           input.regionId ? eq(stores.regionId, input.regionId) : undefined,
           input.city ? ilike(stores.city, input.city) : undefined,
           input.country
-            ? or(
-                ilike(stores.countryCode, input.country),
-                ilike(stores.countryName, input.country),
-              )
+            ? or(ilike(stores.countryCode, input.country), ilike(stores.countryName, input.country))
             : undefined,
         ),
       )
@@ -143,8 +140,7 @@ export class StoreNetworkService {
     if (latitude !== undefined && longitude !== undefined) {
       items.sort(
         (a, b) =>
-          (a.distanceKm ?? Number.POSITIVE_INFINITY) -
-          (b.distanceKm ?? Number.POSITIVE_INFINITY),
+          (a.distanceKm ?? Number.POSITIVE_INFINITY) - (b.distanceKm ?? Number.POSITIVE_INFINITY),
       );
     }
 
@@ -233,11 +229,7 @@ export class StoreNetworkService {
     }
   }
 
-  async updateRegion(
-    context: StaffAuthorizationContext,
-    id: string,
-    raw: UpdateRegionRequest,
-  ) {
+  async updateRegion(context: StaffAuthorizationContext, id: string, raw: UpdateRegionRequest) {
     if (!canAccessRegion(context, id)) throw new StoreNetworkError('SCOPE_MISMATCH');
     const input = updateRegionRequestSchema.parse(raw);
     const [updated] = await this.db
@@ -288,9 +280,7 @@ export class StoreNetworkService {
   async createStore(context: StaffAuthorizationContext, raw: CreateStoreRequest) {
     const input = createStoreRequestSchema.parse(raw);
     await this.requireRegionExists(input.regionId);
-    const franchisee = input.franchiseeId
-      ? await this.requireFranchisee(input.franchiseeId)
-      : null;
+    const franchisee = input.franchiseeId ? await this.requireFranchisee(input.franchiseeId) : null;
 
     if (franchisee && franchisee.regionId !== input.regionId) {
       throw new StoreNetworkError('SCOPE_MISMATCH');
@@ -367,11 +357,7 @@ export class StoreNetworkService {
   }
 
   async requireFranchisee(id: string) {
-    const [row] = await this.db
-      .select()
-      .from(franchisees)
-      .where(eq(franchisees.id, id))
-      .limit(1);
+    const [row] = await this.db.select().from(franchisees).where(eq(franchisees.id, id)).limit(1);
     if (!row) throw new StoreNetworkError('NOT_FOUND');
     return row;
   }
@@ -501,8 +487,6 @@ function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number) {
   const deltaLongitude = toRadians(lon2 - lon1);
   const a =
     Math.sin(deltaLatitude / 2) ** 2 +
-    Math.cos(toRadians(lat1)) *
-      Math.cos(toRadians(lat2)) *
-      Math.sin(deltaLongitude / 2) ** 2;
+    Math.cos(toRadians(lat1)) * Math.cos(toRadians(lat2)) * Math.sin(deltaLongitude / 2) ** 2;
   return earthRadiusKm * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }

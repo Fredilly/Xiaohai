@@ -138,6 +138,7 @@ Page({
 
   openStore(event: WechatMiniprogram.TouchEvent) {
     const id = String(event.currentTarget.dataset.id ?? '');
-    if (id) void wx.navigateTo({ url: `/pages/store-detail/store-detail?id=${encodeURIComponent(id)}` });
+    if (id)
+      void wx.navigateTo({ url: `/pages/store-detail/store-detail?id=${encodeURIComponent(id)}` });
   },
 });

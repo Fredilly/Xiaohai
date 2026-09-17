@@ -85,7 +85,10 @@ export const stores = pgTable(
     longitude: doublePrecision('longitude').notNull(),
     phone: text('phone'),
     openingHoursText: text('opening_hours_text'),
-    services: jsonb('services').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+    services: jsonb('services')
+      .$type<string[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
     operationalStatus: text('operational_status').notNull().default('ACTIVE'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -101,10 +104,7 @@ export const stores = pgTable(
     ),
     index('stores_name_idx').on(table.name),
     check('stores_latitude_check', sql`${table.latitude} >= -90 and ${table.latitude} <= 90`),
-    check(
-      'stores_longitude_check',
-      sql`${table.longitude} >= -180 and ${table.longitude} <= 180`,
-    ),
+    check('stores_longitude_check', sql`${table.longitude} >= -180 and ${table.longitude} <= 180`),
     check(
       'stores_operational_status_check',
       sql`${table.operationalStatus} in ('ACTIVE', 'INACTIVE')`,
