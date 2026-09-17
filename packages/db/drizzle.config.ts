@@ -12,6 +12,7 @@ export default defineConfig({
     './src/works-schema.ts',
     './src/picture-book-schema.ts',
     './src/animation-schema.ts',
+    './src/store-schema.ts',
   ],
   out: './migrations',
   dbCredentials: {
