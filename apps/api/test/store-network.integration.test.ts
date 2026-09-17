@@ -1,5 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
+import { apiErrorResponseSchema } from '@xiaohai/contracts';
+import { publicStoresResponseSchema, staffStoresResponseSchema } from '@xiaohai/contracts/stores';
 import {
   createDatabase,
   franchisees,
@@ -198,17 +200,17 @@ testSuite('M12 store network PostgreSQL integration', () => {
 
     let response = await app.inject({ method: 'GET', url: '/api/v1/stores?q=南门' });
     expect(response.statusCode).toBe(200);
-    expect(response.json().stores.map((store: { id: string }) => store.id)).toEqual([
-      network.southGateStore.id,
-    ]);
+    const searchBody = publicStoresResponseSchema.parse(response.json());
+    expect(searchBody.stores.map((store) => store.id)).toEqual([network.southGateStore.id]);
 
     response = await app.inject({
       method: 'GET',
       url: `/api/v1/stores?regionId=${network.chengduRegion.id}&service=${encodeURIComponent('自习')}`,
     });
     expect(response.statusCode).toBe(200);
-    expect(response.json().stores).toHaveLength(1);
-    expect(response.json().stores[0]).toMatchObject({
+    const filteredBody = publicStoresResponseSchema.parse(response.json());
+    expect(filteredBody.stores).toHaveLength(1);
+    expect(filteredBody.stores[0]).toMatchObject({
       id: network.southGateStore.id,
       city: '成都',
       region: { id: network.chengduRegion.id },
@@ -231,9 +233,11 @@ testSuite('M12 store network PostgreSQL integration', () => {
       url: '/api/v1/stores?latitude=30.65&longitude=104.06&radiusKm=20',
     });
     expect(nearby.statusCode).toBe(200);
-    expect(nearby.json().stores).toHaveLength(1);
-    expect(nearby.json().stores[0].id).toBe(network.southGateStore.id);
-    expect(nearby.json().stores[0].distanceKm).toBeLessThan(0.01);
+    const nearbyBody = publicStoresResponseSchema.parse(nearby.json());
+    expect(nearbyBody.stores).toHaveLength(1);
+    expect(nearbyBody.stores[0]?.id).toBe(network.southGateStore.id);
+    expect(nearbyBody.stores[0]?.distanceKm).not.toBeNull();
+    expect(nearbyBody.stores[0]?.distanceKm ?? Number.POSITIVE_INFINITY).toBeLessThan(0.01);
 
     const invalid = await app.inject({
       method: 'GET',
@@ -257,12 +261,11 @@ testSuite('M12 store network PostgreSQL integration', () => {
       headers: { authorization: `Bearer ${regionStaff.token}` },
     });
     expect(response.statusCode).toBe(200);
-    expect(response.json().stores.map((store: { id: string }) => store.id)).toEqual(
+    const regionBody = staffStoresResponseSchema.parse(response.json());
+    expect(regionBody.stores.map((store) => store.id)).toEqual(
       expect.arrayContaining([network.southGateStore.id, network.inactiveStore.id]),
     );
-    expect(response.json().stores.map((store: { id: string }) => store.id)).not.toContain(
-      network.westStore.id,
-    );
+    expect(regionBody.stores.map((store) => store.id)).not.toContain(network.westStore.id);
 
     await database!.db.delete(staffAccounts);
     await database!.db.delete(roles);
@@ -278,9 +281,8 @@ testSuite('M12 store network PostgreSQL integration', () => {
       headers: { authorization: `Bearer ${franchiseeStaff.token}` },
     });
     expect(response.statusCode).toBe(200);
-    expect(response.json().stores.map((store: { id: string }) => store.id)).toEqual([
-      network.westStore.id,
-    ]);
+    const franchiseeBody = staffStoresResponseSchema.parse(response.json());
+    expect(franchiseeBody.stores.map((store) => store.id)).toEqual([network.westStore.id]);
     await app.close();
   });
 
@@ -333,7 +335,7 @@ testSuite('M12 store network PostgreSQL integration', () => {
       },
     });
     expect(forged.statusCode).toBe(403);
-    expect(forged.json().error.code).toBe('STAFF_FORBIDDEN');
+    expect(apiErrorResponseSchema.parse(forged.json()).error.code).toBe('STAFF_FORBIDDEN');
     await app.close();
   });
 
