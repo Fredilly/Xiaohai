@@ -1,6 +1,6 @@
 import { eq } from 'drizzle-orm';
 import { cmsPages, cmsSections } from './cms-schema.js';
-import { createDatabase } from './client.js';
+import type { createDatabase } from './client.js';
 
 type Database = ReturnType<typeof createDatabase>['db'];
 
@@ -53,7 +53,8 @@ export async function seedLocalHomeCms(db: Database) {
     .from(cmsSections)
     .where(eq(cmsSections.pageId, page.id))
     .limit(1);
-  if (existing) return { seeded: false as const, count: 0, reason: 'CMS_ALREADY_CONFIGURED' as const };
+  if (existing)
+    return { seeded: false as const, count: 0, reason: 'CMS_ALREADY_CONFIGURED' as const };
 
   const rows = DEFAULT_LOCAL_HOME_SECTIONS.map((section) => ({
     pageId: page.id,
