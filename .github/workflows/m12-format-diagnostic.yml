@@ -1,0 +1,40 @@
+name: M12 Format Diagnostic
+
+on:
+  push:
+    branches: [intern/m12-pangzhu-stores]
+
+permissions:
+  contents: read
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Format M12 files and print exact output
+        shell: bash
+        run: |
+          files=(
+            apps/api/src/stores/store-routes.ts
+            apps/api/src/stores/store-service.ts
+            apps/api/test/store-network.integration.test.ts
+            apps/miniapp/pages/global/global.ts
+            packages/contracts/src/stores.test.ts
+            packages/contracts/src/stores.ts
+            packages/db/src/store-schema.ts
+          )
+          pnpm exec prettier --write "${files[@]}"
+          for file in "${files[@]}"; do
+            echo "===== M12_FORMAT_BEGIN:$file ====="
+            base64 -w 0 "$file"
+            echo
+            echo "===== M12_FORMAT_END:$file ====="
+          done
