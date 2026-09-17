@@ -14,6 +14,7 @@ export const meFeatures: FeatureCard[] = [
   { key: 'orders', title: '我的订单', subtitle: '待付款 / 履约 / 完成等状态 UI' },
   { key: 'purchased', title: '我的动画', subtitle: '已购与继续观看入口' },
   { key: 'works', title: '我的 AI 作品', subtitle: '故事、绘本、动画作品入口' },
+  { key: 'animations', title: '我的 AI 动画', subtitle: '动画生成进度、重试与预览' },
   { key: 'my-rental', title: '我的租借', subtitle: '借阅与归还状态入口' },
   { key: 'commission', title: '我的佣金', subtitle: '仅前端说明，未接结算系统' },
   { key: 'member', title: '会员', subtitle: '会员权益占位' },

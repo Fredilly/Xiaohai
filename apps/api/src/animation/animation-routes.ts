@@ -3,6 +3,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import {
   animationDetailSchema,
   animationGenerationAcceptedSchema,
+  animationCompositionAcceptedSchema,
   animationJobStatusSchema,
   animationListSchema,
   animationPlanningRequestSchema,
@@ -11,6 +12,7 @@ import {
   applyAnimationJobRequestSchema,
   createAnimationSceneGenerationRequestSchema,
   createAnimationRequestSchema,
+  createAnimationCompositionRequestSchema,
 } from '@xiaohai/contracts/animation';
 import type { ConsumerSessionService } from '../auth/session.js';
 import { AnimationError, type AnimationService } from './animation-service.js';
@@ -109,6 +111,27 @@ export function registerAnimationRoutes(
     }
   });
 
+  app.post('/api/v1/ai/animations/:id/compositions', async (request, reply) => {
+    const params = z.object({ id: z.uuid() }).safeParse(request.params);
+    const input = createAnimationCompositionRequestSchema.safeParse(request.body);
+    if (!params.success || !input.success) return invalid(reply, request.id);
+    try {
+      return reply
+        .status(202)
+        .send(
+          animationCompositionAcceptedSchema.parse(
+            await options.animation.createComposition(
+              consumer(request),
+              params.data.id,
+              input.data.sceneGenerationIds,
+            ),
+          ),
+        );
+    } catch (error) {
+      return fail(request, reply, error);
+    }
+  });
+
   app.get('/api/v1/ai/animations/jobs/:id', async (request, reply) => {
     const params = z.object({ id: z.uuid() }).safeParse(request.params);
     if (!params.success) return invalid(reply, request.id);
@@ -155,6 +178,9 @@ function fail(request: FastifyRequest, reply: FastifyReply, error: unknown) {
     } else if (error.code === 'FEATURE_DISABLED') {
       status = 503;
       message = 'Animation AI is not enabled';
+    } else if (error.code === 'BUDGET_EXCEEDED') {
+      status = 409;
+      message = 'Animation generation budget exceeded';
     } else {
       status = 409;
       message = 'Animation workflow state conflict';

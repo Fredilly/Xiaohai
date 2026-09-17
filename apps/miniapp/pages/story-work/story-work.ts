@@ -181,4 +181,10 @@ Page({
       url: `/pages/picture-book-create/picture-book-create?workId=${encodeURIComponent(this.data.workId)}&versionId=${encodeURIComponent(this.data.latestBodyId)}&title=${encodeURIComponent(this.data.work.title)}`,
     });
   },
+  createAnimation() {
+    if (!this.data.latestBodyId || !this.data.work) return;
+    void wx.navigateTo({
+      url: `/pages/animation-create/animation-create?workId=${encodeURIComponent(this.data.workId)}&versionId=${encodeURIComponent(this.data.latestBodyId)}&title=${encodeURIComponent(this.data.work.title)}`,
+    });
+  },
 });

@@ -5,6 +5,7 @@ import {
   animationSceneGenerationSchema,
   animationScriptPlanSchema,
   animationStoryboardPlanSchema,
+  createAnimationCompositionRequestSchema,
   createAnimationRequestSchema,
 } from './animation.js';
 
@@ -117,5 +118,20 @@ describe('M11 Animation contracts', () => {
       updatedAt: now,
     };
     expect(animationCompositionSchema.safeParse(composition).success).toBe(false);
+  });
+
+  it('accepts only unique generation IDs for composition', () => {
+    expect(
+      createAnimationCompositionRequestSchema.parse({ sceneGenerationIds: [id, id2] }),
+    ).toEqual({ sceneGenerationIds: [id, id2] });
+    expect(
+      createAnimationCompositionRequestSchema.safeParse({ sceneGenerationIds: [id, id] }).success,
+    ).toBe(false);
+    expect(
+      createAnimationCompositionRequestSchema.safeParse({
+        sceneGenerationIds: [id],
+        provider: 'CLIENT',
+      }).success,
+    ).toBe(false);
   });
 });

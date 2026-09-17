@@ -19,7 +19,10 @@
     "pages/story-work/story-work",
     "pages/picture-books/picture-books",
     "pages/picture-book-create/picture-book-create",
-    "pages/picture-book-detail/picture-book-detail"
+    "pages/picture-book-detail/picture-book-detail",
+    "pages/animations/animations",
+    "pages/animation-create/animation-create",
+    "pages/animation-detail/animation-detail"
   ],
   "window": {
     "navigationBarTitleText": "小海童话",

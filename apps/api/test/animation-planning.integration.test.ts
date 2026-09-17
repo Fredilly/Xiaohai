@@ -301,4 +301,44 @@ suite('M11 Animation planning PostgreSQL integration and ownership', () => {
       .where(and(eq(aiAnimations.id, one.created.id), eq(aiAnimations.consumerUserId, alice)));
     expect(oneRow!.scriptSourceAiJobId).toBeNull();
   });
+
+  it('prevents duplicate active planning cost but permits retry after terminal failure', async () => {
+    const alice = await user();
+    const one = await animation(alice);
+    const two = await animation(alice);
+    const first = await service().generate(alice, one.created.id, { operation: 'SCRIPT' });
+    await expect(
+      service().generate(alice, one.created.id, { operation: 'SCRIPT' }),
+    ).rejects.toMatchObject({ code: 'INVALID_STATE' });
+
+    const other = await service().generate(alice, two.created.id, { operation: 'SCRIPT' });
+    expect(other.jobId).not.toBe(first.jobId);
+    await db.update(aiJobs).set({ status: 'FAILED' }).where(eq(aiJobs.id, first.jobId));
+    const retry = await service().generate(alice, one.created.id, { operation: 'SCRIPT' });
+    expect(retry.jobId).not.toBe(first.jobId);
+    await db.update(aiJobs).set({ status: 'CANCELLED' }).where(eq(aiJobs.id, retry.jobId));
+    await expect(
+      service().generate(alice, one.created.id, { operation: 'SCRIPT' }),
+    ).resolves.toMatchObject({ operation: 'SCRIPT', status: 'QUEUED' });
+
+    const three = await animation(alice);
+    const concurrent = await Promise.allSettled([
+      service().generate(alice, three.created.id, { operation: 'SCRIPT' }),
+      service().generate(alice, three.created.id, { operation: 'SCRIPT' }),
+    ]);
+    expect(concurrent.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    expect(concurrent.filter((result) => result.status === 'rejected')).toHaveLength(1);
+  });
+
+  it('prevents duplicate active STORYBOARD planning jobs', async () => {
+    const alice = await user();
+    const { created } = await animation(alice);
+    const script = await service().generate(alice, created.id, { operation: 'SCRIPT' });
+    await succeed(script.jobId, scriptOutput);
+    await service().applyJob(alice, created.id, script.jobId);
+    await service().generate(alice, created.id, { operation: 'STORYBOARD' });
+    await expect(
+      service().generate(alice, created.id, { operation: 'STORYBOARD' }),
+    ).rejects.toMatchObject({ code: 'INVALID_STATE' });
+  });
 });

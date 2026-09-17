@@ -194,6 +194,15 @@ export const animationCompositionInputSchema = z
   })
   .strict();
 
+export const animationMediaAssetSchema = z
+  .object({
+    id: z.uuid(),
+    playbackUrl: z.url().nullable(),
+    mimeType: z.string().min(1),
+    durationSeconds: z.number().int().nonnegative().nullable(),
+  })
+  .strict();
+
 export const animationCompositionSchema = z
   .object({
     id: z.uuid(),
@@ -225,6 +234,7 @@ export const animationCompositionSchema = z
 export const animationDetailSchema = z
   .object({
     animation: animationSchema,
+    finalMedia: animationMediaAssetSchema.nullable(),
     characters: z.array(animationCharacterSchema),
     scenes: z.array(animationSceneSchema),
     compositions: z.array(animationCompositionSchema),
@@ -243,6 +253,28 @@ export const animationGenerationAcceptedSchema = z
   .strict();
 
 export const createAnimationSceneGenerationRequestSchema = z.object({}).strict();
+
+export const createAnimationCompositionRequestSchema = z
+  .object({ sceneGenerationIds: z.array(z.uuid()).min(1).max(100) })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (new Set(value.sceneGenerationIds).size !== value.sceneGenerationIds.length) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['sceneGenerationIds'],
+        message: 'Generation IDs must be unique',
+      });
+    }
+  });
+
+export const animationCompositionAcceptedSchema = z
+  .object({
+    animationId: z.uuid(),
+    compositionId: z.uuid(),
+    revisionNumber: z.number().int().positive(),
+    status: z.literal('QUEUED'),
+  })
+  .strict();
 
 export const animationSceneGenerationAcceptedSchema = z
   .object({
@@ -281,6 +313,11 @@ export type AnimationScene = z.infer<typeof animationSceneSchema>;
 export type AnimationSceneGeneration = z.infer<typeof animationSceneGenerationSchema>;
 export type AnimationComposition = z.infer<typeof animationCompositionSchema>;
 export type AnimationDetail = z.infer<typeof animationDetailSchema>;
+export type AnimationMediaAsset = z.infer<typeof animationMediaAssetSchema>;
+export type CreateAnimationCompositionRequest = z.infer<
+  typeof createAnimationCompositionRequestSchema
+>;
+export type AnimationCompositionAccepted = z.infer<typeof animationCompositionAcceptedSchema>;
 export type AnimationList = z.infer<typeof animationListSchema>;
 export type AnimationGenerationAccepted = z.infer<typeof animationGenerationAcceptedSchema>;
 export type CreateAnimationSceneGenerationRequest = z.infer<

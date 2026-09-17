@@ -32,6 +32,7 @@ import { RedisImageQueue } from './picture-book/image-queue.js';
 import { AnimationService } from './animation/animation-service.js';
 import { registerAnimationRoutes } from './animation/animation-routes.js';
 import { RedisVideoQueue } from './animation/video-queue.js';
+import { RedisCompositionQueue } from './animation/composition-queue.js';
 
 const config = loadServiceConfig(process.env);
 const { db, pool } = createDatabase(process.env);
@@ -125,6 +126,9 @@ registerPictureBookRoutes(app, {
 const videoQueue = new RedisVideoQueue(config.REDIS_URL, () =>
   app.log.error({ errorCode: 'REDIS_UNAVAILABLE' }, 'Animation video queue Redis error'),
 );
+const compositionQueue = new RedisCompositionQueue(config.REDIS_URL, () =>
+  app.log.error({ errorCode: 'REDIS_UNAVAILABLE' }, 'Animation composition queue Redis error'),
+);
 
 registerAnimationRoutes(app, {
   animation: new AnimationService(
@@ -144,6 +148,13 @@ registerAnimationRoutes(app, {
       provider: config.ANIMATION_VIDEO_PROVIDER,
       model: config.ANIMATION_VIDEO_MODEL,
     },
+    compositionQueue,
+    {
+      compositionEnabled: config.ANIMATION_COMPOSITION_ENABLED,
+      maxGenerations: config.ANIMATION_MAX_GENERATIONS,
+      maxCompositions: config.ANIMATION_MAX_COMPOSITIONS,
+      maxPlannedDurationMs: config.ANIMATION_MAX_PLANNED_DURATION_MS,
+    },
   ),
   consumerSessions: sessions,
 });
@@ -152,6 +163,7 @@ app.addHook('onClose', async () => {
   await aiQueue.close();
   await imageQueue.close();
   await videoQueue.close();
+  await compositionQueue.close();
   await pool.end();
 });
 try {

@@ -5,9 +5,12 @@ import {
   aiAnimations,
   aiJobs,
   aiProjects,
+  animationCompositionInputs,
+  animationCompositions,
   animationSceneGenerations,
   consumerUsers,
   createDatabase,
+  mediaAssets,
   workVersions,
   works,
 } from '@xiaohai/db';
@@ -35,6 +38,7 @@ suite('M11 Animation scene generation PostgreSQL integration', () => {
 
   const aiNotifications: string[] = [];
   const videoNotifications: string[] = [];
+  const compositionNotifications: string[] = [];
 
   const aiQueue = {
     notify: (id: string) => {
@@ -47,6 +51,14 @@ suite('M11 Animation scene generation PostgreSQL integration', () => {
   const videoQueue = {
     notify: (id: string) => {
       videoNotifications.push(id);
+      return Promise.resolve();
+    },
+    close: () => Promise.resolve(),
+  };
+
+  const compositionQueue = {
+    notify: (id: string) => {
+      compositionNotifications.push(id);
       return Promise.resolve();
     },
     close: () => Promise.resolve(),
@@ -67,15 +79,30 @@ suite('M11 Animation scene generation PostgreSQL integration', () => {
   };
 
   const service = (videoOverrides: Partial<AnimationVideoConfig> = {}) =>
-    new AnimationService(db, aiQueue, aiConfig, undefined, videoQueue, {
-      ...videoConfig,
-      ...videoOverrides,
-    });
+    new AnimationService(
+      db,
+      aiQueue,
+      aiConfig,
+      undefined,
+      videoQueue,
+      {
+        ...videoConfig,
+        ...videoOverrides,
+      },
+      compositionQueue,
+      {
+        compositionEnabled: true,
+        maxGenerations: 100,
+        maxCompositions: 10,
+        maxPlannedDurationMs: 600_000,
+      },
+    );
 
   beforeEach(async () => {
     await database.pool.query('TRUNCATE TABLE consumer_users CASCADE');
     aiNotifications.length = 0;
     videoNotifications.length = 0;
+    compositionNotifications.length = 0;
   });
 
   afterAll(async () => database.pool.end());
@@ -382,5 +409,130 @@ suite('M11 Animation scene generation PostgreSQL integration', () => {
       model: 'server-video-model',
       status: 'QUEUED',
     });
+  });
+
+  it('creates immutable compositions with persisted inputs and rejects unsafe selections', async () => {
+    const alice = await user();
+    const bob = await user();
+    const fixture = await storyboardReady(alice);
+    const acceptedGeneration = await service().generateScene(
+      alice,
+      fixture.animation.id,
+      fixture.scene.id,
+    );
+    const [asset] = await db
+      .insert(mediaAssets)
+      .values({
+        provider: 'MOCK_VIDEO',
+        objectKey: `animations/mock/${acceptedGeneration.generationId}.mp4`,
+        playbackUrl: `https://mock.invalid/${acceptedGeneration.generationId}.mp4`,
+        mimeType: 'video/mp4',
+        status: 'READY',
+      })
+      .returning();
+    await db
+      .update(animationSceneGenerations)
+      .set({ status: 'READY', progressPercent: 100, mediaAssetId: asset!.id })
+      .where(eq(animationSceneGenerations.id, acceptedGeneration.generationId));
+
+    await expect(
+      service().createComposition(bob, fixture.animation.id, [acceptedGeneration.generationId]),
+    ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    await expect(
+      service().createComposition(alice, fixture.animation.id, [crypto.randomUUID()]),
+    ).rejects.toMatchObject({ code: 'INVALID_STATE' });
+
+    const first = await service().createComposition(alice, fixture.animation.id, [
+      acceptedGeneration.generationId,
+    ]);
+    expect(first).toMatchObject({ revisionNumber: 1, status: 'QUEUED' });
+    expect(compositionNotifications).toEqual([first.compositionId]);
+    await expect(
+      service().createComposition(alice, fixture.animation.id, [acceptedGeneration.generationId]),
+    ).rejects.toMatchObject({ code: 'INVALID_STATE' });
+
+    await db
+      .update(animationCompositions)
+      .set({ status: 'FAILED', errorCode: 'COMPOSITION_PROVIDER_UNAVAILABLE' })
+      .where(eq(animationCompositions.id, first.compositionId));
+    await db
+      .update(aiAnimations)
+      .set({ status: 'GENERATING' })
+      .where(eq(aiAnimations.id, fixture.animation.id));
+    const second = await service().createComposition(alice, fixture.animation.id, [
+      acceptedGeneration.generationId,
+    ]);
+    expect(second.revisionNumber).toBe(2);
+
+    const compositions = await db
+      .select()
+      .from(animationCompositions)
+      .where(eq(animationCompositions.animationId, fixture.animation.id));
+    const inputs = await db
+      .select()
+      .from(animationCompositionInputs)
+      .where(eq(animationCompositionInputs.animationId, fixture.animation.id));
+    expect(compositions).toHaveLength(2);
+    expect(inputs).toHaveLength(2);
+    const detail = await service().getAnimation(alice, fixture.animation.id);
+    expect(detail.compositions.map((row) => row.inputs.length)).toEqual([1, 1]);
+  });
+
+  it('rejects strict composition injection, disabled composition, and exhausted budgets', async () => {
+    const alice = await user();
+    const fixture = await storyboardReady(alice);
+    const app = Fastify();
+    registerAnimationRoutes(app, { animation: service(), consumerSessions: sessions });
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/v1/ai/animations/${fixture.animation.id}/compositions`,
+      headers: { authorization: `Bearer ${sessions.issue(alice).token}` },
+      payload: { sceneGenerationIds: [crypto.randomUUID()], provider: 'CLIENT' },
+    });
+    expect(response.statusCode).toBe(400);
+    await app.close();
+
+    const disabled = new AnimationService(
+      db,
+      aiQueue,
+      aiConfig,
+      undefined,
+      videoQueue,
+      videoConfig,
+      compositionQueue,
+      {
+        compositionEnabled: false,
+        maxGenerations: 1,
+        maxCompositions: 1,
+        maxPlannedDurationMs: 600_000,
+      },
+    );
+    await expect(
+      disabled.createComposition(alice, fixture.animation.id, [crypto.randomUUID()]),
+    ).rejects.toMatchObject({ code: 'FEATURE_DISABLED' });
+
+    await service().generateScene(alice, fixture.animation.id, fixture.scene.id);
+    await db
+      .update(animationSceneGenerations)
+      .set({ status: 'FAILED' })
+      .where(eq(animationSceneGenerations.animationId, fixture.animation.id));
+    const limited = new AnimationService(
+      db,
+      aiQueue,
+      aiConfig,
+      undefined,
+      videoQueue,
+      videoConfig,
+      compositionQueue,
+      {
+        compositionEnabled: true,
+        maxGenerations: 1,
+        maxCompositions: 1,
+        maxPlannedDurationMs: 600_000,
+      },
+    );
+    await expect(
+      limited.generateScene(alice, fixture.animation.id, fixture.scene.id),
+    ).rejects.toMatchObject({ code: 'BUDGET_EXCEEDED' });
   });
 });

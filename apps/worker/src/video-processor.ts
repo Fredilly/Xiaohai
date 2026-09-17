@@ -8,6 +8,7 @@ import {
 } from '@xiaohai/db';
 import type { VideoProvider } from './video-provider.js';
 import { VideoProviderError } from './video-provider.js';
+import type { ModerationAdapter } from './moderation.js';
 
 type Db = ReturnType<typeof createDatabase>['db'];
 
@@ -16,6 +17,7 @@ export class VideoJobProcessor {
     private readonly db: Db,
     private readonly provider: VideoProvider,
     private readonly timeoutMs: number,
+    private readonly moderation: ModerationAdapter,
   ) {}
 
   async processOne(): Promise<string | null> {
@@ -71,6 +73,20 @@ export class VideoJobProcessor {
 
       if (!scene) {
         throw new VideoProviderError('VIDEO_PROVIDER_INVALID_OUTPUT');
+      }
+
+      let moderation;
+      try {
+        moderation = await this.moderation.moderate(scene.generationPrompt, 'INPUT');
+      } catch {
+        await this.fail(claimed.id, 'MODERATION_UNAVAILABLE');
+        return claimed.id;
+      }
+      if (moderation.status === 'BLOCKED') {
+        await this.fail(claimed.id, 'MODERATION_BLOCKED', {
+          moderation: { input: moderation.status, reasonCodes: moderation.reasonCodes },
+        });
+        return claimed.id;
       }
 
       const characters = await this.db
@@ -132,6 +148,10 @@ export class VideoJobProcessor {
             usage: {
               durationSeconds: result.durationSeconds,
             },
+            costMetadata: {
+              providerRequestId: result.providerRequestId,
+              moderation: { input: moderation.status, reasonCodes: moderation.reasonCodes },
+            },
             completedAt: new Date(),
             updatedAt: new Date(),
           })
@@ -150,22 +170,24 @@ export class VideoJobProcessor {
             ? 'VIDEO_PROVIDER_TIMEOUT'
             : 'VIDEO_PROVIDER_UNAVAILABLE';
 
-      await this.db
-        .update(animationSceneGenerations)
-        .set({
-          status: 'FAILED',
-          errorCode: code,
-          completedAt: new Date(),
-          updatedAt: new Date(),
-        })
-        .where(
-          and(
-            eq(animationSceneGenerations.id, claimed.id),
-            eq(animationSceneGenerations.status, 'RUNNING'),
-          ),
-        );
+      await this.fail(claimed.id, code);
     }
 
     return claimed.id;
+  }
+
+  private async fail(id: string, errorCode: string, costMetadata?: Record<string, unknown>) {
+    await this.db
+      .update(animationSceneGenerations)
+      .set({
+        status: 'FAILED',
+        errorCode,
+        costMetadata,
+        completedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(
+        and(eq(animationSceneGenerations.id, id), eq(animationSceneGenerations.status, 'RUNNING')),
+      );
   }
 }

@@ -4,9 +4,11 @@ import {
   aiJobs,
   aiProjects,
   animationCharacters,
+  animationCompositionInputs,
   animationCompositions,
   animationSceneGenerations,
   animationScenes,
+  mediaAssets,
   workVersions,
   works,
   type createDatabase,
@@ -21,6 +23,7 @@ import {
 } from '@xiaohai/contracts/animation';
 import type { AiQueue } from '../ai/ai-queue.js';
 import type { VideoQueue } from './video-queue.js';
+import type { CompositionQueue } from './composition-queue.js';
 
 type Db = ReturnType<typeof createDatabase>['db'];
 
@@ -36,6 +39,13 @@ export type AnimationVideoConfig = {
   enabled: boolean;
   provider: 'MOCK';
   model: string;
+};
+
+export type AnimationWorkflowConfig = {
+  compositionEnabled: boolean;
+  maxGenerations: number;
+  maxCompositions: number;
+  maxPlannedDurationMs: number;
 };
 
 type AnimationLogger = { warn(bindings: Record<string, unknown>, message: string): void };
@@ -54,7 +64,8 @@ export class AnimationError extends Error {
       | 'INVALID_STATE'
       | 'JOB_NOT_READY'
       | 'INVALID_JOB_STATE'
-      | 'INVALID_JOB_OUTPUT',
+      | 'INVALID_JOB_OUTPUT'
+      | 'BUDGET_EXCEEDED',
   ) {
     super(code);
   }
@@ -68,6 +79,13 @@ export class AnimationService {
     private readonly logger?: AnimationLogger,
     private readonly videoQueue?: VideoQueue,
     private readonly videoConfig?: AnimationVideoConfig,
+    private readonly compositionQueue?: CompositionQueue,
+    private readonly workflowConfig: AnimationWorkflowConfig = {
+      compositionEnabled: false,
+      maxGenerations: 100,
+      maxCompositions: 10,
+      maxPlannedDurationMs: 600_000,
+    },
   ) {}
 
   async createAnimation(consumerUserId: string, input: CreateAnimationRequest) {
@@ -94,6 +112,11 @@ export class AnimationService {
           storyWorkId: source.work.id,
           sourceStoryVersionId: source.version.id,
           title,
+          costLimitMetadata: {
+            maxGenerations: this.workflowConfig.maxGenerations,
+            maxCompositions: this.workflowConfig.maxCompositions,
+            maxPlannedDurationMs: this.workflowConfig.maxPlannedDurationMs,
+          },
         })
         .returning();
       return animation!;
@@ -126,14 +149,43 @@ export class AnimationService {
     const generations = await this.db
       .select()
       .from(animationSceneGenerations)
-      .where(eq(animationSceneGenerations.animationId, animation.id));
+      .where(eq(animationSceneGenerations.animationId, animation.id))
+      .orderBy(
+        asc(animationSceneGenerations.sceneId),
+        asc(animationSceneGenerations.revisionNumber),
+      );
     const compositions = await this.db
       .select()
       .from(animationCompositions)
       .where(eq(animationCompositions.animationId, animation.id))
       .orderBy(asc(animationCompositions.revisionNumber));
+    const compositionInputs = compositions.length
+      ? await this.db
+          .select()
+          .from(animationCompositionInputs)
+          .where(
+            inArray(
+              animationCompositionInputs.compositionId,
+              compositions.map((row) => row.id),
+            ),
+          )
+      : [];
+    const [finalMedia] = animation.finalMediaAssetId
+      ? await this.db
+          .select()
+          .from(mediaAssets)
+          .where(eq(mediaAssets.id, animation.finalMediaAssetId))
+      : [];
     return {
       animation: this.viewAnimation(animation),
+      finalMedia: finalMedia
+        ? {
+            id: finalMedia.id,
+            playbackUrl: finalMedia.playbackUrl,
+            mimeType: finalMedia.mimeType,
+            durationSeconds: finalMedia.durationSeconds,
+          }
+        : null,
       characters: characters.map((row) => this.viewCharacter(row)),
       scenes: scenes.map((row) => ({
         ...this.viewScene(row),
@@ -141,7 +193,16 @@ export class AnimationService {
           .filter((g) => g.sceneId === row.id)
           .map((g) => this.viewGeneration(g)),
       })),
-      compositions: compositions.map((row) => ({ ...this.viewComposition(row), inputs: [] })),
+      compositions: compositions.map((row) => ({
+        ...this.viewComposition(row),
+        inputs: compositionInputs
+          .filter((input) => input.compositionId === row.id)
+          .sort((a, b) => a.sceneOrder - b.sceneOrder)
+          .map((input) => ({
+            sceneGenerationId: input.sceneGenerationId,
+            sceneOrder: input.sceneOrder,
+          })),
+      })),
     };
   }
 
@@ -164,32 +225,61 @@ export class AnimationService {
       animationId: animation.id,
       operation: input.operation,
     };
-    const [job] = await this.db
-      .insert(aiJobs)
-      .values({
-        projectId: animation.aiProjectId,
-        jobType: this.jobType(input.operation),
-        provider: this.config.provider,
-        model: this.config.model,
-        input: {
-          prompt: this.buildPrompt(animation, source.work, source.version, input.operation),
-          context,
-        },
-        maxAttempts: this.config.maxAttempts,
-        timeoutMs: this.config.timeoutMs,
-      })
-      .returning();
+    const job = await this.db.transaction(async (tx) => {
+      const [locked] = await tx
+        .select()
+        .from(aiAnimations)
+        .where(
+          and(eq(aiAnimations.id, animation.id), eq(aiAnimations.consumerUserId, consumerUserId)),
+        )
+        .for('update');
+      if (!locked) throw new AnimationError('NOT_FOUND');
+      if (input.operation === 'SCRIPT') {
+        if (locked.status !== 'DRAFT' || locked.scriptSourceAiJobId)
+          throw new AnimationError('INVALID_STATE');
+      } else if (locked.status !== 'SCRIPT_READY' || !locked.scriptText) {
+        throw new AnimationError('INVALID_STATE');
+      }
+      const [active] = await tx
+        .select({ id: aiJobs.id })
+        .from(aiJobs)
+        .where(
+          and(
+            eq(aiJobs.projectId, locked.aiProjectId),
+            eq(aiJobs.jobType, this.jobType(input.operation)),
+            inArray(aiJobs.status, ['QUEUED', 'RUNNING']),
+          ),
+        )
+        .limit(1);
+      if (active) throw new AnimationError('INVALID_STATE');
+      const [created] = await tx
+        .insert(aiJobs)
+        .values({
+          projectId: locked.aiProjectId,
+          jobType: this.jobType(input.operation),
+          provider: this.config.provider,
+          model: this.config.model,
+          input: {
+            prompt: this.buildPrompt(animation, source.work, source.version, input.operation),
+            context,
+          },
+          maxAttempts: this.config.maxAttempts,
+          timeoutMs: this.config.timeoutMs,
+        })
+        .returning();
+      return created!;
+    });
     try {
-      await this.queue.notify(job!.id);
+      await this.queue.notify(job.id);
     } catch {
       this.logger?.warn(
-        { event: 'ANIMATION_AI_QUEUE_NOTIFY_FAILED', jobId: job!.id, animationId: animation.id },
+        { event: 'ANIMATION_AI_QUEUE_NOTIFY_FAILED', jobId: job.id, animationId: animation.id },
         'Animation AI queue notification failed; PostgreSQL polling will recover the job',
       );
     }
     return {
       animationId: animation.id,
-      jobId: job!.id,
+      jobId: job.id,
       operation: input.operation,
       status: 'QUEUED' as const,
     };
@@ -225,6 +315,20 @@ export class AnimationService {
         .for('update');
 
       if (!scene) throw new AnimationError('NOT_FOUND');
+
+      const [counts] = await tx
+        .select({ total: sql<number>`count(*)` })
+        .from(animationSceneGenerations)
+        .where(eq(animationSceneGenerations.animationId, animation.id));
+      const [duration] = await tx
+        .select({ total: sql<number>`coalesce(sum(${animationScenes.plannedDurationMs}), 0)` })
+        .from(animationScenes)
+        .where(eq(animationScenes.animationId, animation.id));
+      if (
+        Number(counts?.total ?? 0) >= this.workflowConfig.maxGenerations ||
+        Number(duration?.total ?? 0) > this.workflowConfig.maxPlannedDurationMs
+      )
+        throw new AnimationError('BUDGET_EXCEEDED');
 
       const [active] = await tx
         .select({ id: animationSceneGenerations.id })
@@ -289,6 +393,114 @@ export class AnimationService {
       sceneId,
       generationId: generation.id,
       revisionNumber: generation.revisionNumber,
+      status: 'QUEUED' as const,
+    };
+  }
+
+  async createComposition(consumerUserId: string, animationId: string, generationIds: string[]) {
+    if (!this.workflowConfig.compositionEnabled || !this.compositionQueue)
+      throw new AnimationError('FEATURE_DISABLED');
+    const composition = await this.db.transaction(async (tx) => {
+      const [animation] = await tx
+        .select()
+        .from(aiAnimations)
+        .where(
+          and(eq(aiAnimations.id, animationId), eq(aiAnimations.consumerUserId, consumerUserId)),
+        )
+        .for('update');
+      if (!animation) throw new AnimationError('NOT_FOUND');
+      if (!['GENERATING', 'READY'].includes(animation.status))
+        throw new AnimationError('INVALID_STATE');
+      const [active] = await tx
+        .select({ id: animationCompositions.id })
+        .from(animationCompositions)
+        .where(
+          and(
+            eq(animationCompositions.animationId, animation.id),
+            inArray(animationCompositions.status, ['QUEUED', 'RUNNING']),
+          ),
+        )
+        .limit(1);
+      if (active) throw new AnimationError('INVALID_STATE');
+      const scenes = await tx
+        .select()
+        .from(animationScenes)
+        .where(eq(animationScenes.animationId, animation.id))
+        .orderBy(asc(animationScenes.sceneNumber));
+      const generations = await tx
+        .select()
+        .from(animationSceneGenerations)
+        .where(
+          and(
+            eq(animationSceneGenerations.animationId, animation.id),
+            inArray(animationSceneGenerations.id, generationIds),
+          ),
+        );
+      if (
+        !scenes.length ||
+        generations.length !== scenes.length ||
+        new Set(generationIds).size !== generationIds.length
+      )
+        throw new AnimationError('INVALID_STATE');
+      const ordered = scenes.map((scene) =>
+        generations.find((generation) => generation.sceneId === scene.id),
+      );
+      if (
+        ordered.some(
+          (generation) => !generation || generation.status !== 'READY' || !generation.mediaAssetId,
+        )
+      )
+        throw new AnimationError('INVALID_STATE');
+      const [count] = await tx
+        .select({ total: sql<number>`count(*)` })
+        .from(animationCompositions)
+        .where(eq(animationCompositions.animationId, animation.id));
+      if (Number(count?.total ?? 0) >= this.workflowConfig.maxCompositions)
+        throw new AnimationError('BUDGET_EXCEEDED');
+      const [latest] = await tx
+        .select({ revisionNumber: animationCompositions.revisionNumber })
+        .from(animationCompositions)
+        .where(eq(animationCompositions.animationId, animation.id))
+        .orderBy(desc(animationCompositions.revisionNumber))
+        .limit(1);
+      const [created] = await tx
+        .insert(animationCompositions)
+        .values({
+          animationId: animation.id,
+          revisionNumber: (latest?.revisionNumber ?? 0) + 1,
+          costMetadata: { source: 'SERVER_BUDGET', costUnits: scenes.length },
+        })
+        .returning();
+      await tx.insert(animationCompositionInputs).values(
+        ordered.map((generation, index) => ({
+          animationId: animation.id,
+          compositionId: created!.id,
+          sceneGenerationId: generation!.id,
+          sceneOrder: scenes[index]!.sceneNumber,
+        })),
+      );
+      await tx
+        .update(aiAnimations)
+        .set({ status: 'COMPOSING', updatedAt: new Date() })
+        .where(eq(aiAnimations.id, animation.id));
+      return created!;
+    });
+    try {
+      await this.compositionQueue.notify(composition.id);
+    } catch {
+      this.logger?.warn(
+        {
+          event: 'ANIMATION_COMPOSITION_QUEUE_NOTIFY_FAILED',
+          compositionId: composition.id,
+          animationId,
+        },
+        'Animation composition queue notification failed; PostgreSQL polling will recover the composition',
+      );
+    }
+    return {
+      animationId,
+      compositionId: composition.id,
+      revisionNumber: composition.revisionNumber,
       status: 'QUEUED' as const,
     };
   }

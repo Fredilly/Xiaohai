@@ -15,6 +15,7 @@ import {
 } from '@xiaohai/db';
 import { VideoJobProcessor } from '../src/video-processor.js';
 import { MockVideoProvider, type VideoProvider } from '../src/video-provider.js';
+import { BaselineModerationAdapter } from '../src/moderation.js';
 
 const database = process.env.DATABASE_URL ? createDatabase(process.env) : null;
 const suite = database ? describe : describe.skip;
@@ -215,7 +216,12 @@ suite('M11 video worker PostgreSQL integration', () => {
       new MockVideoProvider().generate(input),
     );
 
-    await new VideoJobProcessor(db, { name: 'MOCK', generate }, 5_000).processOne();
+    await new VideoJobProcessor(
+      db,
+      { name: 'MOCK', generate },
+      5_000,
+      new BaselineModerationAdapter(),
+    ).processOne();
 
     expect(generate).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -264,7 +270,7 @@ suite('M11 video worker PostgreSQL integration', () => {
       generate: () => Promise.reject(new Error('unavailable')),
     };
 
-    await new VideoJobProcessor(db, provider, 5_000).processOne();
+    await new VideoJobProcessor(db, provider, 5_000, new BaselineModerationAdapter()).processOne();
 
     const [saved] = await db
       .select()

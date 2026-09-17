@@ -1,0 +1,14 @@
+<view class="page">
+  <view wx:if="{{loading}}" class="state-card">加载中…</view>
+  <view wx:elif="{{!detail}}" class="state-card"><text class="state-copy">{{error}}</text><button bindtap="load">重试</button></view>
+  <block wx:else>
+    <view class="hero hero-soft"><text class="eyebrow">ANIMATION WORKSPACE</text><text class="hero-title">{{detail.animation.title}}</text><text class="hero-subtitle">状态：{{detail.animation.status}}</text></view>
+    <view wx:if="{{error}}" class="demo-note">{{error}}</view>
+    <view class="section"><text class="section-title">文本规划</text><button class="primary-btn" data-operation="SCRIPT" disabled="{{busy || detail.animation.status !== 'DRAFT'}}" bindtap="generatePlan">生成脚本</button><button class="primary-btn" data-operation="STORYBOARD" disabled="{{busy || detail.animation.status !== 'SCRIPT_READY'}}" bindtap="generatePlan">生成角色与分镜</button><text wx:if="{{detail.animation.scriptText}}" class="content-text">{{detail.animation.scriptText}}</text></view>
+    <view class="section"><view class="section-head"><text class="section-title">角色</text><text class="section-note">{{detail.characters.length}}</text></view><view wx:for="{{detail.characters}}" wx:key="id" class="card"><text class="card-title">{{item.name}} · {{item.role}}</text><text class="state-copy">{{item.description}}</text><text class="state-copy">视觉约束：{{item.visualPrompt}}</text></view></view>
+    <view class="section"><view class="section-head"><text class="section-title">场景</text><text class="section-note">{{detail.scenes.length}}</text></view><view wx:for="{{detail.scenes}}" wx:key="id" class="card scene"><text class="card-title">场景 {{item.sceneNumber}}</text><text class="state-copy">{{item.visualDescription}}</text><text class="state-copy">{{item.plannedDurationMs}} ms</text><view wx:for="{{item.generations}}" wx:for-item="generation" wx:key="id" class="revision"><text>修订 {{generation.revisionNumber}} · {{generation.status}} · {{generation.progressPercent}}%</text></view><button size="mini" data-scene-id="{{item.id}}" disabled="{{busy}}" bindtap="generateScene">{{item.generations.length ? '重新生成场景' : '生成场景'}}</button></view></view>
+    <view class="section"><text class="section-title">整片合成</text><button class="primary-btn" disabled="{{busy || !canCompose}}" bindtap="compose">{{detail.compositions.length ? '重新合成' : '合成动画'}}</button><view wx:for="{{detail.compositions}}" wx:key="id" class="revision"><text>合成修订 {{item.revisionNumber}} · {{item.status}} · {{item.progressPercent}}%</text><text class="state-copy">场景输入 {{item.inputs.length}} 个</text></view></view>
+    <view wx:if="{{detail.finalMedia && detail.finalMedia.playbackUrl}}" class="section"><text class="section-title">最终预览</text><video src="{{detail.finalMedia.playbackUrl}}" controls></video></view>
+    <view class="demo-note">配音 / 字幕 / 音乐当前版本未启用。Mock 视频与合成仅验证工程链路，不代表真实生产生成能力。</view>
+  </block>
+</view>
