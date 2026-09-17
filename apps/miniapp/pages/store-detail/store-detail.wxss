@@ -1,0 +1,54 @@
+.detail-map {
+  width: 100%;
+  height: 420rpx;
+  border-radius: 24rpx;
+  overflow: hidden;
+}
+
+.detail-card {
+  display: block;
+}
+
+.detail-row + .detail-row {
+  margin-top: 24rpx;
+  padding-top: 24rpx;
+  border-top: 1rpx solid #eee7dc;
+}
+
+.detail-label {
+  display: block;
+  margin-bottom: 10rpx;
+  color: #8a857b;
+  font-size: 22rpx;
+}
+
+.detail-value {
+  color: #343833;
+  font-size: 27rpx;
+  line-height: 1.6;
+}
+
+.service-chips {
+  margin-top: 0;
+}
+
+.action-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16rpx;
+  margin-top: 26rpx;
+}
+
+.action-btn {
+  width: 100%;
+  margin: 0;
+}
+
+.secondary-btn {
+  border-radius: 18rpx;
+  border: 1rpx solid #cfd9d1;
+  background: #fff;
+  color: #315d45;
+  font-size: 26rpx;
+  font-weight: 700;
+}
