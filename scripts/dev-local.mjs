@@ -1,6 +1,6 @@
+import { spawn, spawnSync } from 'node:child_process';
 import { copyFileSync, existsSync } from 'node:fs';
 import net from 'node:net';
-import { spawn, spawnSync } from 'node:child_process';
 import process from 'node:process';
 
 const root = process.cwd();
@@ -36,32 +36,47 @@ if (!existsSync(envPath)) {
     process.exit(1);
   }
   copyFileSync(envExamplePath, envPath);
-  console.log('Created .env from .env.example. Fill in any local secrets you need.');
+  console.log(
+    'Created .env from .env.example. Fill in any local secrets you need.',
+  );
 }
 
 if (!(await isPortOpen(5432))) {
-  if (process.platform === 'darwin' && existsSync('/Applications/Postgres.app')) {
+  if (
+    process.platform === 'darwin' &&
+    existsSync('/Applications/Postgres.app')
+  ) {
     console.log('PostgreSQL is not running. Starting Postgres.app...');
-    const result = spawnSync('open', ['/Applications/Postgres.app'], { stdio: 'inherit' });
+    const result = spawnSync('open', ['/Applications/Postgres.app'], {
+      stdio: 'inherit',
+    });
     if (result.status !== 0 || !(await waitForPort(5432))) {
       console.error('Postgres.app did not become ready on 127.0.0.1:5432.');
       process.exit(1);
     }
   } else {
-    console.error('PostgreSQL is not reachable on 127.0.0.1:5432. Start your local PostgreSQL server, then retry.');
+    console.error(
+      'PostgreSQL is not reachable on 127.0.0.1:5432. Start your local PostgreSQL server, then retry.',
+    );
     process.exit(1);
   }
 }
 
 console.log('PostgreSQL is ready. Applying migrations...');
-const migration = spawnSync('pnpm', ['--filter', '@xiaohai/db', 'db:migrate'], {
-  cwd: root,
-  stdio: 'inherit',
-});
+const migration = spawnSync(
+  'pnpm',
+  ['--filter', '@xiaohai/db', 'db:migrate'],
+  {
+    cwd: root,
+    stdio: 'inherit',
+  },
+);
 if (migration.status !== 0) process.exit(migration.status ?? 1);
 
 if (!(await isPortOpen(6379))) {
-  console.warn('Redis is not running on 127.0.0.1:6379. Home/CMS can still run, but Redis-backed features may be unavailable.');
+  console.warn(
+    'Redis is not running on 127.0.0.1:6379. Home/CMS can still run, but Redis-backed features may be unavailable.',
+  );
 }
 
 console.log('Starting Xiaohai API on http://127.0.0.1:3000 ...');
