@@ -1,4 +1,4 @@
-import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { eq } from 'drizzle-orm';
 import {
   aiAnimations,
@@ -197,6 +197,10 @@ suite('M11 video worker PostgreSQL integration', () => {
       consistency,
     };
   }
+
+  beforeEach(async () => {
+    await database!.pool.query('TRUNCATE TABLE media_assets, consumer_users CASCADE');
+  });
 
   afterEach(async () => {
     await database!.pool.query('TRUNCATE TABLE media_assets, consumer_users CASCADE');
