@@ -294,6 +294,8 @@ export class AnimationService {
     }
 
     const generation = await this.db.transaction(async (tx) => {
+      // Serialize animation-level budget, active-task and revision decisions on one aggregate row.
+      // Concurrent generation requests for different scenes must still share the same animation budget.
       const [animation] = await tx
         .select()
         .from(aiAnimations)
@@ -401,6 +403,8 @@ export class AnimationService {
     if (!this.workflowConfig.compositionEnabled || !this.compositionQueue)
       throw new AnimationError('FEATURE_DISABLED');
     const composition = await this.db.transaction(async (tx) => {
+      // Serialize composition budget, active-task and revision decisions on the animation aggregate.
+      // The row lock is intentionally acquired before any count or next-revision calculation.
       const [animation] = await tx
         .select()
         .from(aiAnimations)

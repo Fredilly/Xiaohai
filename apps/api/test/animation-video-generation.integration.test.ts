@@ -16,7 +16,10 @@ import {
 } from '@xiaohai/db';
 import { ConsumerSessionService } from '../src/auth/session.js';
 import { registerAnimationRoutes } from '../src/animation/animation-routes.js';
-import { animationSceneGenerationAcceptedSchema } from '@xiaohai/contracts/animation';
+import {
+  animationCompositionAcceptedSchema,
+  animationSceneGenerationAcceptedSchema,
+} from '@xiaohai/contracts/animation';
 import {
   AnimationService,
   type AnimationAiConfig,
@@ -476,6 +479,159 @@ suite('M11 Animation scene generation PostgreSQL integration', () => {
     expect(inputs).toHaveLength(2);
     const detail = await service().getAnimation(alice, fixture.animation.id);
     expect(detail.compositions.map((row) => row.inputs.length)).toEqual([1, 1]);
+  });
+
+  it('serializes concurrent scene generation and composition requests at the animation aggregate', async () => {
+    const alice = await user();
+    const fixture = await storyboardReady(alice);
+
+    const limited = new AnimationService(
+      db,
+      aiQueue,
+      aiConfig,
+      undefined,
+      videoQueue,
+      videoConfig,
+      compositionQueue,
+      {
+        compositionEnabled: true,
+        maxGenerations: 1,
+        maxCompositions: 1,
+        maxPlannedDurationMs: 600_000,
+      },
+    );
+
+    const app = Fastify();
+    registerAnimationRoutes(app, {
+      animation: limited,
+      consumerSessions: sessions,
+    });
+
+    const authorization = `Bearer ${sessions.issue(alice).token}`;
+    const generationUrl =
+      `/api/v1/ai/animations/${fixture.animation.id}` + `/scenes/${fixture.scene.id}/generations`;
+
+    const generationResponses = await Promise.all([
+      app.inject({
+        method: 'POST',
+        url: generationUrl,
+        headers: { authorization },
+        payload: {},
+      }),
+      app.inject({
+        method: 'POST',
+        url: generationUrl,
+        headers: { authorization },
+        payload: {},
+      }),
+    ]);
+
+    expect(generationResponses.map((response) => response.statusCode).sort()).toEqual([202, 409]);
+
+    const acceptedGenerationResponse = generationResponses.find(
+      (response) => response.statusCode === 202,
+    )!;
+    const rejectedGenerationResponse = generationResponses.find(
+      (response) => response.statusCode === 409,
+    )!;
+
+    const acceptedGeneration = animationSceneGenerationAcceptedSchema.parse(
+      acceptedGenerationResponse.json(),
+    );
+
+    expect(rejectedGenerationResponse.json()).toMatchObject({
+      error: { code: 'BUDGET_EXCEEDED' },
+    });
+
+    const generationRows = await db
+      .select()
+      .from(animationSceneGenerations)
+      .where(eq(animationSceneGenerations.animationId, fixture.animation.id));
+
+    expect(generationRows).toHaveLength(1);
+    expect(generationRows[0]!.revisionNumber).toBe(1);
+
+    const [asset] = await db
+      .insert(mediaAssets)
+      .values({
+        provider: 'MOCK_VIDEO',
+        objectKey: `animations/mock/${acceptedGeneration.generationId}.mp4`,
+        playbackUrl: `https://mock.invalid/${acceptedGeneration.generationId}.mp4`,
+        mimeType: 'video/mp4',
+        status: 'READY',
+      })
+      .returning();
+
+    await db
+      .update(animationSceneGenerations)
+      .set({
+        status: 'READY',
+        progressPercent: 100,
+        mediaAssetId: asset!.id,
+        completedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(animationSceneGenerations.id, acceptedGeneration.generationId));
+
+    const compositionUrl = `/api/v1/ai/animations/${fixture.animation.id}/compositions`;
+    const compositionPayload = {
+      sceneGenerationIds: [acceptedGeneration.generationId],
+    };
+
+    const compositionResponses = await Promise.all([
+      app.inject({
+        method: 'POST',
+        url: compositionUrl,
+        headers: { authorization },
+        payload: compositionPayload,
+      }),
+      app.inject({
+        method: 'POST',
+        url: compositionUrl,
+        headers: { authorization },
+        payload: compositionPayload,
+      }),
+    ]);
+
+    expect(compositionResponses.map((response) => response.statusCode).sort()).toEqual([202, 409]);
+
+    const acceptedCompositionResponse = compositionResponses.find(
+      (response) => response.statusCode === 202,
+    )!;
+    const rejectedCompositionResponse = compositionResponses.find(
+      (response) => response.statusCode === 409,
+    )!;
+
+    const acceptedComposition = animationCompositionAcceptedSchema.parse(
+      acceptedCompositionResponse.json(),
+    );
+
+    expect(acceptedComposition).toMatchObject({
+      animationId: fixture.animation.id,
+      revisionNumber: 1,
+      status: 'QUEUED',
+    });
+
+    expect(rejectedCompositionResponse.json()).toMatchObject({
+      error: { code: 'INVALID_STATE' },
+    });
+
+    const compositionRows = await db
+      .select()
+      .from(animationCompositions)
+      .where(eq(animationCompositions.animationId, fixture.animation.id));
+
+    expect(compositionRows).toHaveLength(1);
+    expect(compositionRows[0]!.revisionNumber).toBe(1);
+
+    const inputRows = await db
+      .select()
+      .from(animationCompositionInputs)
+      .where(eq(animationCompositionInputs.animationId, fixture.animation.id));
+
+    expect(inputRows).toHaveLength(1);
+
+    await app.close();
   });
 
   it('rejects strict composition injection, disabled composition, and exhausted budgets', async () => {
