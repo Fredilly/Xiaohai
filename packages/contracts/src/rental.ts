@@ -25,6 +25,9 @@ export const createRentalRequestSchema = z
   });
 
 export const rentalActionRequestSchema = z.object({ idempotencyKey: z.uuid() }).strict();
+export const rentalBorrowRequestSchema = z
+  .object({ idempotencyKey: z.uuid(), pickupCode: z.string().regex(/^\\d{6}$/) })
+  .strict();
 export const rentalListQuerySchema = z
   .object({
     status: rentalStatusSchema.optional(),
@@ -61,6 +64,7 @@ export const rentalViewSchema = z.object({
   returnedAt: z.coerce.date().nullable(),
   cancelledAt: z.coerce.date().nullable(),
   isOverdue: z.boolean(),
+  pickupCode: z.string().regex(/^\\d{6}$/).nullable(),
   items: z.array(rentalItemSchema),
   events: z.array(rentalEventSchema),
 });
@@ -69,5 +73,6 @@ export const rentalListResponseSchema = z.object({ items: z.array(rentalViewSche
 export type RentalStatus = z.infer<typeof rentalStatusSchema>;
 export type CreateRentalRequest = z.infer<typeof createRentalRequestSchema>;
 export type RentalActionRequest = z.infer<typeof rentalActionRequestSchema>;
+export type RentalBorrowRequest = z.infer<typeof rentalBorrowRequestSchema>;
 export type RentalListQuery = z.infer<typeof rentalListQuerySchema>;
 export type RentalView = z.infer<typeof rentalViewSchema>;
