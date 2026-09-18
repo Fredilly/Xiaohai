@@ -1,6 +1,9 @@
 import { submitFranchiseApplication } from '../../services/franchise';
 
-type InputEvent = WechatMiniprogram.Input;
+type InputEvent = {
+  detail: { value?: string };
+  currentTarget: { dataset: { field?: string } };
+};
 
 type FieldName =
   | 'name'
