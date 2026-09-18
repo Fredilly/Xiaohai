@@ -33,7 +33,17 @@ suite('M13 book + store inventory PostgreSQL integration', () => {
     await database!.db.delete(regions);
   });
 
-  afterAll(async () => database?.pool.end());
+  afterAll(async () => {
+    await database!.db.delete(storeInventory);
+    await database!.db.delete(skus);
+    await database!.db.delete(products);
+    await database!.db.delete(bookEditions);
+    await database!.db.delete(books);
+    await database!.db.delete(stores);
+    await database!.db.delete(franchisees);
+    await database!.db.delete(regions);
+    await database!.pool.end();
+  });
 
   function makeApp() {
     const app = buildApp({ logger: false });

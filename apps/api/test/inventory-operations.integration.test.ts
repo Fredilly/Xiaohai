@@ -85,7 +85,30 @@ suite('M14 inventory operations PostgreSQL integration', () => {
     await database!.db.delete(roles);
     await database!.db.delete(permissions);
   });
-  afterAll(async () => database?.pool.end());
+  afterAll(async () => {
+    await database!.db.delete(inventoryTransactions);
+    await database!.db.delete(goodsReceiptItems);
+    await database!.db.delete(goodsReceipts);
+    await database!.db.delete(purchaseOrderItems);
+    await database!.db.delete(purchaseOrders);
+    await database!.db.delete(stocktakeItems);
+    await database!.db.delete(stocktakes);
+    await database!.db.delete(stockTransferItems);
+    await database!.db.delete(stockTransfers);
+    await database!.db.delete(storeInventory);
+    await database!.db.delete(suppliers);
+    await database!.db.delete(skus);
+    await database!.db.delete(products);
+    await database!.db.delete(bookEditions);
+    await database!.db.delete(books);
+    await database!.db.delete(stores);
+    await database!.db.delete(franchisees);
+    await database!.db.delete(regions);
+    await database!.db.delete(staffAccounts);
+    await database!.db.delete(roles);
+    await database!.db.delete(permissions);
+    await database!.pool.end();
+  });
 
   async function seed() {
     const [regionA, regionB] = await database!.db
