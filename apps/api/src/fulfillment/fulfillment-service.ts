@@ -163,6 +163,8 @@ export class FulfillmentService {
         .limit(1);
       if (!cartRow) throw new FulfillmentError('CONFLICT');
 
+      await reserveSaleInventory(tx, input.storeId, cart.items);
+
       const orderId = randomUUID();
       await tx.insert(orders).values({
         id: orderId,
@@ -610,6 +612,40 @@ async function lockPickup(tx: Transaction, orderId: string) {
   return { order, pickup };
 }
 
+async function reserveSaleInventory(
+  tx: Transaction,
+  storeId: string,
+  items: Array<{ skuId: string; quantity: number }>,
+) {
+  const orderedItems = [...items].sort((a, b) => a.skuId.localeCompare(b.skuId));
+  for (const item of orderedItems) {
+    await tx.execute(
+      sql`select 1 from store_inventory where store_id=${storeId} and sku_id=${item.skuId} for update`,
+    );
+    const [balance] = await tx
+      .select()
+      .from(storeInventory)
+      .where(and(eq(storeInventory.storeId, storeId), eq(storeInventory.skuId, item.skuId)))
+      .limit(1);
+    if (!balance || balance.onHand - balance.reserved - balance.rentalReserved < item.quantity)
+      throw new FulfillmentError('INSUFFICIENT_STOCK');
+    await tx
+      .update(storeInventory)
+      .set({
+        reserved: balance.reserved + item.quantity,
+        version: balance.version + 1,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(storeInventory.storeId, storeId),
+          eq(storeInventory.skuId, item.skuId),
+          eq(storeInventory.version, balance.version),
+        ),
+      );
+  }
+}
+
 async function deductSaleInventory(
   tx: Transaction,
   orderId: string,
@@ -631,12 +667,17 @@ async function deductSaleInventory(
       .from(storeInventory)
       .where(and(eq(storeInventory.storeId, storeId), eq(storeInventory.skuId, item.skuId)))
       .limit(1);
-    if (!balance || balance.onHand - balance.reserved - balance.rentalReserved < item.quantity)
+    if (!balance || balance.onHand < item.quantity || balance.reserved < item.quantity)
       throw new FulfillmentError('INSUFFICIENT_STOCK');
     const next = balance.onHand - item.quantity;
     await tx
       .update(storeInventory)
-      .set({ onHand: next, version: balance.version + 1, updatedAt: new Date() })
+      .set({
+        onHand: next,
+        reserved: balance.reserved - item.quantity,
+        version: balance.version + 1,
+        updatedAt: new Date(),
+      })
       .where(
         and(
           eq(storeInventory.storeId, storeId),
