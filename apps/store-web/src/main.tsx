@@ -4,6 +4,7 @@ import type { StaffMeResponse } from '@xiaohai/contracts';
 import './styles.css';
 import { getStaffMe, loginStaff } from './staff-auth';
 import { storeModules } from './mock-data';
+import { InventoryPanel } from './inventory-panel';
 
 const tokenKey = 'staff_session_token';
 
@@ -101,6 +102,8 @@ function Shell({ me, onLogout }: { me: StaffMeResponse; onLogout: () => void }) 
         </header>
         {active === 'dashboard' ? (
           <Dashboard me={me} />
+        ) : active === 'inventory' ? (
+          <InventoryPanel token={sessionStorage.getItem(tokenKey) ?? ''} />
         ) : (
           <Preview title={module.label} description={module.description} />
         )}

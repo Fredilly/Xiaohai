@@ -46,7 +46,19 @@ export {
   playbackProgress,
 } from './content-schema.js';
 export { regions, franchisees, stores, storeStaff } from './store-schema.js';
-export { storeInventory } from './inventory-schema.js';
+export {
+  goodsReceiptItems,
+  goodsReceipts,
+  inventoryTransactions,
+  purchaseOrderItems,
+  purchaseOrders,
+  stocktakeItems,
+  stocktakes,
+  stockTransferItems,
+  stockTransfers,
+  storeInventory,
+  suppliers,
+} from './inventory-schema.js';
 export {
   consumerUsers,
   migrationBatches,

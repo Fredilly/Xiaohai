@@ -37,6 +37,8 @@ import { StoreNetworkService } from './stores/store-service.js';
 import { registerStoreRoutes } from './stores/store-routes.js';
 import { InventorySearchService } from './inventory/inventory-service.js';
 import { registerInventoryRoutes } from './inventory/inventory-routes.js';
+import { InventoryOperationsService } from './inventory/inventory-operations-service.js';
+import { registerInventoryOperationsRoutes } from './inventory/inventory-operations-routes.js';
 
 const config = loadServiceConfig(process.env);
 const { db, pool } = createDatabase(process.env);
@@ -81,6 +83,10 @@ registerPaymentRoutes(app, {
 registerContentRoutes(app, { content, consumerSessions: sessions, staffAuthorization });
 registerStoreRoutes(app, { stores: new StoreNetworkService(db), staffAuthorization });
 registerInventoryRoutes(app, { inventory: new InventorySearchService(db) });
+registerInventoryOperationsRoutes(app, {
+  operations: new InventoryOperationsService(db),
+  staffAuthorization,
+});
 const aiQueue = new RedisAiQueue(config.REDIS_URL, () =>
   app.log.error({ errorCode: 'REDIS_UNAVAILABLE' }, 'AI queue Redis error'),
 );
