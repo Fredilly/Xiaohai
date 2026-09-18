@@ -60,13 +60,26 @@ export class CommissionService {
 
   async attributeOrder(tx: Tx, orderId: string, referredConsumerUserId: string, code?: string) {
     if (!code) return;
+
+    const [order] = await tx
+      .select({
+        consumerUserId: orders.consumerUserId,
+        status: orders.status,
+      })
+      .from(orders)
+      .where(eq(orders.id, orderId))
+      .limit(1);
+
+    if (!order || order.consumerUserId !== referredConsumerUserId || order.status !== 'UNPAID')
+      return;
+
     const [link] = await tx
       .select()
       .from(referralLinks)
       .where(and(eq(referralLinks.code, code), eq(referralLinks.status, 'ACTIVE')))
       .limit(1);
-    if (!link) throw new CommissionError('NOT_FOUND');
-    if (link.ownerConsumerUserId === referredConsumerUserId) throw new CommissionError('CONFLICT');
+    if (!link) return;
+    if (link.ownerConsumerUserId === referredConsumerUserId) return;
     await tx
       .insert(referralAttributions)
       .values({
@@ -144,6 +157,9 @@ export class CommissionService {
       Math.floor((frozen.commission_events.amountMinor * refundAmountMinor) / paymentAmountMinor),
     );
     if (amountMinor <= 0) return;
+
+    await lockConsumer(tx, frozen.commission_events.beneficiaryConsumerUserId);
+
     const [settled] = await tx
       .select({ id: commissionEvents.id })
       .from(commissionEvents)
@@ -438,6 +454,51 @@ export class CommissionService {
             ? ['REQUESTED', 'APPROVED'].includes(row.status)
             : row.status === 'APPROVED';
       if (!allowed) throw new CommissionError('INVALID_STATE');
+
+      await lockConsumer(tx, row.consumerUserId);
+
+      if (input.action === 'MARK_PAID') {
+        const [balance] = await tx
+          .select({
+            available: sql<number>`coalesce(sum(${commissionLedger.availableDeltaMinor}), 0)::int`,
+          })
+          .from(commissionLedger)
+          .where(eq(commissionLedger.beneficiaryConsumerUserId, row.consumerUserId));
+
+        if ((balance?.available ?? 0) < 0) {
+          const [rejected] = await tx
+            .update(withdrawalRequests)
+            .set({
+              status: 'REJECTED',
+              reviewedByStaffAccountId: staffId,
+              reviewNote:
+                input.note ??
+                'Payout blocked because commission balance became negative before payout',
+              version: row.version + 1,
+              updatedAt: new Date(),
+              paidAt: null,
+            })
+            .where(
+              and(eq(withdrawalRequests.id, id), eq(withdrawalRequests.version, input.version)),
+            )
+            .returning();
+
+          if (!rejected) throw new CommissionError('STALE_VERSION');
+
+          await appendWithdrawalMovement(
+            tx,
+            id,
+            row.consumerUserId,
+            'WITHDRAWAL_RELEASED',
+            `withdrawal:${id}:rejected`,
+            row.amountMinor,
+            row.amountMinor,
+          );
+
+          return withdrawalView(rejected);
+        }
+      }
+
       const status =
         input.action === 'APPROVE' ? 'APPROVED' : input.action === 'REJECT' ? 'REJECTED' : 'PAID';
       const [updated] = await tx
