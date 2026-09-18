@@ -6,6 +6,7 @@ import { getStaffMe, loginStaff } from './staff-auth';
 import { storeModules } from './mock-data';
 import { InventoryPanel } from './inventory-panel';
 import { RentalPanel } from './rental-panel';
+import { FulfillmentPanel } from './fulfillment-panel';
 
 const tokenKey = 'staff_session_token';
 
@@ -107,6 +108,8 @@ function Shell({ me, onLogout }: { me: StaffMeResponse; onLogout: () => void }) 
           <InventoryPanel token={sessionStorage.getItem(tokenKey) ?? ''} />
         ) : active === 'rental' ? (
           <RentalPanel token={sessionStorage.getItem(tokenKey) ?? ''} />
+        ) : active === 'orders' ? (
+          <FulfillmentPanel token={sessionStorage.getItem(tokenKey) ?? ''} />
         ) : (
           <Preview title={module.label} description={module.description} />
         )}
