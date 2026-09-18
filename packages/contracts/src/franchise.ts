@@ -137,6 +137,9 @@ export type FranchiseFollowupChannel = z.infer<typeof franchiseFollowupChannelSc
 export type CreateFranchiseApplicationRequest = z.infer<
   typeof createFranchiseApplicationRequestSchema
 >;
+export type FranchiseApplicationSubmissionResponse = z.infer<
+  typeof franchiseApplicationSubmissionResponseSchema
+>;
 export type FranchiseApplicationListQuery = z.infer<typeof franchiseApplicationListQuerySchema>;
 export type AssignFranchiseApplicationRequest = z.infer<
   typeof assignFranchiseApplicationRequestSchema
@@ -148,4 +151,6 @@ export type ReviewFranchiseApplicationRequest = z.infer<
 export type UpdateFranchiseApplicationStatusRequest = z.infer<
   typeof updateFranchiseApplicationStatusRequestSchema
 >;
+export type FranchiseFollowup = z.infer<typeof franchiseFollowupSchema>;
+export type FranchiseApplicationBase = z.infer<typeof franchiseApplicationBaseSchema>;
 export type FranchiseApplicationView = z.infer<typeof franchiseApplicationViewSchema>;
