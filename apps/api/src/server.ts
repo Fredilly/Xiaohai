@@ -94,7 +94,7 @@ registerInventoryOperationsRoutes(app, {
 });
 const pickupCodeSecret = config.PICKUP_CODE_SECRET ?? config.STAFF_SESSION_SECRET;
 registerRentalRoutes(app, {
-  rental: new RentalService(db, config.RENTAL_LOAN_DAYS),
+  rental: new RentalService(db, config.RENTAL_LOAN_DAYS, pickupCodeSecret),
   consumerSessions: sessions,
   staffAuthorization,
 });
