@@ -405,7 +405,7 @@ suite('M14 inventory operations PostgreSQL integration', () => {
     const [balance] = await database!.db
       .select()
       .from(storeInventory)
-      .where(eq(storeInventory.skuId, d.skuA.id));
+      .where(and(eq(storeInventory.storeId, d.storeA.id), eq(storeInventory.skuId, d.skuA.id)));
     expect(balance).toMatchObject({ onHand: 3, version: 1 });
     expect(await database!.db.select().from(inventoryTransactions)).toHaveLength(1);
     const stale = await app.inject({
@@ -478,7 +478,7 @@ suite('M14 inventory operations PostgreSQL integration', () => {
     const [balance] = await database!.db
       .select()
       .from(storeInventory)
-      .where(eq(storeInventory.skuId, d.skuA.id));
+      .where(and(eq(storeInventory.storeId, d.storeA.id), eq(storeInventory.skuId, d.skuA.id)));
     expect(balance!.onHand).toBe(15);
     expect(await database!.db.select().from(inventoryTransactions)).toHaveLength(1);
   });
