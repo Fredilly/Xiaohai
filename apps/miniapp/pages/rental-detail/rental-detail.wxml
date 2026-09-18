@@ -1,1 +1,35 @@
-<view class="page"><view wx:if="{{loading}}" class="state-card">正在加载…</view><view wx:if="{{error}}" class="demo-note">{{error}}</view><view wx:if="{{rental}}" class="card"><text class="hero-title">{{rental.statusText}}</text><text class="book-meta">{{rental.storeName}}</text><text class="book-meta">编号 {{rental.rentalNumber}}</text><text class="book-meta">到期 {{rental.dueText}}</text><view class="section"><text class="section-title">图书</text><view wx:for="{{rental.items}}" wx:key="id"><text class="book-meta">{{item.skuName}} × {{item.quantity}}</text></view></view><button wx:if="{{rental.status === 'RESERVED'}}" class="primary-btn" loading="{{busy}}" disabled="{{busy}}" bindtap="cancel">取消预约</button><view class="demo-note">借出与归还需由授权门店员工确认；当前不包含取书码、押金、租金或逾期收费。</view></view></view>
+<view class="page">
+  <view wx:if="{{loading}}" class="state-card">正在加载…</view>
+  <view wx:if="{{error}}" class="demo-note">{{error}}</view>
+  <view wx:if="{{rental}}" class="card">
+    <text class="hero-title">{{rental.statusText}}</text>
+    <text class="book-meta">{{rental.storeName}}</text>
+    <text class="book-meta">编号 {{rental.rentalNumber}}</text>
+    <text class="book-meta">到期 {{rental.dueText}}</text>
+
+    <view wx:if="{{rental.status === 'RESERVED' && rental.pickupCode}}" class="pickup-code">
+      <text class="muted">取书码</text>
+      <text class="pickup-code-value">{{rental.pickupCode}}</text>
+      <text class="muted">到门店借出时向工作人员出示；核销后立即失效。</text>
+    </view>
+
+    <view class="section">
+      <text class="section-title">图书</text>
+      <view wx:for="{{rental.items}}" wx:key="id">
+        <text class="book-meta">{{item.skuName}} × {{item.quantity}}</text>
+      </view>
+    </view>
+
+    <button
+      wx:if="{{rental.status === 'RESERVED'}}"
+      class="primary-btn"
+      loading="{{busy}}"
+      disabled="{{busy}}"
+      bindtap="cancel"
+    >取消预约</button>
+
+    <view class="demo-note">
+      借出需要门店员工核验取书码；归还仍由授权门店员工确认。押金、租金与逾期收费规则尚未配置。
+    </view>
+  </view>
+</view>
