@@ -279,7 +279,7 @@ export class FulfillmentService {
     return {
       items: await Promise.all(
         rows.map(async (row) => ({
-          ...(await this.loadView(row.orderId, row.orderStatus)),
+          ...redactFulfillmentPickupCode(await this.loadView(row.orderId, row.orderStatus)),
           orderNumber: row.orderNumber,
           orderStatus: row.orderStatus,
           consumerUserId: row.consumerUserId,
@@ -327,7 +327,7 @@ export class FulfillmentService {
         .set({ status: 'PICKUP_READY', updatedAt: new Date() })
         .where(and(eq(orders.id, orderId), eq(orders.status, 'PAID')));
     });
-    return this.loadView(orderId, 'PICKUP_READY');
+    return redactFulfillmentPickupCode(await this.loadView(orderId, 'PICKUP_READY'));
   }
 
   async verifyPickup(
@@ -711,4 +711,11 @@ function scopeCondition(context: StaffAuthorizationContext) {
     franchiseeIds.length ? inArray(stores.franchiseeId, franchiseeIds) : undefined,
     sql`false`,
   )!;
+}
+
+function redactFulfillmentPickupCode<T extends { pickup: { code: string | null } | null }>(
+  view: T,
+): T {
+  if (!view.pickup) return view;
+  return { ...view, pickup: { ...view.pickup, code: null } };
 }
