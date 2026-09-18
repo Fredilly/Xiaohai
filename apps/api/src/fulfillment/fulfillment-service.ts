@@ -292,22 +292,20 @@ export class FulfillmentService {
 
   async listZones(context: StaffAuthorizationContext, query: DeliveryZoneListQuery) {
     if (query.storeId) await this.requireStoreAccess(context, query.storeId);
-    return {
-      items: await this.db
-        .select()
-        .from(deliveryZones)
-        .innerJoin(stores, eq(deliveryZones.storeId, stores.id))
-        .where(
-          and(
-            scopeCondition(context),
-            query.storeId ? eq(deliveryZones.storeId, query.storeId) : undefined,
-            query.active === undefined ? undefined : eq(deliveryZones.active, query.active),
-          ),
-        )
-        .orderBy(asc(deliveryZones.name))
-        .limit(query.limit)
-        .then((rows) => rows.map((row) => row.delivery_zones)),
-    };
+    const rows = await this.db
+      .select({ zone: deliveryZones })
+      .from(deliveryZones)
+      .innerJoin(stores, eq(deliveryZones.storeId, stores.id))
+      .where(
+        and(
+          scopeCondition(context),
+          query.storeId ? eq(deliveryZones.storeId, query.storeId) : undefined,
+          query.active === undefined ? undefined : eq(deliveryZones.active, query.active),
+        ),
+      )
+      .orderBy(asc(deliveryZones.name))
+      .limit(query.limit);
+    return { items: rows.map((row) => row.zone) };
   }
 
   async createZone(context: StaffAuthorizationContext, input: DeliveryZoneInput) {
