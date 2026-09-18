@@ -211,7 +211,7 @@ export class RentalService {
     const view = await this.loadView(id);
     if (!view) throw new RentalError('NOT_FOUND');
     await this.requireStoreAccess(context, view.storeId);
-    return view;
+    return redactRentalPickupCode(view);
   }
 
   async borrow(
@@ -629,4 +629,8 @@ async function hasEvent(tx: Transaction, orderId: string, type: string, key: str
   if (!row) return false;
   if (row.key !== key) throw new RentalError('IDEMPOTENCY_CONFLICT');
   return true;
+}
+
+function redactRentalPickupCode<T extends { pickupCode: string | null }>(view: T): T {
+  return { ...view, pickupCode: null };
 }
