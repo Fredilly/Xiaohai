@@ -212,6 +212,7 @@ suite('M14 inventory operations PostgreSQL integration', () => {
       storeA: storeA!,
       storeB: storeB!,
       storeC: storeC!,
+      product: product!,
       skuA: skuA!,
       skuB: skuB!,
     };
@@ -327,6 +328,51 @@ suite('M14 inventory operations PostgreSQL integration', () => {
           ).statusCode,
         ).toBe(403);
     }
+  });
+
+  it('applies store data scope before the inventory row limit', async () => {
+    const d = await seed();
+    const [noisy, allowed] = [
+      { store: d.storeA, expectedRows: 2 },
+      { store: d.storeC, expectedRows: 1 },
+    ].sort((left, right) => left.store.id.localeCompare(right.store.id));
+
+    const bulkSkus = await database!.db
+      .insert(skus)
+      .values(
+        Array.from({ length: 205 }, (_, index) => ({
+          productId: d.product.id,
+          code: `M14-BULK-${index.toString().padStart(3, '0')}-${crypto.randomUUID()}`,
+          name: `Bulk SKU ${index}`,
+          priceMinor: 100,
+        })),
+      )
+      .returning({ id: skus.id });
+
+    await database!.db.insert(storeInventory).values(
+      bulkSkus.map((sku) => ({
+        storeId: noisy!.store.id,
+        skuId: sku.id,
+        onHand: 5,
+      })),
+    );
+
+    const user = await staff([inventoryPermissions.read], {
+      type: 'STORE',
+      id: allowed!.store.id,
+    });
+    const app = makeApp();
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/v1/staff/inventory?limit=200',
+      headers: auth(user.token),
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json<{ items: Array<{ storeId: string }> }>();
+    expect(body.items).toHaveLength(allowed!.expectedRows);
+    expect(body.items.every((item) => item.storeId === allowed!.store.id)).toBe(true);
+    await app.close();
   });
 
   it('serializes concurrent issues, prevents overdraw and rejects stale versions', async () => {
