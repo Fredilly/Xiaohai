@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, lte, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, lte, or, sql } from 'drizzle-orm';
 import type {
   CreateGoodsReceiptRequest,
   CreatePurchaseOrderRequest,
@@ -71,6 +71,25 @@ export class InventoryOperationsService {
 
   async listInventory(context: StaffAuthorizationContext, input: InventoryListQuery) {
     if (input.storeId) await this.requireStoreAccess(context, input.storeId);
+
+    const storeScopeIds = context.dataScopes.flatMap((scope) =>
+      scope.type === 'STORE' && scope.id ? [scope.id] : [],
+    );
+    const regionScopeIds = context.dataScopes.flatMap((scope) =>
+      scope.type === 'REGION' && scope.id ? [scope.id] : [],
+    );
+    const franchiseeScopeIds = context.dataScopes.flatMap((scope) =>
+      scope.type === 'FRANCHISEE' && scope.id ? [scope.id] : [],
+    );
+    const scopeFilter = context.dataScopes.some((scope) => scope.type === 'GLOBAL')
+      ? sql<boolean>`true`
+      : or(
+          storeScopeIds.length ? inArray(storeInventory.storeId, storeScopeIds) : undefined,
+          regionScopeIds.length ? inArray(stores.regionId, regionScopeIds) : undefined,
+          franchiseeScopeIds.length ? inArray(stores.franchiseeId, franchiseeScopeIds) : undefined,
+        );
+    if (!scopeFilter) return { items: [] };
+
     const rows = await this.db
       .select({
         storeId: storeInventory.storeId,
@@ -84,22 +103,28 @@ export class InventoryOperationsService {
       })
       .from(storeInventory)
       .innerJoin(skus, eq(storeInventory.skuId, skus.id))
+      .innerJoin(stores, eq(storeInventory.storeId, stores.id))
+      .where(
+        and(
+          scopeFilter,
+          input.storeId ? eq(storeInventory.storeId, input.storeId) : undefined,
+          input.lowStockThreshold !== undefined
+            ? lte(
+                sql`${storeInventory.onHand} - ${storeInventory.reserved} - ${storeInventory.rentalReserved}`,
+                input.lowStockThreshold,
+              )
+            : undefined,
+        ),
+      )
       .orderBy(asc(storeInventory.storeId), asc(skus.code))
       .limit(input.limit ?? 200);
-    const visible = [];
-    for (const row of rows) {
-      try {
-        await this.requireStoreAccess(context, row.storeId);
-      } catch (error) {
-        if (error instanceof InventoryOperationsError && error.code === 'FORBIDDEN') continue;
-        throw error;
-      }
-      if (input.storeId && row.storeId !== input.storeId) continue;
-      const available = row.onHand - row.reserved - row.rentalReserved;
-      if (input.lowStockThreshold !== undefined && available > input.lowStockThreshold) continue;
-      visible.push({ ...row, available });
-    }
-    return { items: visible };
+
+    return {
+      items: rows.map((row) => ({
+        ...row,
+        available: row.onHand - row.reserved - row.rentalReserved,
+      })),
+    };
   }
 
   async listTransactions(context: StaffAuthorizationContext, storeId: string) {
