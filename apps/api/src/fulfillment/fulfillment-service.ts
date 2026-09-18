@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, inArray, or, sql } from 'drizzle-orm';
 import type {
   DeliveryZoneInput,
@@ -94,8 +94,17 @@ export class FulfillmentService {
   }
 
   async createOrder(consumerUserId: string, input: FulfilledOrderRequest) {
+    const fingerprint = createHash('sha256')
+      .update(
+        JSON.stringify({
+          method: input.method,
+          storeId: input.storeId,
+          addressId: input.method === 'DELIVERY' ? input.addressId : null,
+        }),
+      )
+      .digest('hex');
     const [existing] = await this.db
-      .select({ id: orders.id })
+      .select({ id: orders.id, fingerprint: orders.fulfillmentFingerprint })
       .from(orders)
       .where(
         and(
@@ -105,8 +114,7 @@ export class FulfillmentService {
       )
       .limit(1);
     if (existing) {
-      const view = await this.getForConsumer(consumerUserId, existing.id);
-      if (view.method !== input.method || view.store.id !== input.storeId)
+      if (existing.fingerprint !== fingerprint)
         throw new FulfillmentError('IDEMPOTENCY_CONFLICT');
       return existing.id;
     }
@@ -139,7 +147,7 @@ export class FulfillmentService {
         sql`select pg_advisory_xact_lock(hashtext(${`${consumerUserId}:${input.clientRequestId}`}))`,
       );
       const [again] = await tx
-        .select({ id: orders.id })
+        .select({ id: orders.id, fingerprint: orders.fulfillmentFingerprint })
         .from(orders)
         .where(
           and(
@@ -148,7 +156,10 @@ export class FulfillmentService {
           ),
         )
         .limit(1);
-      if (again) return again.id;
+      if (again) {
+        if (again.fingerprint !== fingerprint) throw new FulfillmentError('IDEMPOTENCY_CONFLICT');
+        return again.id;
+      }
 
       const [cartRow] = await tx
         .select({ id: carts.id })
@@ -167,6 +178,7 @@ export class FulfillmentService {
         totalMinor: quote.totalMinor,
         addressSnapshot: address ? snapshotAddress(address) : null,
         clientRequestId: input.clientRequestId,
+        fulfillmentFingerprint: fingerprint,
       });
       await tx.insert(orderItems).values(
         cart.items.map((item) => ({
