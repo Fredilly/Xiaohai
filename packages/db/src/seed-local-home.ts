@@ -3,6 +3,43 @@ import { cmsPages, cmsSections } from './cms-schema.js';
 import type { createDatabase } from './client.js';
 
 type Database = ReturnType<typeof createDatabase>['db'];
+type CmsSectionRow = typeof cmsSections.$inferSelect;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value));
+}
+
+function isPreviousLocalHomeSeed(sections: CmsSectionRow[]) {
+  if (sections.length !== 2) return false;
+
+  const hero = sections.find((section) => section.sectionType === 'HERO');
+  const grid = sections.find((section) => section.sectionType === 'FEATURE_GRID');
+  if (!hero || !grid || !isRecord(hero.config) || !isRecord(grid.config)) return false;
+
+  const items = Array.isArray(grid.config.items) ? grid.config.items.filter(isRecord) : [];
+  return (
+    hero.title === '欢迎来到小海童话' &&
+    hero.subtitle === '这是本地开发默认首页内容，可随时通过 CMS 配置替换。' &&
+    hero.displayOrder === 0 &&
+    hero.enabled &&
+    hero.publicationState === 'PUBLISHED' &&
+    hero.config.eyebrow === 'DEV / LOCAL' &&
+    hero.mediaUrl === null &&
+    hero.action === null &&
+    grid.title === '开始探索' &&
+    grid.subtitle === '开发环境默认入口' &&
+    grid.displayOrder === 1 &&
+    grid.enabled &&
+    grid.publicationState === 'PUBLISHED' &&
+    grid.mediaUrl === null &&
+    grid.action === null &&
+    items.length === 2 &&
+    items[0]?.key === 'shop' &&
+    items[0]?.badge === 'DEV' &&
+    items[1]?.key === 'ai' &&
+    items[1]?.badge === 'DEV'
+  );
+}
 
 export const DEFAULT_LOCAL_HOME_SECTIONS = [
   {
@@ -60,13 +97,13 @@ export async function seedLocalHomeCms(db: Database) {
   const [page] = await db.select().from(cmsPages).where(eq(cmsPages.key, 'HOME')).limit(1);
   if (!page) return { seeded: false as const, count: 0, reason: 'HOME_PAGE_MISSING' as const };
 
-  const [existing] = await db
-    .select({ id: cmsSections.id })
-    .from(cmsSections)
-    .where(eq(cmsSections.pageId, page.id))
-    .limit(1);
-  if (existing)
+  const existing = await db.select().from(cmsSections).where(eq(cmsSections.pageId, page.id));
+  if (existing.length > 0 && !isPreviousLocalHomeSeed(existing))
     return { seeded: false as const, count: 0, reason: 'CMS_ALREADY_CONFIGURED' as const };
+
+  if (existing.length > 0) {
+    await db.delete(cmsSections).where(eq(cmsSections.pageId, page.id));
+  }
 
   const rows = DEFAULT_LOCAL_HOME_SECTIONS.map((section) => ({
     pageId: page.id,
