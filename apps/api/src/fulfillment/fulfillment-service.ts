@@ -305,18 +305,19 @@ export class FulfillmentService {
   }
 
   async markPickupReady(context: StaffAuthorizationContext, orderId: string) {
-    return this.db.transaction(async (tx) => {
+    await this.db.transaction(async (tx) => {
       const { order, pickup } = await lockPickup(tx, orderId);
       if (!order || !pickup) throw new FulfillmentError('NOT_FOUND');
       await this.requireStoreAccess(context, pickup.storeId);
-      if (order.status === 'PICKUP_READY') return this.loadView(orderId, order.status);
-      if (order.status !== 'PAID') throw new FulfillmentError('INVALID_STATE');
+      if (order.status === 'PICKUP_READY') return;
+      if (order.status !== 'PAID' || pickup.status !== 'ISSUED')
+        throw new FulfillmentError('INVALID_STATE');
       await tx
         .update(orders)
         .set({ status: 'PICKUP_READY', updatedAt: new Date() })
         .where(and(eq(orders.id, orderId), eq(orders.status, 'PAID')));
-      return this.loadView(orderId, 'PICKUP_READY');
     });
+    return this.loadView(orderId, 'PICKUP_READY');
   }
 
   async verifyPickup(
