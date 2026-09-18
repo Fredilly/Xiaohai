@@ -109,7 +109,7 @@ export const orderSchema = z.object({
   status: orderStatusSchema,
   subtotalMinor: moneyMinorSchema,
   totalMinor: moneyMinorSchema,
-  address: addressInputSchema.omit({ isDefault: true }),
+  address: addressInputSchema.omit({ isDefault: true }).nullable(),
   items: z.array(orderItemSchema),
   createdAt: z.iso.datetime(),
 });
