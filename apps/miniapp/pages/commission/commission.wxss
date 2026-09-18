@@ -1,0 +1,25 @@
+.page {
+  padding: 24rpx;
+}
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 14rpx;
+  background: #fff;
+  margin-bottom: 20rpx;
+  padding: 24rpx;
+  border-radius: 18rpx;
+}
+.title {
+  font-size: 34rpx;
+  font-weight: 700;
+}
+.error {
+  display: block;
+  color: #b42318;
+  margin-bottom: 16rpx;
+}
+.hint {
+  font-size: 24rpx;
+  color: #777;
+}

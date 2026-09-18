@@ -8,6 +8,7 @@ import { PaymentsManager } from './payments-manager';
 import { ContentManager } from './content-manager';
 import { AiManager } from './ai-manager';
 import { FranchiseManager } from './franchise-manager';
+import { CommissionManager } from './commission-manager';
 import { getStaffMe, loginStaff } from './staff-auth';
 import { adminModules } from './mock-data';
 const tokenKey = 'staff_session_token';
@@ -119,6 +120,8 @@ function Shell({
           <AiManager token={token} />
         ) : active === 'franchise' ? (
           <FranchiseManager token={token} staffId={me.staff.id} />
+        ) : active === 'commission' ? (
+          <CommissionManager token={token} />
         ) : (
           <Preview title={module.label} description={module.description} me={me} />
         )}

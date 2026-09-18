@@ -92,7 +92,15 @@ export const checkoutPreviewResponseSchema = z.object({
   paymentMessage: z.string(),
 });
 export const createOrderRequestSchema = z
-  .object({ addressId: z.uuid(), clientRequestId: z.string().trim().min(8).max(128) })
+  .object({
+    addressId: z.uuid(),
+    clientRequestId: z.string().trim().min(8).max(128),
+    referralCode: z
+      .string()
+      .trim()
+      .regex(/^[A-Z0-9_-]{8,32}$/)
+      .optional(),
+  })
   .strict();
 export const orderItemSchema = z.object({
   id: z.uuid(),

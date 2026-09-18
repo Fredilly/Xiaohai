@@ -1,4 +1,5 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
+import { eq } from 'drizzle-orm';
 import {
   bookEditions,
   books,
@@ -9,16 +10,21 @@ import {
   orderItems,
   orders,
   products,
+  referralAttributions,
+  referralLinks,
   skus,
   storeInventory,
   userAddresses,
 } from '@xiaohai/db';
 import { CommerceService } from '../src/commerce/commerce-service.js';
+import { CommissionService } from '../src/commission/commission-service.js';
 const database = process.env.DATABASE_URL ? createDatabase(process.env) : null;
 const suite = database ? describe : describe.skip;
 suite('M5 Commerce PostgreSQL integration', () => {
-  const commerce = new CommerceService(database!.db);
+  const commission = new CommissionService(database!.db);
+  const commerce = new CommerceService(database!.db, commission);
   beforeEach(async () => {
+    await database!.db.delete(referralAttributions);
     await database!.db.delete(orderItems);
     await database!.db.delete(orders);
     await database!.db.delete(cartItems);
@@ -29,6 +35,7 @@ suite('M5 Commerce PostgreSQL integration', () => {
     await database!.db.delete(products);
     await database!.db.delete(bookEditions);
     await database!.db.delete(books);
+    await database!.db.delete(referralLinks);
     await database!.db.delete(consumerUsers);
   });
   afterAll(async () => database?.pool.end());
@@ -101,6 +108,49 @@ suite('M5 Commerce PostgreSQL integration', () => {
     const same = await commerce.createOrder(user, addr.id, 'request-0001');
     expect(same.id).toBe(order.id);
   });
+  it('does not block checkout for invalid, disabled, or self referral codes', async () => {
+    const buyer = await consumer(),
+      other = await consumer(),
+      skuId = await sku(),
+      addr = await address(buyer);
+
+    await commerce.addCartItem(buyer, skuId, 1);
+    const invalidOrder = await commerce.createOrder(
+      buyer,
+      addr.id,
+      'request-referral-invalid',
+      'INVALID01',
+    );
+    expect(invalidOrder.status).toBe('UNPAID');
+
+    const disabledLink = await commission.createReferralLink(other, 'disabled');
+    await database!.db
+      .update(referralLinks)
+      .set({ status: 'DISABLED' })
+      .where(eq(referralLinks.id, disabledLink.id));
+
+    await commerce.addCartItem(buyer, skuId, 1);
+    const disabledOrder = await commerce.createOrder(
+      buyer,
+      addr.id,
+      'request-referral-disabled',
+      disabledLink.code,
+    );
+    expect(disabledOrder.status).toBe('UNPAID');
+
+    const selfLink = await commission.createReferralLink(buyer, 'self');
+    await commerce.addCartItem(buyer, skuId, 1);
+    const selfOrder = await commerce.createOrder(
+      buyer,
+      addr.id,
+      'request-referral-self',
+      selfLink.code,
+    );
+    expect(selfOrder.status).toBe('UNPAID');
+
+    expect(await database!.db.select().from(referralAttributions)).toHaveLength(0);
+  });
+
   it('isolates address/order ownership and only cancels UNPAID', async () => {
     const a = await consumer(),
       b = await consumer(),

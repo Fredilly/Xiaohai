@@ -81,6 +81,12 @@
       "development": "./src/franchise.ts",
       "import": "./dist/franchise.js",
       "default": "./dist/franchise.js"
+    },
+    "./commission": {
+      "types": "./src/commission.ts",
+      "development": "./src/commission.ts",
+      "import": "./dist/commission.js",
+      "default": "./dist/commission.js"
     }
   },
   "types": "./dist/index.d.ts",

@@ -19,6 +19,10 @@ import {
 import type { createDatabase } from '@xiaohai/db';
 
 type Db = ReturnType<typeof createDatabase>['db'];
+type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
+export interface ReferralAttributionWriter {
+  attributeOrder(tx: Tx, orderId: string, consumerUserId: string, code?: string): Promise<void>;
+}
 export class CommerceError extends Error {
   constructor(
     readonly code: 'NOT_FOUND' | 'CONFLICT' | 'NOT_PURCHASABLE' | 'INVALID_ORDER_STATE',
@@ -29,7 +33,14 @@ export class CommerceError extends Error {
 }
 
 export class CommerceService {
-  constructor(private readonly db: Db) {}
+  constructor(
+    private readonly db: Db,
+    private readonly referrals?: ReferralAttributionWriter,
+  ) {}
+
+  async attributeReferral(tx: Tx, orderId: string, consumerUserId: string, referralCode?: string) {
+    await this.referrals?.attributeOrder(tx, orderId, consumerUserId, referralCode);
+  }
 
   async listCatalog(q?: string) {
     const rows = await this.db
@@ -221,7 +232,12 @@ export class CommerceService {
     };
   }
 
-  async createOrder(consumerUserId: string, addressId: string, clientRequestId: string) {
+  async createOrder(
+    consumerUserId: string,
+    addressId: string,
+    clientRequestId: string,
+    referralCode?: string,
+  ) {
     const [existing] = await this.db
       .select({ id: orders.id })
       .from(orders)
@@ -259,6 +275,7 @@ export class CommerceService {
           })),
         )
         .returning();
+      await this.attributeReferral(tx, order!.id, consumerUserId, referralCode);
       await tx.delete(cartItems).where(eq(cartItems.cartId, cartId));
       const address = order!.addressSnapshot as ReturnType<typeof snapshotAddress>;
       return {
