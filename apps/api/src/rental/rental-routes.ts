@@ -3,6 +3,7 @@ import { z } from 'zod';
 import {
   createRentalRequestSchema,
   rentalActionRequestSchema,
+  rentalBorrowRequestSchema,
   rentalListQuerySchema,
 } from '@xiaohai/contracts/rental';
 import { ConsumerAuthError } from '../auth/errors.js';
@@ -107,16 +108,26 @@ export function registerRentalRoutes(
       return fail(request, reply, e);
     }
   });
-  app.post('/api/v1/staff/rentals/:id/borrow', async (request, reply) =>
-    action(
-      request,
-      reply,
-      rentalPermissions.checkout,
-      'BORROW',
-      (ctx, id, key) => options.rental.borrow(ctx, id, key),
-      staff,
-    ),
-  );
+  app.post('/api/v1/staff/rentals/:id/borrow', async (request, reply) => {
+    const p = paramsSchema.safeParse(request.params);
+    const input = rentalBorrowRequestSchema.safeParse(request.body);
+    if (!p.success || !input.success) return invalid(reply, request.id);
+    try {
+      const result = await options.rental.borrow(
+        await staff(request, rentalPermissions.checkout),
+        p.data.id,
+        input.data.idempotencyKey,
+        input.data.pickupCode,
+      );
+      request.log.info(
+        { requestId: request.id, rentalOrderId: p.data.id, action: 'BORROW' },
+        'Rental state changed',
+      );
+      return result;
+    } catch (e) {
+      return fail(request, reply, e);
+    }
+  });
   app.post('/api/v1/staff/rentals/:id/return', async (request, reply) =>
     action(
       request,
