@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { and, desc, eq, ilike, or } from 'drizzle-orm';
+import { and, asc, desc, eq, ilike, or, sql } from 'drizzle-orm';
 import type { AddressInput, AdminProductInput, CartResponse } from '@xiaohai/contracts/commerce';
 import {
   bookEditions,
@@ -13,6 +13,7 @@ import {
   pickupCodes,
   products,
   skus,
+  storeInventory,
   userAddresses,
 } from '@xiaohai/db';
 import type { createDatabase } from '@xiaohai/db';
@@ -326,6 +327,60 @@ export class CommerceService {
       if (!order) throw new CommerceError('NOT_FOUND', 'Order not found');
       if (order.status !== 'UNPAID')
         throw new CommerceError('INVALID_ORDER_STATE', 'Only unpaid orders can be cancelled');
+
+      const [pickupReservation] = await tx
+        .select({ storeId: pickupCodes.storeId })
+        .from(pickupCodes)
+        .where(eq(pickupCodes.orderId, id))
+        .limit(1);
+      const [deliveryReservation] = await tx
+        .select({ storeId: deliveries.storeId })
+        .from(deliveries)
+        .where(eq(deliveries.orderId, id))
+        .limit(1);
+      const reservationStoreId = pickupReservation?.storeId ?? deliveryReservation?.storeId ?? null;
+      if (order.fulfillmentFingerprint && !reservationStoreId)
+        throw new CommerceError('CONFLICT', 'Fulfillment reservation store is missing');
+
+      if (reservationStoreId) {
+        const items = await tx
+          .select({ skuId: orderItems.skuId, quantity: orderItems.quantity })
+          .from(orderItems)
+          .where(eq(orderItems.orderId, id))
+          .orderBy(asc(orderItems.skuId));
+        for (const item of items) {
+          await tx.execute(
+            sql`select 1 from store_inventory where store_id=${reservationStoreId} and sku_id=${item.skuId} for update`,
+          );
+          const [balance] = await tx
+            .select()
+            .from(storeInventory)
+            .where(
+              and(
+                eq(storeInventory.storeId, reservationStoreId),
+                eq(storeInventory.skuId, item.skuId),
+              ),
+            )
+            .limit(1);
+          if (!balance || balance.reserved < item.quantity)
+            throw new CommerceError('CONFLICT', 'Fulfillment reservation is missing');
+          await tx
+            .update(storeInventory)
+            .set({
+              reserved: balance.reserved - item.quantity,
+              version: balance.version + 1,
+              updatedAt: new Date(),
+            })
+            .where(
+              and(
+                eq(storeInventory.storeId, reservationStoreId),
+                eq(storeInventory.skuId, item.skuId),
+                eq(storeInventory.version, balance.version),
+              ),
+            );
+        }
+      }
+
       const now = new Date();
       await tx
         .update(pickupCodes)
