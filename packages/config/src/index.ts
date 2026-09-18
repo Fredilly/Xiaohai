@@ -15,6 +15,7 @@ const serviceSchema = baseSchema.extend({
   CONSUMER_SESSION_TTL_SECONDS: z.coerce.number().int().min(60).max(2_592_000).default(604_800),
   STAFF_SESSION_SECRET: z.string().min(32),
   STAFF_SESSION_TTL_SECONDS: z.coerce.number().int().min(60).max(86_400).default(28_800),
+  RENTAL_LOAN_DAYS: z.coerce.number().int().min(1).max(365).default(14),
   REDIS_URL: z.url().startsWith('redis://'),
   STORY_AI_ENABLED: z
     .string()

@@ -82,7 +82,7 @@
         <view class="action-row">
           <button size="mini" class="action-btn" data-id="{{item.store.id}}" bindtap="openStore">门店</button>
           <button wx:if="{{item.sellAvailable}}" size="mini" class="action-btn primary" data-id="{{item.product.id}}" bindtap="openProduct">购买</button>
-          <button wx:if="{{item.rentAvailable}}" size="mini" class="action-btn" data-flow="租借" bindtap="showDeferredFlow">租借</button>
+          <button wx:if="{{item.rentAvailable}}" size="mini" class="action-btn" data-store-id="{{item.store.id}}" data-sku-id="{{item.sku.id}}" bindtap="reserveRental">租借</button>
           <button size="mini" class="action-btn" data-flow="自提/配送" bindtap="showDeferredFlow">自提/配送</button>
         </view>
       </view>
@@ -90,6 +90,6 @@
   </view>
 
   <view class="demo-note">
-    当前 M13 只提供真实库存搜索。租借流程在 M15、自提与配送流程在 M16 接入，当前入口不会伪造未完成的后端能力。
+    租借预约由真实库存驱动；自提核销码与配送属于后续里程碑，当前不会伪造这些能力。
   </view>
 </view>

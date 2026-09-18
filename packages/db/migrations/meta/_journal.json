@@ -120,6 +120,13 @@
       "when": 1789638847407,
       "tag": "0016_petite_sasquatch",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1789697964544,
+      "tag": "0017_kind_meltdown",
+      "breakpoints": true
     }
   ]
 }

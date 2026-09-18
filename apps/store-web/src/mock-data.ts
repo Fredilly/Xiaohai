@@ -16,7 +16,7 @@ export const storeModules = [
     key: 'rental',
     label: '租借',
     description: '预约、借出、归还、逾期入口框架',
-    status: '前端预览',
+    status: 'M15 已接入',
   },
   {
     key: 'orders',

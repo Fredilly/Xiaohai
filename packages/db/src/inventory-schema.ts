@@ -221,7 +221,7 @@ export const inventoryTransactions = pgTable(
     index('inventory_transactions_reference_idx').on(t.referenceType, t.referenceId),
     check(
       'inventory_transactions_type_check',
-      sql`${t.transactionType} in ('PURCHASE_RECEIPT','SALE','ISSUE','ADJUSTMENT_IN','ADJUSTMENT_OUT','STOCKTAKE_GAIN','STOCKTAKE_LOSS','TRANSFER_OUT','TRANSFER_IN','RETURN_TO_SUPPLIER')`,
+      sql`${t.transactionType} in ('PURCHASE_RECEIPT','SALE','ISSUE','ADJUSTMENT_IN','ADJUSTMENT_OUT','STOCKTAKE_GAIN','STOCKTAKE_LOSS','TRANSFER_OUT','TRANSFER_IN','RETURN_TO_SUPPLIER','RENTAL_OUT','RENTAL_RETURN')`,
     ),
     check('inventory_transactions_delta_nonzero_check', sql`${t.quantityDelta} <> 0`),
     check('inventory_transactions_balance_nonnegative_check', sql`${t.balanceAfter} >= 0`),
