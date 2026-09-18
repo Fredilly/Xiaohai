@@ -145,9 +145,6 @@ export class FranchiseService {
     if (!['ASSIGNED', 'FOLLOWING_UP'].includes(current.status)) {
       throw new FranchiseError('INVALID_STATE');
     }
-    if (current.assignedStaffAccountId !== staffAccountId) {
-      throw new FranchiseError('INVALID_STATE');
-    }
 
     await this.db.transaction(async (tx) => {
       const now = new Date();
@@ -236,9 +233,7 @@ export class FranchiseService {
     const updated = await this.db
       .update(franchiseApplications)
       .set({ ...values, version: version + 1 })
-      .where(
-        and(eq(franchiseApplications.id, id), eq(franchiseApplications.version, version)),
-      )
+      .where(and(eq(franchiseApplications.id, id), eq(franchiseApplications.version, version)))
       .returning({ id: franchiseApplications.id });
     if (updated.length === 0) throw new FranchiseError('STALE_VERSION');
   }
@@ -246,9 +241,15 @@ export class FranchiseService {
 
 function canTransition(current: FranchiseApplicationStatus, target: FranchiseApplicationStatus) {
   if (target === 'CLOSED') {
-    return ['SUBMITTED', 'ASSIGNED', 'FOLLOWING_UP', 'APPROVED', 'SIGNED', 'PREPARING', 'OPENED'].includes(
-      current,
-    );
+    return [
+      'SUBMITTED',
+      'ASSIGNED',
+      'FOLLOWING_UP',
+      'APPROVED',
+      'SIGNED',
+      'PREPARING',
+      'OPENED',
+    ].includes(current);
   }
   return (
     (current === 'APPROVED' && target === 'SIGNED') ||
