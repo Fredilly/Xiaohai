@@ -207,9 +207,11 @@ function fail(request: FastifyRequest, reply: FastifyReply, error: unknown) {
         ? 404
         : error.code === 'FORBIDDEN'
           ? 403
-          : error.code === 'INSUFFICIENT_STOCK'
-            ? 409
-            : 409;
+          : error.code === 'PICKUP_CODE_INVALID'
+            ? 400
+            : error.code === 'INSUFFICIENT_STOCK'
+              ? 409
+              : 409;
     return reply
       .status(status)
       .send({ error: { code: error.code, message: error.code, requestId: request.id } });
