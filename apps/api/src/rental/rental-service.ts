@@ -33,7 +33,8 @@ export type RentalErrorCode =
   | 'INSUFFICIENT_STOCK'
   | 'CONFLICT'
   | 'STALE_VERSION'
-  | 'IDEMPOTENCY_CONFLICT';
+  | 'IDEMPOTENCY_CONFLICT'
+  | 'PICKUP_CODE_INVALID';
 export class RentalError extends Error {
   constructor(readonly code: RentalErrorCode) {
     super(code);
@@ -237,7 +238,7 @@ export class RentalService {
         .limit(1);
       if (!pickup || pickup.status !== 'ISSUED') throw new RentalError('INVALID_STATE');
       if (!pickupCodeMatches(this.pickupSecret, 'RENTAL', id, pickupCode))
-        throw new RentalError('CONFLICT');
+        throw new RentalError('PICKUP_CODE_INVALID');
       const items = await tx
         .select()
         .from(rentalItems)
