@@ -11,6 +11,12 @@
     <button class="primary-btn" catchtap="openBookSearch">开始找书</button>
   </view>
 
+  <view class="card franchise-card" bindtap="openFranchise">
+    <text class="card-title">加盟合作</text>
+    <text class="card-subtitle">查看合作条件与流程，提交加盟意向申请。审核、签约与开店状态均由总部后续处理。</text>
+    <button class="primary-btn" catchtap="openFranchise">了解加盟</button>
+  </view>
+
   <view class="store-search card">
     <view class="search-row">
       <input class="search-input" value="{{query}}" placeholder="搜索门店名称" bindinput="onQueryInput" confirm-type="search" bindconfirm="submitSearch" />
