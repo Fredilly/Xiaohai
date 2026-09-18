@@ -167,6 +167,7 @@ export const orders = pgTable(
     totalMinor: integer('total_minor').notNull(),
     addressSnapshot: jsonb('address_snapshot').$type<Record<string, unknown> | null>(),
     clientRequestId: text('client_request_id').notNull(),
+    fulfillmentFingerprint: text('fulfillment_fingerprint'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
     cancelledAt: timestamp('cancelled_at', { withTimezone: true }),
