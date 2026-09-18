@@ -1,4 +1,5 @@
 import { getPublicHome, type HomeSection } from '../../services/home';
+import { resolveHomeTargetUrl } from './home-navigation';
 Page({
   data: { loading: true, error: false, pageTitle: '小海童话', sections: [] as HomeSection[] },
   onLoad() {
@@ -19,8 +20,6 @@ Page({
   openAction(event: WechatMiniprogram.TouchEvent) {
     const target = String(event.currentTarget.dataset.target ?? '');
     if (!target) return;
-    if (target === 'shop') void wx.navigateTo({ url: '/pages/shop/shop' });
-    else if (target === 'ai') void wx.navigateTo({ url: '/pages/story-create/story-create' });
-    else void wx.navigateTo({ url: `/pages/feature/feature?key=${encodeURIComponent(target)}` });
+    void wx.navigateTo({ url: resolveHomeTargetUrl(target) });
   },
 });
