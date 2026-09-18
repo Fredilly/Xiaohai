@@ -27,10 +27,7 @@ export const franchisePermissions = {
 } as const;
 
 export type FranchiseErrorCode =
-  | 'NOT_FOUND'
-  | 'INVALID_STATE'
-  | 'STALE_VERSION'
-  | 'ASSIGNEE_INVALID';
+  'NOT_FOUND' | 'INVALID_STATE' | 'STALE_VERSION' | 'ASSIGNEE_INVALID';
 
 export class FranchiseError extends Error {
   constructor(readonly code: FranchiseErrorCode) {
@@ -41,10 +38,7 @@ export class FranchiseError extends Error {
 export class FranchiseService {
   constructor(private readonly db: Database) {}
 
-  async createApplication(
-    input: CreateFranchiseApplicationRequest,
-    consumerUserId: string | null,
-  ) {
+  async createApplication(input: CreateFranchiseApplicationRequest, consumerUserId: string | null) {
     const id = randomUUID();
     const applicationNumber = `FA-${Date.now()}-${id.slice(0, 8).toUpperCase()}`;
     const [row] = await this.db
@@ -136,11 +130,7 @@ export class FranchiseService {
     return this.getApplication(id);
   }
 
-  async addFollowup(
-    id: string,
-    staffAccountId: string,
-    input: CreateFranchiseFollowupRequest,
-  ) {
+  async addFollowup(id: string, staffAccountId: string, input: CreateFranchiseFollowupRequest) {
     const current = await this.requireApplication(id, input.version);
     if (!['ASSIGNED', 'FOLLOWING_UP'].includes(current.status)) {
       throw new FranchiseError('INVALID_STATE');
@@ -152,10 +142,7 @@ export class FranchiseService {
         .update(franchiseApplications)
         .set({ status: 'FOLLOWING_UP', version: input.version + 1, updatedAt: now })
         .where(
-          and(
-            eq(franchiseApplications.id, id),
-            eq(franchiseApplications.version, input.version),
-          ),
+          and(eq(franchiseApplications.id, id), eq(franchiseApplications.version, input.version)),
         )
         .returning({ id: franchiseApplications.id });
       if (updated.length === 0) throw new FranchiseError('STALE_VERSION');
@@ -170,11 +157,7 @@ export class FranchiseService {
     return this.getApplication(id);
   }
 
-  async review(
-    id: string,
-    staffAccountId: string,
-    input: ReviewFranchiseApplicationRequest,
-  ) {
+  async review(id: string, staffAccountId: string, input: ReviewFranchiseApplicationRequest) {
     const current = await this.requireApplication(id, input.version);
     if (!['ASSIGNED', 'FOLLOWING_UP'].includes(current.status)) {
       throw new FranchiseError('INVALID_STATE');

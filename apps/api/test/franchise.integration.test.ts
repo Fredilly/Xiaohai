@@ -54,7 +54,11 @@ testSuite('M17 franchise PostgreSQL integration', () => {
 
   function makeApp() {
     const app = buildApp({ staffAuthorization: authorization, logger: false });
-    registerFranchiseRoutes(app, { franchise: service, consumerSessions, staffAuthorization: authorization });
+    registerFranchiseRoutes(app, {
+      franchise: service,
+      consumerSessions,
+      staffAuthorization: authorization,
+    });
     return app;
   }
 
@@ -78,7 +82,10 @@ testSuite('M17 franchise PostgreSQL integration', () => {
   ) {
     const [staff] = await database!.db
       .insert(staffAccounts)
-      .values({ loginIdentifier: `m17-${crypto.randomUUID()}@example.com`, passwordHash: 'test-only' })
+      .values({
+        loginIdentifier: `m17-${crypto.randomUUID()}@example.com`,
+        passwordHash: 'test-only',
+      })
       .returning({ id: staffAccounts.id });
     const [role] = await database!.db
       .insert(roles)
@@ -213,7 +220,11 @@ testSuite('M17 franchise PostgreSQL integration', () => {
     });
     expect(response.statusCode).toBe(200);
     let view = franchiseApplicationViewSchema.parse(response.json());
-    expect(view).toMatchObject({ status: 'ASSIGNED', assignedStaffAccountId: assignee.id, version: 2 });
+    expect(view).toMatchObject({
+      status: 'ASSIGNED',
+      assignedStaffAccountId: assignee.id,
+      version: 2,
+    });
 
     response = await app.inject({
       method: 'POST',

@@ -14,7 +14,11 @@ import {
 import { ConsumerAuthError } from '../auth/errors.js';
 import type { ConsumerSessionService } from '../auth/session.js';
 import type { StaffAuthorizationService } from '../auth/staff-authorization.js';
-import { FranchiseError, franchisePermissions, type FranchiseService } from './franchise-service.js';
+import {
+  FranchiseError,
+  franchisePermissions,
+  type FranchiseService,
+} from './franchise-service.js';
 
 const paramsSchema = z.object({ id: z.uuid() }).strict();
 
@@ -45,7 +49,10 @@ export function registerFranchiseRoutes(
     const input = createFranchiseApplicationRequestSchema.safeParse(request.body);
     if (!input.success) return invalid(reply, request.id);
     try {
-      const result = await options.franchise.createApplication(input.data, optionalConsumer(request));
+      const result = await options.franchise.createApplication(
+        input.data,
+        optionalConsumer(request),
+      );
       request.log.info(
         { requestId: request.id, applicationId: result.id, action: 'SUBMIT' },
         'Franchise application submitted',
