@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { RentalView } from '@xiaohai/contracts/rental';
 import { loadRentals, rentalAction } from './rental-api';
+
 const labels: Record<string, string> = {
   RESERVED: '已预约',
   BORROWED: '借阅中',
@@ -8,10 +9,13 @@ const labels: Record<string, string> = {
   RETURNED: '已归还',
   CANCELLED: '已取消',
 };
+
 export function RentalPanel({ token }: { token: string }) {
   const [items, setItems] = useState<RentalView[]>([]);
   const [status, setStatus] = useState('正在加载…');
   const [busy, setBusy] = useState('');
+  const [pickupCodes, setPickupCodes] = useState<Record<string, string>>({});
+
   const refresh = useCallback(async () => {
     try {
       const result = await loadRentals(token);
@@ -21,14 +25,22 @@ export function RentalPanel({ token }: { token: string }) {
       setStatus(e instanceof Error ? `加载失败：${e.message}` : '加载失败');
     }
   }, [token]);
+
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
   const act = async (id: string, action: 'borrow' | 'return') => {
+    const pickupCode = pickupCodes[id]?.trim();
+    if (action === 'borrow' && !/^\d{6}$/.test(pickupCode ?? '')) {
+      setStatus('借出前请输入顾客出示的 6 位取书码');
+      return;
+    }
     setBusy(id);
     try {
-      await rentalAction(token, id, action);
+      await rentalAction(token, id, action, pickupCode);
       setStatus('操作成功');
+      setPickupCodes((current) => ({ ...current, [id]: '' }));
       await refresh();
     } catch (e) {
       setStatus(e instanceof Error ? `操作失败：${e.message}` : '操作失败');
@@ -36,11 +48,12 @@ export function RentalPanel({ token }: { token: string }) {
       setBusy('');
     }
   };
+
   return (
     <section className="panel">
-      <span className="tag">M15 Rental Operations</span>
+      <span className="tag">M16 Pickup Verification + M15 Rental</span>
       <h2>门店租借</h2>
-      <p>权限、门店范围、库存与状态均由服务端确认。</p>
+      <p>取书码只由顾客端显示。员工必须现场输入顾客出示的 6 位码，服务端再校验门店范围、库存与状态。</p>
       <div className="inventory-table">
         <div className="inventory-row heading">
           <span>租借 / 门店</span>
@@ -57,11 +70,25 @@ export function RentalPanel({ token }: { token: string }) {
               {labels[item.status] ?? item.status}
               <small>{item.dueAt ? new Date(item.dueAt).toLocaleString() : '—'}</small>
             </span>
-            <span>
+            <span className="inline-actions">
               {item.status === 'RESERVED' && (
-                <button disabled={busy === item.id} onClick={() => void act(item.id, 'borrow')}>
-                  确认借出
-                </button>
+                <>
+                  <input
+                    inputMode="numeric"
+                    maxLength={6}
+                    placeholder="6 位取书码"
+                    value={pickupCodes[item.id] ?? ''}
+                    onChange={(event) =>
+                      setPickupCodes((current) => ({
+                        ...current,
+                        [item.id]: event.target.value.replace(/\D/g, '').slice(0, 6),
+                      }))
+                    }
+                  />
+                  <button disabled={busy === item.id} onClick={() => void act(item.id, 'borrow')}>
+                    核验并借出
+                  </button>
+                </>
               )}
               {(item.status === 'BORROWED' || item.status === 'OVERDUE') && (
                 <button disabled={busy === item.id} onClick={() => void act(item.id, 'return')}>
