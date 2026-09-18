@@ -61,6 +61,7 @@ export {
 } from './inventory-schema.js';
 export { rentalOrders, rentalItems, rentalEvents, inventoryReservations } from './rental-schema.js';
 export { deliveryZones, pickupCodes, deliveries, deliveryEvents } from './fulfillment-schema.js';
+export { franchiseApplications, franchiseFollowups } from './franchise-schema.js';
 export {
   consumerUsers,
   migrationBatches,
