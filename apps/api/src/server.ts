@@ -39,6 +39,8 @@ import { InventorySearchService } from './inventory/inventory-service.js';
 import { registerInventoryRoutes } from './inventory/inventory-routes.js';
 import { InventoryOperationsService } from './inventory/inventory-operations-service.js';
 import { registerInventoryOperationsRoutes } from './inventory/inventory-operations-routes.js';
+import { RentalService } from './rental/rental-service.js';
+import { registerRentalRoutes } from './rental/rental-routes.js';
 
 const config = loadServiceConfig(process.env);
 const { db, pool } = createDatabase(process.env);
@@ -85,6 +87,11 @@ registerStoreRoutes(app, { stores: new StoreNetworkService(db), staffAuthorizati
 registerInventoryRoutes(app, { inventory: new InventorySearchService(db) });
 registerInventoryOperationsRoutes(app, {
   operations: new InventoryOperationsService(db),
+  staffAuthorization,
+});
+registerRentalRoutes(app, {
+  rental: new RentalService(db, config.RENTAL_LOAN_DAYS),
+  consumerSessions: sessions,
   staffAuthorization,
 });
 const aiQueue = new RedisAiQueue(config.REDIS_URL, () =>

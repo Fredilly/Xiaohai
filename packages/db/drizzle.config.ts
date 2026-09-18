@@ -14,6 +14,7 @@ export default defineConfig({
     './src/animation-schema.ts',
     './src/store-schema.ts',
     './src/inventory-schema.ts',
+    './src/rental-schema.ts',
   ],
   out: './migrations',
   dbCredentials: {

@@ -47,6 +47,7 @@ Page({
     else if (key === 'address') void wx.navigateTo({ url: '/pages/address/address' });
     else if (key === 'works') void wx.navigateTo({ url: '/pages/story-works/story-works' });
     else if (key === 'animations') void wx.navigateTo({ url: '/pages/animations/animations' });
+    else if (key === 'my-rental') void wx.navigateTo({ url: '/pages/rentals/rentals' });
     else if (key)
       void wx.navigateTo({ url: `/pages/feature/feature?key=${encodeURIComponent(key)}` });
   },

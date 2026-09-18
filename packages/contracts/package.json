@@ -63,6 +63,12 @@
       "development": "./src/inventory.ts",
       "import": "./dist/inventory.js",
       "default": "./dist/inventory.js"
+    },
+    "./rental": {
+      "types": "./src/rental.ts",
+      "development": "./src/rental.ts",
+      "import": "./dist/rental.js",
+      "default": "./dist/rental.js"
     }
   },
   "types": "./dist/index.d.ts",

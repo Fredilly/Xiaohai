@@ -59,6 +59,7 @@ export {
   storeInventory,
   suppliers,
 } from './inventory-schema.js';
+export { rentalOrders, rentalItems, rentalEvents, inventoryReservations } from './rental-schema.js';
 export {
   consumerUsers,
   migrationBatches,

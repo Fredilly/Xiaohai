@@ -24,7 +24,9 @@
     "pages/animation-create/animation-create",
     "pages/animation-detail/animation-detail",
     "pages/store-detail/store-detail",
-    "pages/book-search/book-search"
+    "pages/book-search/book-search",
+    "pages/rentals/rentals",
+    "pages/rental-detail/rental-detail"
   ],
   "window": {
     "navigationBarTitleText": "小海童话",

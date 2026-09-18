@@ -1,5 +1,6 @@
 import type { InventoryAvailability, PublicInventoryItem } from '@xiaohai/contracts/inventory';
 import { searchInventory } from '../../services/inventory';
+import { createRental } from '../../services/rental';
 
 type InputEvent = { detail: { value?: string } };
 type PickerEvent = { detail: { value?: string | number } };
@@ -133,6 +134,34 @@ Page({
   openProduct(event: WechatMiniprogram.TouchEvent) {
     const id = String(event.currentTarget.dataset.id ?? '');
     if (id) void wx.navigateTo({ url: `/pages/product/product?id=${encodeURIComponent(id)}` });
+  },
+
+  async reserveRental(event: WechatMiniprogram.TouchEvent) {
+    const storeId = String(event.currentTarget.dataset.storeId ?? '');
+    const skuId = String(event.currentTarget.dataset.skuId ?? '');
+    if (!wx.getStorageSync('consumer_session_token')) {
+      void wx.showToast({ title: '请先在“我的”完成微信登录', icon: 'none' });
+      return;
+    }
+    try {
+      const confirmed = await new Promise<boolean>((resolve) =>
+        wx.showModal({
+          title: '预约租借',
+          content: '确认在该门店预约 1 本？',
+          success: (r) => resolve(r.confirm),
+          fail: () => resolve(false),
+        }),
+      );
+      if (!confirmed) return;
+      const rental = await createRental(storeId, skuId);
+      void wx.navigateTo({ url: `/pages/rental-detail/rental-detail?id=${rental.id}` });
+    } catch (error) {
+      const code = error instanceof Error ? error.message : '';
+      void wx.showToast({
+        title: code === 'INSUFFICIENT_STOCK' ? '库存不足，预约失败' : '预约失败，请稍后重试',
+        icon: 'none',
+      });
+    }
   },
 
   showDeferredFlow(event: WechatMiniprogram.TouchEvent) {
