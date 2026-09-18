@@ -213,7 +213,7 @@ suite('M15 rental PostgreSQL integration', () => {
     const created = await reserve(d.consumerA.id, d.storeA.id, [{ skuId: d.skuA.id, quantity: 1 }]);
     expect(created.statusCode).toBe(201);
     const rental = created.json<{ id: string; pickupCode: string }>();
-    expect(rental.pickupCode).toMatch(/^\\d{6}$/);
+    expect(rental.pickupCode).toMatch(/^\d{6}$/);
     expect(
       (
         await app.inject({
