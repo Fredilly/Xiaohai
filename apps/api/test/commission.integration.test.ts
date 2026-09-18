@@ -1,0 +1,341 @@
+import { randomUUID } from 'node:crypto';
+import { afterAll, beforeEach, describe, expect, it } from 'vitest';
+import { eq } from 'drizzle-orm';
+import {
+  commissionEvents,
+  commissionLedger,
+  commissionRules,
+  consumerUsers,
+  createDatabase,
+  orders,
+  payments,
+  permissions,
+  refunds,
+  referralAttributions,
+  referralLinks,
+  rolePermissions,
+  roles,
+  staffAccounts,
+  staffDataScopes,
+  staffRoles,
+  withdrawalRequests,
+} from '@xiaohai/db';
+import { buildApp } from '../src/app.js';
+import { ConsumerSessionService } from '../src/auth/session.js';
+import { StaffSessionService } from '../src/auth/staff-session.js';
+import {
+  DrizzleStaffAuthorizationRepository,
+  StaffAuthorizationService,
+} from '../src/auth/staff-authorization.js';
+import { CommissionService, commissionPermissions } from '../src/commission/commission-service.js';
+import { registerCommissionRoutes } from '../src/commission/commission-routes.js';
+
+const database = process.env.DATABASE_URL ? createDatabase(process.env) : null;
+const suite = database ? describe : describe.skip;
+
+suite('M18 referral and commission PostgreSQL integration', () => {
+  const db = database!.db;
+  const service = new CommissionService(db);
+  const sessions = new ConsumerSessionService(
+    'm18-consumer-session-secret-at-least-32-characters',
+    300,
+  );
+  const staffSessions = new StaffSessionService(
+    'm18-staff-session-secret-at-least-32-characters',
+    300,
+  );
+  const authorization = new StaffAuthorizationService(
+    new DrizzleStaffAuthorizationRepository(db),
+    staffSessions,
+  );
+  const consumers: string[] = [],
+    staff: string[] = [],
+    testRoles: string[] = [];
+
+  async function cleanup() {
+    await db.delete(commissionLedger);
+    await db.delete(commissionEvents);
+    await db.delete(withdrawalRequests);
+    await db.delete(refunds);
+    await db.delete(payments);
+    await db.delete(referralAttributions);
+    await db.delete(referralLinks);
+    await db.delete(commissionRules);
+    for (const id of testRoles) {
+      await db.delete(rolePermissions).where(eq(rolePermissions.roleId, id));
+      await db.delete(staffRoles).where(eq(staffRoles.roleId, id));
+    }
+    for (const id of staff)
+      await db.delete(staffDataScopes).where(eq(staffDataScopes.staffAccountId, id));
+    for (const id of testRoles.splice(0)) await db.delete(roles).where(eq(roles.id, id));
+    for (const id of consumers.splice(0)) {
+      await db.delete(orders).where(eq(orders.consumerUserId, id));
+      await db.delete(consumerUsers).where(eq(consumerUsers.id, id));
+    }
+    for (const id of staff.splice(0))
+      await db.delete(staffAccounts).where(eq(staffAccounts.id, id));
+  }
+  beforeEach(cleanup);
+  afterAll(async () => {
+    await cleanup();
+    await database!.pool.end();
+  });
+  async function user() {
+    const [row] = await db.insert(consumerUsers).values({}).returning();
+    consumers.push(row!.id);
+    return row!;
+  }
+  async function operator() {
+    const [row] = await db
+      .insert(staffAccounts)
+      .values({ loginIdentifier: randomUUID(), passwordHash: 'test-only' })
+      .returning();
+    staff.push(row!.id);
+    return row!;
+  }
+  async function staffToken(permission: string, global: boolean) {
+    const account = await operator();
+    let [permissionRow] = await db
+      .select()
+      .from(permissions)
+      .where(eq(permissions.key, permission));
+    if (!permissionRow)
+      [permissionRow] = await db
+        .insert(permissions)
+        .values({ key: permission, displayName: permission })
+        .returning();
+    const [role] = await db
+      .insert(roles)
+      .values({ key: `m18-${randomUUID()}`, displayName: 'M18 test' })
+      .returning();
+    testRoles.push(role!.id);
+    await db.insert(staffRoles).values({ staffAccountId: account.id, roleId: role!.id });
+    await db.insert(rolePermissions).values({ roleId: role!.id, permissionId: permissionRow!.id });
+    await db.insert(staffDataScopes).values({
+      staffAccountId: account.id,
+      scopeType: global ? 'GLOBAL' : 'REGION',
+      scopeId: global ? null : randomUUID(),
+    });
+    return staffSessions.issue(account.id).token;
+  }
+  async function paidAttribution(freezeDays = 0) {
+    const beneficiary = await user(),
+      referred = await user(),
+      admin = await operator();
+    const link = await service.createReferralLink(beneficiary.id, 'test');
+    const [order] = await db
+      .insert(orders)
+      .values({
+        consumerUserId: referred.id,
+        orderNumber: randomUUID(),
+        subtotalMinor: 10000,
+        totalMinor: 10000,
+        addressSnapshot: {},
+        clientRequestId: randomUUID(),
+        status: 'PAID',
+      })
+      .returning();
+    await db.transaction((tx) => service.attributeOrder(tx, order!.id, referred.id, link.code));
+    const rule = await service.createRule(admin.id, {
+      name: 'Explicit test policy',
+      rateBasisPoints: 600,
+      freezeDays,
+      effectiveFrom: new Date(Date.now() - 1000).toISOString(),
+    });
+    await service.setRuleStatus(rule.id, 'ACTIVE', rule.version);
+    await db.transaction((tx) => service.freezeForPaidOrder(tx, order!.id, order!.id));
+    return { beneficiary, referred, order: order!, rule };
+  }
+
+  it('requires a consumer session and rejects server-controlled request fields', async () => {
+    const app = buildApp({ logger: false });
+    registerCommissionRoutes(app, {
+      commission: service,
+      consumerSessions: sessions,
+      staffAuthorization: { authenticate: () => Promise.reject(new Error()) } as never,
+    });
+    expect(
+      (await app.inject({ method: 'GET', url: '/api/v1/commissions/account' })).statusCode,
+    ).toBe(401);
+    const owner = await user();
+    const token = sessions.issue(owner.id).token;
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/v1/commissions/withdrawals',
+          headers: { authorization: `Bearer ${token}` },
+          payload: { amountMinor: 1, clientRequestId: 'request-123', status: 'PAID' },
+        })
+      ).statusCode,
+    ).toBe(400);
+    await app.close();
+  });
+
+  it('requires commission permission and GLOBAL data scope for HQ accounting', async () => {
+    const app = buildApp({ logger: false });
+    registerCommissionRoutes(app, {
+      commission: service,
+      consumerSessions: sessions,
+      staffAuthorization: authorization,
+    });
+    expect((await app.inject({ method: 'GET', url: '/api/v1/staff/commissions' })).statusCode).toBe(
+      401,
+    );
+    const wrongPermission = await staffToken('commission.unrelated', true);
+    expect(
+      (
+        await app.inject({
+          method: 'GET',
+          url: '/api/v1/staff/commissions',
+          headers: { authorization: `Bearer ${wrongPermission}` },
+        })
+      ).statusCode,
+    ).toBe(403);
+    const region = await staffToken(commissionPermissions.read, false);
+    expect(
+      (
+        await app.inject({
+          method: 'GET',
+          url: '/api/v1/staff/commissions',
+          headers: { authorization: `Bearer ${region}` },
+        })
+      ).statusCode,
+    ).toBe(403);
+    const global = await staffToken(commissionPermissions.read, true);
+    expect(
+      (
+        await app.inject({
+          method: 'GET',
+          url: '/api/v1/staff/commissions',
+          headers: { authorization: `Bearer ${global}` },
+        })
+      ).statusCode,
+    ).toBe(200);
+    await app.close();
+  });
+
+  it('attributes one order, rejects self-referral, and keeps attribution server-owned', async () => {
+    const owner = await user(),
+      buyer = await user();
+    const link = await service.createReferralLink(owner.id);
+    const [order] = await db
+      .insert(orders)
+      .values({
+        consumerUserId: buyer.id,
+        orderNumber: randomUUID(),
+        subtotalMinor: 100,
+        totalMinor: 100,
+        addressSnapshot: {},
+        clientRequestId: randomUUID(),
+      })
+      .returning();
+    await db.transaction((tx) => service.attributeOrder(tx, order!.id, buyer.id, link.code));
+    await db.transaction((tx) => service.attributeOrder(tx, order!.id, buyer.id, link.code));
+    expect(await db.select().from(referralAttributions)).toHaveLength(1);
+    const [ownOrder] = await db
+      .insert(orders)
+      .values({
+        consumerUserId: owner.id,
+        orderNumber: randomUUID(),
+        subtotalMinor: 100,
+        totalMinor: 100,
+        addressSnapshot: {},
+        clientRequestId: randomUUID(),
+      })
+      .returning();
+    await expect(
+      db.transaction((tx) => service.attributeOrder(tx, ownOrder!.id, owner.id, link.code)),
+    ).rejects.toMatchObject({ code: 'CONFLICT' });
+  });
+
+  it('freezes from explicit active policy once and settles through append-only ledger', async () => {
+    const fixture = await paidAttribution();
+    await db.transaction((tx) =>
+      service.freezeForPaidOrder(tx, fixture.order.id, fixture.order.id),
+    );
+    expect(await db.select().from(commissionEvents)).toHaveLength(1);
+    let account = await service.getAccount(fixture.beneficiary.id);
+    expect(account).toMatchObject({ frozenMinor: 600, availableMinor: 0 });
+    const [frozen] = await db
+      .select()
+      .from(commissionEvents)
+      .where(eq(commissionEvents.type, 'FROZEN'));
+    await service.settle(frozen!.id);
+    await service.settle(frozen!.id);
+    account = await service.getAccount(fixture.beneficiary.id);
+    expect(account).toMatchObject({ frozenMinor: 0, availableMinor: 600 });
+  });
+
+  it('refund reversal debits frozen commission and is idempotent', async () => {
+    const fixture = await paidAttribution(10);
+    const admin = await operator();
+    const [payment] = await db
+      .insert(payments)
+      .values({
+        orderId: fixture.order.id,
+        merchantId: 'm',
+        appId: 'a',
+        outTradeNo: randomUUID(),
+        amountMinor: 10000,
+        status: 'SUCCEEDED',
+        providerTransactionId: randomUUID(),
+      })
+      .returning();
+    const [refund] = await db
+      .insert(refunds)
+      .values({
+        paymentId: payment!.id,
+        outRefundNo: randomUUID(),
+        amountMinor: 10000,
+        status: 'SUCCEEDED',
+        requestedBy: admin.id,
+        originalOrderStatus: 'PAID',
+      })
+      .returning();
+    await db.transaction((tx) =>
+      service.reverseForRefund(tx, fixture.order.id, refund!.id, 10000, 10000),
+    );
+    await db.transaction((tx) =>
+      service.reverseForRefund(tx, fixture.order.id, refund!.id, 10000, 10000),
+    );
+    expect(await service.getAccount(fixture.beneficiary.id)).toMatchObject({
+      frozenMinor: 0,
+      availableMinor: 0,
+    });
+    expect(await db.select().from(commissionLedger)).toHaveLength(2);
+  });
+
+  it('concurrent withdrawal requests cannot spend the same available balance twice', async () => {
+    const fixture = await paidAttribution();
+    const [frozen] = await db
+      .select()
+      .from(commissionEvents)
+      .where(eq(commissionEvents.type, 'FROZEN'));
+    await service.settle(frozen!.id);
+    const results = await Promise.allSettled([
+      service.createWithdrawal(fixture.beneficiary.id, 500, 'withdrawal-a'),
+      service.createWithdrawal(fixture.beneficiary.id, 500, 'withdrawal-b'),
+    ]);
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    expect(await db.select().from(withdrawalRequests)).toHaveLength(1);
+    expect((await service.getAccount(fixture.beneficiary.id)).availableMinor).toBe(100);
+  });
+
+  it('withdrawal idempotency and cancellation release exactly once', async () => {
+    const fixture = await paidAttribution();
+    const [frozen] = await db
+      .select()
+      .from(commissionEvents)
+      .where(eq(commissionEvents.type, 'FROZEN'));
+    await service.settle(frozen!.id);
+    const first = await service.createWithdrawal(fixture.beneficiary.id, 400, 'same-request');
+    expect((await service.createWithdrawal(fixture.beneficiary.id, 400, 'same-request')).id).toBe(
+      first.id,
+    );
+    await service.cancelWithdrawal(fixture.beneficiary.id, first.id);
+    await service.cancelWithdrawal(fixture.beneficiary.id, first.id);
+    expect((await service.getAccount(fixture.beneficiary.id)).availableMinor).toBe(600);
+    expect(await db.select().from(commissionLedger)).toHaveLength(4);
+  });
+});

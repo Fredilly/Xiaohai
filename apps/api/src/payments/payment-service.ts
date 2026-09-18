@@ -23,12 +23,23 @@ type Db = ReturnType<typeof createDatabase>['db'];
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
 type Payment = typeof payments.$inferSelect;
 type Refund = typeof refunds.$inferSelect;
+export interface CommissionPaymentLifecycle {
+  freezeForPaidOrder(tx: Tx, orderId: string, eventKey: string, now?: Date): Promise<void>;
+  reverseForRefund(
+    tx: Tx,
+    orderId: string,
+    refundId: string,
+    refundAmountMinor: number,
+    paymentAmountMinor: number,
+  ): Promise<void>;
+}
 const businessNumber = () => randomUUID().replaceAll('-', '');
 
 export class PaymentService {
   constructor(
     private readonly db: Db,
     readonly provider: WeChatPayProvider,
+    private readonly commissions?: CommissionPaymentLifecycle,
   ) {}
 
   async create(consumerId: string, orderId: string) {
@@ -283,6 +294,8 @@ export class PaymentService {
         kind: 'PAYMENT',
         amountMinor: payment.amountMinor,
       });
+      if (result.trade_state === 'SUCCESS' && order.status === 'UNPAID')
+        await this.commissions?.freezeForPaidOrder(tx, order.id, payment.id);
     } else if (['CLOSED', 'REVOKED'].includes(result.trade_state)) {
       if (payment.status === 'SUCCEEDED') throw new PaymentError('PAYMENT_TRANSACTION_CONFLICT');
       await tx
@@ -332,6 +345,13 @@ export class PaymentService {
         kind: 'REFUND',
         amountMinor: refund.amountMinor,
       });
+      await this.commissions?.reverseForRefund(
+        tx,
+        order.id,
+        refund.id,
+        refund.amountMinor,
+        payment.amountMinor,
+      );
       if (order.status === 'REFUNDING')
         await tx
           .update(orders)

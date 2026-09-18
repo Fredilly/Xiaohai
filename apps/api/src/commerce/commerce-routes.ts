@@ -165,6 +165,7 @@ export function registerCommerceRoutes(
               consumerId(request),
               input.data.addressId,
               input.data.clientRequestId,
+              input.data.referralCode,
             ),
           ),
         );

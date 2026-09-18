@@ -24,7 +24,14 @@ export const fulfillmentQuoteRequestSchema = z
   });
 
 export const fulfilledOrderRequestSchema = fulfillmentQuoteRequestSchema
-  .safeExtend({ clientRequestId: z.string().trim().min(8).max(128) })
+  .safeExtend({
+    clientRequestId: z.string().trim().min(8).max(128),
+    referralCode: z
+      .string()
+      .trim()
+      .regex(/^[A-Z0-9_-]{8,32}$/)
+      .optional(),
+  })
   .strict();
 
 export const fulfilledOrderResponseSchema = z.object({ orderId: z.uuid() });

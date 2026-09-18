@@ -1,0 +1,9 @@
+<view class="page">
+  <view class="card"><text class="title">分享与佣金</text><text>冻结 ¥{{frozenMinor / 100}} · 可提现 ¥{{availableMinor / 100}}</text></view>
+  <text wx:if="{{error}}" class="error">{{error}}</text>
+  <button bindtap="createLink" loading="{{busy}}" disabled="{{busy}}">创建分享链接</button>
+  <view class="card" wx:for="{{links}}" wx:key="id"><text>{{item.label || '分享链接'}}</text><text selectable>{{item.code}}</text><button size="mini" open-type="share" data-code="{{item.code}}">分享</button><button size="mini" data-code="{{item.code}}" bindtap="copyLink">复制码</button></view>
+  <view class="card"><text class="title">申请提现</text><input type="digit" value="{{amountYuan}}" bindinput="amountInput" placeholder="金额（元）"/><button bindtap="withdraw" disabled="{{busy}}">提交申请</button><text class="hint">实际打款渠道、门槛、税费由后续业务政策确定；当前仅提交审核申请。</text></view>
+  <view class="card"><text class="title">账务记录</text><view wx:for="{{entries}}" wx:key="id"><text>{{item.eventType}} · ¥{{item.amountMinor / 100}}</text></view><text wx:if="{{!entries.length}}">暂无记录</text></view>
+  <view class="card"><text class="title">提现记录</text><view wx:for="{{withdrawals}}" wx:key="id"><text>{{item.status}} · ¥{{item.amountMinor / 100}}</text></view><text wx:if="{{!withdrawals.length}}">暂无申请</text></view>
+</view>

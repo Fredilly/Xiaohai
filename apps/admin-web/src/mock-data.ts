@@ -37,7 +37,13 @@ export const adminModules: ModulePreview[] = [
   {
     key: 'finance',
     label: '支付 / 退款',
-    description: 'M6 支付、整单退款与逐笔对账；不含佣金',
+    description: 'M6 支付、整单退款与逐笔对账',
+    status: '可查看',
+  },
+  {
+    key: 'commission',
+    label: '佣金 / 提现',
+    description: 'M18 规则、结算、冲正与提现审核',
     status: '可查看',
   },
   { key: 'cms', label: 'CMS / 运营', description: '首页内容与运营位管理', status: '可查看' },

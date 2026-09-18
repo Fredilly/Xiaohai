@@ -46,6 +46,8 @@ import { registerFulfillmentRoutes } from './fulfillment/fulfillment-routes.js';
 import { loadDeliveryProvider } from './fulfillment/delivery-provider.js';
 import { FranchiseService } from './franchise/franchise-service.js';
 import { registerFranchiseRoutes } from './franchise/franchise-routes.js';
+import { CommissionService } from './commission/commission-service.js';
+import { registerCommissionRoutes } from './commission/commission-routes.js';
 
 const config = loadServiceConfig(process.env);
 const { db, pool } = createDatabase(process.env);
@@ -78,12 +80,13 @@ const staffAuthorization = new StaffAuthorizationService(
   staffSessions,
 );
 const homeCms = new HomeCmsService(db);
-const commerce = new CommerceService(db);
+const commission = new CommissionService(db);
+const commerce = new CommerceService(db, commission);
 const content = new ContentService(db);
 const app = buildApp({ consumerAuth, staffAuth, staffAuthorization, homeCms });
 registerCommerceRoutes(app, { commerce, consumerSessions: sessions, staffAuthorization });
 registerPaymentRoutes(app, {
-  payments: new PaymentService(db, loadWeChatPayProvider(process.env)),
+  payments: new PaymentService(db, loadWeChatPayProvider(process.env), commission),
   consumerSessions: sessions,
   staffAuthorization,
 });
@@ -115,6 +118,7 @@ registerFranchiseRoutes(app, {
   consumerSessions: sessions,
   staffAuthorization,
 });
+registerCommissionRoutes(app, { commission, consumerSessions: sessions, staffAuthorization });
 const aiQueue = new RedisAiQueue(config.REDIS_URL, () =>
   app.log.error({ errorCode: 'REDIS_UNAVAILABLE' }, 'AI queue Redis error'),
 );

@@ -98,6 +98,7 @@ export class FulfillmentService {
           method: input.method,
           storeId: input.storeId,
           addressId: input.method === 'DELIVERY' ? input.addressId : null,
+          referralCode: input.referralCode ?? null,
         }),
       )
       .digest('hex');
@@ -189,6 +190,7 @@ export class FulfillmentService {
           lineTotalMinor: item.lineTotalMinor,
         })),
       );
+      await this.commerce.attributeReferral(tx, orderId, consumerUserId, input.referralCode);
 
       if (input.method === 'PICKUP') {
         await tx.insert(pickupCodes).values({ orderId, storeId: input.storeId });

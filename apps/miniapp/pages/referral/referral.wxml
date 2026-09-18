@@ -1,0 +1,1 @@
+<view class="page"><view class="card"><text class="title">好友分享已记录</text><text>完成符合规则的订单后，佣金资格与金额将由服务端规则计算。</text><button bindtap="goShopping">去逛逛</button></view></view>

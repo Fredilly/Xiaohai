@@ -63,6 +63,14 @@ export { rentalOrders, rentalItems, rentalEvents, inventoryReservations } from '
 export { deliveryZones, pickupCodes, deliveries, deliveryEvents } from './fulfillment-schema.js';
 export { franchiseApplications, franchiseFollowups } from './franchise-schema.js';
 export {
+  referralLinks,
+  referralAttributions,
+  commissionRules,
+  commissionEvents,
+  commissionLedger,
+  withdrawalRequests,
+} from './commission-schema.js';
+export {
   consumerUsers,
   migrationBatches,
   migrationBookStaging,

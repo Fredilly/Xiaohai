@@ -19,7 +19,7 @@
   </button>
 
   <view class="demo-note">
-    保留现有 Consumer WeChat Login。下方业务入口目前是前端骨架，不代表订单、佣金、会员等后端已完成。
+    保留现有 Consumer WeChat Login。订单、租借、加盟和分享佣金入口按各自服务端状态运行；会员仍为预览。
   </view>
 
   <view class="section">
