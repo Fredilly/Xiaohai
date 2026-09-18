@@ -26,7 +26,8 @@
     "pages/store-detail/store-detail",
     "pages/book-search/book-search",
     "pages/rentals/rentals",
-    "pages/rental-detail/rental-detail"
+    "pages/rental-detail/rental-detail",
+    "pages/franchise-apply/franchise-apply"
   ],
   "window": {
     "navigationBarTitleText": "小海童话",
