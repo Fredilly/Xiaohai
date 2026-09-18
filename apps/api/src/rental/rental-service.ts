@@ -471,9 +471,7 @@ export class RentalService {
       await tx
         .update(pickupCodes)
         .set({ status: 'CANCELLED', cancelledAt: now, updatedAt: now })
-        .where(
-          and(eq(pickupCodes.rentalOrderId, id), eq(pickupCodes.status, 'ISSUED')),
-        );
+        .where(and(eq(pickupCodes.rentalOrderId, id), eq(pickupCodes.status, 'ISSUED')));
       await tx
         .update(rentalOrders)
         .set({ status: 'CANCELLED', cancelledAt: now, version: order.version + 1, updatedAt: now })

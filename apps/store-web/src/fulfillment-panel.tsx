@@ -1,8 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
-import type {
-  DeliveryZoneInput,
-  FulfillmentView,
-} from '@xiaohai/contracts/fulfillment';
+import type { DeliveryZoneInput, FulfillmentView } from '@xiaohai/contracts/fulfillment';
 import {
   completeDelivery,
   createDeliveryZone,
@@ -17,9 +14,7 @@ type StaffFulfillment = Awaited<ReturnType<typeof loadFulfillment>>['items'][num
 
 export function FulfillmentPanel({ token }: { token: string }) {
   const [items, setItems] = useState<StaffFulfillment[]>([]);
-  const [zones, setZones] = useState<
-    Awaited<ReturnType<typeof loadDeliveryZones>>['items']
-  >([]);
+  const [zones, setZones] = useState<Awaited<ReturnType<typeof loadDeliveryZones>>['items']>([]);
   const [pickupCodes, setPickupCodes] = useState<Record<string, string>>({});
   const [status, setStatus] = useState('正在加载…');
   const [busy, setBusy] = useState('');
@@ -32,9 +27,7 @@ export function FulfillmentPanel({ token }: { token: string }) {
       ]);
       setItems(fulfillment.items);
       setZones(deliveryZones.items);
-      setStatus(
-        fulfillment.items.length ? '履约记录已加载' : '授权范围内暂无待履约订单',
-      );
+      setStatus(fulfillment.items.length ? '履约记录已加载' : '授权范围内暂无待履约订单');
     } catch (error) {
       setStatus(error instanceof Error ? `加载失败：${error.message}` : '加载失败');
     }
@@ -44,10 +37,7 @@ export function FulfillmentPanel({ token }: { token: string }) {
     void refresh();
   }, [refresh]);
 
-  const run = async (
-    orderId: string,
-    action: () => Promise<FulfillmentView>,
-  ) => {
+  const run = async (orderId: string, action: () => Promise<FulfillmentView>) => {
     setBusy(orderId);
     try {
       await action();
@@ -64,11 +54,15 @@ export function FulfillmentPanel({ token }: { token: string }) {
   async function createZone(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    const storeId = String(form.get('storeId') ?? '').trim();
-    const name = String(form.get('name') ?? '').trim();
-    const region = String(form.get('region') ?? '').trim();
-    const city = String(form.get('city') ?? '').trim();
-    const districtValue = String(form.get('district') ?? '').trim();
+    const getText = (field: string) => {
+      const value = form.get(field);
+      return typeof value === 'string' ? value.trim() : '';
+    };
+    const storeId = getText('storeId');
+    const name = getText('name');
+    const region = getText('region');
+    const city = getText('city');
+    const districtValue = getText('district');
     const feeMinor = Number(form.get('feeMinor'));
     if (!storeId || !name || !region || !city || !Number.isInteger(feeMinor) || feeMinor < 0) {
       setStatus('配送区域信息不完整或配送费不是非负整数（分）');
@@ -98,8 +92,8 @@ export function FulfillmentPanel({ token }: { token: string }) {
       <span className="tag">M16 Pickup & Delivery</span>
       <h2>订单履约</h2>
       <p>
-        自提码只由顾客端显示；员工输入顾客出示的 6 位码核销。配送费来自门店配送区域配置，当前
-        MANUAL adapter 代表人工同城配送，不伪造第三方骑手或轨迹。
+        自提码只由顾客端显示；员工输入顾客出示的 6 位码核销。配送费来自门店配送区域配置，当前 MANUAL
+        adapter 代表人工同城配送，不伪造第三方骑手或轨迹。
       </p>
 
       <div className="inventory-table">
@@ -123,9 +117,7 @@ export function FulfillmentPanel({ token }: { token: string }) {
               {item.method === 'PICKUP' && item.orderStatus === 'PAID' && (
                 <button
                   disabled={busy === item.orderId}
-                  onClick={() =>
-                    void run(item.orderId, () => markPickupReady(token, item.orderId))
-                  }
+                  onClick={() => void run(item.orderId, () => markPickupReady(token, item.orderId))}
                 >
                   标记可取
                 </button>
@@ -146,8 +138,7 @@ export function FulfillmentPanel({ token }: { token: string }) {
                   />
                   <button
                     disabled={
-                      busy === item.orderId ||
-                      !/^\d{6}$/.test(pickupCodes[item.orderId] ?? '')
+                      busy === item.orderId || !/^\d{6}$/.test(pickupCodes[item.orderId] ?? '')
                     }
                     onClick={() =>
                       void run(item.orderId, () =>
@@ -205,7 +196,9 @@ export function FulfillmentPanel({ token }: { token: string }) {
             <span>
               {zone.region} {zone.city} {zone.district ?? '全市兜底'}
             </span>
-            <span>¥{(zone.feeMinor / 100).toFixed(2)} · {zone.providerKey}</span>
+            <span>
+              ¥{(zone.feeMinor / 100).toFixed(2)} · {zone.providerKey}
+            </span>
           </div>
         ))}
       </div>

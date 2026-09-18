@@ -53,7 +53,9 @@ export function RentalPanel({ token }: { token: string }) {
     <section className="panel">
       <span className="tag">M16 Pickup Verification + M15 Rental</span>
       <h2>门店租借</h2>
-      <p>取书码只由顾客端显示。员工必须现场输入顾客出示的 6 位码，服务端再校验门店范围、库存与状态。</p>
+      <p>
+        取书码只由顾客端显示。员工必须现场输入顾客出示的 6 位码，服务端再校验门店范围、库存与状态。
+      </p>
       <div className="inventory-table">
         <div className="inventory-row heading">
           <span>租借 / 门店</span>

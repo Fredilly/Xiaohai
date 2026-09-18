@@ -17,7 +17,6 @@ import {
   orderItems,
   orders,
   pickupCodes,
-  products,
   skus,
   storeInventory,
   stores,
@@ -66,8 +65,7 @@ export class FulfillmentService {
   async quote(consumerUserId: string, input: FulfillmentQuoteRequest) {
     const cart = await this.commerce.getCart(consumerUserId);
     if (!cart.items.length) throw new FulfillmentError('CONFLICT');
-    if (cart.items.some((item) => !item.availableForSale))
-      throw new FulfillmentError('CONFLICT');
+    if (cart.items.some((item) => !item.availableForSale)) throw new FulfillmentError('CONFLICT');
 
     const store = await this.requireActiveStore(input.storeId);
     if (input.method === 'PICKUP') {
@@ -114,8 +112,7 @@ export class FulfillmentService {
       )
       .limit(1);
     if (existing) {
-      if (existing.fingerprint !== fingerprint)
-        throw new FulfillmentError('IDEMPOTENCY_CONFLICT');
+      if (existing.fingerprint !== fingerprint) throw new FulfillmentError('IDEMPOTENCY_CONFLICT');
       return existing.id;
     }
 
@@ -138,9 +135,7 @@ export class FulfillmentService {
         ? await this.requireAddress(consumerUserId, input.addressId!)
         : null;
     const zone =
-      input.method === 'DELIVERY'
-        ? await this.resolveDeliveryZone(input.storeId, address!)
-        : null;
+      input.method === 'DELIVERY' ? await this.resolveDeliveryZone(input.storeId, address!) : null;
 
     return this.db.transaction(async (tx) => {
       await tx.execute(
@@ -345,7 +340,13 @@ export class FulfillmentService {
         throw new FulfillmentError('INVALID_STATE');
       if (!pickupCodeMatches(this.pickupSecret, 'ORDER', orderId, pickupCode))
         throw new FulfillmentError('PICKUP_CODE_INVALID');
-      await deductSaleInventory(tx, orderId, pickup.storeId, context.staffAccountId, idempotencyKey);
+      await deductSaleInventory(
+        tx,
+        orderId,
+        pickup.storeId,
+        context.staffAccountId,
+        idempotencyKey,
+      );
       const now = new Date();
       await tx
         .update(pickupCodes)
@@ -547,21 +548,13 @@ export class FulfillmentService {
     const [address] = await this.db
       .select()
       .from(userAddresses)
-      .where(
-        and(
-          eq(userAddresses.id, addressId),
-          eq(userAddresses.consumerUserId, consumerUserId),
-        ),
-      )
+      .where(and(eq(userAddresses.id, addressId), eq(userAddresses.consumerUserId, consumerUserId)))
       .limit(1);
     if (!address) throw new FulfillmentError('NOT_FOUND');
     return address;
   }
 
-  private async resolveDeliveryZone(
-    storeId: string,
-    address: typeof userAddresses.$inferSelect,
-  ) {
+  private async resolveDeliveryZone(storeId: string, address: typeof userAddresses.$inferSelect) {
     const rows = await this.db
       .select()
       .from(deliveryZones)
@@ -574,7 +567,8 @@ export class FulfillmentService {
           or(eq(deliveryZones.district, address.district), sql`${deliveryZones.district} is null`),
         ),
       );
-    const zone = rows.find((row) => row.district === address.district) ?? rows.find((row) => !row.district);
+    const zone =
+      rows.find((row) => row.district === address.district) ?? rows.find((row) => !row.district);
     if (!zone) throw new FulfillmentError('DELIVERY_UNAVAILABLE');
     if (zone.providerKey !== this.deliveryProvider.key)
       throw new FulfillmentError('DELIVERY_UNAVAILABLE');
@@ -637,10 +631,7 @@ async function deductSaleInventory(
       .from(storeInventory)
       .where(and(eq(storeInventory.storeId, storeId), eq(storeInventory.skuId, item.skuId)))
       .limit(1);
-    if (
-      !balance ||
-      balance.onHand - balance.reserved - balance.rentalReserved < item.quantity
-    )
+    if (!balance || balance.onHand - balance.reserved - balance.rentalReserved < item.quantity)
       throw new FulfillmentError('INSUFFICIENT_STOCK');
     const next = balance.onHand - item.quantity;
     await tx

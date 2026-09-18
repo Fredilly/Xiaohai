@@ -119,9 +119,7 @@ export const fulfillmentStaffListResponseSchema = z.object({
   items: z.array(fulfillmentStaffItemSchema),
 });
 
-export const fulfillmentActionRequestSchema = z
-  .object({ idempotencyKey: z.uuid() })
-  .strict();
+export const fulfillmentActionRequestSchema = z.object({ idempotencyKey: z.uuid() }).strict();
 
 export const pickupVerifyRequestSchema = fulfillmentActionRequestSchema
   .safeExtend({ pickupCode: pickupCodeSchema })

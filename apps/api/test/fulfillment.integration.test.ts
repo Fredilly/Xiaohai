@@ -256,9 +256,7 @@ suite('M16 pickup and delivery PostgreSQL integration', () => {
         .insert(rolePermissions)
         .values({ roleId: role!.id, permissionId: permission!.id });
     }
-    await database!.db
-      .insert(staffRoles)
-      .values({ staffAccountId: account!.id, roleId: role!.id });
+    await database!.db.insert(staffRoles).values({ staffAccountId: account!.id, roleId: role!.id });
     await database!.db.insert(staffDataScopes).values({
       staffAccountId: account!.id,
       scopeType: scope.type,
@@ -349,10 +347,10 @@ suite('M16 pickup and delivery PostgreSQL integration', () => {
     const orderId = created.json<{ orderId: string }>().orderId;
     await database!.db.update(orders).set({ status: 'PAID' }).where(eq(orders.id, orderId));
 
-    const wrongStore = await staff(
-      [fulfillmentPermissions.pickup],
-      { type: 'STORE', id: d.storeB.id },
-    );
+    const wrongStore = await staff([fulfillmentPermissions.pickup], {
+      type: 'STORE',
+      id: d.storeB.id,
+    });
     expect(
       (
         await app.inject({
@@ -364,10 +362,10 @@ suite('M16 pickup and delivery PostgreSQL integration', () => {
       ).statusCode,
     ).toBe(403);
 
-    const operator = await staff(
-      [fulfillmentPermissions.pickup],
-      { type: 'STORE', id: d.storeA.id },
-    );
+    const operator = await staff([fulfillmentPermissions.pickup], {
+      type: 'STORE',
+      id: d.storeA.id,
+    });
     expect(
       (
         await app.inject({
@@ -427,7 +425,11 @@ suite('M16 pickup and delivery PostgreSQL integration', () => {
       .from(inventoryTransactions)
       .where(eq(inventoryTransactions.referenceId, orderId));
     expect(ledger).toHaveLength(1);
-    expect(ledger[0]).toMatchObject({ transactionType: 'SALE', quantityDelta: -1, balanceAfter: 4 });
+    expect(ledger[0]).toMatchObject({
+      transactionType: 'SALE',
+      quantityDelta: -1,
+      balanceAfter: 4,
+    });
     const [order] = await database!.db.select().from(orders).where(eq(orders.id, orderId));
     expect(order!.status).toBe('COMPLETED');
   });
@@ -476,10 +478,10 @@ suite('M16 pickup and delivery PostgreSQL integration', () => {
     expect(createdOrder!.totalMinor).toBe(3800);
     await database!.db.update(orders).set({ status: 'PAID' }).where(eq(orders.id, orderId));
 
-    const operator = await staff(
-      [fulfillmentPermissions.delivery],
-      { type: 'REGION', id: d.regionA.id },
-    );
+    const operator = await staff([fulfillmentPermissions.delivery], {
+      type: 'REGION',
+      id: d.regionA.id,
+    });
     const key = crypto.randomUUID();
     const [a, b] = await Promise.all([
       app.inject({
@@ -558,10 +560,10 @@ suite('M16 pickup and delivery PostgreSQL integration', () => {
       expect(response.json<{ items: unknown[] }>().items).toHaveLength(1);
     }
 
-    const otherStore = await staff(
-      [fulfillmentPermissions.read],
-      { type: 'STORE', id: d.storeB.id },
-    );
+    const otherStore = await staff([fulfillmentPermissions.read], {
+      type: 'STORE',
+      id: d.storeB.id,
+    });
     const response = await app.inject({
       method: 'GET',
       url: '/api/v1/staff/fulfillment',

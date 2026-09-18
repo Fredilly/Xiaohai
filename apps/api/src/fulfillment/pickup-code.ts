@@ -7,9 +7,7 @@ export function pickupCodeFor(
   resourceType: PickupResourceType,
   resourceId: string,
 ): string {
-  const digest = createHmac('sha256', secret)
-    .update(`${resourceType}:${resourceId}`)
-    .digest();
+  const digest = createHmac('sha256', secret).update(`${resourceType}:${resourceId}`).digest();
   const value = digest.readUInt32BE(0) % 1_000_000;
   return String(value).padStart(6, '0');
 }

@@ -1,9 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import {
-  createFulfillmentOrder,
-  getFulfillment,
-  quoteFulfillment,
-} from './fulfillment';
+import { createFulfillmentOrder, getFulfillment, quoteFulfillment } from './fulfillment';
 
 describe('Mini Program M16 fulfillment service', () => {
   let requestMock: ReturnType<typeof vi.fn>;
@@ -59,9 +55,9 @@ describe('Mini Program M16 fulfillment service', () => {
   });
 
   it('requires the Consumer Session before loading fulfillment details', async () => {
-    (
-      globalThis as typeof globalThis & { wx: WechatMiniprogram.Wx }
-    ).wx.getStorageSync = vi.fn(() => '');
+    (globalThis as typeof globalThis & { wx: WechatMiniprogram.Wx }).wx.getStorageSync = vi.fn(
+      () => '',
+    ) as WechatMiniprogram.Wx['getStorageSync'];
     await expect(getFulfillment('11111111-1111-4111-8111-111111111111')).rejects.toThrow(
       'AUTH_REQUIRED',
     );

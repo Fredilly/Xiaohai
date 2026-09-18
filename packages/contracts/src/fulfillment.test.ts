@@ -3,7 +3,7 @@ import {
   deliveryZoneInputSchema,
   fulfilledOrderRequestSchema,
   pickupVerifyRequestSchema,
-} from './fulfillment';
+} from './fulfillment.js';
 
 describe('M16 fulfillment contracts', () => {
   it('requires an address for delivery but not pickup', () => {

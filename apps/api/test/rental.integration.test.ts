@@ -8,6 +8,8 @@ import {
   franchisees,
   inventoryReservations,
   inventoryTransactions,
+  orderItems,
+  orders,
   permissions,
   pickupCodes,
   products,
@@ -67,6 +69,8 @@ suite('M15 rental PostgreSQL integration', () => {
     await database!.db.delete(rentalItems);
     await database!.db.delete(rentalOrders);
     await database!.db.delete(inventoryTransactions);
+    await database!.db.delete(orderItems);
+    await database!.db.delete(orders);
     await database!.db.delete(storeInventory);
     await database!.db.delete(skus);
     await database!.db.delete(products);

@@ -18,8 +18,9 @@ export interface DeliveryProvider {
 export class ManualDeliveryProvider implements DeliveryProvider {
   readonly key = 'MANUAL';
 
-  async dispatch(_input: DeliveryDispatchInput): Promise<DeliveryDispatchResult> {
-    return { providerOrderId: null };
+  dispatch(input: DeliveryDispatchInput): Promise<DeliveryDispatchResult> {
+    void input;
+    return Promise.resolve({ providerOrderId: null });
   }
 }
 

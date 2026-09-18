@@ -19,7 +19,7 @@ Page({
     storeIndex: 0,
     addressId: '',
     storeId: '',
-    method: 'PICKUP' as FulfillmentMethod,
+    method: 'PICKUP',
     quote: null as FulfillmentQuote | null,
     clientRequestId: '',
     loading: true,
@@ -78,14 +78,15 @@ Page({
   },
 
   async preview() {
+    const method = this.data.method === 'DELIVERY' ? 'DELIVERY' : 'PICKUP';
     if (!this.data.storeId) return;
-    if (this.data.method === 'DELIVERY' && !this.data.addressId) return;
+    if (method === 'DELIVERY' && !this.data.addressId) return;
     this.setData({ quoting: true, errorMessage: '' });
     try {
       const quote = await quoteFulfillment(
-        this.data.method,
+        method,
         this.data.storeId,
-        this.data.method === 'DELIVERY' ? this.data.addressId : undefined,
+        method === 'DELIVERY' ? this.data.addressId : undefined,
       );
       this.setData({ quote });
     } catch (error) {
@@ -103,13 +104,14 @@ Page({
 
   async create() {
     if (this.data.creating || !this.data.quote || !this.data.clientRequestId) return;
+    const method = this.data.method === 'DELIVERY' ? 'DELIVERY' : 'PICKUP';
     this.setData({ creating: true, errorMessage: '' });
     try {
       const result = await createFulfillmentOrder(
-        this.data.method,
+        method,
         this.data.storeId,
         this.data.clientRequestId,
-        this.data.method === 'DELIVERY' ? this.data.addressId : undefined,
+        method === 'DELIVERY' ? this.data.addressId : undefined,
       );
       void wx.redirectTo({ url: `/pages/order-detail/order-detail?id=${result.orderId}` });
     } catch {

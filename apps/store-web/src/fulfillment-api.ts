@@ -35,9 +35,7 @@ export async function loadFulfillment(token: string) {
 }
 
 export async function loadDeliveryZones(token: string) {
-  return deliveryZoneListResponseSchema.parse(
-    await request('/api/v1/staff/delivery-zones', token),
-  );
+  return deliveryZoneListResponseSchema.parse(await request('/api/v1/staff/delivery-zones', token));
 }
 
 export async function createDeliveryZone(
@@ -51,44 +49,33 @@ export async function createDeliveryZone(
 
 export async function markPickupReady(token: string, orderId: string) {
   return fulfillmentViewSchema.parse(
-    await request(
-      `/api/v1/staff/fulfillment/orders/${orderId}/pickup/ready`,
-      token,
-      'POST',
-      { idempotencyKey: crypto.randomUUID() },
-    ),
+    await request(`/api/v1/staff/fulfillment/orders/${orderId}/pickup/ready`, token, 'POST', {
+      idempotencyKey: crypto.randomUUID(),
+    }),
   );
 }
 
 export async function verifyPickup(token: string, orderId: string, pickupCode: string) {
   return fulfillmentViewSchema.parse(
-    await request(
-      `/api/v1/staff/fulfillment/orders/${orderId}/pickup/verify`,
-      token,
-      'POST',
-      { idempotencyKey: crypto.randomUUID(), pickupCode },
-    ),
+    await request(`/api/v1/staff/fulfillment/orders/${orderId}/pickup/verify`, token, 'POST', {
+      idempotencyKey: crypto.randomUUID(),
+      pickupCode,
+    }),
   );
 }
 
 export async function dispatchDelivery(token: string, orderId: string) {
   return fulfillmentViewSchema.parse(
-    await request(
-      `/api/v1/staff/fulfillment/orders/${orderId}/delivery/dispatch`,
-      token,
-      'POST',
-      { idempotencyKey: crypto.randomUUID() },
-    ),
+    await request(`/api/v1/staff/fulfillment/orders/${orderId}/delivery/dispatch`, token, 'POST', {
+      idempotencyKey: crypto.randomUUID(),
+    }),
   );
 }
 
 export async function completeDelivery(token: string, orderId: string) {
   return fulfillmentViewSchema.parse(
-    await request(
-      `/api/v1/staff/fulfillment/orders/${orderId}/delivery/complete`,
-      token,
-      'POST',
-      { idempotencyKey: crypto.randomUUID() },
-    ),
+    await request(`/api/v1/staff/fulfillment/orders/${orderId}/delivery/complete`, token, 'POST', {
+      idempotencyKey: crypto.randomUUID(),
+    }),
   );
 }

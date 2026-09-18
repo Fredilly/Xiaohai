@@ -34,11 +34,7 @@ async function request<T>(
   return response.data as T;
 }
 
-export const quoteFulfillment = (
-  method: FulfillmentMethod,
-  storeId: string,
-  addressId?: string,
-) =>
+export const quoteFulfillment = (method: FulfillmentMethod, storeId: string, addressId?: string) =>
   request<FulfillmentQuote>('/api/v1/fulfillment/quote', 'POST', {
     method,
     storeId,

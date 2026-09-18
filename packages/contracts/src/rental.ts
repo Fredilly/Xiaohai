@@ -64,7 +64,10 @@ export const rentalViewSchema = z.object({
   returnedAt: z.coerce.date().nullable(),
   cancelledAt: z.coerce.date().nullable(),
   isOverdue: z.boolean(),
-  pickupCode: z.string().regex(/^\d{6}$/).nullable(),
+  pickupCode: z
+    .string()
+    .regex(/^\d{6}$/)
+    .nullable(),
   items: z.array(rentalItemSchema),
   events: z.array(rentalEventSchema),
 });
