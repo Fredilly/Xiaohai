@@ -1,0 +1,83 @@
+<view class="page">
+  <view class="hero hero-soft">
+    <text class="eyebrow">FRANCHISE</text>
+    <text class="hero-title">加盟合作</text>
+    <text class="hero-subtitle">了解胖竹书店加盟合作的基础条件和流程，并提交意向申请。申请提交不代表审核通过或正式签约。</text>
+  </view>
+
+  <view wx:if="{{submitted}}" class="card success-card">
+    <text class="card-title">申请已提交</text>
+    <text class="card-subtitle">申请编号：{{applicationNumber}}</text>
+    <text class="card-subtitle">总部会根据申请信息进行后续联系。本页面暂不提供审核进度、合同签署或费用支付功能。</text>
+  </view>
+
+  <block wx:else>
+    <view class="card">
+      <text class="card-title">基础条件</text>
+      <text class="card-subtitle">具备稳定经营意愿，认可胖竹书店品牌与门店服务理念，并能够配合总部完成后续沟通与筹备。</text>
+    </view>
+
+    <view class="card">
+      <text class="card-title">合作流程</text>
+      <view class="steps">
+        <text>1. 提交加盟意向</text>
+        <text>2. 总部沟通与跟进</text>
+        <text>3. 审核与合作确认</text>
+        <text>4. 后续签约、筹备与开店</text>
+      </view>
+    </view>
+
+    <view class="card form-card">
+      <text class="card-title">提交申请</text>
+
+      <label class="field">
+        <text>姓名 *</text>
+        <input value="{{name}}" data-field="name" bindinput="onFieldInput" maxlength="120" placeholder="请输入姓名" />
+      </label>
+
+      <label class="field">
+        <text>联系电话 *</text>
+        <input value="{{phone}}" data-field="phone" bindinput="onFieldInput" maxlength="32" type="number" placeholder="请输入联系电话" />
+      </label>
+
+      <label class="field">
+        <text>邮箱</text>
+        <input value="{{email}}" data-field="email" bindinput="onFieldInput" maxlength="254" placeholder="选填" />
+      </label>
+
+      <label class="field">
+        <text>国家 / 地区 *</text>
+        <input value="{{country}}" data-field="country" bindinput="onFieldInput" maxlength="120" placeholder="例如：中国" />
+      </label>
+
+      <label class="field">
+        <text>省 / 区域 *</text>
+        <input value="{{region}}" data-field="region" bindinput="onFieldInput" maxlength="120" placeholder="例如：四川省" />
+      </label>
+
+      <label class="field">
+        <text>城市 *</text>
+        <input value="{{city}}" data-field="city" bindinput="onFieldInput" maxlength="120" placeholder="例如：成都" />
+      </label>
+
+      <label class="field">
+        <text>区 / 县</text>
+        <input value="{{district}}" data-field="district" bindinput="onFieldInput" maxlength="120" placeholder="选填" />
+      </label>
+
+      <label class="field">
+        <text>个人 / 经营背景</text>
+        <textarea value="{{background}}" data-field="background" bindinput="onFieldInput" maxlength="2000" auto-height placeholder="选填，可简要说明相关经验" />
+      </label>
+
+      <label class="field">
+        <text>补充说明</text>
+        <textarea value="{{message}}" data-field="message" bindinput="onFieldInput" maxlength="2000" auto-height placeholder="选填，可补充加盟意向或问题" />
+      </label>
+
+      <text wx:if="{{errorMessage}}" class="error-copy">{{errorMessage}}</text>
+      <button class="primary-btn submit-btn" loading="{{submitting}}" disabled="{{submitting}}" bindtap="submit">提交加盟申请</button>
+      <text class="privacy-copy">提交后信息仅用于加盟业务联系与审核，不会在普通业务日志中展示手机号或邮箱。</text>
+    </view>
+  </block>
+</view>
