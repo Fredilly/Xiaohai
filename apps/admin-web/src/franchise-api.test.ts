@@ -72,14 +72,14 @@ describe('M17 Admin franchise adapter', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    await assignFranchiseApplication(
-      'staff-token',
-      baseApplication.id,
-      { staffAccountId: assignee, version: 1 },
-    );
+    await assignFranchiseApplication('staff-token', baseApplication.id, {
+      staffAccountId: assignee,
+      version: 1,
+    });
 
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(init.method).toBe('POST');
-    expect(JSON.parse(String(init.body))).toEqual({ staffAccountId: assignee, version: 1 });
+    if (typeof init.body !== 'string') throw new Error('Expected JSON request body');
+    expect(JSON.parse(init.body)).toEqual({ staffAccountId: assignee, version: 1 });
   });
 });

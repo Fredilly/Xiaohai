@@ -13,7 +13,7 @@ export async function submitFranchiseApplication(
       wx.request({
         url: `${getApiBaseUrl()}/api/v1/franchise/applications`,
         method: 'POST',
-        data: input as unknown as WechatMiniprogram.IAnyObject,
+        data: input,
         header: {
           'content-type': 'application/json',
           ...(token ? { authorization: `Bearer ${token}` } : {}),

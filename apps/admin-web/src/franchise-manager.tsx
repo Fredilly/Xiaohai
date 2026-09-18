@@ -28,6 +28,11 @@ const statuses: FranchiseApplicationStatus[] = [
 ];
 const channels: FranchiseFollowupChannel[] = ['PHONE', 'WECHAT', 'EMAIL', 'MEETING', 'OTHER'];
 
+function formText(data: FormData, field: string) {
+  const value = data.get(field);
+  return typeof value === 'string' ? value.trim() : '';
+}
+
 export function FranchiseManager({ token, staffId }: { token: string; staffId: string }) {
   const [rows, setRows] = useState<FranchiseApplicationBase[]>([]);
   const [selected, setSelected] = useState<FranchiseApplicationView | null>(null);
@@ -90,7 +95,7 @@ export function FranchiseManager({ token, staffId }: { token: string; staffId: s
     event.preventDefault();
     if (!selected) return;
     const data = new FormData(event.currentTarget);
-    const assignee = String(data.get('assignee') ?? '').trim();
+    const assignee = formText(data, 'assignee');
     if (!assignee) return;
     await run(
       () =>
@@ -106,9 +111,9 @@ export function FranchiseManager({ token, staffId }: { token: string; staffId: s
     event.preventDefault();
     if (!selected) return;
     const data = new FormData(event.currentTarget);
-    const channel = String(data.get('channel') ?? 'PHONE') as FranchiseFollowupChannel;
-    const note = String(data.get('note') ?? '').trim();
-    const nextFollowupAt = String(data.get('nextFollowupAt') ?? '').trim();
+    const channel = (formText(data, 'channel') || 'PHONE') as FranchiseFollowupChannel;
+    const note = formText(data, 'note');
+    const nextFollowupAt = formText(data, 'nextFollowupAt');
     if (!note) return;
     await run(
       () =>
@@ -125,7 +130,8 @@ export function FranchiseManager({ token, staffId }: { token: string; staffId: s
 
   async function review(decision: 'APPROVED' | 'REJECTED') {
     if (!selected) return;
-    const note = window.prompt(decision === 'APPROVED' ? '审核备注（可选）' : '请填写拒绝原因（可选）') ?? '';
+    const note =
+      window.prompt(decision === 'APPROVED' ? '审核备注（可选）' : '请填写拒绝原因（可选）') ?? '';
     await run(
       () =>
         reviewFranchiseApplication(token, selected.id, {
@@ -235,7 +241,11 @@ export function FranchiseManager({ token, staffId }: { token: string; staffId: s
 
               <div className="franchise-actions">
                 <form onSubmit={(event) => void assign(event)}>
-                  <input name="assignee" defaultValue={selected.assignedStaffAccountId ?? staffId} required />
+                  <input
+                    name="assignee"
+                    defaultValue={selected.assignedStaffAccountId ?? staffId}
+                    required
+                  />
                   <button disabled={busy}>分配负责人</button>
                 </form>
 
@@ -294,9 +304,7 @@ export function FranchiseManager({ token, staffId }: { token: string; staffId: s
   );
 }
 
-function nextStatus(
-  current: FranchiseApplicationStatus,
-): 'SIGNED' | 'PREPARING' | 'OPENED' | null {
+function nextStatus(current: FranchiseApplicationStatus): 'SIGNED' | 'PREPARING' | 'OPENED' | null {
   if (current === 'APPROVED') return 'SIGNED';
   if (current === 'SIGNED') return 'PREPARING';
   if (current === 'PREPARING') return 'OPENED';
