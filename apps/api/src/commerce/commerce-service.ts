@@ -6,8 +6,11 @@ import {
   books,
   cartItems,
   carts,
+  deliveries,
+  deliveryEvents,
   orderItems,
   orders,
+  pickupCodes,
   products,
   skus,
   userAddresses,
@@ -293,7 +296,7 @@ export class CommerceService {
       .where(and(eq(orders.id, id), eq(orders.consumerUserId, consumerUserId)));
     if (!order) throw new CommerceError('NOT_FOUND', 'Order not found');
     const items = await this.db.select().from(orderItems).where(eq(orderItems.orderId, id));
-    const address = order.addressSnapshot as ReturnType<typeof snapshotAddress>;
+    const address = order.addressSnapshot as ReturnType<typeof snapshotAddress> | null;
     return {
       id: order.id,
       orderNumber: order.orderNumber,
@@ -314,17 +317,37 @@ export class CommerceService {
     };
   }
   async cancelOrder(consumerUserId: string, id: string) {
-    const [order] = await this.db
-      .select()
-      .from(orders)
-      .where(and(eq(orders.id, id), eq(orders.consumerUserId, consumerUserId)));
-    if (!order) throw new CommerceError('NOT_FOUND', 'Order not found');
-    if (order.status !== 'UNPAID')
-      throw new CommerceError('INVALID_ORDER_STATE', 'Only unpaid orders can be cancelled in M5');
-    await this.db
-      .update(orders)
-      .set({ status: 'CANCELLED', cancelledAt: new Date(), updatedAt: new Date() })
-      .where(and(eq(orders.id, id), eq(orders.status, 'UNPAID')));
+    await this.db.transaction(async (tx) => {
+      const [order] = await tx
+        .select()
+        .from(orders)
+        .where(and(eq(orders.id, id), eq(orders.consumerUserId, consumerUserId)))
+        .for('update');
+      if (!order) throw new CommerceError('NOT_FOUND', 'Order not found');
+      if (order.status !== 'UNPAID')
+        throw new CommerceError('INVALID_ORDER_STATE', 'Only unpaid orders can be cancelled');
+      const now = new Date();
+      await tx
+        .update(pickupCodes)
+        .set({ status: 'CANCELLED', cancelledAt: now, updatedAt: now })
+        .where(and(eq(pickupCodes.orderId, id), eq(pickupCodes.status, 'ISSUED')));
+      const [delivery] = await tx
+        .update(deliveries)
+        .set({ status: 'CANCELLED', cancelledAt: now, updatedAt: now })
+        .where(and(eq(deliveries.orderId, id), eq(deliveries.status, 'PENDING')))
+        .returning({ id: deliveries.id });
+      if (delivery)
+        await tx.insert(deliveryEvents).values({
+          deliveryId: delivery.id,
+          eventType: 'CANCELLED',
+          actorType: 'SYSTEM',
+          idempotencyKey: `delivery-cancelled:${id}`,
+        });
+      await tx
+        .update(orders)
+        .set({ status: 'CANCELLED', cancelledAt: now, updatedAt: now })
+        .where(and(eq(orders.id, id), eq(orders.status, 'UNPAID')));
+    });
     return this.getOrder(consumerUserId, id);
   }
 
