@@ -34,10 +34,20 @@ export const createFranchiseApplicationRequestSchema = z
   })
   .strict();
 
+export const franchiseApplicationSubmissionResponseSchema = z.object({
+  id: z.uuid(),
+  applicationNumber: z.string(),
+  status: z.literal('SUBMITTED'),
+  submittedAt: z.coerce.date(),
+});
+
 export const franchiseApplicationListQuerySchema = z
   .object({
     status: franchiseApplicationStatusSchema.optional(),
     assignedStaffAccountId: z.uuid().optional(),
+    country: z.string().trim().min(1).max(120).optional(),
+    region: z.string().trim().min(1).max(120).optional(),
+    city: z.string().trim().min(1).max(120).optional(),
     query: z.string().trim().min(1).max(120).optional(),
     limit: z.coerce.number().int().min(1).max(200).default(100),
   })
@@ -83,7 +93,7 @@ export const franchiseFollowupSchema = z.object({
   createdAt: z.coerce.date(),
 });
 
-export const franchiseApplicationViewSchema = z.object({
+export const franchiseApplicationBaseSchema = z.object({
   id: z.uuid(),
   applicationNumber: z.string(),
   submittedByConsumerUserId: z.uuid().nullable(),
@@ -112,11 +122,14 @@ export const franchiseApplicationViewSchema = z.object({
   version: z.number().int().positive(),
   createdAt: z.coerce.date(),
   updatedAt: z.coerce.date(),
+});
+
+export const franchiseApplicationViewSchema = franchiseApplicationBaseSchema.extend({
   followups: z.array(franchiseFollowupSchema),
 });
 
 export const franchiseApplicationListResponseSchema = z.object({
-  items: z.array(franchiseApplicationViewSchema.omit({ followups: true })),
+  items: z.array(franchiseApplicationBaseSchema),
 });
 
 export type FranchiseApplicationStatus = z.infer<typeof franchiseApplicationStatusSchema>;
