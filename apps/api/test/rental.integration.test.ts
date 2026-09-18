@@ -9,6 +9,7 @@ import {
   inventoryReservations,
   inventoryTransactions,
   permissions,
+  pickupCodes,
   products,
   regions,
   rentalEvents,
@@ -44,13 +45,14 @@ const consumerSessions = new ConsumerSessionService(
   300,
 );
 const staffSessions = new StaffSessionService('m15-staff-test-secret-with-at-least-32-bytes', 300);
+const pickupSecret = 'm16-pickup-test-secret-with-at-least-32-bytes';
 
 suite('M15 rental PostgreSQL integration', () => {
   const authorization = new StaffAuthorizationService(
     new DrizzleStaffAuthorizationRepository(database!.db),
     staffSessions,
   );
-  const service = new RentalService(database!.db, 14);
+  const service = new RentalService(database!.db, 14, pickupSecret);
   const app = buildApp({ staffAuthorization: authorization, logger: false });
   registerRentalRoutes(app, {
     rental: service,
@@ -60,6 +62,7 @@ suite('M15 rental PostgreSQL integration', () => {
 
   async function clean() {
     await database!.db.delete(rentalEvents);
+    await database!.db.delete(pickupCodes);
     await database!.db.delete(inventoryReservations);
     await database!.db.delete(rentalItems);
     await database!.db.delete(rentalOrders);
@@ -209,7 +212,8 @@ suite('M15 rental PostgreSQL integration', () => {
     expect((await app.inject({ method: 'GET', url: '/api/v1/rentals' })).statusCode).toBe(401);
     const created = await reserve(d.consumerA.id, d.storeA.id, [{ skuId: d.skuA.id, quantity: 1 }]);
     expect(created.statusCode).toBe(201);
-    const rental = created.json<{ id: string }>();
+    const rental = created.json<{ id: string; pickupCode: string }>();
+    expect(rental.pickupCode).toMatch(/^\\d{6}$/);
     expect(
       (
         await app.inject({
@@ -304,13 +308,13 @@ suite('M15 rental PostgreSQL integration', () => {
     const d = await seed(2);
     const rental = (
       await reserve(d.consumerA.id, d.storeA.id, [{ skuId: d.skuA.id, quantity: 1 }])
-    ).json<{ id: string }>();
+    ).json<{ id: string; pickupCode: string }>();
     expect(
       (
         await app.inject({
           method: 'POST',
           url: `/api/v1/staff/rentals/${rental.id}/borrow`,
-          payload: { idempotencyKey: crypto.randomUUID() },
+          payload: { idempotencyKey: crypto.randomUUID(), pickupCode: rental.pickupCode },
         })
       ).statusCode,
     ).toBe(401);
@@ -361,7 +365,7 @@ suite('M15 rental PostgreSQL integration', () => {
           method: 'POST',
           url: `/api/v1/staff/rentals/${rental.id}/borrow`,
           headers: crossing.headers,
-          payload: { idempotencyKey: crypto.randomUUID() },
+          payload: { idempotencyKey: crypto.randomUUID(), pickupCode: rental.pickupCode },
         })
       ).statusCode,
     ).toBe(403);
@@ -372,7 +376,7 @@ suite('M15 rental PostgreSQL integration', () => {
           method: 'POST',
           url: `/api/v1/staff/rentals/${rental.id}/borrow`,
           headers: region.headers,
-          payload: { idempotencyKey: crypto.randomUUID() },
+          payload: { idempotencyKey: crypto.randomUUID(), pickupCode: rental.pickupCode },
         })
       ).statusCode,
     ).toBe(200);
@@ -382,7 +386,7 @@ suite('M15 rental PostgreSQL integration', () => {
     const d = await seed(2);
     const rental = (
       await reserve(d.consumerA.id, d.storeA.id, [{ skuId: d.skuA.id, quantity: 1 }])
-    ).json<{ id: string }>();
+    ).json<{ id: string; pickupCode: string }>();
     const user = await staff([rentalPermissions.checkout, rentalPermissions.return], {
       type: 'GLOBAL',
       id: null,
@@ -393,13 +397,13 @@ suite('M15 rental PostgreSQL integration', () => {
         method: 'POST',
         url: `/api/v1/staff/rentals/${rental.id}/borrow`,
         headers: user.headers,
-        payload: { idempotencyKey: borrowKey },
+        payload: { idempotencyKey: borrowKey, pickupCode: rental.pickupCode },
       }),
       app.inject({
         method: 'POST',
         url: `/api/v1/staff/rentals/${rental.id}/borrow`,
         headers: user.headers,
-        payload: { idempotencyKey: borrowKey },
+        payload: { idempotencyKey: borrowKey, pickupCode: rental.pickupCode },
       }),
     ]);
     expect([a.statusCode, b.statusCode]).toEqual([200, 200]);
