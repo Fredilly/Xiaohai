@@ -26,7 +26,7 @@ export const createRentalRequestSchema = z
 
 export const rentalActionRequestSchema = z.object({ idempotencyKey: z.uuid() }).strict();
 export const rentalBorrowRequestSchema = z
-  .object({ idempotencyKey: z.uuid(), pickupCode: z.string().regex(/^\\d{6}$/) })
+  .object({ idempotencyKey: z.uuid(), pickupCode: z.string().regex(/^\d{6}$/) })
   .strict();
 export const rentalListQuerySchema = z
   .object({
@@ -64,7 +64,7 @@ export const rentalViewSchema = z.object({
   returnedAt: z.coerce.date().nullable(),
   cancelledAt: z.coerce.date().nullable(),
   isOverdue: z.boolean(),
-  pickupCode: z.string().regex(/^\\d{6}$/).nullable(),
+  pickupCode: z.string().regex(/^\d{6}$/).nullable(),
   items: z.array(rentalItemSchema),
   events: z.array(rentalEventSchema),
 });
