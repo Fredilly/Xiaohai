@@ -11,10 +11,17 @@
   </view>
   <block wx:else>
     <block wx:for="{{sections}}" wx:key="id">
-      <view wx:if="{{item.sectionType === 'HERO'}}" class="hero">
+      <view
+        wx:if="{{item.sectionType === 'HERO'}}"
+        class="hero {{item.action ? 'hero-actionable' : ''}}"
+        data-target="{{item.action.target}}"
+        bindtap="openAction"
+      >
+        <image wx:if="{{item.mediaUrl}}" class="hero-media" src="{{item.mediaUrl}}" mode="aspectFill" />
         <text wx:if="{{item.config.eyebrow}}" class="eyebrow">{{item.config.eyebrow}}</text>
         <text class="hero-title">{{item.title}}</text>
         <text wx:if="{{item.subtitle}}" class="hero-subtitle">{{item.subtitle}}</text>
+        <text wx:if="{{item.action}}" class="hero-cta">开始创作 →</text>
       </view>
       <view wx:elif="{{item.sectionType === 'FEATURE_GRID'}}" class="section">
         <view class="section-head"><text class="section-title">{{item.title}}</text><text class="section-note">{{item.subtitle}}</text></view>
