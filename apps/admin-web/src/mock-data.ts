@@ -29,6 +29,12 @@ export const adminModules: ModulePreview[] = [
   { key: 'ai', label: 'AI', description: 'M8 Provider-neutral 作业与审核监控', status: '可查看' },
   { key: 'rental', label: '租借', description: '预约、借出、归还与逾期框架', status: '前端预览' },
   {
+    key: 'franchise',
+    label: '加盟',
+    description: 'M17 加盟线索、分配、跟进、审核与状态推进',
+    status: '可查看',
+  },
+  {
     key: 'finance',
     label: '支付 / 退款',
     description: 'M6 支付、整单退款与逐笔对账；不含佣金',

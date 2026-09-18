@@ -140,6 +140,10 @@ Page({
     void wx.navigateTo({ url: '/pages/book-search/book-search' });
   },
 
+  openFranchise() {
+    void wx.navigateTo({ url: '/pages/franchise-apply/franchise-apply' });
+  },
+
   openStore(event: WechatMiniprogram.TouchEvent) {
     const id = String(event.currentTarget.dataset.id ?? '');
     if (id)

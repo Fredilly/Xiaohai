@@ -75,6 +75,12 @@
       "development": "./src/fulfillment.ts",
       "import": "./dist/fulfillment.js",
       "default": "./dist/fulfillment.js"
+    },
+    "./franchise": {
+      "types": "./src/franchise.ts",
+      "development": "./src/franchise.ts",
+      "import": "./dist/franchise.js",
+      "default": "./dist/franchise.js"
     }
   },
   "types": "./dist/index.d.ts",

@@ -7,6 +7,7 @@ import { CatalogManager } from './catalog-manager';
 import { PaymentsManager } from './payments-manager';
 import { ContentManager } from './content-manager';
 import { AiManager } from './ai-manager';
+import { FranchiseManager } from './franchise-manager';
 import { getStaffMe, loginStaff } from './staff-auth';
 import { adminModules } from './mock-data';
 const tokenKey = 'staff_session_token';
@@ -116,6 +117,8 @@ function Shell({
           <ContentManager token={token} />
         ) : active === 'ai' ? (
           <AiManager token={token} />
+        ) : active === 'franchise' ? (
+          <FranchiseManager token={token} staffId={me.staff.id} />
         ) : (
           <Preview title={module.label} description={module.description} me={me} />
         )}
@@ -129,8 +132,8 @@ function Dashboard({ me }: { me: StaffMeResponse }) {
       <section className="hero">
         <div>
           <span className="badge">Production milestones</span>
-          <h2>M4–M7 + M8 AI Platform</h2>
-          <p>商城金额由服务端计算；支付须经商户配置和人工上线验收。</p>
+          <h2>M4–M17 production modules</h2>
+          <p>商城、支付、内容、AI、门店、租借、履约与加盟能力按服务端权限和状态机运行。</p>
         </div>
         <div className="hero-note">
           <strong>{me.permissions.length}</strong> permissions ·{' '}

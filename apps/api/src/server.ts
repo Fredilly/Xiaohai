@@ -44,6 +44,8 @@ import { registerRentalRoutes } from './rental/rental-routes.js';
 import { FulfillmentService } from './fulfillment/fulfillment-service.js';
 import { registerFulfillmentRoutes } from './fulfillment/fulfillment-routes.js';
 import { loadDeliveryProvider } from './fulfillment/delivery-provider.js';
+import { FranchiseService } from './franchise/franchise-service.js';
+import { registerFranchiseRoutes } from './franchise/franchise-routes.js';
 
 const config = loadServiceConfig(process.env);
 const { db, pool } = createDatabase(process.env);
@@ -105,6 +107,11 @@ registerFulfillmentRoutes(app, {
     pickupCodeSecret,
     loadDeliveryProvider(config.DELIVERY_PROVIDER),
   ),
+  consumerSessions: sessions,
+  staffAuthorization,
+});
+registerFranchiseRoutes(app, {
+  franchise: new FranchiseService(db),
   consumerSessions: sessions,
   staffAuthorization,
 });

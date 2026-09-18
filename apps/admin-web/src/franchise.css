@@ -1,0 +1,148 @@
+.franchise-manager {
+  display: grid;
+  gap: 18px;
+}
+
+.franchise-toolbar,
+.franchise-filters,
+.franchise-detail-head,
+.action-buttons {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.franchise-toolbar h2,
+.franchise-detail-head h3 {
+  margin: 0;
+}
+
+.franchise-filters input,
+.franchise-filters select,
+.franchise-actions input,
+.franchise-actions select {
+  min-height: 40px;
+  border: 1px solid #cad5cd;
+  border-radius: 10px;
+  padding: 8px 10px;
+  font: inherit;
+  background: #fff;
+}
+
+.franchise-filters input {
+  flex: 1;
+  min-width: 220px;
+}
+
+.franchise-manager button {
+  border: 1px solid #c7d3ca;
+  border-radius: 10px;
+  padding: 9px 12px;
+  background: #f7faf7;
+  color: #234f36;
+  font-weight: 600;
+}
+
+.franchise-manager button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.franchise-layout {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.8fr) minmax(0, 1.8fr);
+  gap: 18px;
+}
+
+.franchise-list {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+}
+
+.franchise-row {
+  display: grid;
+  gap: 5px;
+  text-align: left;
+}
+
+.franchise-row span,
+.franchise-row em,
+.franchise-meta span,
+.followup-timeline small {
+  color: #6e7871;
+  font-size: 13px;
+}
+
+.franchise-row em {
+  font-style: normal;
+  font-weight: 700;
+}
+
+.franchise-row.active {
+  border-color: #51745e;
+  background: #eef4ef;
+}
+
+.franchise-detail {
+  min-width: 0;
+  border-left: 1px solid #e3e8e4;
+  padding-left: 18px;
+}
+
+.franchise-meta {
+  display: grid;
+  gap: 6px;
+  margin: 14px 0;
+}
+
+.franchise-actions {
+  display: grid;
+  gap: 12px;
+  margin: 20px 0;
+}
+
+.franchise-actions form {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto;
+  gap: 8px;
+}
+
+.franchise-actions form:nth-of-type(2) {
+  grid-template-columns: 140px minmax(200px, 1fr) minmax(190px, 0.7fr) auto;
+}
+
+.followup-timeline {
+  display: grid;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+.followup-timeline article {
+  display: grid;
+  gap: 5px;
+  padding: 12px;
+  border: 1px solid #e1e8e2;
+  border-radius: 12px;
+  background: #fafcf9;
+}
+
+@media (max-width: 1050px) {
+  .franchise-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .franchise-detail {
+    border-left: 0;
+    border-top: 1px solid #e3e8e4;
+    padding-left: 0;
+    padding-top: 18px;
+  }
+
+  .franchise-actions form,
+  .franchise-actions form:nth-of-type(2) {
+    grid-template-columns: 1fr;
+  }
+}
