@@ -1,1 +1,57 @@
-<view class="page"><view wx:if="{{loading}}" class="state-card">订单加载中…</view><view wx:elif="{{error}}" class="state-card">订单不可访问或操作失败</view><view wx:elif="{{order}}" class="section"><text class="section-title">{{order.orderNumber}}</text><text>状态 {{order.status}} · ¥{{order.totalMinor/100}}</text><view wx:for="{{order.items}}" wx:key="id"><text>{{item.productName}} · {{item.skuName}} × {{item.quantity}} · ¥{{item.lineTotalMinor/100}}</text></view><button wx:if="{{order.status==='UNPAID'}}" bindtap="pay" disabled="{{paying}}" loading="{{paying}}">微信支付</button><button wx:if="{{order.status==='UNPAID'}}" bindtap="cancel" disabled="{{paying}}">取消订单</button><button bindtap="load">刷新订单状态</button><text>{{paymentMessage}}</text><text>支付结果以服务端确认状态为准；未配置商户支付时不可付款。</text></view></view>
+<view class="page">
+  <view wx:if="{{loading}}" class="state-card">订单加载中…</view>
+  <view wx:elif="{{error}}" class="state-card">订单不可访问或操作失败</view>
+  <view wx:elif="{{order}}" class="section">
+    <view class="card">
+      <text class="section-title">{{order.orderNumber}}</text>
+      <text class="list-meta">状态 {{order.status}} · ¥{{order.totalMinor/100}}</text>
+      <view wx:for="{{order.items}}" wx:key="id" class="order-line">
+        <text>{{item.productName}} · {{item.skuName}} × {{item.quantity}}</text>
+        <text>¥{{item.lineTotalMinor/100}}</text>
+      </view>
+    </view>
+
+    <view wx:if="{{fulfillment}}" class="section card">
+      <text class="card-title">{{fulfillment.method === 'PICKUP' ? '到店自提' : '同城配送'}}</text>
+      <text class="list-meta">履约门店：{{fulfillment.store.name}}</text>
+
+      <block wx:if="{{fulfillment.pickup}}">
+        <view wx:if="{{fulfillment.pickup.code}}" class="pickup-code">
+          <text class="muted">取货码</text>
+          <text class="pickup-code-value">{{fulfillment.pickup.code}}</text>
+          <text class="muted">到店后向工作人员出示。核销成功后该码立即失效。</text>
+        </view>
+        <text wx:elif="{{fulfillment.pickup.status === 'ISSUED'}}" class="muted">
+          门店确认备货后，这里会显示取货码。
+        </text>
+        <text wx:elif="{{fulfillment.pickup.status === 'VERIFIED'}}" class="muted">
+          已完成到店核销。
+        </text>
+        <text wx:else class="muted">本次自提已取消。</text>
+      </block>
+
+      <block wx:if="{{fulfillment.delivery}}">
+        <text class="list-meta">配送范围：{{fulfillment.delivery.zoneName}}</text>
+        <text class="list-meta">配送费：¥{{fulfillment.deliveryFeeMinor/100}}</text>
+        <text class="list-meta">配送状态：{{fulfillment.delivery.status}}</text>
+        <text class="muted">
+          当前配送由 {{fulfillment.delivery.providerKey}} 履约；真实第三方配送商未配置时不会伪造骑手或轨迹。
+        </text>
+      </block>
+    </view>
+
+    <button
+      wx:if="{{order.status==='UNPAID'}}"
+      class="primary-btn"
+      bindtap="pay"
+      disabled="{{paying}}"
+      loading="{{paying}}"
+    >微信支付</button>
+    <button wx:if="{{order.status==='UNPAID'}}" bindtap="cancel" disabled="{{paying}}">
+      取消订单
+    </button>
+    <button bindtap="load">刷新订单状态</button>
+    <text class="muted">{{paymentMessage}}</text>
+    <view class="demo-note">支付、取货码、配送状态均以服务端状态为准，请勿重复付款或重复核销。</view>
+  </view>
+</view>
