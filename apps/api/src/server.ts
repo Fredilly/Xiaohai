@@ -41,6 +41,9 @@ import { InventoryOperationsService } from './inventory/inventory-operations-ser
 import { registerInventoryOperationsRoutes } from './inventory/inventory-operations-routes.js';
 import { RentalService } from './rental/rental-service.js';
 import { registerRentalRoutes } from './rental/rental-routes.js';
+import { FulfillmentService } from './fulfillment/fulfillment-service.js';
+import { registerFulfillmentRoutes } from './fulfillment/fulfillment-routes.js';
+import { loadDeliveryProvider } from './fulfillment/delivery-provider.js';
 
 const config = loadServiceConfig(process.env);
 const { db, pool } = createDatabase(process.env);
@@ -89,8 +92,19 @@ registerInventoryOperationsRoutes(app, {
   operations: new InventoryOperationsService(db),
   staffAuthorization,
 });
+const pickupCodeSecret = config.PICKUP_CODE_SECRET ?? config.STAFF_SESSION_SECRET;
 registerRentalRoutes(app, {
-  rental: new RentalService(db, config.RENTAL_LOAN_DAYS),
+  rental: new RentalService(db, config.RENTAL_LOAN_DAYS, pickupCodeSecret),
+  consumerSessions: sessions,
+  staffAuthorization,
+});
+registerFulfillmentRoutes(app, {
+  fulfillment: new FulfillmentService(
+    db,
+    commerce,
+    pickupCodeSecret,
+    loadDeliveryProvider(config.DELIVERY_PROVIDER),
+  ),
   consumerSessions: sessions,
   staffAuthorization,
 });

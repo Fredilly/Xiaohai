@@ -5,6 +5,7 @@ import {
   inventoryReservations,
   inventoryTransactions,
   products,
+  pickupCodes,
   rentalEvents,
   rentalItems,
   rentalOrders,
@@ -14,6 +15,7 @@ import {
   type createDatabase,
 } from '@xiaohai/db';
 import type { StaffAuthorizationContext } from '../auth/staff-authorization.js';
+import { pickupCodeFor, pickupCodeMatches } from '../fulfillment/pickup-code.js';
 
 type Database = ReturnType<typeof createDatabase>['db'];
 type Transaction = Parameters<Parameters<Database['transaction']>[0]>[0];
@@ -31,7 +33,8 @@ export type RentalErrorCode =
   | 'INSUFFICIENT_STOCK'
   | 'CONFLICT'
   | 'STALE_VERSION'
-  | 'IDEMPOTENCY_CONFLICT';
+  | 'IDEMPOTENCY_CONFLICT'
+  | 'PICKUP_CODE_INVALID';
 export class RentalError extends Error {
   constructor(readonly code: RentalErrorCode) {
     super(code);
@@ -42,6 +45,7 @@ export class RentalService {
   constructor(
     private readonly db: Database,
     private readonly loanDays: number,
+    private readonly pickupSecret: string,
   ) {}
 
   async reserve(consumerUserId: string, input: CreateRentalRequest) {
@@ -124,6 +128,7 @@ export class RentalService {
       await tx
         .insert(inventoryReservations)
         .values(items.map((item) => ({ rentalOrderId: orderId, storeId: input.storeId, ...item })));
+      await tx.insert(pickupCodes).values({ rentalOrderId: orderId, storeId: input.storeId });
       await tx.insert(rentalEvents).values({
         rentalOrderId: orderId,
         eventType: 'RESERVED',
@@ -206,10 +211,15 @@ export class RentalService {
     const view = await this.loadView(id);
     if (!view) throw new RentalError('NOT_FOUND');
     await this.requireStoreAccess(context, view.storeId);
-    return view;
+    return redactRentalPickupCode(view);
   }
 
-  async borrow(context: StaffAuthorizationContext, id: string, idempotencyKey: string) {
+  async borrow(
+    context: StaffAuthorizationContext,
+    id: string,
+    idempotencyKey: string,
+    pickupCode: string,
+  ) {
     await this.db.transaction(async (tx) => {
       const order = await lockOrder(tx, id);
       if (!order) throw new RentalError('NOT_FOUND');
@@ -220,6 +230,15 @@ export class RentalService {
       )
         return;
       if (order.status !== 'RESERVED') throw new RentalError('INVALID_STATE');
+      await tx.execute(sql`select 1 from pickup_codes where rental_order_id=${id} for update`);
+      const [pickup] = await tx
+        .select()
+        .from(pickupCodes)
+        .where(eq(pickupCodes.rentalOrderId, id))
+        .limit(1);
+      if (!pickup || pickup.status !== 'ISSUED') throw new RentalError('INVALID_STATE');
+      if (!pickupCodeMatches(this.pickupSecret, 'RENTAL', id, pickupCode))
+        throw new RentalError('PICKUP_CODE_INVALID');
       const items = await tx
         .select()
         .from(rentalItems)
@@ -287,6 +306,15 @@ export class RentalService {
             eq(inventoryReservations.status, 'ACTIVE'),
           ),
         );
+      await tx
+        .update(pickupCodes)
+        .set({
+          status: 'VERIFIED',
+          verifiedAt: now,
+          version: pickup.version + 1,
+          updatedAt: now,
+        })
+        .where(and(eq(pickupCodes.id, pickup.id), eq(pickupCodes.version, pickup.version)));
       await tx
         .update(rentalOrders)
         .set({
@@ -441,6 +469,10 @@ export class RentalService {
           ),
         );
       await tx
+        .update(pickupCodes)
+        .set({ status: 'CANCELLED', cancelledAt: now, updatedAt: now })
+        .where(and(eq(pickupCodes.rentalOrderId, id), eq(pickupCodes.status, 'ISSUED')));
+      await tx
         .update(rentalOrders)
         .set({ status: 'CANCELLED', cancelledAt: now, version: order.version + 1, updatedAt: now })
         .where(and(eq(rentalOrders.id, id), eq(rentalOrders.version, order.version)));
@@ -524,6 +556,11 @@ export class RentalService {
       .innerJoin(skus, eq(rentalItems.skuId, skus.id))
       .where(eq(rentalItems.rentalOrderId, id))
       .orderBy(asc(skus.code));
+    const [pickup] = await this.db
+      .select()
+      .from(pickupCodes)
+      .where(eq(pickupCodes.rentalOrderId, id))
+      .limit(1);
     const events = await this.db
       .select({
         id: rentalEvents.id,
@@ -539,6 +576,10 @@ export class RentalService {
       ...order.order,
       storeName: order.storeName,
       isOverdue: order.order.status === 'OVERDUE',
+      pickupCode:
+        pickup?.status === 'ISSUED' && order.order.status === 'RESERVED'
+          ? pickupCodeFor(this.pickupSecret, 'RENTAL', id)
+          : null,
       items: itemRows,
       events,
     };
@@ -586,4 +627,8 @@ async function hasEvent(tx: Transaction, orderId: string, type: string, key: str
   if (!row) return false;
   if (row.key !== key) throw new RentalError('IDEMPOTENCY_CONFLICT');
   return true;
+}
+
+function redactRentalPickupCode<T extends { pickupCode: string | null }>(view: T): T {
+  return { ...view, pickupCode: null };
 }

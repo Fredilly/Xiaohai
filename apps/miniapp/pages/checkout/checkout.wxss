@@ -1,0 +1,44 @@
+.method-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16rpx;
+  margin-top: 18rpx;
+}
+
+.method-btn {
+  border: 1rpx solid #e7e0d4;
+  background: #ffffff;
+  color: #5f625e;
+  font-size: 25rpx;
+}
+
+.method-btn.selected {
+  border-color: #315d45;
+  background: #edf3ee;
+  color: #315d45;
+  font-weight: 700;
+}
+
+.picker-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
+  margin-top: 14rpx;
+  padding: 20rpx;
+  border-radius: 18rpx;
+  background: #f7f7f5;
+}
+
+.money-row {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 14rpx;
+  font-size: 25rpx;
+}
+
+.money-row.total {
+  padding-top: 14rpx;
+  border-top: 1rpx solid #ebe5da;
+  font-size: 29rpx;
+  font-weight: 800;
+}

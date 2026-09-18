@@ -21,8 +21,8 @@ export const storeModules = [
   {
     key: 'orders',
     label: '订单 / 自提 / 配送',
-    description: '订单履约、自提核销、同城配送框架',
-    status: '前端预览',
+    description: '订单履约、自提码核销、同城配送与区域费用',
+    status: 'M16 已接入',
   },
   {
     key: 'operations',

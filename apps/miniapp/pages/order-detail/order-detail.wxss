@@ -1,24 +1,24 @@
-.card {
-  padding: 32rpx;
-}
-.book-meta {
-  display: block;
+.order-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 20rpx;
   margin-top: 14rpx;
-  color: #6f6b62;
+  font-size: 24rpx;
 }
 
 .pickup-code {
-  margin-top: 24rpx;
+  margin-top: 22rpx;
   padding: 24rpx;
   border-radius: 20rpx;
   background: #edf3ee;
   text-align: center;
 }
+
 .pickup-code-value {
   display: block;
   margin: 12rpx 0;
   color: #315d45;
-  font-size: 54rpx;
+  font-size: 56rpx;
   font-weight: 800;
   letter-spacing: 12rpx;
 }

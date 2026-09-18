@@ -16,6 +16,11 @@ const serviceSchema = baseSchema.extend({
   STAFF_SESSION_SECRET: z.string().min(32),
   STAFF_SESSION_TTL_SECONDS: z.coerce.number().int().min(60).max(86_400).default(28_800),
   RENTAL_LOAN_DAYS: z.coerce.number().int().min(1).max(365).default(14),
+  PICKUP_CODE_SECRET: z.preprocess(
+    (value) => (value === '' ? undefined : value),
+    z.string().min(32).optional(),
+  ),
+  DELIVERY_PROVIDER: z.enum(['MANUAL']).default('MANUAL'),
   REDIS_URL: z.url().startsWith('redis://'),
   STORY_AI_ENABLED: z
     .string()

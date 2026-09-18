@@ -1,1 +1,66 @@
-<view class="page"><view wx:if="{{loading}}" class="state-card">结算加载中…</view><view wx:elif="{{error}}" class="state-card">无法结算，请检查登录、地址和商品状态</view><view wx:elif="{{!addressId}}" class="state-card">请先在“我的 → 地址”添加地址</view><view wx:else class="section"><text>服务端重新计算金额：¥{{preview.totalMinor/100}}</text><text>{{preview.paymentMessage}}</text><button bindtap="create">创建未支付订单</button><text>本页面不会调用微信支付，也不会模拟支付成功。</text></view></view>
+<view class="page">
+  <view class="hero hero-soft">
+    <text class="eyebrow">FULFILLMENT</text>
+    <text class="hero-title">选择履约方式</text>
+    <text class="hero-subtitle">到店自提免配送费；同城配送范围和费用以服务端门店配置为准。</text>
+  </view>
+
+  <view wx:if="{{loading}}" class="state-card">结算加载中…</view>
+
+  <block wx:else>
+    <view class="section">
+      <text class="section-title">方式</text>
+      <view class="method-row">
+        <button
+          class="method-btn {{method === 'PICKUP' ? 'selected' : ''}}"
+          data-method="PICKUP"
+          bindtap="chooseMethod"
+        >到店自提</button>
+        <button
+          class="method-btn {{method === 'DELIVERY' ? 'selected' : ''}}"
+          data-method="DELIVERY"
+          bindtap="chooseMethod"
+        >同城配送</button>
+      </view>
+    </view>
+
+    <view class="section card">
+      <text class="card-title">履约门店</text>
+      <picker wx:if="{{stores.length}}" range="{{stores}}" range-key="name" value="{{storeIndex}}" bindchange="chooseStore">
+        <view class="picker-row">{{stores[storeIndex].name}} <text>›</text></view>
+      </picker>
+      <text wx:else class="muted">当前没有可用门店</text>
+    </view>
+
+    <view wx:if="{{method === 'DELIVERY'}}" class="section card">
+      <text class="card-title">配送地址</text>
+      <picker wx:if="{{addresses.length}}" range="{{addresses}}" range-key="addressLine" value="{{addressIndex}}" bindchange="chooseAddress">
+        <view class="picker-row">
+          <text>{{addresses[addressIndex].recipientName}} · {{addresses[addressIndex].phone}}</text>
+          <text class="muted">{{addresses[addressIndex].region}}{{addresses[addressIndex].city}}{{addresses[addressIndex].district}}{{addresses[addressIndex].addressLine}}</text>
+        </view>
+      </picker>
+      <text wx:else class="muted">请先在“我的 → 地址”添加配送地址</text>
+    </view>
+
+    <view wx:if="{{errorMessage}}" class="demo-note">{{errorMessage}}</view>
+
+    <view wx:if="{{quote}}" class="section card">
+      <text class="card-title">订单金额</text>
+      <view class="money-row"><text>商品</text><text>¥{{quote.subtotalMinor/100}}</text></view>
+      <view class="money-row"><text>配送费</text><text>¥{{quote.deliveryFeeMinor/100}}</text></view>
+      <view class="money-row total"><text>合计</text><text>¥{{quote.totalMinor/100}}</text></view>
+      <text wx:if="{{quote.deliveryZone}}" class="muted">配送范围：{{quote.deliveryZone.name}}</text>
+      <text wx:else class="muted">到店自提 · {{quote.store.name}}</text>
+      <button
+        class="primary-btn"
+        bindtap="create"
+        loading="{{creating}}"
+        disabled="{{creating || quoting}}"
+      >创建订单</button>
+      <text class="muted">创建后仍需按订单详情完成支付；不会伪造支付成功。</text>
+    </view>
+
+    <view wx:elif="{{quoting}}" class="state-card">正在计算履约费用…</view>
+  </block>
+</view>

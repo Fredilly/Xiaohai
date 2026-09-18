@@ -1,15 +1,19 @@
 import { randomUUID } from 'node:crypto';
-import { and, desc, eq, ilike, or } from 'drizzle-orm';
+import { and, asc, desc, eq, ilike, or, sql } from 'drizzle-orm';
 import type { AddressInput, AdminProductInput, CartResponse } from '@xiaohai/contracts/commerce';
 import {
   bookEditions,
   books,
   cartItems,
   carts,
+  deliveries,
+  deliveryEvents,
   orderItems,
   orders,
+  pickupCodes,
   products,
   skus,
+  storeInventory,
   userAddresses,
 } from '@xiaohai/db';
 import type { createDatabase } from '@xiaohai/db';
@@ -293,7 +297,7 @@ export class CommerceService {
       .where(and(eq(orders.id, id), eq(orders.consumerUserId, consumerUserId)));
     if (!order) throw new CommerceError('NOT_FOUND', 'Order not found');
     const items = await this.db.select().from(orderItems).where(eq(orderItems.orderId, id));
-    const address = order.addressSnapshot as ReturnType<typeof snapshotAddress>;
+    const address = order.addressSnapshot as ReturnType<typeof snapshotAddress> | null;
     return {
       id: order.id,
       orderNumber: order.orderNumber,
@@ -314,17 +318,91 @@ export class CommerceService {
     };
   }
   async cancelOrder(consumerUserId: string, id: string) {
-    const [order] = await this.db
-      .select()
-      .from(orders)
-      .where(and(eq(orders.id, id), eq(orders.consumerUserId, consumerUserId)));
-    if (!order) throw new CommerceError('NOT_FOUND', 'Order not found');
-    if (order.status !== 'UNPAID')
-      throw new CommerceError('INVALID_ORDER_STATE', 'Only unpaid orders can be cancelled in M5');
-    await this.db
-      .update(orders)
-      .set({ status: 'CANCELLED', cancelledAt: new Date(), updatedAt: new Date() })
-      .where(and(eq(orders.id, id), eq(orders.status, 'UNPAID')));
+    await this.db.transaction(async (tx) => {
+      const [order] = await tx
+        .select()
+        .from(orders)
+        .where(and(eq(orders.id, id), eq(orders.consumerUserId, consumerUserId)))
+        .for('update');
+      if (!order) throw new CommerceError('NOT_FOUND', 'Order not found');
+      if (order.status !== 'UNPAID')
+        throw new CommerceError('INVALID_ORDER_STATE', 'Only unpaid orders can be cancelled');
+
+      const [pickupReservation] = await tx
+        .select({ storeId: pickupCodes.storeId })
+        .from(pickupCodes)
+        .where(eq(pickupCodes.orderId, id))
+        .limit(1);
+      const [deliveryReservation] = await tx
+        .select({ storeId: deliveries.storeId })
+        .from(deliveries)
+        .where(eq(deliveries.orderId, id))
+        .limit(1);
+      const reservationStoreId = pickupReservation?.storeId ?? deliveryReservation?.storeId ?? null;
+      if (order.fulfillmentFingerprint && !reservationStoreId)
+        throw new CommerceError('CONFLICT', 'Fulfillment reservation store is missing');
+
+      if (reservationStoreId) {
+        const items = await tx
+          .select({ skuId: orderItems.skuId, quantity: orderItems.quantity })
+          .from(orderItems)
+          .where(eq(orderItems.orderId, id))
+          .orderBy(asc(orderItems.skuId));
+        for (const item of items) {
+          await tx.execute(
+            sql`select 1 from store_inventory where store_id=${reservationStoreId} and sku_id=${item.skuId} for update`,
+          );
+          const [balance] = await tx
+            .select()
+            .from(storeInventory)
+            .where(
+              and(
+                eq(storeInventory.storeId, reservationStoreId),
+                eq(storeInventory.skuId, item.skuId),
+              ),
+            )
+            .limit(1);
+          if (!balance || balance.reserved < item.quantity)
+            throw new CommerceError('CONFLICT', 'Fulfillment reservation is missing');
+          await tx
+            .update(storeInventory)
+            .set({
+              reserved: balance.reserved - item.quantity,
+              version: balance.version + 1,
+              updatedAt: new Date(),
+            })
+            .where(
+              and(
+                eq(storeInventory.storeId, reservationStoreId),
+                eq(storeInventory.skuId, item.skuId),
+                eq(storeInventory.version, balance.version),
+              ),
+            );
+        }
+      }
+
+      const now = new Date();
+      await tx
+        .update(pickupCodes)
+        .set({ status: 'CANCELLED', cancelledAt: now, updatedAt: now })
+        .where(and(eq(pickupCodes.orderId, id), eq(pickupCodes.status, 'ISSUED')));
+      const [delivery] = await tx
+        .update(deliveries)
+        .set({ status: 'CANCELLED', cancelledAt: now, updatedAt: now })
+        .where(and(eq(deliveries.orderId, id), eq(deliveries.status, 'PENDING')))
+        .returning({ id: deliveries.id });
+      if (delivery)
+        await tx.insert(deliveryEvents).values({
+          deliveryId: delivery.id,
+          eventType: 'CANCELLED',
+          actorType: 'SYSTEM',
+          idempotencyKey: `delivery-cancelled:${id}`,
+        });
+      await tx
+        .update(orders)
+        .set({ status: 'CANCELLED', cancelledAt: now, updatedAt: now })
+        .where(and(eq(orders.id, id), eq(orders.status, 'UNPAID')));
+    });
     return this.getOrder(consumerUserId, id);
   }
 
