@@ -1,0 +1,58 @@
+.steps {
+  display: flex;
+  flex-direction: column;
+  gap: 14rpx;
+  margin-top: 18rpx;
+  color: #565a55;
+  font-size: 25rpx;
+  line-height: 1.7;
+}
+
+.form-card {
+  display: flex;
+  flex-direction: column;
+  gap: 22rpx;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 10rpx;
+  color: #3f453f;
+  font-size: 24rpx;
+}
+
+.field input,
+.field textarea {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 18rpx 20rpx;
+  border: 1rpx solid #e4ddd0;
+  border-radius: 18rpx;
+  background: #faf8f3;
+  color: #2e332f;
+  font-size: 25rpx;
+}
+
+.field textarea {
+  min-height: 150rpx;
+}
+
+.submit-btn {
+  margin-top: 8rpx;
+}
+
+.error-copy {
+  color: #a33c36;
+  font-size: 23rpx;
+}
+
+.privacy-copy {
+  color: #878279;
+  font-size: 21rpx;
+  line-height: 1.6;
+}
+
+.success-card {
+  gap: 14rpx;
+}
