@@ -6,3 +6,19 @@
   margin-top: 14rpx;
   color: #6f6b62;
 }
+
+.pickup-code {
+  margin-top: 24rpx;
+  padding: 24rpx;
+  border-radius: 20rpx;
+  background: #edf3ee;
+  text-align: center;
+}
+.pickup-code-value {
+  display: block;
+  margin: 12rpx 0;
+  color: #315d45;
+  font-size: 54rpx;
+  font-weight: 800;
+  letter-spacing: 12rpx;
+}
