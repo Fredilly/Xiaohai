@@ -27,6 +27,8 @@ export const fulfilledOrderRequestSchema = fulfillmentQuoteRequestSchema
   .safeExtend({ clientRequestId: z.string().trim().min(8).max(128) })
   .strict();
 
+export const fulfilledOrderResponseSchema = z.object({ orderId: z.uuid() });
+
 export const fulfillmentQuoteSchema = z.object({
   method: fulfillmentMethodSchema,
   store: z.object({ id: z.uuid(), name: z.string() }),
@@ -86,6 +88,8 @@ export const deliveryZoneSchema = deliveryZoneInputSchema.extend({
   createdAt: z.coerce.date(),
   updatedAt: z.coerce.date(),
 });
+
+export const deliveryZoneListResponseSchema = z.object({ items: z.array(deliveryZoneSchema) });
 
 export const deliveryZoneListQuerySchema = z
   .object({
