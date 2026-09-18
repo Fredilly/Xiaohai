@@ -69,6 +69,12 @@
       "development": "./src/rental.ts",
       "import": "./dist/rental.js",
       "default": "./dist/rental.js"
+    },
+    "./fulfillment": {
+      "types": "./src/fulfillment.ts",
+      "development": "./src/fulfillment.ts",
+      "import": "./dist/fulfillment.js",
+      "default": "./dist/fulfillment.js"
     }
   },
   "types": "./dist/index.d.ts",
