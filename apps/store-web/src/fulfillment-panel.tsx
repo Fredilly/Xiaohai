@@ -12,7 +12,7 @@ import {
 
 type StaffFulfillment = Awaited<ReturnType<typeof loadFulfillment>>['items'][number];
 
-export function FulfillmentPanel({ token }: { token: string }) {
+export function FulfillmentPanel({ token, storeId }: { token: string; storeId: string }) {
   const [items, setItems] = useState<StaffFulfillment[]>([]);
   const [zones, setZones] = useState<Awaited<ReturnType<typeof loadDeliveryZones>>['items']>([]);
   const [pickupCodes, setPickupCodes] = useState<Record<string, string>>({});
@@ -22,18 +22,19 @@ export function FulfillmentPanel({ token }: { token: string }) {
   const refresh = useCallback(async () => {
     try {
       const [fulfillment, deliveryZones] = await Promise.all([
-        loadFulfillment(token),
-        loadDeliveryZones(token),
+        loadFulfillment(token, storeId),
+        loadDeliveryZones(token, storeId),
       ]);
       setItems(fulfillment.items);
       setZones(deliveryZones.items);
-      setStatus(fulfillment.items.length ? '履约记录已加载' : '授权范围内暂无待履约订单');
+      setStatus(fulfillment.items.length ? '当前门店履约记录已加载' : '当前门店暂无待履约订单');
     } catch (error) {
       setStatus(error instanceof Error ? `加载失败：${error.message}` : '加载失败');
     }
-  }, [token]);
+  }, [storeId, token]);
 
   useEffect(() => {
+    setPickupCodes({});
     void refresh();
   }, [refresh]);
 
@@ -53,18 +54,18 @@ export function FulfillmentPanel({ token }: { token: string }) {
 
   async function createZone(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     const getText = (field: string) => {
       const value = form.get(field);
       return typeof value === 'string' ? value.trim() : '';
     };
-    const storeId = getText('storeId');
     const name = getText('name');
     const region = getText('region');
     const city = getText('city');
     const districtValue = getText('district');
     const feeMinor = Number(form.get('feeMinor'));
-    if (!storeId || !name || !region || !city || !Number.isInteger(feeMinor) || feeMinor < 0) {
+    if (!name || !region || !city || !Number.isInteger(feeMinor) || feeMinor < 0) {
       setStatus('配送区域信息不完整或配送费不是非负整数（分）');
       return;
     }
@@ -79,7 +80,7 @@ export function FulfillmentPanel({ token }: { token: string }) {
     };
     try {
       await createDeliveryZone(token, input);
-      event.currentTarget.reset();
+      formElement.reset();
       setStatus('配送区域已创建');
       await refresh();
     } catch (error) {
@@ -92,13 +93,12 @@ export function FulfillmentPanel({ token }: { token: string }) {
       <span className="tag">M16 Pickup & Delivery</span>
       <h2>订单履约</h2>
       <p>
-        自提码只由顾客端显示；员工输入顾客出示的 6 位码核销。配送费来自门店配送区域配置，当前 MANUAL
-        adapter 代表人工同城配送，不伪造第三方骑手或轨迹。
+        当前门店由 M19 工作台统一选择。自提码只由顾客端显示；配送费来自当前门店配送区域配置，MANUAL adapter 代表人工同城配送。
       </p>
 
       <div className="inventory-table">
         <div className="inventory-row heading">
-          <span>订单 / 门店</span>
+          <span>订单</span>
           <span>方式 / 状态</span>
           <span>操作</span>
         </div>
@@ -181,7 +181,6 @@ export function FulfillmentPanel({ token }: { token: string }) {
 
       <h3>配送区域与费用</h3>
       <form className="zone-form" onSubmit={(event) => void createZone(event)}>
-        <input name="storeId" placeholder="门店 UUID" required />
         <input name="name" placeholder="区域名称，例如 武侯同城" required />
         <input name="region" placeholder="省/区域，例如 四川省" required />
         <input name="city" placeholder="城市，例如 成都市" required />
