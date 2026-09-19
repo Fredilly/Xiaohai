@@ -136,7 +136,11 @@ function Shell({
         ) : active === 'fulfillment' ? (
           <HqOperationsManager token={token} me={me} mode="fulfillment" />
         ) : active === 'staff' ? (
-          <StaffAdminManager token={token} />
+          <StaffAdminManager
+            token={token}
+            currentStaffId={me.staff.id}
+            canManage={me.permissions.includes('staff.manage')}
+          />
         ) : active === 'cms' ? (
           <CmsManager token={token} />
         ) : active === 'finance' ? (
@@ -219,14 +223,12 @@ function App() {
     setToken(null);
     setMe(null);
   };
-  if (checking) return <main className="center-state">正在验证 Staff Session…</main>;
-  if (!token || !me) return <Login onSignedIn={setToken} />;
+  if (!token) return <Login onSignedIn={setToken} />;
+  if (checking || !me) return <main className="login-page">正在验证 Staff Session…</main>;
   return <Shell me={me} token={token} onLogout={logout} />;
 }
 
-const root = document.querySelector<HTMLDivElement>('#root');
-if (!root) throw new Error('Root element is missing');
-createRoot(root).render(
+createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <App />
   </StrictMode>,
