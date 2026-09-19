@@ -110,7 +110,12 @@ export class StaffAdminService {
       items: roleRows.map((role) => ({
         ...role,
         permissions: (permissionsByRole.get(role.id) ?? [])
-          .map(({ roleId: _roleId, ...permission }) => permission)
+          .map((permission) => ({
+            id: permission.id,
+            key: permission.key,
+            displayName: permission.displayName,
+            description: permission.description,
+          }))
           .sort((a, b) => a.key.localeCompare(b.key)),
       })),
     };
@@ -167,9 +172,10 @@ export class StaffAdminService {
       Array<{ type: StaffDataScopeType; id: string | null }>
     >();
     for (const scope of scopeRows) {
-      if (!staffDataScopeTypes.includes(scope.type as StaffDataScopeType)) continue;
+      const type = scope.type as StaffDataScopeType;
+      if (!staffDataScopeTypes.includes(type)) continue;
       const bucket = scopesByStaff.get(scope.staffAccountId) ?? [];
-      bucket.push({ type: scope.type as StaffDataScopeType, id: scope.id });
+      bucket.push({ type, id: scope.id });
       scopesByStaff.set(scope.staffAccountId, bucket);
     }
 
