@@ -1,6 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it, afterAll } from 'vitest';
 import {
+  hqOrderDetailSchema,
+  hqOrderListResponseSchema,
+  hqUserDetailSchema,
+  hqUserListResponseSchema,
+} from '@xiaohai/contracts/hq';
+import {
   bookEditions,
   books,
   consumerUsers,
@@ -74,9 +80,9 @@ suite('M20 HQ orders and users PostgreSQL integration', () => {
       .returning({ id: roles.id });
     const permissionIds = await Promise.all(permissionKeys.map(ensurePermission));
     if (permissionIds.length)
-      await database!.db.insert(rolePermissions).values(
-        permissionIds.map((permissionId) => ({ roleId: role!.id, permissionId })),
-      );
+      await database!.db
+        .insert(rolePermissions)
+        .values(permissionIds.map((permissionId) => ({ roleId: role!.id, permissionId })));
     await database!.db.insert(staffRoles).values({ staffAccountId: staff!.id, roleId: role!.id });
     await database!.db.insert(staffDataScopes).values({
       staffAccountId: staff!.id,
@@ -249,7 +255,8 @@ suite('M20 HQ orders and users PostgreSQL integration', () => {
       headers: { authorization: `Bearer ${staff.token}` },
     });
     expect(list.statusCode).toBe(200);
-    expect(list.json().items).toHaveLength(1);
+    const orderListBody = hqOrderListResponseSchema.parse(list.json());
+    expect(orderListBody.items).toHaveLength(1);
 
     const detail = await app.inject({
       method: 'GET',
@@ -257,7 +264,8 @@ suite('M20 HQ orders and users PostgreSQL integration', () => {
       headers: { authorization: `Bearer ${staff.token}` },
     });
     expect(detail.statusCode).toBe(200);
-    expect(detail.json()).toMatchObject({
+    const orderDetailBody = hqOrderDetailSchema.parse(detail.json());
+    expect(orderDetailBody).toMatchObject({
       id: fixture.orderId,
       status: 'PAID',
       totalMinor: 3200,
@@ -265,8 +273,10 @@ suite('M20 HQ orders and users PostgreSQL integration', () => {
       payment: { status: 'SUCCEEDED', amountMinor: 3200, currency: 'CNY' },
       fulfillment: { method: 'PICKUP', storeId: fixture.storeId, status: 'ISSUED' },
     });
-    expect(detail.json().items[0]).toMatchObject({
-      productName: expect.stringContaining('Snapshot Product'),
+    const firstItem = orderDetailBody.items[0];
+    expect(firstItem).toBeDefined();
+    expect(firstItem?.productName).toContain('Snapshot Product');
+    expect(firstItem).toMatchObject({
       unitPriceMinor: 3200,
       quantity: 1,
     });
@@ -288,8 +298,9 @@ suite('M20 HQ orders and users PostgreSQL integration', () => {
       headers: { authorization: `Bearer ${staff.token}` },
     });
     expect(list.statusCode).toBe(200);
-    expect(list.json().items).toHaveLength(1);
-    expect(list.json().items[0]).toMatchObject({ id: fixture.userId, identityCount: 1 });
+    const userListBody = hqUserListResponseSchema.parse(list.json());
+    expect(userListBody.items).toHaveLength(1);
+    expect(userListBody.items[0]).toMatchObject({ id: fixture.userId, identityCount: 1 });
 
     const detail = await app.inject({
       method: 'GET',
@@ -297,7 +308,8 @@ suite('M20 HQ orders and users PostgreSQL integration', () => {
       headers: { authorization: `Bearer ${staff.token}` },
     });
     expect(detail.statusCode).toBe(200);
-    expect(detail.json()).toMatchObject({
+    const userDetailBody = hqUserDetailSchema.parse(detail.json());
+    expect(userDetailBody).toMatchObject({
       id: fixture.userId,
       identityCount: 1,
       orderCount: 1,
@@ -320,7 +332,8 @@ suite('M20 HQ orders and users PostgreSQL integration', () => {
       headers: { authorization: `Bearer ${staff.token}` },
     });
     expect(filtered.statusCode).toBe(200);
-    expect(filtered.json().items).toHaveLength(0);
+    const filteredBody = hqOrderListResponseSchema.parse(filtered.json());
+    expect(filteredBody.items).toHaveLength(0);
 
     const invalidLimit = await app.inject({
       method: 'GET',

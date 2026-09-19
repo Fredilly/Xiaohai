@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, ilike, lte, sql } from 'drizzle-orm';
+import { and, count, desc, eq, gte, ilike, lte, max, sql } from 'drizzle-orm';
 import type { HqOrderListQuery, HqUserListQuery } from '@xiaohai/contracts/hq';
 import {
   consumerUsers,
@@ -50,9 +50,6 @@ export class HqReadService {
     return {
       items: rows.map((row) => ({
         ...row,
-        status: row.status as HqOrderListQuery['status'] extends infer _
-          ? typeof row.status
-          : never,
         createdAt: row.createdAt.toISOString(),
         updatedAt: row.updatedAt.toISOString(),
       })),
@@ -124,18 +121,13 @@ export class HqReadService {
     const rows = await this.db
       .select({
         id: consumerUsers.id,
-        identityCount: sql<number>`(
-          select count(*)::int from wechat_identities wi
-          where wi.consumer_user_id = ${consumerUsers.id}
-        )`,
-        lastLoginAt: sql<Date | null>`(
-          select max(wi.last_login_at) from wechat_identities wi
-          where wi.consumer_user_id = ${consumerUsers.id}
-        )`,
+        identityCount: count(wechatIdentities.id),
+        lastLoginAt: max(wechatIdentities.lastLoginAt),
         createdAt: consumerUsers.createdAt,
         updatedAt: consumerUsers.updatedAt,
       })
       .from(consumerUsers)
+      .leftJoin(wechatIdentities, eq(wechatIdentities.consumerUserId, consumerUsers.id))
       .where(
         and(
           input.id ? eq(consumerUsers.id, input.id) : undefined,
@@ -143,6 +135,7 @@ export class HqReadService {
           input.createdTo ? lte(consumerUsers.createdAt, new Date(input.createdTo)) : undefined,
         ),
       )
+      .groupBy(consumerUsers.id, consumerUsers.createdAt, consumerUsers.updatedAt)
       .orderBy(desc(consumerUsers.createdAt))
       .limit(input.limit);
 
@@ -171,16 +164,16 @@ export class HqReadService {
 
     const [identityStats] = await this.db
       .select({
-        identityCount: sql<number>`count(*)::int`,
-        lastLoginAt: sql<Date | null>`max(${wechatIdentities.lastLoginAt})`,
+        identityCount: count(wechatIdentities.id),
+        lastLoginAt: max(wechatIdentities.lastLoginAt),
       })
       .from(wechatIdentities)
       .where(eq(wechatIdentities.consumerUserId, id));
     const [orderStats] = await this.db
       .select({
-        orderCount: sql<number>`count(*)::int`,
+        orderCount: count(orders.id),
         lifetimeOrderMinor: sql<number>`coalesce(sum(${orders.totalMinor}), 0)::int`,
-        lastOrderAt: sql<Date | null>`max(${orders.createdAt})`,
+        lastOrderAt: max(orders.createdAt),
       })
       .from(orders)
       .where(eq(orders.consumerUserId, id));
