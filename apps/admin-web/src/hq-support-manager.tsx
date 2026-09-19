@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
+import type { HqOrderListQuery } from '@xiaohai/contracts/hq';
 import { loadHqOrder, loadHqOrders, loadHqUser, loadHqUsers } from './hq-support-api';
 
 export type HqSupportMode = 'orders' | 'users';
@@ -17,11 +18,11 @@ function OrdersManager({ token }: { token: string }) {
   const [detail, setDetail] = useState<OrderDetail | null>(null);
   const [status, setStatus] = useState('');
 
-  const refresh = async (filters: { status?: string; q?: string } = {}) => {
+  const refresh = async (filters: { status?: HqOrderListQuery['status']; q?: string } = {}) => {
     try {
       setStatus('正在读取订单…');
       const result = await loadHqOrders(token, {
-        status: filters.status as Parameters<typeof loadHqOrders>[1]['status'],
+        status: filters.status,
         q: filters.q || undefined,
         limit: 100,
       });
@@ -39,7 +40,7 @@ function OrdersManager({ token }: { token: string }) {
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    const orderStatus = text(form, 'status');
+    const orderStatus = text(form, 'status') as HqOrderListQuery['status'] | '';
     const q = text(form, 'q');
     await refresh({ status: orderStatus || undefined, q: q || undefined });
   }
