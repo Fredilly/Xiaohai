@@ -48,6 +48,8 @@ import { FranchiseService } from './franchise/franchise-service.js';
 import { registerFranchiseRoutes } from './franchise/franchise-routes.js';
 import { CommissionService } from './commission/commission-service.js';
 import { registerCommissionRoutes } from './commission/commission-routes.js';
+import { HqReadService } from './hq/hq-read-service.js';
+import { registerHqReadRoutes } from './hq/hq-read-routes.js';
 
 const config = loadServiceConfig(process.env);
 const { db, pool } = createDatabase(process.env);
@@ -119,6 +121,7 @@ registerFranchiseRoutes(app, {
   staffAuthorization,
 });
 registerCommissionRoutes(app, { commission, consumerSessions: sessions, staffAuthorization });
+registerHqReadRoutes(app, { hqRead: new HqReadService(db), staffAuthorization });
 const aiQueue = new RedisAiQueue(config.REDIS_URL, () =>
   app.log.error({ errorCode: 'REDIS_UNAVAILABLE' }, 'AI queue Redis error'),
 );
