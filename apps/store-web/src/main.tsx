@@ -6,6 +6,7 @@ import './styles.css';
 import { getStaffMe, loginStaff } from './staff-auth';
 import { loadStaffStores } from './stores-api';
 import { storeModules } from './mock-data';
+import { BookSearchPanel } from './book-search-panel';
 import { InventoryPanel } from './inventory-panel';
 import { RentalPanel } from './rental-panel';
 import { FulfillmentPanel } from './fulfillment-panel';
@@ -172,6 +173,12 @@ function Shell({
         {storeStatus && <p className="store-status">{storeStatus}</p>}
         {active === 'dashboard' ? (
           <Dashboard me={me} currentStore={currentStore} />
+        ) : active === 'books' ? (
+          currentStore ? (
+            <BookSearchPanel storeId={currentStore.id} storeName={currentStore.name} />
+          ) : (
+            <StoreRequired />
+          )
         ) : active === 'inventory' ? (
           currentStore ? (
             <InventoryPanel token={token} storeId={currentStore.id} />
