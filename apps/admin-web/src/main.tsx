@@ -11,6 +11,7 @@ import { FranchiseManager } from './franchise-manager';
 import { CommissionManager } from './commission-manager';
 import { HqDashboard } from './hq-dashboard';
 import { HqOperationsManager } from './hq-operations-manager';
+import { HqSupportManager } from './hq-support-manager';
 import { getStaffMe, loginStaff } from './staff-auth';
 import { adminModules } from './mock-data';
 
@@ -125,6 +126,10 @@ function Shell({
           <HqOperationsManager token={token} me={me} mode="stores" />
         ) : active === 'inventory' ? (
           <HqOperationsManager token={token} me={me} mode="inventory" />
+        ) : active === 'orders' ? (
+          <HqSupportManager token={token} mode="orders" />
+        ) : active === 'users' ? (
+          <HqSupportManager token={token} mode="users" />
         ) : active === 'rental' ? (
           <HqOperationsManager token={token} me={me} mode="rental" />
         ) : active === 'fulfillment' ? (
