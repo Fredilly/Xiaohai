@@ -178,10 +178,44 @@ button {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 18px;
   margin-bottom: 28px;
 }
 .workspace h1 {
   margin: 4px 0;
+}
+.workspace-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+.store-picker {
+  display: grid;
+  gap: 4px;
+  color: #716d64;
+  font-size: 11px;
+  font-weight: 800;
+}
+.store-picker select {
+  min-width: 230px;
+  max-width: 340px;
+  border: 1px solid #d5cdbf;
+  border-radius: 11px;
+  background: #fff;
+  color: #2d2b27;
+  padding: 9px 11px;
+}
+.store-picker select:disabled {
+  color: #99958d;
+  background: #f0eee9;
+}
+.store-status {
+  margin: -14px 0 18px;
+  padding: 10px 12px;
+  border: 1px solid #e3dfd6;
+  border-radius: 10px;
+  background: #fff;
+  color: #716d64;
 }
 .identity {
   display: flex;
@@ -299,6 +333,14 @@ button {
   .operation-form {
     grid-template-columns: 1fr 1fr;
   }
+  .workspace-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .store-picker select {
+    min-width: 0;
+    width: 100%;
+  }
 }
 @media (max-width: 560px) {
   .workspace {
@@ -309,8 +351,11 @@ button {
     flex-direction: column;
     gap: 14px;
   }
+  .workspace-actions,
   .identity {
     width: 100%;
+  }
+  .identity {
     justify-content: space-between;
   }
   .shell nav,
