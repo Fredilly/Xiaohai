@@ -106,7 +106,8 @@ export function SystemManager({ token, me, modules }: Props) {
           <strong>{modules.length}</strong>
         </div>
         <p className="muted">
-          M20 不提供任意 key/value 配置写入。系统配置继续由各领域模块或部署环境持有，避免创建绕过领域校验的通用配置入口。
+          M20 不提供任意 key/value
+          配置写入。系统配置继续由各领域模块或部署环境持有，避免创建绕过领域校验的通用配置入口。
         </p>
       </section>
 
