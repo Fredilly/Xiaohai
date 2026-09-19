@@ -28,6 +28,12 @@
       "import": "./dist/staff-admin.js",
       "default": "./dist/staff-admin.js"
     },
+    "./audit": {
+      "types": "./src/audit.ts",
+      "development": "./src/audit.ts",
+      "import": "./dist/audit.js",
+      "default": "./dist/audit.js"
+    },
     "./payments": {
       "types": "./src/payments.ts",
       "development": "./src/payments.ts",
