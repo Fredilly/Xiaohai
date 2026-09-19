@@ -136,7 +136,7 @@ export class AiJobProcessor {
         {
           input: inputModeration.status,
           output: outputModeration.status,
-          reasonCodes: [...inputModeration.reasonCodes, ...outputModeration.reasonCodes],
+          reasonCodes: outputModeration.reasonCodes,
         },
         false,
         result,
