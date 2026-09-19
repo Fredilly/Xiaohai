@@ -43,9 +43,12 @@ describe('M19 store operations adapter', () => {
     await actOnPurchaseOrder('staff-token', '11111111-1111-4111-8111-111111111111', 'SUBMIT');
 
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toContain('/api/v1/staff/inventory/purchase-orders/11111111-1111-4111-8111-111111111111/actions');
+    expect(url).toContain(
+      '/api/v1/staff/inventory/purchase-orders/11111111-1111-4111-8111-111111111111/actions',
+    );
     expect(init.method).toBe('POST');
-    expect(JSON.parse(String(init.body))).toEqual({ action: 'SUBMIT' });
+    if (typeof init.body !== 'string') throw new Error('Expected JSON request body');
+    expect(JSON.parse(init.body)).toEqual({ action: 'SUBMIT' });
   });
 
   it('keeps transfer source and destination explicit', async () => {
@@ -84,7 +87,8 @@ describe('M19 store operations adapter', () => {
     });
 
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(JSON.parse(String(init.body))).toMatchObject({
+    if (typeof init.body !== 'string') throw new Error('Expected JSON request body');
+    expect(JSON.parse(init.body)).toMatchObject({
       sourceStoreId: '22222222-2222-4222-8222-222222222222',
       destinationStoreId: '33333333-3333-4333-8333-333333333333',
     });
