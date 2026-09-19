@@ -61,8 +61,12 @@ describe('M20 Staff admin contracts', () => {
     ).toBe(false);
 
     const roleId = '33333333-3333-4333-8333-333333333333';
-    expect(staffAdminReplaceRolesSchema.parse({ roleIds: [roleId] })).toEqual({ roleIds: [roleId] });
-    expect(staffAdminReplaceRolesSchema.safeParse({ roleIds: [roleId, roleId] }).success).toBe(false);
+    expect(staffAdminReplaceRolesSchema.parse({ roleIds: [roleId] })).toEqual({
+      roleIds: [roleId],
+    });
+    expect(staffAdminReplaceRolesSchema.safeParse({ roleIds: [roleId, roleId] }).success).toBe(
+      false,
+    );
   });
 
   it('enforces valid and non-ambiguous Data Scope replacement', () => {

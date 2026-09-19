@@ -67,7 +67,10 @@ describe('M20 Staff admin adapter', () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue(account) })
-      .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ ...account, enabled: false }) })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: vi.fn().mockResolvedValue({ ...account, enabled: false }),
+      })
       .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ ok: true }) })
       .mockResolvedValueOnce({
         ok: true,

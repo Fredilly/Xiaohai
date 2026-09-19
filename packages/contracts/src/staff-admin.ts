@@ -99,7 +99,10 @@ export const staffAdminReplaceDataScopesSchema = z
       context.addIssue({ code: 'custom', message: 'Scoped access requires an ID' });
     }
     if (globalScopes.length > 0 && value.dataScopes.length > 1) {
-      context.addIssue({ code: 'custom', message: 'GLOBAL scope cannot be combined with other scopes' });
+      context.addIssue({
+        code: 'custom',
+        message: 'GLOBAL scope cannot be combined with other scopes',
+      });
     }
   });
 

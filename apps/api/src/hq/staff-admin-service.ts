@@ -32,9 +32,7 @@ type StaffRow = {
 };
 
 export class StaffAdminError extends Error {
-  constructor(
-    readonly code: 'NOT_FOUND' | 'CONFLICT' | 'INVALID_REFERENCE' | 'SELF_LOCKOUT',
-  ) {
+  constructor(readonly code: 'NOT_FOUND' | 'CONFLICT' | 'INVALID_REFERENCE' | 'SELF_LOCKOUT') {
     super(code);
   }
 }
@@ -125,11 +123,7 @@ export class StaffAdminService {
     return { ok: true as const };
   }
 
-  async replaceRoles(
-    id: string,
-    input: StaffAdminReplaceRoles,
-    actorStaffAccountId: string,
-  ) {
+  async replaceRoles(id: string, input: StaffAdminReplaceRoles, actorStaffAccountId: string) {
     if (id === actorStaffAccountId) throw new StaffAdminError('SELF_LOCKOUT');
     await this.ensureStaffExists(id);
     await this.ensureRolesExist(input.roleIds);
