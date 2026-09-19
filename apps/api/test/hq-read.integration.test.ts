@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { describe, expect, it, afterAll } from 'vitest';
+import { inArray, like } from 'drizzle-orm';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   hqOrderDetailSchema,
   hqOrderListResponseSchema,
@@ -48,7 +49,68 @@ suite('M20 HQ orders and users PostgreSQL integration', () => {
   );
   const hqRead = new HqReadService(database!.db);
 
-  afterAll(async () => database?.pool.end());
+  async function cleanupHqReadFixtures() {
+    if (!database) return;
+
+    const db = database.db;
+
+    const m20Orders = await db
+      .select({
+        id: orders.id,
+        consumerUserId: orders.consumerUserId,
+      })
+      .from(orders)
+      .where(like(orders.orderNumber, 'M20-%'));
+
+    const orderIds = m20Orders.map((row) => row.id);
+
+    if (orderIds.length > 0) {
+      await db.delete(payments).where(inArray(payments.orderId, orderIds));
+      await db.delete(pickupCodes).where(inArray(pickupCodes.orderId, orderIds));
+      await db.delete(orderItems).where(inArray(orderItems.orderId, orderIds));
+      await db.delete(orders).where(inArray(orders.id, orderIds));
+    }
+
+    const m20Stores = await db
+      .select({ id: stores.id })
+      .from(stores)
+      .where(like(stores.code, 'M20-S-%'));
+
+    const storeIds = m20Stores.map((row) => row.id);
+
+    if (storeIds.length > 0) {
+      await db.delete(pickupCodes).where(inArray(pickupCodes.storeId, storeIds));
+      await db.delete(stores).where(inArray(stores.id, storeIds));
+    }
+
+    await db.delete(skus).where(like(skus.code, 'M20-SKU-%'));
+    await db.delete(products).where(like(products.name, 'M20 Product %'));
+    await db.delete(bookEditions).where(like(bookEditions.isbn, 'm20-isbn-%'));
+    await db.delete(books).where(like(books.title, 'M20 Book %'));
+
+    const m20Identities = await db
+      .select({ consumerUserId: wechatIdentities.consumerUserId })
+      .from(wechatIdentities)
+      .where(like(wechatIdentities.appId, 'm20-app-%'));
+
+    const consumerUserIds = m20Identities.map((row) => row.consumerUserId);
+
+    if (consumerUserIds.length > 0) {
+      await db.delete(consumerUsers).where(inArray(consumerUsers.id, consumerUserIds));
+    }
+
+    await db.delete(staffAccounts).where(like(staffAccounts.loginIdentifier, 'm20-%@example.com'));
+
+    await db.delete(roles).where(like(roles.key, 'm20-%'));
+    await db.delete(regions).where(like(regions.code, 'M20-R-%'));
+  }
+
+  beforeAll(cleanupHqReadFixtures);
+
+  afterAll(async () => {
+    await cleanupHqReadFixtures();
+    await database?.pool.end();
+  });
 
   function makeApp() {
     const app = buildApp({ logger: false });
