@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, describe, expect, it } from 'vitest';
+import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 import {
   staffAdminAccountSchema,
@@ -213,7 +214,7 @@ suite('M20 Staff administration PostgreSQL integration', () => {
     const [stored] = await database!.db
       .select({ passwordHash: staffAccounts.passwordHash })
       .from(staffAccounts)
-      .where(zeroOrOneEq(staffAccounts.id, created.id))
+      .where(eq(staffAccounts.id, created.id))
       .limit(1);
     expect(stored).toBeDefined();
     expect(stored!.passwordHash).not.toBe(initialPassword);
@@ -231,7 +232,7 @@ suite('M20 Staff administration PostgreSQL integration', () => {
     const [afterReset] = await database!.db
       .select({ passwordHash: staffAccounts.passwordHash })
       .from(staffAccounts)
-      .where(zeroOrOneEq(staffAccounts.id, created.id))
+      .where(eq(staffAccounts.id, created.id))
       .limit(1);
     expect(afterReset).toBeDefined();
     expect(await passwordHasher.verify(initialPassword, afterReset!.passwordHash)).toBe(false);
@@ -378,7 +379,3 @@ suite('M20 Staff administration PostgreSQL integration', () => {
     await app.close();
   });
 });
-
-function zeroOrOneEq<TColumn>(column: TColumn, value: string) {
-  return (column as never) && value;
-}
