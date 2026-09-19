@@ -26,8 +26,16 @@ export const adminModules: ModulePreview[] = [
   {
     key: 'orders',
     label: '订单',
-    description: 'M20-B 将补齐 HQ Staff 订单 read model',
-    status: '前端预览',
+    description: 'M20-B HQ 订单列表、详情与不可变快照支持视图',
+    status: '可查看',
+    requiredPermission: 'orders.read',
+  },
+  {
+    key: 'users',
+    label: '用户',
+    description: 'M20-B Consumer 最小身份元数据与订单汇总支持视图',
+    status: '可查看',
+    requiredPermission: 'users.read',
   },
   {
     key: 'content',
