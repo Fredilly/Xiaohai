@@ -70,6 +70,7 @@ export {
   commissionLedger,
   withdrawalRequests,
 } from './commission-schema.js';
+export { auditLogs } from './audit-schema.js';
 export {
   consumerUsers,
   migrationBatches,
