@@ -74,9 +74,10 @@ const staffSessions = new StaffSessionService(
   config.STAFF_SESSION_SECRET,
   config.STAFF_SESSION_TTL_SECONDS,
 );
+const passwordHasher = new ScryptPasswordHasher();
 const staffAuth = new StaffAuthService(
   new DrizzleStaffAccountRepository(db),
-  new ScryptPasswordHasher(),
+  passwordHasher,
   staffSessions,
 );
 const staffAuthorization = new StaffAuthorizationService(
@@ -124,7 +125,10 @@ registerFranchiseRoutes(app, {
 });
 registerCommissionRoutes(app, { commission, consumerSessions: sessions, staffAuthorization });
 registerHqReadRoutes(app, { hqRead: new HqReadService(db), staffAuthorization });
-registerStaffAdminRoutes(app, { staffAdmin: new StaffAdminService(db), staffAuthorization });
+registerStaffAdminRoutes(app, {
+  staffAdmin: new StaffAdminService(db, passwordHasher),
+  staffAuthorization,
+});
 const aiQueue = new RedisAiQueue(config.REDIS_URL, () =>
   app.log.error({ errorCode: 'REDIS_UNAVAILABLE' }, 'AI queue Redis error'),
 );
