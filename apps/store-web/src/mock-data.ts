@@ -35,4 +35,10 @@ export const storeModules = [
     description: '采购收货、低库存、盘点、调拨与库存流水',
     status: 'M14 / M19 已接入',
   },
+  {
+    key: 'manager',
+    label: '店长视图',
+    description: '实时运营报表、当前 Staff 权限与门店授权范围',
+    status: 'M19 店长能力',
+  },
 ] as const;
