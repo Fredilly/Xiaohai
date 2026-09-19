@@ -50,7 +50,9 @@ export class HqReadService {
     return {
       items: rows.map((row) => ({
         ...row,
-        status: row.status as HqOrderListQuery['status'] extends infer _ ? typeof row.status : never,
+        status: row.status as HqOrderListQuery['status'] extends infer _
+          ? typeof row.status
+          : never,
         createdAt: row.createdAt.toISOString(),
         updatedAt: row.updatedAt.toISOString(),
       })),

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { hqOrderListQuerySchema, hqUserListQuerySchema } from './hq';
+import { hqOrderListQuerySchema, hqUserListQuerySchema } from './hq.js';
 
 describe('M20 HQ read contracts', () => {
   it('keeps order filters strict and bounded', () => {
@@ -14,6 +14,8 @@ describe('M20 HQ read contracts', () => {
   it('accepts only minimal user filters', () => {
     const id = '11111111-1111-4111-8111-111111111111';
     expect(hqUserListQuerySchema.parse({ id, limit: '10' })).toEqual({ id, limit: 10 });
-    expect(hqUserListQuerySchema.safeParse({ openid: 'should-not-be-supported' }).success).toBe(false);
+    expect(hqUserListQuerySchema.safeParse({ openid: 'should-not-be-supported' }).success).toBe(
+      false,
+    );
   });
 });

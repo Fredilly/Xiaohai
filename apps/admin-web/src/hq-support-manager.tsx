@@ -108,15 +108,22 @@ function OrdersManager({ token }: { token: string }) {
               状态：{detail.status} · 总额：¥{(detail.totalMinor / 100).toFixed(2)}
             </p>
             <p>
-              支付：{detail.payment ? `${detail.payment.status} · ¥${(detail.payment.amountMinor / 100).toFixed(2)}` : '无'}
+              支付：
+              {detail.payment
+                ? `${detail.payment.status} · ¥${(detail.payment.amountMinor / 100).toFixed(2)}`
+                : '无'}
             </p>
             <p>
-              履约：{detail.fulfillment ? `${detail.fulfillment.method} · ${detail.fulfillment.status}` : '未创建'}
+              履约：
+              {detail.fulfillment
+                ? `${detail.fulfillment.method} · ${detail.fulfillment.status}`
+                : '未创建'}
             </p>
             {detail.address && (
               <p>
                 地址快照：{detail.address.region} {detail.address.city} {detail.address.district}{' '}
-                {detail.address.addressLine} · {detail.address.recipientName} · {detail.address.phone}
+                {detail.address.addressLine} · {detail.address.recipientName} ·{' '}
+                {detail.address.phone}
               </p>
             )}
           </div>
@@ -179,7 +186,8 @@ function UsersManager({ token }: { token: string }) {
         <span className="badge">M20-B · users.read + GLOBAL</span>
         <h2>Consumer 支持视图</h2>
         <p>
-          只展示最小必要身份元数据与订单汇总；不返回 OpenID、UnionID、provider secret 或其他原始微信身份值。
+          只展示最小必要身份元数据与订单汇总；不返回 OpenID、UnionID、provider secret
+          或其他原始微信身份值。
         </p>
         <form className="ops-form compact-form" onSubmit={(event) => void submit(event)}>
           <input name="id" placeholder="Consumer UUID（可选）" />
