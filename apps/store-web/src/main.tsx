@@ -1,14 +1,17 @@
 import { StrictMode, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { createRoot } from 'react-dom/client';
 import type { StaffMeResponse } from '@xiaohai/contracts';
+import type { StaffStore } from '@xiaohai/contracts/stores';
 import './styles.css';
 import { getStaffMe, loginStaff } from './staff-auth';
+import { loadStaffStores } from './stores-api';
 import { storeModules } from './mock-data';
 import { InventoryPanel } from './inventory-panel';
 import { RentalPanel } from './rental-panel';
 import { FulfillmentPanel } from './fulfillment-panel';
 
 const tokenKey = 'staff_session_token';
+const selectedStoreKey = 'staff_selected_store_id';
 
 function Login({ onSignedIn }: { onSignedIn: (token: string) => void }) {
   const [status, setStatus] = useState('请使用 Staff Account 登录');
@@ -59,17 +62,64 @@ function Login({ onSignedIn }: { onSignedIn: (token: string) => void }) {
   );
 }
 
-function Shell({ me, onLogout }: { me: StaffMeResponse; onLogout: () => void }) {
+function Shell({
+  me,
+  token,
+  onLogout,
+}: {
+  me: StaffMeResponse;
+  token: string;
+  onLogout: () => void;
+}) {
   const [active, setActive] = useState(window.location.hash.replace('#/', '') || 'dashboard');
+  const [stores, setStores] = useState<StaffStore[]>([]);
+  const [storeId, setStoreId] = useState(() => sessionStorage.getItem(selectedStoreKey) ?? '');
+  const [storeStatus, setStoreStatus] = useState('正在加载授权门店…');
+
   useEffect(() => {
     const sync = () => setActive(window.location.hash.replace('#/', '') || 'dashboard');
     window.addEventListener('hashchange', sync);
     return () => window.removeEventListener('hashchange', sync);
   }, []);
+
+  useEffect(() => {
+    let activeRequest = true;
+    void loadStaffStores(token)
+      .then((result) => {
+        if (!activeRequest) return;
+        setStores(result.stores);
+        const saved = sessionStorage.getItem(selectedStoreKey) ?? '';
+        const next = result.stores.some((store) => store.id === saved)
+          ? saved
+          : (result.stores[0]?.id ?? '');
+        setStoreId(next);
+        if (next) sessionStorage.setItem(selectedStoreKey, next);
+        else sessionStorage.removeItem(selectedStoreKey);
+        setStoreStatus(result.stores.length ? '' : '当前账号没有可访问门店');
+      })
+      .catch((error: unknown) => {
+        if (!activeRequest) return;
+        setStores([]);
+        setStoreId('');
+        sessionStorage.removeItem(selectedStoreKey);
+        setStoreStatus(error instanceof Error ? `门店加载失败：${error.message}` : '门店加载失败');
+      });
+    return () => {
+      activeRequest = false;
+    };
+  }, [token]);
+
   const module = useMemo(
     () => storeModules.find((item) => item.key === active) ?? storeModules[0],
     [active],
   );
+  const currentStore = stores.find((store) => store.id === storeId) ?? null;
+
+  const chooseStore = (nextStoreId: string) => {
+    setStoreId(nextStoreId);
+    sessionStorage.setItem(selectedStoreKey, nextStoreId);
+  };
+
   return (
     <div className="shell">
       <aside>
@@ -97,19 +147,49 @@ function Shell({ me, onLogout }: { me: StaffMeResponse; onLogout: () => void }) 
             <span className="eyebrow">STORE WORKSPACE</span>
             <h1>{module.label}</h1>
           </div>
-          <div className="identity">
-            <span>{me.staff.loginIdentifier}</span>
-            <button onClick={onLogout}>退出</button>
+          <div className="workspace-actions">
+            <label className="store-picker">
+              当前门店
+              <select
+                value={storeId}
+                disabled={!stores.length}
+                onChange={(event) => chooseStore(event.target.value)}
+              >
+                {!stores.length && <option value="">无可用门店</option>}
+                {stores.map((store) => (
+                  <option key={store.id} value={store.id}>
+                    {store.name} · {store.city}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="identity">
+              <span>{me.staff.loginIdentifier}</span>
+              <button onClick={onLogout}>退出</button>
+            </div>
           </div>
         </header>
+        {storeStatus && <p className="store-status">{storeStatus}</p>}
         {active === 'dashboard' ? (
-          <Dashboard me={me} />
+          <Dashboard me={me} currentStore={currentStore} />
         ) : active === 'inventory' ? (
-          <InventoryPanel token={sessionStorage.getItem(tokenKey) ?? ''} />
+          currentStore ? (
+            <InventoryPanel token={token} storeId={currentStore.id} />
+          ) : (
+            <StoreRequired />
+          )
         ) : active === 'rental' ? (
-          <RentalPanel token={sessionStorage.getItem(tokenKey) ?? ''} />
+          currentStore ? (
+            <RentalPanel token={token} storeId={currentStore.id} />
+          ) : (
+            <StoreRequired />
+          )
         ) : active === 'orders' ? (
-          <FulfillmentPanel token={sessionStorage.getItem(tokenKey) ?? ''} />
+          currentStore ? (
+            <FulfillmentPanel token={token} storeId={currentStore.id} />
+          ) : (
+            <StoreRequired />
+          )
         ) : (
           <Preview title={module.label} description={module.description} />
         )}
@@ -118,13 +198,17 @@ function Shell({ me, onLogout }: { me: StaffMeResponse; onLogout: () => void }) 
   );
 }
 
-function Dashboard({ me }: { me: StaffMeResponse }) {
+function Dashboard({ me, currentStore }: { me: StaffMeResponse; currentStore: StaffStore | null }) {
   return (
     <>
       <section className="hero">
-        <span className="tag">Frontend preview</span>
-        <h2>今天从这里开始门店工作</h2>
-        <p>查询、库存、租借和履约入口已经整理；正式业务数据将在对应后端里程碑接入。</p>
+        <span className="tag">M19 Store Web</span>
+        <h2>{currentStore ? `${currentStore.name} 工作台` : '今天从这里开始门店工作'}</h2>
+        <p>
+          {currentStore
+            ? `${currentStore.city} · ${currentStore.addressLine}`
+            : '请先确认当前账号具有 stores.read 权限和可访问门店范围。'}
+        </p>
         <div className="scope">
           服务端 Data Scope：
           {me.dataScopes.length
@@ -149,23 +233,33 @@ function Dashboard({ me }: { me: StaffMeResponse }) {
       <section className="notice">
         <strong>安全边界</strong>
         <p>
-          本工作台不会从 URL 或前端选择器获得真实 storeId 授权。未来真实业务请求仍必须由 API 根据
-          Staff Session + RBAC + Data Scope 校验。
+          当前门店选择器只决定页面查询上下文，不代表授权。每个真实业务请求仍由 API 根据 Staff Session +
+          RBAC + Data Scope 校验，前端传入的 storeId 不能扩大权限。
         </p>
       </section>
     </>
   );
 }
 
+function StoreRequired() {
+  return (
+    <section className="panel">
+      <span className="tag">Store context required</span>
+      <h2>没有可用门店</h2>
+      <p>当前账号没有加载到可访问门店，因此不会发起库存、租借或履约操作。</p>
+    </section>
+  );
+}
+
 function Preview({ title, description }: { title: string; description: string }) {
   return (
     <section className="panel">
-      <span className="tag">Frontend mock / Coming soon</span>
+      <span className="tag">M19 implementation pending</span>
       <h2>{title}</h2>
       <p>{description}</p>
       <div className="empty">
-        <strong>前端结构已准备</strong>
-        <span>当前没有正式业务 API，因此这里不展示伪造的真实库存、订单、租借或配送结果。</span>
+        <strong>此模块将在 M19 后续批次接入</strong>
+        <span>不会用 Mock 数据冒充真实门店业务结果。</span>
       </div>
     </section>
   );
@@ -186,6 +280,7 @@ function App() {
       .then((result) => {
         if (!result) {
           sessionStorage.removeItem(tokenKey);
+          sessionStorage.removeItem(selectedStoreKey);
           setToken(null);
         } else setMe(result);
       })
@@ -194,12 +289,13 @@ function App() {
   }, [token]);
   const logout = () => {
     sessionStorage.removeItem(tokenKey);
+    sessionStorage.removeItem(selectedStoreKey);
     setToken(null);
     setMe(null);
   };
   if (checking) return <main className="center">正在验证 Staff Session…</main>;
   if (!token || !me) return <Login onSignedIn={setToken} />;
-  return <Shell me={me} onLogout={logout} />;
+  return <Shell me={me} token={token} onLogout={logout} />;
 }
 
 const root = document.querySelector<HTMLDivElement>('#root');
