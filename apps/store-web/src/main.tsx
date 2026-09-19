@@ -11,6 +11,7 @@ import { InventoryPanel } from './inventory-panel';
 import { RentalPanel } from './rental-panel';
 import { FulfillmentPanel } from './fulfillment-panel';
 import { OperationsPanel } from './operations-panel';
+import { DashboardPanel } from './dashboard-panel';
 
 const tokenKey = 'staff_session_token';
 const selectedStoreKey = 'staff_selected_store_id';
@@ -173,7 +174,7 @@ function Shell({
         </header>
         {storeStatus && <p className="store-status">{storeStatus}</p>}
         {active === 'dashboard' ? (
-          <Dashboard me={me} currentStore={currentStore} />
+          <DashboardPanel token={token} me={me} currentStore={currentStore} />
         ) : active === 'books' ? (
           currentStore ? (
             <BookSearchPanel storeId={currentStore.id} storeName={currentStore.name} />
@@ -210,49 +211,6 @@ function Shell({
         )}
       </main>
     </div>
-  );
-}
-
-function Dashboard({ me, currentStore }: { me: StaffMeResponse; currentStore: StaffStore | null }) {
-  return (
-    <>
-      <section className="hero">
-        <span className="tag">M19 Store Web</span>
-        <h2>{currentStore ? `${currentStore.name} 工作台` : '今天从这里开始门店工作'}</h2>
-        <p>
-          {currentStore
-            ? `${currentStore.city} · ${currentStore.addressLine}`
-            : '请先确认当前账号具有 stores.read 权限和可访问门店范围。'}
-        </p>
-        <div className="scope">
-          服务端 Data Scope：
-          {me.dataScopes.length
-            ? me.dataScopes.map((item) => item.type).join(' · ')
-            : '暂无授权范围'}
-        </div>
-      </section>
-      <section className="quick-grid">
-        {storeModules.slice(1).map((item) => (
-          <button
-            key={item.key}
-            onClick={() => {
-              window.location.hash = `#/${item.key}`;
-            }}
-          >
-            <strong>{item.label}</strong>
-            <span>{item.description}</span>
-            <em>{item.status}</em>
-          </button>
-        ))}
-      </section>
-      <section className="notice">
-        <strong>安全边界</strong>
-        <p>
-          当前门店选择器只决定页面查询上下文，不代表授权。每个真实业务请求仍由 API 根据 Staff
-          Session + RBAC + Data Scope 校验，前端传入的 storeId 不能扩大权限。
-        </p>
-      </section>
-    </>
   );
 }
 
