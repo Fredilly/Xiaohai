@@ -1,8 +1,5 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import {
-  auditLogListQuerySchema,
-  auditLogListResponseSchema,
-} from '@xiaohai/contracts/audit';
+import { auditLogListQuerySchema, auditLogListResponseSchema } from '@xiaohai/contracts/audit';
 import { ConsumerAuthError } from '../auth/errors.js';
 import type { StaffAuthorizationService } from '../auth/staff-authorization.js';
 import type { AuditService } from './audit-service.js';
