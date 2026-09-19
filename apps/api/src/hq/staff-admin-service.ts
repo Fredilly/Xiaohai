@@ -9,10 +9,7 @@ import {
   staffRoles,
   type createDatabase,
 } from '@xiaohai/db';
-import {
-  staffDataScopeTypes,
-  type StaffDataScopeType,
-} from '../auth/staff-authorization.js';
+import { staffDataScopeTypes, type StaffDataScopeType } from '../auth/staff-authorization.js';
 
 type Database = ReturnType<typeof createDatabase>['db'];
 
@@ -97,7 +94,12 @@ export class StaffAdminService {
       })
       .from(rolePermissions)
       .innerJoin(permissions, eq(rolePermissions.permissionId, permissions.id))
-      .where(inArray(rolePermissions.roleId, roleRows.map((role) => role.id)));
+      .where(
+        inArray(
+          rolePermissions.roleId,
+          roleRows.map((role) => role.id),
+        ),
+      );
 
     const permissionsByRole = new Map<string, typeof permissionRows>();
     for (const permission of permissionRows) {
@@ -167,10 +169,7 @@ export class StaffAdminService {
       rolesByStaff.set(role.staffAccountId, bucket);
     }
 
-    const scopesByStaff = new Map<
-      string,
-      Array<{ type: StaffDataScopeType; id: string | null }>
-    >();
+    const scopesByStaff = new Map<string, Array<{ type: StaffDataScopeType; id: string | null }>>();
     for (const scope of scopeRows) {
       const type = scope.type as StaffDataScopeType;
       if (!staffDataScopeTypes.includes(type)) continue;

@@ -119,11 +119,16 @@ export function StaffAdminManager({ token }: { token: string }) {
             <div className="empty-state" key={role.id}>
               <strong>{role.displayName}</strong>
               <span>{role.key}</span>
-              <small>{role.permissions.map((permission) => permission.key).join(' · ') || '无权限'}</small>
+              <small>
+                {role.permissions.map((permission) => permission.key).join(' · ') || '无权限'}
+              </small>
             </div>
           ))}
         </div>
-        <p>Permission catalog：{permissions.map((permission) => permission.key).join(' · ') || '暂无'}</p>
+        <p>
+          Permission catalog：
+          {permissions.map((permission) => permission.key).join(' · ') || '暂无'}
+        </p>
       </section>
     </>
   );
@@ -135,5 +140,7 @@ function text(data: FormData, field: string) {
 }
 
 function formatScopes(scopes: StaffDetail['dataScopes']) {
-  return scopes.map((scope) => `${scope.type}${scope.id ? `:${scope.id}` : ''}`).join(' · ') || '无';
+  return (
+    scopes.map((scope) => `${scope.type}${scope.id ? `:${scope.id}` : ''}`).join(' · ') || '无'
+  );
 }

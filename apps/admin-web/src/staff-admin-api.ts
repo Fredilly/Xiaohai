@@ -23,10 +23,7 @@ async function request(path: string, token: string) {
   return (await response.json()) as unknown;
 }
 
-export async function loadStaffAccounts(
-  token: string,
-  input: Partial<StaffAdminListQuery> = {},
-) {
+export async function loadStaffAccounts(token: string, input: Partial<StaffAdminListQuery> = {}) {
   const query = new URLSearchParams();
   if (input.q) query.set('q', input.q);
   if (input.enabled !== undefined) query.set('enabled', String(input.enabled));
