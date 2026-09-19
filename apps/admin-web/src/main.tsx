@@ -9,9 +9,12 @@ import { ContentManager } from './content-manager';
 import { AiManager } from './ai-manager';
 import { FranchiseManager } from './franchise-manager';
 import { CommissionManager } from './commission-manager';
+import { HqOperationsManager } from './hq-operations-manager';
 import { getStaffMe, loginStaff } from './staff-auth';
-import { adminModules } from './mock-data';
+import { adminModules, type ModulePreview } from './mock-data';
+
 const tokenKey = 'staff_session_token';
+
 function Login({ onSignedIn }: { onSignedIn: (token: string) => void }) {
   const [status, setStatus] = useState('请使用 Staff Account 登录');
   const [busy, setBusy] = useState(false);
@@ -54,6 +57,7 @@ function Login({ onSignedIn }: { onSignedIn: (token: string) => void }) {
     </main>
   );
 }
+
 function Shell({
   me,
   token,
@@ -70,10 +74,18 @@ function Shell({
     window.addEventListener('hashchange', sync);
     return () => window.removeEventListener('hashchange', sync);
   }, []);
+  const visibleModules = useMemo(
+    () =>
+      adminModules.filter(
+        (item) => !item.requiredPermission || me.permissions.includes(item.requiredPermission),
+      ),
+    [me.permissions],
+  );
   const module = useMemo(
-    () => adminModules.find((i) => i.key === active) ?? adminModules[0]!,
+    () => adminModules.find((item) => item.key === active) ?? adminModules[0]!,
     [active],
   );
+
   return (
     <div className="shell">
       <aside>
@@ -82,15 +94,15 @@ function Shell({
           <span>总部后台</span>
         </div>
         <nav>
-          {adminModules.map((i) => (
+          {visibleModules.map((item) => (
             <button
-              className={i.key === active ? 'nav-active' : ''}
-              key={i.key}
+              className={item.key === active ? 'nav-active' : ''}
+              key={item.key}
               onClick={() => {
-                window.location.hash = `#/${i.key}`;
+                window.location.hash = `#/${item.key}`;
               }}
             >
-              {i.label}
+              {item.label}
             </button>
           ))}
         </nav>
@@ -107,7 +119,15 @@ function Shell({
           </div>
         </header>
         {active === 'dashboard' ? (
-          <Dashboard me={me} />
+          <Dashboard me={me} modules={visibleModules} />
+        ) : active === 'stores' ? (
+          <HqOperationsManager token={token} me={me} mode="stores" />
+        ) : active === 'inventory' ? (
+          <HqOperationsManager token={token} me={me} mode="inventory" />
+        ) : active === 'rental' ? (
+          <HqOperationsManager token={token} me={me} mode="rental" />
+        ) : active === 'fulfillment' ? (
+          <HqOperationsManager token={token} me={me} mode="fulfillment" />
         ) : active === 'cms' ? (
           <CmsManager token={token} />
         ) : active === 'finance' ? (
@@ -129,14 +149,15 @@ function Shell({
     </div>
   );
 }
-function Dashboard({ me }: { me: StaffMeResponse }) {
+
+function Dashboard({ me, modules }: { me: StaffMeResponse; modules: ModulePreview[] }) {
   return (
     <>
       <section className="hero">
         <div>
-          <span className="badge">Production milestones</span>
-          <h2>M4–M17 production modules</h2>
-          <p>商城、支付、内容、AI、门店、租借、履约与加盟能力按服务端权限和状态机运行。</p>
+          <span className="badge">M20 HQ consolidation</span>
+          <h2>M4–M19 production domains → HQ Admin</h2>
+          <p>正在把既有商城、支付、内容、AI、门店、库存、租借、履约、加盟和佣金能力汇总到总部后台。</p>
         </div>
         <div className="hero-note">
           <strong>{me.permissions.length}</strong> permissions ·{' '}
@@ -144,18 +165,18 @@ function Dashboard({ me }: { me: StaffMeResponse }) {
         </div>
       </section>
       <section className="panel">
-        <h3>模块接入状态</h3>
+        <h3>当前 Staff 可见模块</h3>
         <div className="module-grid">
-          {adminModules.slice(1).map((i) => (
+          {modules.slice(1).map((item) => (
             <button
-              key={i.key}
+              key={item.key}
               onClick={() => {
-                window.location.hash = `#/${i.key}`;
+                window.location.hash = `#/${item.key}`;
               }}
             >
-              <strong>{i.label}</strong>
-              <span>{i.description}</span>
-              <em>{i.status}</em>
+              <strong>{item.label}</strong>
+              <span>{item.description}</span>
+              <em>{item.status}</em>
             </button>
           ))}
         </div>
@@ -163,6 +184,7 @@ function Dashboard({ me }: { me: StaffMeResponse }) {
     </>
   );
 }
+
 function Preview({
   title,
   description,
@@ -174,25 +196,27 @@ function Preview({
 }) {
   return (
     <section className="panel preview">
-      <span className="badge">未进入当前里程碑</span>
+      <span className="badge">M20 待接入</span>
       <h2>{title}</h2>
       <p>{description}</p>
       <div className="empty-state">
         <strong>不伪造正式能力</strong>
-        <span>对应 API、数据库与写操作将在所属里程碑实现。</span>
+        <span>对应 API、数据库与写操作会在 M20 所属阶段补齐。</span>
       </div>
       {title === 'Staff / 权限' && (
         <div className="context">
           <p>Permissions: {me.permissions.join(' · ') || '暂无'}</p>
           <p>
             Data Scopes:{' '}
-            {me.dataScopes.map((s) => `${s.type}${s.id ? `:${s.id}` : ''}`).join(' · ') || '暂无'}
+            {me.dataScopes.map((scope) => `${scope.type}${scope.id ? `:${scope.id}` : ''}`).join(' · ') ||
+              '暂无'}
           </p>
         </div>
       )}
     </section>
   );
 }
+
 function App() {
   const [token, setToken] = useState(() => sessionStorage.getItem(tokenKey));
   const [me, setMe] = useState<StaffMeResponse | null>(null);
@@ -224,6 +248,7 @@ function App() {
   if (!token || !me) return <Login onSignedIn={setToken} />;
   return <Shell me={me} token={token} onLogout={logout} />;
 }
+
 const root = document.querySelector<HTMLDivElement>('#root');
 if (!root) throw new Error('Root element is missing');
 createRoot(root).render(
