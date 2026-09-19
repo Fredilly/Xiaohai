@@ -11,9 +11,7 @@ export async function loadInventory(token: string, storeId?: string) {
   const params = new URLSearchParams();
   if (storeId) params.set('storeId', storeId);
   const query = params.size ? `?${params.toString()}` : '';
-  return inventoryListResponseSchema.parse(
-    await request(`/api/v1/staff/inventory${query}`, token),
-  );
+  return inventoryListResponseSchema.parse(await request(`/api/v1/staff/inventory${query}`, token));
 }
 export async function issueInventory(token: string, input: InventoryMutationRequest) {
   return await request('/api/v1/staff/inventory/issues', token, 'POST', input);

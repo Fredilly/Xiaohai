@@ -240,8 +240,8 @@ function Dashboard({ me, currentStore }: { me: StaffMeResponse; currentStore: St
       <section className="notice">
         <strong>安全边界</strong>
         <p>
-          当前门店选择器只决定页面查询上下文，不代表授权。每个真实业务请求仍由 API 根据 Staff Session +
-          RBAC + Data Scope 校验，前端传入的 storeId 不能扩大权限。
+          当前门店选择器只决定页面查询上下文，不代表授权。每个真实业务请求仍由 API 根据 Staff
+          Session + RBAC + Data Scope 校验，前端传入的 storeId 不能扩大权限。
         </p>
       </section>
     </>

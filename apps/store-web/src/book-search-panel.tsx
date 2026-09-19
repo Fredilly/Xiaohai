@@ -21,7 +21,9 @@ export function BookSearchPanel({ storeId, storeName }: { storeId: string; store
     try {
       const result = await searchStoreBooks(storeId, query);
       setItems(result.items);
-      setStatus(result.items.length ? `找到 ${result.items.length} 个库存结果` : '当前门店未找到可用库存');
+      setStatus(
+        result.items.length ? `找到 ${result.items.length} 个库存结果` : '当前门店未找到可用库存',
+      );
     } catch (error) {
       setStatus(error instanceof Error ? `查询失败：${error.message}` : '查询失败');
     } finally {

@@ -93,7 +93,8 @@ export function FulfillmentPanel({ token, storeId }: { token: string; storeId: s
       <span className="tag">M16 Pickup & Delivery</span>
       <h2>订单履约</h2>
       <p>
-        当前门店由 M19 工作台统一选择。自提码只由顾客端显示；配送费来自当前门店配送区域配置，MANUAL adapter 代表人工同城配送。
+        当前门店由 M19 工作台统一选择。自提码只由顾客端显示；配送费来自当前门店配送区域配置，MANUAL
+        adapter 代表人工同城配送。
       </p>
 
       <div className="inventory-table">
