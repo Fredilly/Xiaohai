@@ -13,6 +13,7 @@ import { HqDashboard } from './hq-dashboard';
 import { HqOperationsManager } from './hq-operations-manager';
 import { HqSupportManager } from './hq-support-manager';
 import { StaffAdminManager } from './staff-admin-manager';
+import { SystemManager } from './system-manager';
 import { getStaffMe, loginStaff } from './staff-auth';
 import { adminModules } from './mock-data';
 
@@ -141,6 +142,8 @@ function Shell({
             currentStaffId={me.staff.id}
             canManage={me.permissions.includes('staff.manage')}
           />
+        ) : active === 'system' ? (
+          <SystemManager token={token} me={me} modules={visibleModules} />
         ) : active === 'cms' ? (
           <CmsManager token={token} />
         ) : active === 'finance' ? (
