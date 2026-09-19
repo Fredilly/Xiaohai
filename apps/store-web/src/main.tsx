@@ -12,6 +12,7 @@ import { RentalPanel } from './rental-panel';
 import { FulfillmentPanel } from './fulfillment-panel';
 import { OperationsPanel } from './operations-panel';
 import { DashboardPanel } from './dashboard-panel';
+import { ManagerPanel } from './manager-panel';
 
 const tokenKey = 'staff_session_token';
 const selectedStoreKey = 'staff_selected_store_id';
@@ -78,6 +79,7 @@ function Shell({
   const [stores, setStores] = useState<StaffStore[]>([]);
   const [storeId, setStoreId] = useState(() => sessionStorage.getItem(selectedStoreKey) ?? '');
   const [storeStatus, setStoreStatus] = useState('正在加载授权门店…');
+  const canManageStore = me.permissions.includes('stores.manage');
 
   useEffect(() => {
     const sync = () => setActive(window.location.hash.replace('#/', '') || 'dashboard');
@@ -112,6 +114,10 @@ function Shell({
     };
   }, [token]);
 
+  const visibleModules = useMemo(
+    () => storeModules.filter((item) => item.key !== 'manager' || canManageStore),
+    [canManageStore],
+  );
   const module = useMemo(
     () => storeModules.find((item) => item.key === active) ?? storeModules[0],
     [active],
@@ -131,7 +137,7 @@ function Shell({
           <span>门店工作台</span>
         </div>
         <nav aria-label="门店模块">
-          {storeModules.map((item) => (
+          {visibleModules.map((item) => (
             <button
               key={item.key}
               className={item.key === active ? 'active' : ''}
@@ -199,6 +205,14 @@ function Shell({
           ) : (
             <StoreRequired />
           )
+        ) : active === 'manager' ? (
+          currentStore && canManageStore ? (
+            <ManagerPanel token={token} me={me} currentStore={currentStore} stores={stores} />
+          ) : currentStore ? (
+            <PermissionRequired />
+          ) : (
+            <StoreRequired />
+          )
         ) : currentStore ? (
           <OperationsPanel
             token={token}
@@ -220,6 +234,16 @@ function StoreRequired() {
       <span className="tag">Store context required</span>
       <h2>没有可用门店</h2>
       <p>当前账号没有加载到可访问门店，因此不会发起库存、租借或履约操作。</p>
+    </section>
+  );
+}
+
+function PermissionRequired() {
+  return (
+    <section className="panel">
+      <span className="tag">Manager permission required</span>
+      <h2>没有店长视图权限</h2>
+      <p>店长视图只对具有 stores.manage 的 Staff Context 展示；前端不会绕过服务端授权。</p>
     </section>
   );
 }
