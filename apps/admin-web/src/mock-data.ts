@@ -87,7 +87,7 @@ export const adminModules: ModulePreview[] = [
   {
     key: 'system',
     label: '系统 / 审计',
-    description: 'M20-D/E 将补齐审计与系统状态',
-    status: '前端预览',
+    description: 'M20-D/E API 健康、Staff 上下文、模块状态与操作审计',
+    status: '可查看',
   },
 ];
