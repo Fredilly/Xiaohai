@@ -134,7 +134,7 @@ export function ManagerPanel({ token, me, currentStore, stores }: Props) {
           <div className="compact-row">
             <span>登录账号</span>
             <strong>{me.staff.loginIdentifier}</strong>
-            <small>{me.staff.enabled ? '启用' : '停用'}</small>
+            <small>当前已认证 Staff Session</small>
           </div>
           <div className="compact-row">
             <span>权限数量</span>
@@ -177,7 +177,8 @@ export function ManagerPanel({ token, me, currentStore, stores }: Props) {
         <p>
           M19 不新增跨员工账号目录、角色编辑或 Staff 生命周期管理接口。当前后端只有本人 Staff
           Session/权限/Data Scope 与门店授权上下文；为了避免把账号信息暴露给过宽的
-          stores.read/stores.manage 权限，本阶段只展示当前登录员工的运营上下文。完整员工目录、角色/RBAC
+          stores.read/stores.manage
+          权限，本阶段只展示当前登录员工的运营上下文。完整员工目录、角色/RBAC
           编辑与总部级人员管理留在 M20。
         </p>
       </section>
