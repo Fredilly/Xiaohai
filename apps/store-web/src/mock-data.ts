@@ -1,5 +1,5 @@
 export const storeModules = [
-  { key: 'dashboard', label: '工作台', description: '门店日常工作入口', status: 'M19 实施中' },
+  { key: 'dashboard', label: '工作台', description: '门店实时运营摘要与日常工作入口', status: 'M19 已接入' },
   {
     key: 'books',
     label: '图书查询',
