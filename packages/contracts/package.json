@@ -16,6 +16,12 @@
       "import": "./dist/commerce.js",
       "default": "./dist/commerce.js"
     },
+    "./hq": {
+      "types": "./src/hq.ts",
+      "development": "./src/hq.ts",
+      "import": "./dist/hq.js",
+      "default": "./dist/hq.js"
+    },
     "./payments": {
       "types": "./src/payments.ts",
       "development": "./src/payments.ts",
