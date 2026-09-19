@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 import {
@@ -8,6 +8,7 @@ import {
   staffAdminOkSchema,
 } from '@xiaohai/contracts/staff-admin';
 import {
+  auditLogs,
   createDatabase,
   permissions,
   regions,
@@ -42,7 +43,16 @@ suite('M20 Staff administration PostgreSQL integration', () => {
   const passwordHasher = new ScryptPasswordHasher();
   const staffAdmin = new StaffAdminService(database!.db, passwordHasher);
 
-  afterAll(async () => database?.pool.end());
+  beforeAll(async () => {
+    if (!database) return;
+    await database.db.delete(auditLogs);
+  });
+
+  afterAll(async () => {
+    if (!database) return;
+    await database.db.delete(auditLogs);
+    await database.pool.end();
+  });
 
   function makeApp() {
     const app = buildApp({ logger: false });

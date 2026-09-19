@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { auditLogListResponseSchema } from '@xiaohai/contracts/audit';
@@ -40,7 +40,16 @@ suite('M20 operational audit PostgreSQL integration', () => {
   const staffAdmin = new StaffAdminService(database!.db, passwordHasher);
   const audit = new AuditService(database!.db);
 
-  afterAll(async () => database?.pool.end());
+  beforeAll(async () => {
+    if (!database) return;
+    await database.db.delete(auditLogs);
+  });
+
+  afterAll(async () => {
+    if (!database) return;
+    await database.db.delete(auditLogs);
+    await database.pool.end();
+  });
 
   function makeApp() {
     const app = buildApp({ logger: false });
