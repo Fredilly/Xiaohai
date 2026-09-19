@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { StaffMeResponse } from '@xiaohai/contracts';
+import { HqInventoryWorkflows } from './hq-inventory-workflows';
 import {
   loadHqFulfillment,
   loadHqInventory,
@@ -31,7 +32,7 @@ const modeMeta: Record<
   },
   inventory: {
     title: '库存 / 进销存',
-    description: '查看库存余额、低库存预警、库存流水与采购供应商上下文。',
+    description: '查看库存余额、低库存预警、库存流水，并在授权范围内执行采购、收货、盘点和调拨。',
     permission: 'inventory.read',
   },
   rental: {
@@ -70,6 +71,7 @@ export function HqOperationsManager({
   const [fulfillment, setFulfillment] = useState<FulfillmentResult | null>(null);
   const [status, setStatus] = useState('');
   const [loading, setLoading] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     if (!canReadStores) {
@@ -144,7 +146,7 @@ export function HqOperationsManager({
     return () => {
       cancelled = true;
     };
-  }, [allowed, canReadSuppliers, mode, selectedStoreId, token]);
+  }, [allowed, canReadSuppliers, mode, refreshKey, selectedStoreId, token]);
 
   if (!allowed) {
     return (
@@ -189,14 +191,31 @@ export function HqOperationsManager({
       </section>
       {mode === 'stores' && <StoresView stores={stores} />}
       {mode === 'inventory' && (
-        <InventoryView
-          inventory={inventory}
-          alerts={alerts}
-          transactions={transactions}
-          suppliers={suppliers}
-          selectedStoreId={selectedStoreId}
-          canReadSuppliers={canReadSuppliers}
-        />
+        <>
+          <InventoryView
+            inventory={inventory}
+            alerts={alerts}
+            transactions={transactions}
+            suppliers={suppliers}
+            selectedStoreId={selectedStoreId}
+            canReadSuppliers={canReadSuppliers}
+          />
+          <HqInventoryWorkflows
+            key={selectedStoreId || 'all'}
+            token={token}
+            me={me}
+            storeId={selectedStoreId}
+            stores={stores?.stores ?? []}
+            balances={inventory?.items ?? []}
+            suppliers={suppliers?.suppliers ?? []}
+            onSupplierCreated={(supplier) =>
+              setSuppliers((current) => ({
+                suppliers: [...(current?.suppliers ?? []), supplier],
+              }))
+            }
+            onRefresh={() => setRefreshKey((value) => value + 1)}
+          />
+        </>
       )}
       {mode === 'rental' && <RentalView rentals={rentals} />}
       {mode === 'fulfillment' && <FulfillmentView fulfillment={fulfillment} />}
@@ -272,9 +291,7 @@ function InventoryView({
       <section className="panel">
         <h3>采购上下文</h3>
         {canReadSuppliers ? (
-          <p>
-            供应商：{suppliers?.suppliers.length ?? 0}（采购写操作继续由 procurement.manage 保护）
-          </p>
+          <p>供应商：{suppliers?.suppliers.length ?? 0}（写操作仍由服务端权限和 Data Scope 保护）</p>
         ) : (
           <p>当前 Staff 没有 procurement.manage，不加载供应商或采购能力。</p>
         )}
