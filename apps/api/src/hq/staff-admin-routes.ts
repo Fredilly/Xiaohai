@@ -57,10 +57,15 @@ export function registerStaffAdminRoutes(
     const input = staffAdminCreateAccountSchema.safeParse(request.body);
     if (!input.success) return invalid(reply, request.id);
     try {
-      await authorize(request, STAFF_ADMIN_MANAGE_PERMISSION);
-      return reply
-        .status(201)
-        .send(staffAdminAccountSchema.parse(await options.staffAdmin.createStaff(input.data)));
+      const context = await authorize(request, STAFF_ADMIN_MANAGE_PERMISSION);
+      return reply.status(201).send(
+        staffAdminAccountSchema.parse(
+          await options.staffAdmin.createStaff(input.data, {
+            actorStaffAccountId: context.staffAccountId,
+            requestId: request.id,
+          }),
+        ),
+      );
     } catch (error) {
       return fail(request, reply, error);
     }
@@ -73,11 +78,10 @@ export function registerStaffAdminRoutes(
     try {
       const context = await authorize(request, STAFF_ADMIN_MANAGE_PERMISSION);
       return staffAdminAccountSchema.parse(
-        await options.staffAdmin.setEnabled(
-          params.data.id,
-          input.data.enabled,
-          context.staffAccountId,
-        ),
+        await options.staffAdmin.setEnabled(params.data.id, input.data.enabled, {
+          actorStaffAccountId: context.staffAccountId,
+          requestId: request.id,
+        }),
       );
     } catch (error) {
       return fail(request, reply, error);
@@ -89,9 +93,12 @@ export function registerStaffAdminRoutes(
     const input = staffAdminResetPasswordSchema.safeParse(request.body);
     if (!params.success || !input.success) return invalid(reply, request.id);
     try {
-      await authorize(request, STAFF_ADMIN_MANAGE_PERMISSION);
+      const context = await authorize(request, STAFF_ADMIN_MANAGE_PERMISSION);
       return staffAdminOkSchema.parse(
-        await options.staffAdmin.resetPassword(params.data.id, input.data.password),
+        await options.staffAdmin.resetPassword(params.data.id, input.data.password, {
+          actorStaffAccountId: context.staffAccountId,
+          requestId: request.id,
+        }),
       );
     } catch (error) {
       return fail(request, reply, error);
@@ -105,7 +112,10 @@ export function registerStaffAdminRoutes(
     try {
       const context = await authorize(request, STAFF_ADMIN_MANAGE_PERMISSION);
       return staffAdminAccountSchema.parse(
-        await options.staffAdmin.replaceRoles(params.data.id, input.data, context.staffAccountId),
+        await options.staffAdmin.replaceRoles(params.data.id, input.data, {
+          actorStaffAccountId: context.staffAccountId,
+          requestId: request.id,
+        }),
       );
     } catch (error) {
       return fail(request, reply, error);
@@ -119,11 +129,10 @@ export function registerStaffAdminRoutes(
     try {
       const context = await authorize(request, STAFF_ADMIN_MANAGE_PERMISSION);
       return staffAdminAccountSchema.parse(
-        await options.staffAdmin.replaceDataScopes(
-          params.data.id,
-          input.data,
-          context.staffAccountId,
-        ),
+        await options.staffAdmin.replaceDataScopes(params.data.id, input.data, {
+          actorStaffAccountId: context.staffAccountId,
+          requestId: request.id,
+        }),
       );
     } catch (error) {
       return fail(request, reply, error);
