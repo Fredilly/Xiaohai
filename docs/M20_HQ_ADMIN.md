@@ -209,3 +209,31 @@ M20 is done only when:
 - applicable Admin/API/contracts/DB/migration/tests/docs are complete.
 - `pnpm check`, DB checks and PostgreSQL integration are green.
 - PR documents What / Why / How tested and receives review before merge.
+
+## 11. Implementation status / 实施状态
+
+M20 implementation is complete on `intern/m20-hq-admin` and ready for pull-request review.
+
+M20 已在 `intern/m20-hq-admin` 完成实现，现进入 Pull Request 人工 Review 阶段。
+
+Completed scope:
+
+- HQ Admin consolidation for stores, inventory/procurement, orders, rental, pickup/delivery and operational dashboard views.
+- Minimal HQ order and consumer support read models with explicit permissions and GLOBAL Data Scope.
+- Staff lifecycle administration, password reset, role replacement and Data Scope replacement with server-side validation and self-lockout safeguards.
+- Append-only `audit_logs` schema/migration, privileged Staff administration audit writes and protected audit reads.
+- System status / audit Admin views without introducing an unrestricted generic configuration store.
+- Existing M12–M19 authorization, state-machine and ledger semantics remain authoritative.
+- M21 finance-ledger, controlled export and formal finance reconciliation/reporting remain out of scope.
+
+Final local verification on 2026-09-19:
+
+- `pnpm check` — passed.
+- `drizzle-kit check` — passed.
+- API PostgreSQL integration — 28 files / 134 tests passed.
+- Worker PostgreSQL integration — 4 files / 15 tests passed.
+- Playwright E2E — 1 test passed.
+- `git diff --check` — passed.
+- PostgreSQL and Redis dependencies were healthy during integration verification.
+
+The milestone is ready for PR review; merge remains subject to repository review and CI requirements.
