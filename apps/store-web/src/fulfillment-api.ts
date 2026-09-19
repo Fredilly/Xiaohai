@@ -28,14 +28,22 @@ async function request(path: string, token: string, method = 'GET', body?: unkno
   return response.json() as Promise<unknown>;
 }
 
-export async function loadFulfillment(token: string) {
+function withStore(path: string, storeId?: string) {
+  if (!storeId) return path;
+  const params = new URLSearchParams({ storeId });
+  return `${path}?${params.toString()}`;
+}
+
+export async function loadFulfillment(token: string, storeId?: string) {
   return fulfillmentStaffListResponseSchema.parse(
-    await request('/api/v1/staff/fulfillment', token),
+    await request(withStore('/api/v1/staff/fulfillment', storeId), token),
   );
 }
 
-export async function loadDeliveryZones(token: string) {
-  return deliveryZoneListResponseSchema.parse(await request('/api/v1/staff/delivery-zones', token));
+export async function loadDeliveryZones(token: string, storeId?: string) {
+  return deliveryZoneListResponseSchema.parse(
+    await request(withStore('/api/v1/staff/delivery-zones', storeId), token),
+  );
 }
 
 export async function createDeliveryZone(
