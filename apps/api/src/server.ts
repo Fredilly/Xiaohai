@@ -48,6 +48,8 @@ import { FranchiseService } from './franchise/franchise-service.js';
 import { registerFranchiseRoutes } from './franchise/franchise-routes.js';
 import { CommissionService } from './commission/commission-service.js';
 import { registerCommissionRoutes } from './commission/commission-routes.js';
+import { AuditService } from './hq/audit-service.js';
+import { registerAuditRoutes } from './hq/audit-routes.js';
 import { HqReadService } from './hq/hq-read-service.js';
 import { registerHqReadRoutes } from './hq/hq-read-routes.js';
 import { StaffAdminService } from './hq/staff-admin-service.js';
@@ -129,6 +131,7 @@ registerStaffAdminRoutes(app, {
   staffAdmin: new StaffAdminService(db, passwordHasher),
   staffAuthorization,
 });
+registerAuditRoutes(app, { audit: new AuditService(db), staffAuthorization });
 const aiQueue = new RedisAiQueue(config.REDIS_URL, () =>
   app.log.error({ errorCode: 'REDIS_UNAVAILABLE' }, 'AI queue Redis error'),
 );
