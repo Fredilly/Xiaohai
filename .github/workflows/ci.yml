@@ -13,9 +13,101 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  verify:
+  changes:
+    name: classify changes
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    outputs:
+      risky: ${{ steps.classify.outputs.risky }}
+      deps: ${{ steps.classify.outputs.deps }}
+      schema: ${{ steps.classify.outputs.schema }}
+      migration: ${{ steps.classify.outputs.migration }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: classify
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          set -euo pipefail
+          base="$BASE_SHA"
+          if [ -z "$base" ] || [ "$base" = "0000000000000000000000000000000000000000" ]; then
+            base="$(git rev-parse HEAD^)"
+          fi
+          files="$(git diff --name-only "$base"...HEAD)"
+          printf '%s\n' "$files"
+
+          risky=false
+          deps=false
+          schema=false
+          migration=false
+
+          if printf '%s\n' "$files" | grep -Eq '^(apps/api/|apps/worker/|packages/(db|domain|contracts|validation|config)/|\.github/workflows/)'; then
+            risky=true
+          fi
+          if printf '%s\n' "$files" | grep -Eq '(^|/)(package\.json|pnpm-lock\.yaml)$'; then
+            deps=true
+          fi
+          if printf '%s\n' "$files" | grep -Eq '^packages/db/src/([^/]*-schema|schema)\.ts$'; then
+            schema=true
+          fi
+          if printf '%s\n' "$files" | grep -Eq '^packages/db/migrations/'; then
+            migration=true
+          fi
+
+          echo "risky=$risky" >> "$GITHUB_OUTPUT"
+          echo "deps=$deps" >> "$GITHUB_OUTPUT"
+          echo "schema=$schema" >> "$GITHUB_OUTPUT"
+          echo "migration=$migration" >> "$GITHUB_OUTPUT"
+
+  fast:
+    name: fast checks
+    needs: changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Workspace, Mini Program and secret checks
+        run: pnpm check:workspace && pnpm check:miniapp && pnpm check:secrets
+      - name: Format, lint and typecheck
+        run: pnpm format:check && pnpm lint && pnpm typecheck
+      - name: Unit tests
+        run: pnpm test
+      - name: Build
+        run: pnpm build
+      - name: Verify built workspace imports with plain Node
+        run: pnpm --filter @xiaohai/api exec node -e "Promise.all([import('@xiaohai/config'), import('@xiaohai/contracts'), import('@xiaohai/db'), import('@xiaohai/domain')])"
+      - name: High severity production dependency audit
+        if: needs.changes.outputs.deps == 'true'
+        run: pnpm audit --prod --audit-level high
+
+  migration-guard:
+    name: migration guard
+    needs: changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Require migration for schema changes
+        if: needs.changes.outputs.schema == 'true' && needs.changes.outputs.migration != 'true'
+        run: |
+          echo "::error::Database schema changed without a Drizzle migration under packages/db/migrations/."
+          exit 1
+      - name: No migration mismatch
+        if: needs.changes.outputs.schema != 'true' || needs.changes.outputs.migration == 'true'
+        run: echo "Migration guard passed."
+
+  critical:
+    name: critical integration
+    needs: changes
+    if: needs.changes.outputs.risky == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     services:
       postgres:
         image: postgres:17-alpine
@@ -54,10 +146,30 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm check
-      - name: Verify built workspace imports with plain Node
-        run: pnpm --filter @xiaohai/api exec node -e "Promise.all([import('@xiaohai/config'), import('@xiaohai/contracts'), import('@xiaohai/db'), import('@xiaohai/domain')])"
       - run: pnpm --filter @xiaohai/db db:check
       - run: pnpm --filter @xiaohai/db db:migrate
       - run: pnpm test:integration
       - run: pnpm test:e2e
+
+  gate:
+    name: merge gate
+    if: always()
+    needs: [changes, fast, migration-guard, critical]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enforce required outcomes
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          FAST: ${{ needs.fast.result }}
+          MIGRATION: ${{ needs.migration-guard.result }}
+          CRITICAL: ${{ needs.critical.result }}
+        run: |
+          set -euo pipefail
+          [ "$CHANGES" = "success" ]
+          [ "$FAST" = "success" ]
+          [ "$MIGRATION" = "success" ]
+          if [ "$CRITICAL" != "success" ] && [ "$CRITICAL" != "skipped" ]; then
+            echo "::error::Critical integration checks did not pass."
+            exit 1
+          fi
+          echo "All required merge gates passed."
