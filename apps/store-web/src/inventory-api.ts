@@ -6,8 +6,14 @@ import {
 const env = import.meta.env as { readonly VITE_API_BASE_URL?: unknown };
 const base =
   typeof env.VITE_API_BASE_URL === 'string' ? env.VITE_API_BASE_URL : 'http://127.0.0.1:3000';
-export async function loadInventory(token: string) {
-  return inventoryListResponseSchema.parse(await request('/api/v1/staff/inventory', token));
+
+export async function loadInventory(token: string, storeId?: string) {
+  const params = new URLSearchParams();
+  if (storeId) params.set('storeId', storeId);
+  const query = params.size ? `?${params.toString()}` : '';
+  return inventoryListResponseSchema.parse(
+    await request(`/api/v1/staff/inventory${query}`, token),
+  );
 }
 export async function issueInventory(token: string, input: InventoryMutationRequest) {
   return await request('/api/v1/staff/inventory/issues', token, 'POST', input);
