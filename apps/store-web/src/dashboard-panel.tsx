@@ -33,6 +33,7 @@ export function DashboardPanel({ token, me, currentStore }: Props) {
   const canInventory = me.permissions.includes('inventory.read');
   const canFulfillment = me.permissions.includes('fulfillment.read');
   const canRental = me.permissions.includes('rental.read');
+  const canManageStore = me.permissions.includes('stores.manage');
 
   useEffect(() => {
     if (!currentStore) {
@@ -106,6 +107,11 @@ export function DashboardPanel({ token, me, currentStore }: Props) {
     [summary],
   );
 
+  const visibleModules = useMemo(
+    () => storeModules.slice(1).filter((item) => item.key !== 'manager' || canManageStore),
+    [canManageStore],
+  );
+
   return (
     <>
       <section className="hero">
@@ -144,7 +150,7 @@ export function DashboardPanel({ token, me, currentStore }: Props) {
       </section>
 
       <section className="quick-grid">
-        {storeModules.slice(1).map((item) => (
+        {visibleModules.map((item) => (
           <button
             key={item.key}
             onClick={() => {
