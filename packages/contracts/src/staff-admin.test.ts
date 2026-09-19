@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   staffAdminAccountSchema,
+  staffAdminCreateAccountSchema,
   staffAdminListQuerySchema,
+  staffAdminReplaceDataScopesSchema,
+  staffAdminReplaceRolesSchema,
   staffAdminRolesResponseSchema,
 } from './staff-admin.js';
 
@@ -41,5 +44,47 @@ describe('M20 Staff admin contracts', () => {
         ],
       }).items,
     ).toHaveLength(1);
+  });
+
+  it('validates Staff creation and bounded RBAC replacement payloads', () => {
+    expect(
+      staffAdminCreateAccountSchema.parse({
+        loginIdentifier: ' ops@example.com ',
+        password: 'a-secure-passphrase',
+      }),
+    ).toMatchObject({ loginIdentifier: 'ops@example.com', enabled: true });
+    expect(
+      staffAdminCreateAccountSchema.safeParse({
+        loginIdentifier: 'ops@example.com',
+        password: 'short',
+      }).success,
+    ).toBe(false);
+
+    const roleId = '33333333-3333-4333-8333-333333333333';
+    expect(staffAdminReplaceRolesSchema.parse({ roleIds: [roleId] })).toEqual({ roleIds: [roleId] });
+    expect(staffAdminReplaceRolesSchema.safeParse({ roleIds: [roleId, roleId] }).success).toBe(false);
+  });
+
+  it('enforces valid and non-ambiguous Data Scope replacement', () => {
+    const storeId = '44444444-4444-4444-8444-444444444444';
+    expect(
+      staffAdminReplaceDataScopesSchema.parse({
+        dataScopes: [{ type: 'STORE', id: storeId }],
+      }),
+    ).toEqual({ dataScopes: [{ type: 'STORE', id: storeId }] });
+
+    expect(
+      staffAdminReplaceDataScopesSchema.safeParse({
+        dataScopes: [{ type: 'STORE', id: null }],
+      }).success,
+    ).toBe(false);
+    expect(
+      staffAdminReplaceDataScopesSchema.safeParse({
+        dataScopes: [
+          { type: 'GLOBAL', id: null },
+          { type: 'STORE', id: storeId },
+        ],
+      }).success,
+    ).toBe(false);
   });
 });
