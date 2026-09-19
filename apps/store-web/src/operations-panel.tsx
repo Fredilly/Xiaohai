@@ -258,7 +258,9 @@ export function OperationsPanel({ token, storeId, stores, permissions }: Props) 
             {transactions.slice(0, 8).map((item) => (
               <div className="compact-row" key={item.id}>
                 <span>{item.transactionType}</span>
-                <strong>{item.quantityDelta > 0 ? `+${item.quantityDelta}` : item.quantityDelta}</strong>
+                <strong>
+                  {item.quantityDelta > 0 ? `+${item.quantityDelta}` : item.quantityDelta}
+                </strong>
                 <small>{new Date(item.createdAt).toLocaleString()}</small>
               </div>
             ))}
@@ -274,19 +276,33 @@ export function OperationsPanel({ token, storeId, stores, permissions }: Props) 
           <h3>采购与收货</h3>
           <form className="ops-form" onSubmit={(event) => void createPo(event)}>
             <select name="supplierId" required defaultValue="">
-              <option value="" disabled>选择供应商</option>
+              <option value="" disabled>
+                选择供应商
+              </option>
               {suppliers.map((supplier) => (
-                <option key={supplier.id} value={supplier.id}>{supplier.name}</option>
+                <option key={supplier.id} value={supplier.id}>
+                  {supplier.name}
+                </option>
               ))}
             </select>
             <select name="skuId" required defaultValue="">
-              <option value="" disabled>选择 SKU</option>
+              <option value="" disabled>
+                选择 SKU
+              </option>
               {balances.map((item) => (
-                <option key={item.skuId} value={item.skuId}>{item.skuName} · {item.skuCode}</option>
+                <option key={item.skuId} value={item.skuId}>
+                  {item.skuName} · {item.skuCode}
+                </option>
               ))}
             </select>
             <input name="quantity" type="number" min="1" step="1" placeholder="采购数量" required />
-            <input name="unitCostMinor" type="number" min="0" step="1" placeholder="单价（分，可选）" />
+            <input
+              name="unitCostMinor"
+              type="number"
+              min="0"
+              step="1"
+              placeholder="单价（分，可选）"
+            />
             <input name="notes" maxLength={500} placeholder="备注（可选）" />
             <button disabled={busy || !suppliers.length || !balances.length}>创建采购单</button>
           </form>
@@ -296,15 +312,26 @@ export function OperationsPanel({ token, storeId, stores, permissions }: Props) 
               <span>{purchaseOrder.status}</span>
               {purchaseOrder.status === 'DRAFT' && (
                 <>
-                  <button disabled={busy} onClick={() => void purchaseAction('SUBMIT')}>提交</button>
-                  <button disabled={busy} onClick={() => void purchaseAction('CANCEL')}>取消</button>
+                  <button disabled={busy} onClick={() => void purchaseAction('SUBMIT')}>
+                    提交
+                  </button>
+                  <button disabled={busy} onClick={() => void purchaseAction('CANCEL')}>
+                    取消
+                  </button>
                 </>
               )}
-              {(purchaseOrder.status === 'SUBMITTED' || purchaseOrder.status === 'PARTIALLY_RECEIVED') && canReceive && !receipt && (
-                <button disabled={busy} onClick={() => void receiveOutstanding()}>创建剩余数量收货单</button>
-              )}
+              {(purchaseOrder.status === 'SUBMITTED' ||
+                purchaseOrder.status === 'PARTIALLY_RECEIVED') &&
+                canReceive &&
+                !receipt && (
+                  <button disabled={busy} onClick={() => void receiveOutstanding()}>
+                    创建剩余数量收货单
+                  </button>
+                )}
               {receipt && receipt.status === 'DRAFT' && canReceive && (
-                <button disabled={busy} onClick={() => void postReceipt()}>过账 {receipt.receiptNumber}</button>
+                <button disabled={busy} onClick={() => void postReceipt()}>
+                  过账 {receipt.receiptNumber}
+                </button>
               )}
               {receipt?.status === 'POSTED' && <span>收货已过账</span>}
             </div>
@@ -317,9 +344,13 @@ export function OperationsPanel({ token, storeId, stores, permissions }: Props) 
           <h3>库存盘点</h3>
           <form className="ops-form compact-form" onSubmit={(event) => void createCount(event)}>
             <select name="skuId" required defaultValue="">
-              <option value="" disabled>选择盘点 SKU</option>
+              <option value="" disabled>
+                选择盘点 SKU
+              </option>
               {balances.map((item) => (
-                <option key={item.skuId} value={item.skuId}>{item.skuName} · 账面 {item.onHand}</option>
+                <option key={item.skuId} value={item.skuId}>
+                  {item.skuName} · 账面 {item.onHand}
+                </option>
               ))}
             </select>
             <button disabled={busy || !balances.length}>创建盘点单</button>
@@ -330,21 +361,37 @@ export function OperationsPanel({ token, storeId, stores, permissions }: Props) 
               <span>{stocktake.status}</span>
               {stocktake.status === 'DRAFT' && (
                 <>
-                  <button disabled={busy} onClick={() => void stocktakeAction('START')}>开始盘点</button>
-                  <button disabled={busy} onClick={() => void stocktakeAction('CANCEL')}>取消</button>
+                  <button disabled={busy} onClick={() => void stocktakeAction('START')}>
+                    开始盘点
+                  </button>
+                  <button disabled={busy} onClick={() => void stocktakeAction('CANCEL')}>
+                    取消
+                  </button>
                 </>
               )}
               {stocktake.status === 'COUNTING' && (
                 <form className="inline-count" onSubmit={(event) => void saveCount(event)}>
-                  <input name="countedQuantity" type="number" min="0" step="1" placeholder="实盘数量" required />
+                  <input
+                    name="countedQuantity"
+                    type="number"
+                    min="0"
+                    step="1"
+                    placeholder="实盘数量"
+                    required
+                  />
                   <button disabled={busy}>保存数量</button>
                 </form>
               )}
-              {stocktake.status === 'COUNTING' && stocktake.items.every((item) => item.countedQuantity !== null) && (
-                <button disabled={busy} onClick={() => void stocktakeAction('REVIEW')}>复核</button>
-              )}
+              {stocktake.status === 'COUNTING' &&
+                stocktake.items.every((item) => item.countedQuantity !== null) && (
+                  <button disabled={busy} onClick={() => void stocktakeAction('REVIEW')}>
+                    复核
+                  </button>
+                )}
               {stocktake.status === 'REVIEWED' && (
-                <button disabled={busy} onClick={() => void stocktakeAction('POST')}>过账差异</button>
+                <button disabled={busy} onClick={() => void stocktakeAction('POST')}>
+                  过账差异
+                </button>
               )}
             </div>
           )}
@@ -354,17 +401,28 @@ export function OperationsPanel({ token, storeId, stores, permissions }: Props) 
       {canTransfer && canRead && (
         <section className="ops-card ops-workflow">
           <h3>门店调拨</h3>
-          <form className="ops-form compact-form" onSubmit={(event) => void createTransferDoc(event)}>
+          <form
+            className="ops-form compact-form"
+            onSubmit={(event) => void createTransferDoc(event)}
+          >
             <select name="destinationStoreId" required defaultValue="">
-              <option value="" disabled>选择目标门店</option>
+              <option value="" disabled>
+                选择目标门店
+              </option>
               {otherStores.map((store) => (
-                <option key={store.id} value={store.id}>{store.name} · {store.city}</option>
+                <option key={store.id} value={store.id}>
+                  {store.name} · {store.city}
+                </option>
               ))}
             </select>
             <select name="skuId" required defaultValue="">
-              <option value="" disabled>选择 SKU</option>
+              <option value="" disabled>
+                选择 SKU
+              </option>
               {balances.map((item) => (
-                <option key={item.skuId} value={item.skuId}>{item.skuName} · 可用 {item.available}</option>
+                <option key={item.skuId} value={item.skuId}>
+                  {item.skuName} · 可用 {item.available}
+                </option>
               ))}
             </select>
             <input name="quantity" type="number" min="1" step="1" placeholder="调拨数量" required />
@@ -376,15 +434,23 @@ export function OperationsPanel({ token, storeId, stores, permissions }: Props) 
               <span>{transfer.status}</span>
               {transfer.status === 'DRAFT' && (
                 <>
-                  <button disabled={busy} onClick={() => void transferAction('SUBMIT')}>提交</button>
-                  <button disabled={busy} onClick={() => void transferAction('CANCEL')}>取消</button>
+                  <button disabled={busy} onClick={() => void transferAction('SUBMIT')}>
+                    提交
+                  </button>
+                  <button disabled={busy} onClick={() => void transferAction('CANCEL')}>
+                    取消
+                  </button>
                 </>
               )}
               {transfer.status === 'SUBMITTED' && (
-                <button disabled={busy} onClick={() => void transferAction('DISPATCH')}>确认发出</button>
+                <button disabled={busy} onClick={() => void transferAction('DISPATCH')}>
+                  确认发出
+                </button>
               )}
               {transfer.status === 'IN_TRANSIT' && (
-                <button disabled={busy} onClick={() => void transferAction('RECEIVE')}>目标门店确认收货</button>
+                <button disabled={busy} onClick={() => void transferAction('RECEIVE')}>
+                  目标门店确认收货
+                </button>
               )}
             </div>
           )}

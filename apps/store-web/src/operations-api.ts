@@ -58,20 +58,13 @@ export async function loadSuppliers(token: string) {
   );
 }
 
-export async function createPurchaseOrder(
-  token: string,
-  input: CreatePurchaseOrderRequest,
-) {
+export async function createPurchaseOrder(token: string, input: CreatePurchaseOrderRequest) {
   return purchaseOrderViewSchema.parse(
     await request('/api/v1/staff/inventory/purchase-orders', token, 'POST', input),
   );
 }
 
-export async function actOnPurchaseOrder(
-  token: string,
-  id: string,
-  action: 'SUBMIT' | 'CANCEL',
-) {
+export async function actOnPurchaseOrder(token: string, id: string, action: 'SUBMIT' | 'CANCEL') {
   return purchaseOrderSchema.parse(
     await request(`/api/v1/staff/inventory/purchase-orders/${id}/actions`, token, 'POST', {
       action,
@@ -79,10 +72,7 @@ export async function actOnPurchaseOrder(
   );
 }
 
-export async function createGoodsReceipt(
-  token: string,
-  input: CreateGoodsReceiptRequest,
-) {
+export async function createGoodsReceipt(token: string, input: CreateGoodsReceiptRequest) {
   return goodsReceiptViewSchema.parse(
     await request('/api/v1/staff/inventory/goods-receipts', token, 'POST', input),
   );
@@ -116,10 +106,7 @@ export async function actOnStocktake(
   );
 }
 
-export async function createStockTransfer(
-  token: string,
-  input: CreateStockTransferRequest,
-) {
+export async function createStockTransfer(token: string, input: CreateStockTransferRequest) {
   return stockTransferViewSchema.parse(
     await request('/api/v1/staff/inventory/transfers', token, 'POST', input),
   );

@@ -203,7 +203,9 @@ export const goodsReceiptSchema = z.object({
   createdAt: timestampSchema,
   updatedAt: timestampSchema,
 });
-export const goodsReceiptViewSchema = goodsReceiptSchema.extend({ items: z.array(goodsReceiptItemSchema) });
+export const goodsReceiptViewSchema = goodsReceiptSchema.extend({
+  items: z.array(goodsReceiptItemSchema),
+});
 
 export const inventoryMutationRequestSchema = z
   .object({
@@ -315,7 +317,9 @@ export const stockTransferSchema = z.object({
   createdAt: timestampSchema,
   updatedAt: timestampSchema,
 });
-export const stockTransferViewSchema = stockTransferSchema.extend({ items: z.array(stockTransferItemSchema) });
+export const stockTransferViewSchema = stockTransferSchema.extend({
+  items: z.array(stockTransferItemSchema),
+});
 
 export const inventoryListQuerySchema = z
   .object({
