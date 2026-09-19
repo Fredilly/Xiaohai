@@ -4,29 +4,34 @@ import { adjustInventory, issueInventory, loadInventory } from './inventory-api'
 
 type Balance = Awaited<ReturnType<typeof loadInventory>>['items'][number];
 
-export function InventoryPanel({ token }: { token: string }) {
+export function InventoryPanel({ token, storeId }: { token: string; storeId: string }) {
   const [items, setItems] = useState<Balance[]>([]);
   const [selectedKey, setSelectedKey] = useState('');
   const [status, setStatus] = useState('正在加载库存…');
   const [busy, setBusy] = useState(false);
   const refresh = useCallback(async () => {
     try {
-      const result = await loadInventory(token);
+      const result = await loadInventory(token, storeId);
       setItems(result.items);
-      setStatus(result.items.length ? '库存已从服务端加载' : '授权范围内暂无库存');
+      setStatus(result.items.length ? '当前门店库存已从服务端加载' : '当前门店暂无库存');
     } catch (error) {
       setStatus(error instanceof Error ? `加载失败：${error.message}` : '加载失败');
     }
-  }, [token]);
+  }, [storeId, token]);
   useEffect(() => {
     void refresh();
   }, [refresh]);
 
+  useEffect(() => {
+    setSelectedKey('');
+  }, [storeId]);
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const formElement = event.currentTarget;
     const row = items.find((item) => `${item.storeId}:${item.skuId}` === selectedKey);
     if (!row) return;
-    const form = new FormData(event.currentTarget);
+    const form = new FormData(formElement);
     const quantity = Number(form.get('quantity'));
     const operation = form.get('operation');
     const reasonValue = form.get('reason');
@@ -53,7 +58,7 @@ export function InventoryPanel({ token }: { token: string }) {
         });
       setStatus('操作成功，库存与流水已同步更新');
       await refresh();
-      event.currentTarget.reset();
+      formElement.reset();
       setSelectedKey('');
     } catch (error) {
       setStatus(error instanceof Error ? `操作失败：${error.message}` : '操作失败');
@@ -66,10 +71,10 @@ export function InventoryPanel({ token }: { token: string }) {
     <section className="panel inventory-panel">
       <span className="tag">M14 Inventory Operations</span>
       <h2>库存操作</h2>
-      <p>余额、版本与权限均由服务端确认。完整采购、入库、盘点与调拨流程通过同一 Staff API 提供。</p>
+      <p>当前门店由 M19 工作台选择器确定；余额、版本、写入权限与 Data Scope 仍由服务端确认。</p>
       <div className="inventory-table">
         <div className="inventory-row heading">
-          <span>门店 / SKU</span>
+          <span>SKU</span>
           <span>现存 / 可用</span>
           <span>版本</span>
         </div>
@@ -77,9 +82,7 @@ export function InventoryPanel({ token }: { token: string }) {
           <div className="inventory-row" key={`${item.storeId}:${item.skuId}`}>
             <span>
               <strong>{item.skuName}</strong>
-              <small>
-                {item.storeId} · {item.skuCode}
-              </small>
+              <small>{item.skuCode}</small>
             </span>
             <span>
               {item.onHand} / {item.available}
