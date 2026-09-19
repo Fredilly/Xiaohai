@@ -9,9 +9,10 @@ import { ContentManager } from './content-manager';
 import { AiManager } from './ai-manager';
 import { FranchiseManager } from './franchise-manager';
 import { CommissionManager } from './commission-manager';
+import { HqDashboard } from './hq-dashboard';
 import { HqOperationsManager } from './hq-operations-manager';
 import { getStaffMe, loginStaff } from './staff-auth';
-import { adminModules, type ModulePreview } from './mock-data';
+import { adminModules } from './mock-data';
 
 const tokenKey = 'staff_session_token';
 
@@ -119,7 +120,7 @@ function Shell({
           </div>
         </header>
         {active === 'dashboard' ? (
-          <Dashboard me={me} modules={visibleModules} />
+          <HqDashboard token={token} me={me} modules={visibleModules} />
         ) : active === 'stores' ? (
           <HqOperationsManager token={token} me={me} mode="stores" />
         ) : active === 'inventory' ? (
@@ -147,43 +148,6 @@ function Shell({
         )}
       </main>
     </div>
-  );
-}
-
-function Dashboard({ me, modules }: { me: StaffMeResponse; modules: ModulePreview[] }) {
-  return (
-    <>
-      <section className="hero">
-        <div>
-          <span className="badge">M20 HQ consolidation</span>
-          <h2>M4–M19 production domains → HQ Admin</h2>
-          <p>
-            正在把既有商城、支付、内容、AI、门店、库存、租借、履约、加盟和佣金能力汇总到总部后台。
-          </p>
-        </div>
-        <div className="hero-note">
-          <strong>{me.permissions.length}</strong> permissions ·{' '}
-          <strong>{me.dataScopes.length}</strong> scopes
-        </div>
-      </section>
-      <section className="panel">
-        <h3>当前 Staff 可见模块</h3>
-        <div className="module-grid">
-          {modules.slice(1).map((item) => (
-            <button
-              key={item.key}
-              onClick={() => {
-                window.location.hash = `#/${item.key}`;
-              }}
-            >
-              <strong>{item.label}</strong>
-              <span>{item.description}</span>
-              <em>{item.status}</em>
-            </button>
-          ))}
-        </div>
-      </section>
-    </>
   );
 }
 
