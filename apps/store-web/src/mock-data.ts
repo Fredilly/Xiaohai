@@ -27,7 +27,7 @@ export const storeModules = [
   {
     key: 'operations',
     label: '门店运营',
-    description: '采购、盘点、调拨与店长运营能力',
-    status: 'M19 待接入',
+    description: '采购收货、低库存、盘点、调拨与库存流水',
+    status: 'M14 / M19 已接入',
   },
 ] as const;
