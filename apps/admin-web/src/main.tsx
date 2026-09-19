@@ -9,9 +9,16 @@ import { ContentManager } from './content-manager';
 import { AiManager } from './ai-manager';
 import { FranchiseManager } from './franchise-manager';
 import { CommissionManager } from './commission-manager';
+import { HqDashboard } from './hq-dashboard';
+import { HqOperationsManager } from './hq-operations-manager';
+import { HqSupportManager } from './hq-support-manager';
+import { StaffAdminManager } from './staff-admin-manager';
+import { SystemManager } from './system-manager';
 import { getStaffMe, loginStaff } from './staff-auth';
 import { adminModules } from './mock-data';
+
 const tokenKey = 'staff_session_token';
+
 function Login({ onSignedIn }: { onSignedIn: (token: string) => void }) {
   const [status, setStatus] = useState('请使用 Staff Account 登录');
   const [busy, setBusy] = useState(false);
@@ -54,6 +61,7 @@ function Login({ onSignedIn }: { onSignedIn: (token: string) => void }) {
     </main>
   );
 }
+
 function Shell({
   me,
   token,
@@ -70,10 +78,18 @@ function Shell({
     window.addEventListener('hashchange', sync);
     return () => window.removeEventListener('hashchange', sync);
   }, []);
+  const visibleModules = useMemo(
+    () =>
+      adminModules.filter(
+        (item) => !item.requiredPermission || me.permissions.includes(item.requiredPermission),
+      ),
+    [me.permissions],
+  );
   const module = useMemo(
-    () => adminModules.find((i) => i.key === active) ?? adminModules[0]!,
+    () => adminModules.find((item) => item.key === active) ?? adminModules[0]!,
     [active],
   );
+
   return (
     <div className="shell">
       <aside>
@@ -82,15 +98,15 @@ function Shell({
           <span>总部后台</span>
         </div>
         <nav>
-          {adminModules.map((i) => (
+          {visibleModules.map((item) => (
             <button
-              className={i.key === active ? 'nav-active' : ''}
-              key={i.key}
+              className={item.key === active ? 'nav-active' : ''}
+              key={item.key}
               onClick={() => {
-                window.location.hash = `#/${i.key}`;
+                window.location.hash = `#/${item.key}`;
               }}
             >
-              {i.label}
+              {item.label}
             </button>
           ))}
         </nav>
@@ -107,7 +123,27 @@ function Shell({
           </div>
         </header>
         {active === 'dashboard' ? (
-          <Dashboard me={me} />
+          <HqDashboard token={token} me={me} modules={visibleModules} />
+        ) : active === 'stores' ? (
+          <HqOperationsManager token={token} me={me} mode="stores" />
+        ) : active === 'inventory' ? (
+          <HqOperationsManager token={token} me={me} mode="inventory" />
+        ) : active === 'orders' ? (
+          <HqSupportManager token={token} mode="orders" />
+        ) : active === 'users' ? (
+          <HqSupportManager token={token} mode="users" />
+        ) : active === 'rental' ? (
+          <HqOperationsManager token={token} me={me} mode="rental" />
+        ) : active === 'fulfillment' ? (
+          <HqOperationsManager token={token} me={me} mode="fulfillment" />
+        ) : active === 'staff' ? (
+          <StaffAdminManager
+            token={token}
+            currentStaffId={me.staff.id}
+            canManage={me.permissions.includes('staff.manage')}
+          />
+        ) : active === 'system' ? (
+          <SystemManager token={token} me={me} modules={visibleModules} />
         ) : active === 'cms' ? (
           <CmsManager token={token} />
         ) : active === 'finance' ? (
@@ -129,40 +165,7 @@ function Shell({
     </div>
   );
 }
-function Dashboard({ me }: { me: StaffMeResponse }) {
-  return (
-    <>
-      <section className="hero">
-        <div>
-          <span className="badge">Production milestones</span>
-          <h2>M4–M17 production modules</h2>
-          <p>商城、支付、内容、AI、门店、租借、履约与加盟能力按服务端权限和状态机运行。</p>
-        </div>
-        <div className="hero-note">
-          <strong>{me.permissions.length}</strong> permissions ·{' '}
-          <strong>{me.dataScopes.length}</strong> scopes
-        </div>
-      </section>
-      <section className="panel">
-        <h3>模块接入状态</h3>
-        <div className="module-grid">
-          {adminModules.slice(1).map((i) => (
-            <button
-              key={i.key}
-              onClick={() => {
-                window.location.hash = `#/${i.key}`;
-              }}
-            >
-              <strong>{i.label}</strong>
-              <span>{i.description}</span>
-              <em>{i.status}</em>
-            </button>
-          ))}
-        </div>
-      </section>
-    </>
-  );
-}
+
 function Preview({
   title,
   description,
@@ -174,25 +177,28 @@ function Preview({
 }) {
   return (
     <section className="panel preview">
-      <span className="badge">未进入当前里程碑</span>
+      <span className="badge">M20 待接入</span>
       <h2>{title}</h2>
       <p>{description}</p>
       <div className="empty-state">
         <strong>不伪造正式能力</strong>
-        <span>对应 API、数据库与写操作将在所属里程碑实现。</span>
+        <span>对应 API、数据库与写操作会在 M20 所属阶段补齐。</span>
       </div>
       {title === 'Staff / 权限' && (
         <div className="context">
           <p>Permissions: {me.permissions.join(' · ') || '暂无'}</p>
           <p>
             Data Scopes:{' '}
-            {me.dataScopes.map((s) => `${s.type}${s.id ? `:${s.id}` : ''}`).join(' · ') || '暂无'}
+            {me.dataScopes
+              .map((scope) => `${scope.type}${scope.id ? `:${scope.id}` : ''}`)
+              .join(' · ') || '暂无'}
           </p>
         </div>
       )}
     </section>
   );
 }
+
 function App() {
   const [token, setToken] = useState(() => sessionStorage.getItem(tokenKey));
   const [me, setMe] = useState<StaffMeResponse | null>(null);
@@ -220,13 +226,12 @@ function App() {
     setToken(null);
     setMe(null);
   };
-  if (checking) return <main className="center-state">正在验证 Staff Session…</main>;
-  if (!token || !me) return <Login onSignedIn={setToken} />;
+  if (!token) return <Login onSignedIn={setToken} />;
+  if (checking || !me) return <main className="login-page">正在验证 Staff Session…</main>;
   return <Shell me={me} token={token} onLogout={logout} />;
 }
-const root = document.querySelector<HTMLDivElement>('#root');
-if (!root) throw new Error('Root element is missing');
-createRoot(root).render(
+
+createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <App />
   </StrictMode>,
