@@ -1,0 +1,18 @@
+import { staffStoresResponseSchema } from '@xiaohai/contracts/stores';
+
+const env = import.meta.env as { readonly VITE_API_BASE_URL?: unknown };
+const base =
+  typeof env.VITE_API_BASE_URL === 'string' ? env.VITE_API_BASE_URL : 'http://127.0.0.1:3000';
+
+export async function loadStaffStores(token: string) {
+  const response = await fetch(`${base}/api/v1/staff/stores`, {
+    headers: { authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as {
+      error?: { code?: string };
+    } | null;
+    throw new Error(payload?.error?.code ?? `HTTP_${response.status}`);
+  }
+  return staffStoresResponseSchema.parse(await response.json());
+}
