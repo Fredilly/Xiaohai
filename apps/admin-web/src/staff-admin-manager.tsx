@@ -287,7 +287,8 @@ export function StaffAdminManager({
                   />
                 </label>
                 <small>
-                  GLOBAL 必须单独使用；REGION / FRANCHISEE / STORE 后必须跟真实 UUID，服务端会验证目标是否存在。
+                  GLOBAL 必须单独使用；REGION / FRANCHISEE / STORE 后必须跟真实
+                  UUID，服务端会验证目标是否存在。
                 </small>
                 <button disabled={detail.id === currentStaffId}>替换 Data Scopes</button>
               </form>

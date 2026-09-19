@@ -205,7 +205,7 @@ suite('M20 Staff administration PostgreSQL integration', () => {
       payload: { loginIdentifier, password: initialPassword, enabled: true },
     });
     expect(createdResponse.statusCode).toBe(201);
-    const rawCreated = createdResponse.json() as unknown;
+    const rawCreated: unknown = createdResponse.json();
     expect(rawCreated).not.toHaveProperty('passwordHash');
     expect(rawCreated).not.toHaveProperty('password');
     const created = staffAdminAccountSchema.parse(rawCreated);
