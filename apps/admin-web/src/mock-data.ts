@@ -80,8 +80,9 @@ export const adminModules: ModulePreview[] = [
   {
     key: 'staff',
     label: 'Staff / 权限',
-    description: 'M20-C 将补齐 Staff 生命周期与 RBAC/Data Scope 管理',
-    status: '前端预览',
+    description: 'M20-C Staff、角色、权限与 Data Scope 管理',
+    status: '可查看',
+    requiredPermission: 'staff.read',
   },
   {
     key: 'system',
