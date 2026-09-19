@@ -20,7 +20,10 @@ type SuppliersResult = Awaited<ReturnType<typeof loadHqSuppliers>>;
 type RentalsResult = Awaited<ReturnType<typeof loadHqRentals>>;
 type FulfillmentResult = Awaited<ReturnType<typeof loadHqFulfillment>>;
 
-const modeMeta: Record<HqOperationsMode, { title: string; description: string; permission: string }> = {
+const modeMeta: Record<
+  HqOperationsMode,
+  { title: string; description: string; permission: string }
+> = {
   stores: {
     title: '组织 / 门店',
     description: '读取服务端授权范围内的区域与门店运营上下文。',
@@ -131,7 +134,8 @@ export function HqOperationsManager({
 
     void load()
       .catch((error: unknown) => {
-        if (!cancelled) setStatus(error instanceof Error ? error.message : 'HQ_OPERATIONS_LOAD_FAILED');
+        if (!cancelled)
+          setStatus(error instanceof Error ? error.message : 'HQ_OPERATIONS_LOAD_FAILED');
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -163,7 +167,10 @@ export function HqOperationsManager({
           {stores && mode !== 'stores' && (
             <label>
               门店筛选
-              <select value={selectedStoreId} onChange={(event) => setSelectedStoreId(event.target.value)}>
+              <select
+                value={selectedStoreId}
+                onChange={(event) => setSelectedStoreId(event.target.value)}
+              >
                 <option value="">全部授权范围</option>
                 {stores.stores.map((store) => (
                   <option key={store.id} value={store.id}>
@@ -173,7 +180,9 @@ export function HqOperationsManager({
               </select>
             </label>
           )}
-          {!canReadStores && mode !== 'stores' && <p>未授予 stores.read，当前按后端 Data Scope 汇总。</p>}
+          {!canReadStores && mode !== 'stores' && (
+            <p>未授予 stores.read，当前按后端 Data Scope 汇总。</p>
+          )}
           {loading && <p>加载中…</p>}
           {status && <p>加载失败：{status}</p>}
         </div>
@@ -263,7 +272,9 @@ function InventoryView({
       <section className="panel">
         <h3>采购上下文</h3>
         {canReadSuppliers ? (
-          <p>供应商：{suppliers?.suppliers.length ?? 0}（采购写操作继续由 procurement.manage 保护）</p>
+          <p>
+            供应商：{suppliers?.suppliers.length ?? 0}（采购写操作继续由 procurement.manage 保护）
+          </p>
         ) : (
           <p>当前 Staff 没有 procurement.manage，不加载供应商或采购能力。</p>
         )}

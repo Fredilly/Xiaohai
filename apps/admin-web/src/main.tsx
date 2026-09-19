@@ -157,7 +157,9 @@ function Dashboard({ me, modules }: { me: StaffMeResponse; modules: ModulePrevie
         <div>
           <span className="badge">M20 HQ consolidation</span>
           <h2>M4–M19 production domains → HQ Admin</h2>
-          <p>正在把既有商城、支付、内容、AI、门店、库存、租借、履约、加盟和佣金能力汇总到总部后台。</p>
+          <p>
+            正在把既有商城、支付、内容、AI、门店、库存、租借、履约、加盟和佣金能力汇总到总部后台。
+          </p>
         </div>
         <div className="hero-note">
           <strong>{me.permissions.length}</strong> permissions ·{' '}
@@ -208,8 +210,9 @@ function Preview({
           <p>Permissions: {me.permissions.join(' · ') || '暂无'}</p>
           <p>
             Data Scopes:{' '}
-            {me.dataScopes.map((scope) => `${scope.type}${scope.id ? `:${scope.id}` : ''}`).join(' · ') ||
-              '暂无'}
+            {me.dataScopes
+              .map((scope) => `${scope.type}${scope.id ? `:${scope.id}` : ''}`)
+              .join(' · ') || '暂无'}
           </p>
         </div>
       )}
