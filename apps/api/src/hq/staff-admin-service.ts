@@ -6,6 +6,7 @@ import type {
   StaffAdminReplaceRoles,
 } from '@xiaohai/contracts/staff-admin';
 import {
+  auditLogs,
   franchisees,
   permissions,
   regions,
@@ -29,6 +30,11 @@ type StaffRow = {
   lastLoginAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
+};
+
+export type StaffAdminAuditContext = {
+  actorStaffAccountId: string;
+  requestId: string;
 };
 
 export class StaffAdminError extends Error {
@@ -83,48 +89,88 @@ export class StaffAdminService {
     return (await this.enrichStaff([row]))[0]!;
   }
 
-  async createStaff(input: StaffAdminCreateAccount) {
+  async createStaff(input: StaffAdminCreateAccount, audit: StaffAdminAuditContext) {
     const now = new Date();
     const passwordHash = await this.passwordHasher.hash(input.password);
-    const [created] = await this.db
-      .insert(staffAccounts)
-      .values({
-        loginIdentifier: input.loginIdentifier,
-        passwordHash,
-        enabled: input.enabled,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .onConflictDoNothing({ target: staffAccounts.loginIdentifier })
-      .returning({ id: staffAccounts.id });
-    if (!created) throw new StaffAdminError('CONFLICT');
-    return this.getStaff(created.id);
+    const createdId = await this.db.transaction(async (tx) => {
+      const [created] = await tx
+        .insert(staffAccounts)
+        .values({
+          loginIdentifier: input.loginIdentifier,
+          passwordHash,
+          enabled: input.enabled,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .onConflictDoNothing({ target: staffAccounts.loginIdentifier })
+        .returning({ id: staffAccounts.id });
+      if (!created) throw new StaffAdminError('CONFLICT');
+
+      await tx.insert(auditLogs).values({
+        actorStaffAccountId: audit.actorStaffAccountId,
+        actionKey: 'staff.account.create',
+        resourceType: 'STAFF_ACCOUNT',
+        resourceId: created.id,
+        requestId: audit.requestId,
+        metadata: { enabled: input.enabled },
+      });
+
+      return created.id;
+    });
+
+    return this.getStaff(createdId);
   }
 
-  async setEnabled(id: string, enabled: boolean, actorStaffAccountId: string) {
-    if (id === actorStaffAccountId && !enabled) throw new StaffAdminError('SELF_LOCKOUT');
-    const [updated] = await this.db
-      .update(staffAccounts)
-      .set({ enabled, updatedAt: new Date() })
-      .where(eq(staffAccounts.id, id))
-      .returning({ id: staffAccounts.id });
-    if (!updated) throw new StaffAdminError('NOT_FOUND');
+  async setEnabled(id: string, enabled: boolean, audit: StaffAdminAuditContext) {
+    if (id === audit.actorStaffAccountId && !enabled) throw new StaffAdminError('SELF_LOCKOUT');
+
+    await this.db.transaction(async (tx) => {
+      const [updated] = await tx
+        .update(staffAccounts)
+        .set({ enabled, updatedAt: new Date() })
+        .where(eq(staffAccounts.id, id))
+        .returning({ id: staffAccounts.id });
+      if (!updated) throw new StaffAdminError('NOT_FOUND');
+
+      await tx.insert(auditLogs).values({
+        actorStaffAccountId: audit.actorStaffAccountId,
+        actionKey: 'staff.account.set_enabled',
+        resourceType: 'STAFF_ACCOUNT',
+        resourceId: id,
+        requestId: audit.requestId,
+        metadata: { enabled },
+      });
+    });
+
     return this.getStaff(id);
   }
 
-  async resetPassword(id: string, password: string) {
+  async resetPassword(id: string, password: string, audit: StaffAdminAuditContext) {
     const passwordHash = await this.passwordHasher.hash(password);
-    const [updated] = await this.db
-      .update(staffAccounts)
-      .set({ passwordHash, updatedAt: new Date() })
-      .where(eq(staffAccounts.id, id))
-      .returning({ id: staffAccounts.id });
-    if (!updated) throw new StaffAdminError('NOT_FOUND');
+
+    await this.db.transaction(async (tx) => {
+      const [updated] = await tx
+        .update(staffAccounts)
+        .set({ passwordHash, updatedAt: new Date() })
+        .where(eq(staffAccounts.id, id))
+        .returning({ id: staffAccounts.id });
+      if (!updated) throw new StaffAdminError('NOT_FOUND');
+
+      await tx.insert(auditLogs).values({
+        actorStaffAccountId: audit.actorStaffAccountId,
+        actionKey: 'staff.account.reset_password',
+        resourceType: 'STAFF_ACCOUNT',
+        resourceId: id,
+        requestId: audit.requestId,
+        metadata: {},
+      });
+    });
+
     return { ok: true as const };
   }
 
-  async replaceRoles(id: string, input: StaffAdminReplaceRoles, actorStaffAccountId: string) {
-    if (id === actorStaffAccountId) throw new StaffAdminError('SELF_LOCKOUT');
+  async replaceRoles(id: string, input: StaffAdminReplaceRoles, audit: StaffAdminAuditContext) {
+    if (id === audit.actorStaffAccountId) throw new StaffAdminError('SELF_LOCKOUT');
     await this.ensureStaffExists(id);
     await this.ensureRolesExist(input.roleIds);
 
@@ -139,6 +185,14 @@ export class StaffAdminService {
         );
       }
       await tx.update(staffAccounts).set({ updatedAt: new Date() }).where(eq(staffAccounts.id, id));
+      await tx.insert(auditLogs).values({
+        actorStaffAccountId: audit.actorStaffAccountId,
+        actionKey: 'staff.account.replace_roles',
+        resourceType: 'STAFF_ACCOUNT',
+        resourceId: id,
+        requestId: audit.requestId,
+        metadata: { roleIds: input.roleIds },
+      });
     });
 
     return this.getStaff(id);
@@ -147,9 +201,9 @@ export class StaffAdminService {
   async replaceDataScopes(
     id: string,
     input: StaffAdminReplaceDataScopes,
-    actorStaffAccountId: string,
+    audit: StaffAdminAuditContext,
   ) {
-    if (id === actorStaffAccountId) throw new StaffAdminError('SELF_LOCKOUT');
+    if (id === audit.actorStaffAccountId) throw new StaffAdminError('SELF_LOCKOUT');
     await this.ensureStaffExists(id);
     await this.ensureScopeTargetsExist(input.dataScopes);
 
@@ -165,6 +219,14 @@ export class StaffAdminService {
         );
       }
       await tx.update(staffAccounts).set({ updatedAt: new Date() }).where(eq(staffAccounts.id, id));
+      await tx.insert(auditLogs).values({
+        actorStaffAccountId: audit.actorStaffAccountId,
+        actionKey: 'staff.account.replace_data_scopes',
+        resourceType: 'STAFF_ACCOUNT',
+        resourceId: id,
+        requestId: audit.requestId,
+        metadata: { dataScopes: input.dataScopes },
+      });
     });
 
     return this.getStaff(id);
