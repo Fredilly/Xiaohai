@@ -73,13 +73,17 @@ export function DashboardPanel({ token, me, currentStore }: Props) {
       {
         label: '可售库存',
         value: summary.availableUnits,
-        detail: summary.inventorySkus === null ? '缺少 inventory.read' : `${summary.inventorySkus} 个 SKU`,
+        detail:
+          summary.inventorySkus === null
+            ? '缺少 inventory.read'
+            : `${summary.inventorySkus} 个 SKU`,
         target: 'inventory',
       },
       {
         label: '低库存',
         value: summary.lowStock,
-        detail: summary.outOfStock === null ? '缺少 inventory.read' : `其中缺货 ${summary.outOfStock}`,
+        detail:
+          summary.outOfStock === null ? '缺少 inventory.read' : `其中缺货 ${summary.outOfStock}`,
         target: 'operations',
       },
       {
@@ -114,7 +118,9 @@ export function DashboardPanel({ token, me, currentStore }: Props) {
         </p>
         <div className="scope">
           服务端 Data Scope：
-          {me.dataScopes.length ? me.dataScopes.map((item) => item.type).join(' · ') : '暂无授权范围'}
+          {me.dataScopes.length
+            ? me.dataScopes.map((item) => item.type).join(' · ')
+            : '暂无授权范围'}
         </div>
       </section>
 
