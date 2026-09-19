@@ -22,6 +22,12 @@
       "import": "./dist/hq.js",
       "default": "./dist/hq.js"
     },
+    "./staff-admin": {
+      "types": "./src/staff-admin.ts",
+      "development": "./src/staff-admin.ts",
+      "import": "./dist/staff-admin.js",
+      "default": "./dist/staff-admin.js"
+    },
     "./payments": {
       "types": "./src/payments.ts",
       "development": "./src/payments.ts",
