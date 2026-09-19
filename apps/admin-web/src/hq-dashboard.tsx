@@ -46,7 +46,9 @@ export function HqDashboard({ token, me, modules }: Props) {
             .then((result) => {
               next.storeCount = result.stores.length;
             })
-            .catch(() => errors.push('stores')),
+            .catch(() => {
+              errors.push('stores');
+            }),
         );
       }
 
@@ -56,7 +58,9 @@ export function HqDashboard({ token, me, modules }: Props) {
             .then((result) => {
               next.inventory = result.items;
             })
-            .catch(() => errors.push('inventory')),
+            .catch(() => {
+              errors.push('inventory');
+            }),
         );
       }
 
@@ -66,7 +70,9 @@ export function HqDashboard({ token, me, modules }: Props) {
             .then((result) => {
               next.rentals = result.items;
             })
-            .catch(() => errors.push('rental')),
+            .catch(() => {
+              errors.push('rental');
+            }),
         );
       }
 
@@ -76,7 +82,9 @@ export function HqDashboard({ token, me, modules }: Props) {
             .then((result) => {
               next.fulfillment = result.items;
             })
-            .catch(() => errors.push('fulfillment')),
+            .catch(() => {
+              errors.push('fulfillment');
+            }),
         );
       }
 
@@ -102,9 +110,7 @@ export function HqDashboard({ token, me, modules }: Props) {
         <div>
           <span className="badge">M20 HQ consolidation</span>
           <h2>M4–M19 production domains → HQ Admin</h2>
-          <p>
-            总部视图只汇总当前 Staff 已获服务端授权的真实数据；未授权领域不会伪装成 0。
-          </p>
+          <p>总部视图只汇总当前 Staff 已获服务端授权的真实数据；未授权领域不会伪装成 0。</p>
         </div>
         <div className="hero-note">
           <strong>{me.permissions.length}</strong> permissions ·{' '}

@@ -80,7 +80,13 @@ export async function loadHqSuppliers(token: string) {
 
 export async function createHqSupplier(
   token: string,
-  input: { code: string; name: string; contactName?: string | null; email?: string | null; phone?: string | null },
+  input: {
+    code: string;
+    name: string;
+    contactName?: string | null;
+    email?: string | null;
+    phone?: string | null;
+  },
 ) {
   return supplierSchema.parse(
     await request('/api/v1/staff/inventory/suppliers', token, 'POST', input),
@@ -93,11 +99,7 @@ export async function createHqPurchaseOrder(token: string, input: CreatePurchase
   );
 }
 
-export async function actOnHqPurchaseOrder(
-  token: string,
-  id: string,
-  action: 'SUBMIT' | 'CANCEL',
-) {
+export async function actOnHqPurchaseOrder(token: string, id: string, action: 'SUBMIT' | 'CANCEL') {
   return purchaseOrderSchema.parse(
     await request(`/api/v1/staff/inventory/purchase-orders/${id}/actions`, token, 'POST', {
       action,

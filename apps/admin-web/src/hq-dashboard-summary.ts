@@ -32,10 +32,10 @@ export function buildHqDashboardSummary(input: HqDashboardSummaryInput): HqDashb
   return {
     storeCount: input.storeCount ?? null,
     inventorySkuCount: input.inventory?.length ?? null,
-    inventoryAvailable:
-      input.inventory?.reduce((sum, item) => sum + item.available, 0) ?? null,
+    inventoryAvailable: input.inventory?.reduce((sum, item) => sum + item.available, 0) ?? null,
     activeRentalCount:
-      input.rentals?.filter((item) => !['RETURNED', 'CANCELLED'].includes(item.status)).length ?? null,
+      input.rentals?.filter((item) => !['RETURNED', 'CANCELLED'].includes(item.status)).length ??
+      null,
     overdueRentalCount: input.rentals?.filter((item) => item.isOverdue).length ?? null,
     pendingFulfillmentCount:
       input.fulfillment?.filter((item) => {

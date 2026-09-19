@@ -215,13 +215,7 @@ export function HqInventoryWorkflows({
     const destinationStoreId = text(data, 'destinationStoreId');
     const skuId = text(data, 'skuId');
     const quantity = Number(data.get('quantity'));
-    if (
-      !storeId ||
-      !destinationStoreId ||
-      !skuId ||
-      !Number.isInteger(quantity) ||
-      quantity <= 0
-    )
+    if (!storeId || !destinationStoreId || !skuId || !Number.isInteger(quantity) || quantity <= 0)
       return;
     await run(async () => {
       const created = await createHqStockTransfer(token, {
@@ -305,7 +299,9 @@ export function HqInventoryWorkflows({
             <input name="quantity" type="number" min="1" step="1" required placeholder="数量" />
             <input name="unitCostMinor" type="number" min="0" step="1" placeholder="单价（分）" />
             <input name="notes" maxLength={500} placeholder="备注（可选）" />
-            <button disabled={busy || !activeSuppliers.length || !balances.length}>创建采购单</button>
+            <button disabled={busy || !activeSuppliers.length || !balances.length}>
+              创建采购单
+            </button>
           </form>
           {purchaseOrder && (
             <div>
@@ -414,7 +410,9 @@ export function HqInventoryWorkflows({
               ))}
             </select>
             <input name="quantity" type="number" min="1" step="1" required placeholder="数量" />
-            <button disabled={busy || !destinationStores.length || !balances.length}>创建调拨单</button>
+            <button disabled={busy || !destinationStores.length || !balances.length}>
+              创建调拨单
+            </button>
           </form>
           {transfer && (
             <div>

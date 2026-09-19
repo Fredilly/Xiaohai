@@ -291,7 +291,9 @@ function InventoryView({
       <section className="panel">
         <h3>采购上下文</h3>
         {canReadSuppliers ? (
-          <p>供应商：{suppliers?.suppliers.length ?? 0}（写操作仍由服务端权限和 Data Scope 保护）</p>
+          <p>
+            供应商：{suppliers?.suppliers.length ?? 0}（写操作仍由服务端权限和 Data Scope 保护）
+          </p>
         ) : (
           <p>当前 Staff 没有 procurement.manage，不加载供应商或采购能力。</p>
         )}

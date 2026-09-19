@@ -66,7 +66,8 @@ describe('M20 HQ operations adapter', () => {
       Authorization: 'Bearer staff-token',
       'content-type': 'application/json',
     });
-    expect(JSON.parse(String(init.body))).toEqual({ code: 'SUP-1', name: '测试供应商' });
+    if (typeof init.body !== 'string') throw new Error('Expected JSON request body');
+    expect(JSON.parse(init.body)).toEqual({ code: 'SUP-1', name: '测试供应商' });
   });
 
   it('keeps purchase order store and item input server-validated', async () => {
@@ -110,7 +111,8 @@ describe('M20 HQ operations adapter', () => {
 
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(init.method).toBe('POST');
-    expect(JSON.parse(String(init.body))).toEqual({
+    if (typeof init.body !== 'string') throw new Error('Expected JSON request body');
+    expect(JSON.parse(init.body)).toEqual({
       supplierId,
       storeId,
       items: [{ skuId, quantity: 2, unitCostMinor: 1200 }],
