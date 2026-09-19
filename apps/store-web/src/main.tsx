@@ -10,6 +10,7 @@ import { BookSearchPanel } from './book-search-panel';
 import { InventoryPanel } from './inventory-panel';
 import { RentalPanel } from './rental-panel';
 import { FulfillmentPanel } from './fulfillment-panel';
+import { OperationsPanel } from './operations-panel';
 
 const tokenKey = 'staff_session_token';
 const selectedStoreKey = 'staff_selected_store_id';
@@ -197,8 +198,15 @@ function Shell({
           ) : (
             <StoreRequired />
           )
+        ) : currentStore ? (
+          <OperationsPanel
+            token={token}
+            storeId={currentStore.id}
+            stores={stores}
+            permissions={me.permissions}
+          />
         ) : (
-          <Preview title={module.label} description={module.description} />
+          <StoreRequired />
         )}
       </main>
     </div>
@@ -254,20 +262,6 @@ function StoreRequired() {
       <span className="tag">Store context required</span>
       <h2>没有可用门店</h2>
       <p>当前账号没有加载到可访问门店，因此不会发起库存、租借或履约操作。</p>
-    </section>
-  );
-}
-
-function Preview({ title, description }: { title: string; description: string }) {
-  return (
-    <section className="panel">
-      <span className="tag">M19 implementation pending</span>
-      <h2>{title}</h2>
-      <p>{description}</p>
-      <div className="empty">
-        <strong>此模块将在 M19 后续批次接入</strong>
-        <span>不会用 Mock 数据冒充真实门店业务结果。</span>
-      </div>
     </section>
   );
 }
