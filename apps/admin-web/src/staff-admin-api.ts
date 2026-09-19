@@ -1,19 +1,26 @@
 import {
   staffAdminAccountSchema,
   staffAdminListResponseSchema,
+  staffAdminOkSchema,
   staffAdminPermissionsResponseSchema,
   staffAdminRolesResponseSchema,
+  type StaffAdminCreateAccount,
   type StaffAdminListQuery,
+  type StaffAdminReplaceDataScopes,
+  type StaffAdminReplaceRoles,
 } from '@xiaohai/contracts/staff-admin';
 
 const env = import.meta.env as { readonly VITE_API_BASE_URL?: unknown };
 const base =
   typeof env.VITE_API_BASE_URL === 'string' ? env.VITE_API_BASE_URL : 'http://127.0.0.1:3000';
 
-async function request(path: string, token: string) {
-  const response = await fetch(`${base}${path}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+async function request(path: string, token: string, init: RequestInit = {}) {
+  const headers = new Headers(init.headers);
+  headers.set('Authorization', `Bearer ${token}`);
+  if (init.body !== undefined && !headers.has('content-type')) {
+    headers.set('content-type', 'application/json');
+  }
+  const response = await fetch(`${base}${path}`, { ...init, headers });
   if (!response.ok) {
     const payload = (await response.json().catch(() => null)) as {
       error?: { code?: string };
@@ -36,6 +43,55 @@ export async function loadStaffAccounts(token: string, input: Partial<StaffAdmin
 
 export async function loadStaffAccount(token: string, id: string) {
   return staffAdminAccountSchema.parse(await request(`/api/v1/staff/admin/accounts/${id}`, token));
+}
+
+export async function createStaffAccount(token: string, input: StaffAdminCreateAccount) {
+  return staffAdminAccountSchema.parse(
+    await request('/api/v1/staff/admin/accounts', token, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  );
+}
+
+export async function setStaffEnabled(token: string, id: string, enabled: boolean) {
+  return staffAdminAccountSchema.parse(
+    await request(`/api/v1/staff/admin/accounts/${id}/enabled`, token, {
+      method: 'PATCH',
+      body: JSON.stringify({ enabled }),
+    }),
+  );
+}
+
+export async function resetStaffPassword(token: string, id: string, password: string) {
+  return staffAdminOkSchema.parse(
+    await request(`/api/v1/staff/admin/accounts/${id}/reset-password`, token, {
+      method: 'POST',
+      body: JSON.stringify({ password }),
+    }),
+  );
+}
+
+export async function replaceStaffRoles(token: string, id: string, input: StaffAdminReplaceRoles) {
+  return staffAdminAccountSchema.parse(
+    await request(`/api/v1/staff/admin/accounts/${id}/roles`, token, {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    }),
+  );
+}
+
+export async function replaceStaffDataScopes(
+  token: string,
+  id: string,
+  input: StaffAdminReplaceDataScopes,
+) {
+  return staffAdminAccountSchema.parse(
+    await request(`/api/v1/staff/admin/accounts/${id}/data-scopes`, token, {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    }),
+  );
 }
 
 export async function loadStaffRoles(token: string) {
