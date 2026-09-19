@@ -1,4 +1,4 @@
-import { and, asc, count, eq, lte, sql } from 'drizzle-orm';
+import { and, asc, count, eq, sql } from 'drizzle-orm';
 import { aiJobAttempts, aiJobs, type createDatabase } from '@xiaohai/db';
 import type { AiProvider } from './ai-provider.js';
 import { ProviderError } from './ai-provider.js';
@@ -46,7 +46,7 @@ export class AiJobProcessor {
         .where(
           and(
             eq(aiJobs.status, 'QUEUED'),
-            lte(aiJobs.runAfter, new Date()),
+            sql`${aiJobs.runAfter} <= now()`,
             eq(aiJobs.provider, this.provider.name),
           ),
         )
@@ -136,7 +136,7 @@ export class AiJobProcessor {
         {
           input: inputModeration.status,
           output: outputModeration.status,
-          reasonCodes: outputModeration.reasonCodes,
+          reasonCodes: [...inputModeration.reasonCodes, ...outputModeration.reasonCodes],
         },
         false,
         result,
