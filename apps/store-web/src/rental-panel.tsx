@@ -10,7 +10,7 @@ const labels: Record<string, string> = {
   CANCELLED: '已取消',
 };
 
-export function RentalPanel({ token }: { token: string }) {
+export function RentalPanel({ token, storeId }: { token: string; storeId: string }) {
   const [items, setItems] = useState<RentalView[]>([]);
   const [status, setStatus] = useState('正在加载…');
   const [busy, setBusy] = useState('');
@@ -18,15 +18,16 @@ export function RentalPanel({ token }: { token: string }) {
 
   const refresh = useCallback(async () => {
     try {
-      const result = await loadRentals(token);
+      const result = await loadRentals(token, storeId);
       setItems(result.items);
-      setStatus(result.items.length ? '租借记录已加载' : '授权范围内暂无租借记录');
+      setStatus(result.items.length ? '当前门店租借记录已加载' : '当前门店暂无租借记录');
     } catch (e) {
       setStatus(e instanceof Error ? `加载失败：${e.message}` : '加载失败');
     }
-  }, [token]);
+  }, [storeId, token]);
 
   useEffect(() => {
+    setPickupCodes({});
     void refresh();
   }, [refresh]);
 
@@ -54,11 +55,12 @@ export function RentalPanel({ token }: { token: string }) {
       <span className="tag">M16 Pickup Verification + M15 Rental</span>
       <h2>门店租借</h2>
       <p>
-        取书码只由顾客端显示。员工必须现场输入顾客出示的 6 位码，服务端再校验门店范围、库存与状态。
+        当前只加载工作台选中的门店。取书码只由顾客端显示；员工现场输入 6
+        位码，服务端再次校验门店范围、库存与状态。
       </p>
       <div className="inventory-table">
         <div className="inventory-row heading">
-          <span>租借 / 门店</span>
+          <span>租借</span>
           <span>状态 / 到期</span>
           <span>操作</span>
         </div>

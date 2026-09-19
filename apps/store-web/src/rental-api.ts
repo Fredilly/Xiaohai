@@ -19,8 +19,11 @@ async function request(path: string, token: string, method = 'GET', body?: unkno
   }
   return response.json() as Promise<unknown>;
 }
-export async function loadRentals(token: string) {
-  return rentalListResponseSchema.parse(await request('/api/v1/staff/rentals', token));
+export async function loadRentals(token: string, storeId?: string) {
+  const params = new URLSearchParams();
+  if (storeId) params.set('storeId', storeId);
+  const query = params.size ? `?${params.toString()}` : '';
+  return rentalListResponseSchema.parse(await request(`/api/v1/staff/rentals${query}`, token));
 }
 export async function rentalAction(
   token: string,

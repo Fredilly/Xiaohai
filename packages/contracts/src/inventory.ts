@@ -91,6 +91,7 @@ const shortText = z.string().trim().min(1).max(120);
 const optionalText = z.string().trim().max(500).nullable().optional();
 const positiveQuantity = z.number().int().positive().max(1_000_000);
 const inventoryLineSchema = z.object({ skuId: z.uuid(), quantity: positiveQuantity }).strict();
+const timestampSchema = z.iso.datetime();
 
 export const supplierStatusSchema = z.enum(['ACTIVE', 'INACTIVE']);
 export const supplierInputSchema = z
@@ -106,6 +107,18 @@ export const updateSupplierRequestSchema = supplierInputSchema
   .partial()
   .extend({ status: supplierStatusSchema.optional() })
   .strict();
+export const supplierSchema = z.object({
+  id: z.uuid(),
+  code: z.string(),
+  name: z.string(),
+  contactName: z.string().nullable(),
+  email: z.string().nullable(),
+  phone: z.string().nullable(),
+  status: supplierStatusSchema,
+  createdAt: timestampSchema,
+  updatedAt: timestampSchema,
+});
+export const supplierListResponseSchema = z.object({ suppliers: z.array(supplierSchema) });
 
 export const purchaseOrderStatusSchema = z.enum([
   'DRAFT',
@@ -134,6 +147,31 @@ export const createPurchaseOrderRequestSchema = z
 export const purchaseOrderActionSchema = z
   .object({ action: z.enum(['SUBMIT', 'CANCEL']) })
   .strict();
+export const purchaseOrderItemSchema = z.object({
+  id: z.uuid(),
+  purchaseOrderId: z.uuid(),
+  skuId: z.uuid(),
+  orderedQuantity: z.number().int().positive(),
+  receivedQuantity: z.number().int().nonnegative(),
+  unitCostMinor: z.number().int().nonnegative().nullable(),
+});
+export const purchaseOrderSchema = z.object({
+  id: z.uuid(),
+  orderNumber: z.string(),
+  supplierId: z.uuid(),
+  storeId: z.uuid(),
+  status: purchaseOrderStatusSchema,
+  notes: z.string().nullable(),
+  expectedAt: timestampSchema.nullable(),
+  createdByStaffAccountId: z.uuid(),
+  submittedAt: timestampSchema.nullable(),
+  cancelledAt: timestampSchema.nullable(),
+  createdAt: timestampSchema,
+  updatedAt: timestampSchema,
+});
+export const purchaseOrderViewSchema = purchaseOrderSchema.extend({
+  items: z.array(purchaseOrderItemSchema),
+});
 
 export const createGoodsReceiptRequestSchema = z
   .object({
@@ -145,6 +183,29 @@ export const createGoodsReceiptRequestSchema = z
       .max(200),
   })
   .strict();
+export const goodsReceiptItemSchema = z.object({
+  id: z.uuid(),
+  goodsReceiptId: z.uuid(),
+  purchaseOrderItemId: z.uuid(),
+  skuId: z.uuid(),
+  quantity: z.number().int().positive(),
+});
+export const goodsReceiptSchema = z.object({
+  id: z.uuid(),
+  receiptNumber: z.string(),
+  purchaseOrderId: z.uuid(),
+  storeId: z.uuid(),
+  status: z.enum(['DRAFT', 'POSTED']),
+  notes: z.string().nullable(),
+  createdByStaffAccountId: z.uuid(),
+  postedByStaffAccountId: z.uuid().nullable(),
+  postedAt: timestampSchema.nullable(),
+  createdAt: timestampSchema,
+  updatedAt: timestampSchema,
+});
+export const goodsReceiptViewSchema = goodsReceiptSchema.extend({
+  items: z.array(goodsReceiptItemSchema),
+});
 
 export const inventoryMutationRequestSchema = z
   .object({
@@ -194,6 +255,30 @@ export const stocktakeCountRequestSchema = z
 export const stocktakeActionSchema = z
   .object({ action: z.enum(['START', 'REVIEW', 'POST', 'CANCEL']) })
   .strict();
+export const stocktakeItemSchema = z.object({
+  id: z.uuid(),
+  stocktakeId: z.uuid(),
+  skuId: z.uuid(),
+  expectedQuantity: z.number().int().nonnegative(),
+  expectedVersion: z.number().int().nonnegative(),
+  countedQuantity: z.number().int().nonnegative().nullable(),
+});
+export const stocktakeSchema = z.object({
+  id: z.uuid(),
+  stocktakeNumber: z.string(),
+  storeId: z.uuid(),
+  status: z.enum(['DRAFT', 'COUNTING', 'REVIEWED', 'POSTED', 'CANCELLED']),
+  notes: z.string().nullable(),
+  createdByStaffAccountId: z.uuid(),
+  reviewedByStaffAccountId: z.uuid().nullable(),
+  postedByStaffAccountId: z.uuid().nullable(),
+  reviewedAt: timestampSchema.nullable(),
+  postedAt: timestampSchema.nullable(),
+  cancelledAt: timestampSchema.nullable(),
+  createdAt: timestampSchema,
+  updatedAt: timestampSchema,
+});
+export const stocktakeViewSchema = stocktakeSchema.extend({ items: z.array(stocktakeItemSchema) });
 
 export const createStockTransferRequestSchema = z
   .object({
@@ -211,6 +296,30 @@ export const createStockTransferRequestSchema = z
 export const stockTransferActionSchema = z
   .object({ action: z.enum(['SUBMIT', 'DISPATCH', 'RECEIVE', 'CANCEL']) })
   .strict();
+export const stockTransferItemSchema = z.object({
+  id: z.uuid(),
+  stockTransferId: z.uuid(),
+  skuId: z.uuid(),
+  quantity: z.number().int().positive(),
+});
+export const stockTransferSchema = z.object({
+  id: z.uuid(),
+  transferNumber: z.string(),
+  sourceStoreId: z.uuid(),
+  destinationStoreId: z.uuid(),
+  status: z.enum(['DRAFT', 'SUBMITTED', 'IN_TRANSIT', 'RECEIVED', 'CANCELLED']),
+  notes: z.string().nullable(),
+  createdByStaffAccountId: z.uuid(),
+  submittedAt: timestampSchema.nullable(),
+  dispatchedAt: timestampSchema.nullable(),
+  receivedAt: timestampSchema.nullable(),
+  cancelledAt: timestampSchema.nullable(),
+  createdAt: timestampSchema,
+  updatedAt: timestampSchema,
+});
+export const stockTransferViewSchema = stockTransferSchema.extend({
+  items: z.array(stockTransferItemSchema),
+});
 
 export const inventoryListQuerySchema = z
   .object({
@@ -241,8 +350,15 @@ export const inventoryTransactionSchema = z.object({
   referenceType: z.string(),
   referenceId: z.uuid(),
   reason: z.string().nullable(),
-  createdAt: z.iso.datetime(),
+  createdAt: timestampSchema,
 });
+export const inventoryTransactionsResponseSchema = z.object({
+  transactions: z.array(inventoryTransactionSchema),
+});
+export const inventoryAlertSchema = inventoryBalanceSchema.extend({
+  severity: z.enum(['OUT_OF_STOCK', 'LOW_STOCK']),
+});
+export const inventoryAlertsResponseSchema = z.object({ alerts: z.array(inventoryAlertSchema) });
 
 export type CreatePurchaseOrderRequest = z.infer<typeof createPurchaseOrderRequestSchema>;
 export type CreateGoodsReceiptRequest = z.infer<typeof createGoodsReceiptRequestSchema>;
@@ -252,6 +368,11 @@ export type CreateStocktakeRequest = z.infer<typeof createStocktakeRequestSchema
 export type StocktakeCountRequest = z.infer<typeof stocktakeCountRequestSchema>;
 export type CreateStockTransferRequest = z.infer<typeof createStockTransferRequestSchema>;
 export type InventoryListQuery = z.infer<typeof inventoryListQuerySchema>;
+export type Supplier = z.infer<typeof supplierSchema>;
+export type PurchaseOrder = z.infer<typeof purchaseOrderViewSchema>;
+export type GoodsReceipt = z.infer<typeof goodsReceiptViewSchema>;
+export type Stocktake = z.infer<typeof stocktakeViewSchema>;
+export type StockTransfer = z.infer<typeof stockTransferViewSchema>;
 
 function uniqueSkus(value: { items: Array<{ skuId: string }> }, ctx: z.RefinementCtx) {
   if (new Set(value.items.map((item) => item.skuId)).size !== value.items.length)

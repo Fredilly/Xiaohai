@@ -1,14 +1,21 @@
 import { StrictMode, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { createRoot } from 'react-dom/client';
 import type { StaffMeResponse } from '@xiaohai/contracts';
+import type { StaffStore } from '@xiaohai/contracts/stores';
 import './styles.css';
 import { getStaffMe, loginStaff } from './staff-auth';
+import { loadStaffStores } from './stores-api';
 import { storeModules } from './mock-data';
+import { BookSearchPanel } from './book-search-panel';
 import { InventoryPanel } from './inventory-panel';
 import { RentalPanel } from './rental-panel';
 import { FulfillmentPanel } from './fulfillment-panel';
+import { OperationsPanel } from './operations-panel';
+import { DashboardPanel } from './dashboard-panel';
+import { ManagerPanel } from './manager-panel';
 
 const tokenKey = 'staff_session_token';
+const selectedStoreKey = 'staff_selected_store_id';
 
 function Login({ onSignedIn }: { onSignedIn: (token: string) => void }) {
   const [status, setStatus] = useState('请使用 Staff Account 登录');
@@ -59,17 +66,69 @@ function Login({ onSignedIn }: { onSignedIn: (token: string) => void }) {
   );
 }
 
-function Shell({ me, onLogout }: { me: StaffMeResponse; onLogout: () => void }) {
+function Shell({
+  me,
+  token,
+  onLogout,
+}: {
+  me: StaffMeResponse;
+  token: string;
+  onLogout: () => void;
+}) {
   const [active, setActive] = useState(window.location.hash.replace('#/', '') || 'dashboard');
+  const [stores, setStores] = useState<StaffStore[]>([]);
+  const [storeId, setStoreId] = useState(() => sessionStorage.getItem(selectedStoreKey) ?? '');
+  const [storeStatus, setStoreStatus] = useState('正在加载授权门店…');
+  const canManageStore = me.permissions.includes('stores.manage');
+
   useEffect(() => {
     const sync = () => setActive(window.location.hash.replace('#/', '') || 'dashboard');
     window.addEventListener('hashchange', sync);
     return () => window.removeEventListener('hashchange', sync);
   }, []);
+
+  useEffect(() => {
+    let activeRequest = true;
+    void loadStaffStores(token)
+      .then((result) => {
+        if (!activeRequest) return;
+        setStores(result.stores);
+        const saved = sessionStorage.getItem(selectedStoreKey) ?? '';
+        const next = result.stores.some((store) => store.id === saved)
+          ? saved
+          : (result.stores[0]?.id ?? '');
+        setStoreId(next);
+        if (next) sessionStorage.setItem(selectedStoreKey, next);
+        else sessionStorage.removeItem(selectedStoreKey);
+        setStoreStatus(result.stores.length ? '' : '当前账号没有可访问门店');
+      })
+      .catch((error: unknown) => {
+        if (!activeRequest) return;
+        setStores([]);
+        setStoreId('');
+        sessionStorage.removeItem(selectedStoreKey);
+        setStoreStatus(error instanceof Error ? `门店加载失败：${error.message}` : '门店加载失败');
+      });
+    return () => {
+      activeRequest = false;
+    };
+  }, [token]);
+
+  const visibleModules = useMemo(
+    () => storeModules.filter((item) => item.key !== 'manager' || canManageStore),
+    [canManageStore],
+  );
   const module = useMemo(
     () => storeModules.find((item) => item.key === active) ?? storeModules[0],
     [active],
   );
+  const currentStore = stores.find((store) => store.id === storeId) ?? null;
+
+  const chooseStore = (nextStoreId: string) => {
+    setStoreId(nextStoreId);
+    sessionStorage.setItem(selectedStoreKey, nextStoreId);
+  };
+
   return (
     <div className="shell">
       <aside>
@@ -78,7 +137,7 @@ function Shell({ me, onLogout }: { me: StaffMeResponse; onLogout: () => void }) 
           <span>门店工作台</span>
         </div>
         <nav aria-label="门店模块">
-          {storeModules.map((item) => (
+          {visibleModules.map((item) => (
             <button
               key={item.key}
               className={item.key === active ? 'active' : ''}
@@ -97,76 +156,94 @@ function Shell({ me, onLogout }: { me: StaffMeResponse; onLogout: () => void }) 
             <span className="eyebrow">STORE WORKSPACE</span>
             <h1>{module.label}</h1>
           </div>
-          <div className="identity">
-            <span>{me.staff.loginIdentifier}</span>
-            <button onClick={onLogout}>退出</button>
+          <div className="workspace-actions">
+            <label className="store-picker">
+              当前门店
+              <select
+                value={storeId}
+                disabled={!stores.length}
+                onChange={(event) => chooseStore(event.target.value)}
+              >
+                {!stores.length && <option value="">无可用门店</option>}
+                {stores.map((store) => (
+                  <option key={store.id} value={store.id}>
+                    {store.name} · {store.city}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="identity">
+              <span>{me.staff.loginIdentifier}</span>
+              <button onClick={onLogout}>退出</button>
+            </div>
           </div>
         </header>
+        {storeStatus && <p className="store-status">{storeStatus}</p>}
         {active === 'dashboard' ? (
-          <Dashboard me={me} />
+          <DashboardPanel token={token} me={me} currentStore={currentStore} />
+        ) : active === 'books' ? (
+          currentStore ? (
+            <BookSearchPanel storeId={currentStore.id} storeName={currentStore.name} />
+          ) : (
+            <StoreRequired />
+          )
         ) : active === 'inventory' ? (
-          <InventoryPanel token={sessionStorage.getItem(tokenKey) ?? ''} />
+          currentStore ? (
+            <InventoryPanel token={token} storeId={currentStore.id} />
+          ) : (
+            <StoreRequired />
+          )
         ) : active === 'rental' ? (
-          <RentalPanel token={sessionStorage.getItem(tokenKey) ?? ''} />
+          currentStore ? (
+            <RentalPanel token={token} storeId={currentStore.id} />
+          ) : (
+            <StoreRequired />
+          )
         ) : active === 'orders' ? (
-          <FulfillmentPanel token={sessionStorage.getItem(tokenKey) ?? ''} />
+          currentStore ? (
+            <FulfillmentPanel token={token} storeId={currentStore.id} />
+          ) : (
+            <StoreRequired />
+          )
+        ) : active === 'manager' ? (
+          currentStore && canManageStore ? (
+            <ManagerPanel token={token} me={me} currentStore={currentStore} stores={stores} />
+          ) : currentStore ? (
+            <PermissionRequired />
+          ) : (
+            <StoreRequired />
+          )
+        ) : currentStore ? (
+          <OperationsPanel
+            token={token}
+            storeId={currentStore.id}
+            stores={stores}
+            permissions={me.permissions}
+          />
         ) : (
-          <Preview title={module.label} description={module.description} />
+          <StoreRequired />
         )}
       </main>
     </div>
   );
 }
 
-function Dashboard({ me }: { me: StaffMeResponse }) {
+function StoreRequired() {
   return (
-    <>
-      <section className="hero">
-        <span className="tag">Frontend preview</span>
-        <h2>今天从这里开始门店工作</h2>
-        <p>查询、库存、租借和履约入口已经整理；正式业务数据将在对应后端里程碑接入。</p>
-        <div className="scope">
-          服务端 Data Scope：
-          {me.dataScopes.length
-            ? me.dataScopes.map((item) => item.type).join(' · ')
-            : '暂无授权范围'}
-        </div>
-      </section>
-      <section className="quick-grid">
-        {storeModules.slice(1).map((item) => (
-          <button
-            key={item.key}
-            onClick={() => {
-              window.location.hash = `#/${item.key}`;
-            }}
-          >
-            <strong>{item.label}</strong>
-            <span>{item.description}</span>
-            <em>{item.status}</em>
-          </button>
-        ))}
-      </section>
-      <section className="notice">
-        <strong>安全边界</strong>
-        <p>
-          本工作台不会从 URL 或前端选择器获得真实 storeId 授权。未来真实业务请求仍必须由 API 根据
-          Staff Session + RBAC + Data Scope 校验。
-        </p>
-      </section>
-    </>
+    <section className="panel">
+      <span className="tag">Store context required</span>
+      <h2>没有可用门店</h2>
+      <p>当前账号没有加载到可访问门店，因此不会发起库存、租借或履约操作。</p>
+    </section>
   );
 }
 
-function Preview({ title, description }: { title: string; description: string }) {
+function PermissionRequired() {
   return (
     <section className="panel">
-      <span className="tag">Frontend mock / Coming soon</span>
-      <h2>{title}</h2>
-      <p>{description}</p>
-      <div className="empty">
-        <strong>前端结构已准备</strong>
-        <span>当前没有正式业务 API，因此这里不展示伪造的真实库存、订单、租借或配送结果。</span>
-      </div>
+      <span className="tag">Manager permission required</span>
+      <h2>没有店长视图权限</h2>
+      <p>店长视图只对具有 stores.manage 的 Staff Context 展示；前端不会绕过服务端授权。</p>
     </section>
   );
 }
@@ -186,6 +263,7 @@ function App() {
       .then((result) => {
         if (!result) {
           sessionStorage.removeItem(tokenKey);
+          sessionStorage.removeItem(selectedStoreKey);
           setToken(null);
         } else setMe(result);
       })
@@ -194,12 +272,13 @@ function App() {
   }, [token]);
   const logout = () => {
     sessionStorage.removeItem(tokenKey);
+    sessionStorage.removeItem(selectedStoreKey);
     setToken(null);
     setMe(null);
   };
   if (checking) return <main className="center">正在验证 Staff Session…</main>;
   if (!token || !me) return <Login onSignedIn={setToken} />;
-  return <Shell me={me} onLogout={logout} />;
+  return <Shell me={me} token={token} onLogout={logout} />;
 }
 
 const root = document.querySelector<HTMLDivElement>('#root');
