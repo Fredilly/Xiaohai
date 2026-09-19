@@ -12,6 +12,7 @@ import { CommissionManager } from './commission-manager';
 import { HqDashboard } from './hq-dashboard';
 import { HqOperationsManager } from './hq-operations-manager';
 import { HqSupportManager } from './hq-support-manager';
+import { StaffAdminManager } from './staff-admin-manager';
 import { getStaffMe, loginStaff } from './staff-auth';
 import { adminModules } from './mock-data';
 
@@ -134,6 +135,8 @@ function Shell({
           <HqOperationsManager token={token} me={me} mode="rental" />
         ) : active === 'fulfillment' ? (
           <HqOperationsManager token={token} me={me} mode="fulfillment" />
+        ) : active === 'staff' ? (
+          <StaffAdminManager token={token} />
         ) : active === 'cms' ? (
           <CmsManager token={token} />
         ) : active === 'finance' ? (
