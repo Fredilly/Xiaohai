@@ -146,8 +146,10 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Build DB runtime dependency
-        run: pnpm --filter @xiaohai/config build
+      - name: Build DB runtime dependencies
+        run: |
+          pnpm --filter @xiaohai/validation build
+          pnpm --filter @xiaohai/config build
       - run: pnpm --filter @xiaohai/db db:check
       - run: pnpm --filter @xiaohai/db db:migrate
       - run: pnpm test:integration
