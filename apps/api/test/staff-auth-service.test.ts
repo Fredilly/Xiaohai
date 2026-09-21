@@ -9,6 +9,7 @@ const staff = {
   id: staffId,
   loginIdentifier: 'staff@example.com',
   passwordHash: 'encoded-password-hash',
+  sessionVersion: 0,
   enabled: true,
 };
 

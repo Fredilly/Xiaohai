@@ -16,6 +16,24 @@
       "import": "./dist/commerce.js",
       "default": "./dist/commerce.js"
     },
+    "./hq": {
+      "types": "./src/hq.ts",
+      "development": "./src/hq.ts",
+      "import": "./dist/hq.js",
+      "default": "./dist/hq.js"
+    },
+    "./staff-admin": {
+      "types": "./src/staff-admin.ts",
+      "development": "./src/staff-admin.ts",
+      "import": "./dist/staff-admin.js",
+      "default": "./dist/staff-admin.js"
+    },
+    "./audit": {
+      "types": "./src/audit.ts",
+      "development": "./src/audit.ts",
+      "import": "./dist/audit.js",
+      "default": "./dist/audit.js"
+    },
     "./payments": {
       "types": "./src/payments.ts",
       "development": "./src/payments.ts",

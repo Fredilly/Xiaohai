@@ -47,6 +47,7 @@ function fixture(permissionKeys: string[] = [], global = true) {
         Promise.resolve({
           staffAccountId: id,
           loginIdentifier: 'test',
+          sessionVersion: 0,
           permissions: permissionKeys,
           dataScopes: [{ type: global ? 'GLOBAL' : 'STORE', id: global ? null : randomUUID() }],
         }),

@@ -3,22 +3,39 @@ export type ModulePreview = {
   label: string;
   description: string;
   status: '可查看' | '前端预览';
+  requiredPermission?: string;
 };
+
 export const adminModules: ModulePreview[] = [
   { key: 'dashboard', label: 'Dashboard', description: '总部运营概览与待办入口', status: '可查看' },
   {
     key: 'stores',
     label: '组织 / 门店',
-    description: '区域、加盟商、门店管理框架',
-    status: '前端预览',
+    description: 'M12 门店网络与授权范围',
+    status: '可查看',
+    requiredPermission: 'stores.read',
   },
   { key: 'catalog', label: '图书 / 商品', description: 'M5 商品与 SKU 基础管理', status: '可查看' },
-  { key: 'inventory', label: '库存', description: '库存查询与进销存操作框架', status: '前端预览' },
+  {
+    key: 'inventory',
+    label: '库存 / 进销存',
+    description: 'M14 库存、预警、流水与采购上下文',
+    status: '可查看',
+    requiredPermission: 'inventory.read',
+  },
   {
     key: 'orders',
     label: '订单',
-    description: '订单后台将在后续运营里程碑扩展；M5 Consumer 订单已实现',
-    status: '前端预览',
+    description: 'M20-B HQ 订单列表、详情与不可变快照支持视图',
+    status: '可查看',
+    requiredPermission: 'orders.read',
+  },
+  {
+    key: 'users',
+    label: '用户',
+    description: 'M20-B Consumer 最小身份元数据与订单汇总支持视图',
+    status: '可查看',
+    requiredPermission: 'users.read',
   },
   {
     key: 'content',
@@ -27,7 +44,20 @@ export const adminModules: ModulePreview[] = [
     status: '可查看',
   },
   { key: 'ai', label: 'AI', description: 'M8 Provider-neutral 作业与审核监控', status: '可查看' },
-  { key: 'rental', label: '租借', description: '预约、借出、归还与逾期框架', status: '前端预览' },
+  {
+    key: 'rental',
+    label: '租借',
+    description: 'M15 预约、借出、归还与逾期记录',
+    status: '可查看',
+    requiredPermission: 'rental.read',
+  },
+  {
+    key: 'fulfillment',
+    label: '自提 / 配送',
+    description: 'M16 自提与配送履约状态',
+    status: '可查看',
+    requiredPermission: 'fulfillment.read',
+  },
   {
     key: 'franchise',
     label: '加盟',
@@ -50,8 +80,14 @@ export const adminModules: ModulePreview[] = [
   {
     key: 'staff',
     label: 'Staff / 权限',
-    description: '仅展示授权上下文；管理 API 尚未实现',
-    status: '前端预览',
+    description: 'M20-C Staff、角色、权限与 Data Scope 管理',
+    status: '可查看',
+    requiredPermission: 'staff.read',
   },
-  { key: 'system', label: '系统', description: '配置、审计与系统状态入口框架', status: '前端预览' },
+  {
+    key: 'system',
+    label: '系统 / 审计',
+    description: 'M20-D/E API 健康、Staff 上下文、模块状态与操作审计',
+    status: '可查看',
+  },
 ];

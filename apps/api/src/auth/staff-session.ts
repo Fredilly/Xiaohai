@@ -5,12 +5,14 @@ const payloadSchema = z.object({
   v: z.literal(1),
   realm: z.literal('staff'),
   sid: z.uuid(),
+  sv: z.number().int().nonnegative(),
   iat: z.number().int().nonnegative(),
   exp: z.number().int().positive(),
 });
 
 export interface StaffSessionClaims {
   staffAccountId: string;
+  sessionVersion: number;
   issuedAt: Date;
   expiresAt: Date;
 }
@@ -29,13 +31,18 @@ export class StaffSessionService {
     }
   }
 
-  issue(staffAccountId: string): { token: string; expiresAt: Date } {
+  issue(staffAccountId: string, sessionVersion = 0): { token: string; expiresAt: Date } {
+    if (!Number.isInteger(sessionVersion) || sessionVersion < 0) {
+      throw new Error('Staff session version must be a non-negative integer');
+    }
+
     const issuedAt = Math.floor(this.now().getTime() / 1000);
     const payload = Buffer.from(
       JSON.stringify({
         v: 1,
         realm: 'staff',
         sid: staffAccountId,
+        sv: sessionVersion,
         iat: issuedAt,
         exp: issuedAt + this.ttlSeconds,
       }),
@@ -58,6 +65,7 @@ export class StaffSessionService {
       if (claims.exp <= Math.floor(this.now().getTime() / 1000)) return null;
       return {
         staffAccountId: claims.sid,
+        sessionVersion: claims.sv,
         issuedAt: new Date(claims.iat * 1000),
         expiresAt: new Date(claims.exp * 1000),
       };

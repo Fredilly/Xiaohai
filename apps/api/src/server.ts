@@ -48,6 +48,12 @@ import { FranchiseService } from './franchise/franchise-service.js';
 import { registerFranchiseRoutes } from './franchise/franchise-routes.js';
 import { CommissionService } from './commission/commission-service.js';
 import { registerCommissionRoutes } from './commission/commission-routes.js';
+import { AuditService } from './hq/audit-service.js';
+import { registerAuditRoutes } from './hq/audit-routes.js';
+import { HqReadService } from './hq/hq-read-service.js';
+import { registerHqReadRoutes } from './hq/hq-read-routes.js';
+import { StaffAdminService } from './hq/staff-admin-service.js';
+import { registerStaffAdminRoutes } from './hq/staff-admin-routes.js';
 
 const config = loadServiceConfig(process.env);
 const { db, pool } = createDatabase(process.env);
@@ -70,9 +76,10 @@ const staffSessions = new StaffSessionService(
   config.STAFF_SESSION_SECRET,
   config.STAFF_SESSION_TTL_SECONDS,
 );
+const passwordHasher = new ScryptPasswordHasher();
 const staffAuth = new StaffAuthService(
   new DrizzleStaffAccountRepository(db),
-  new ScryptPasswordHasher(),
+  passwordHasher,
   staffSessions,
 );
 const staffAuthorization = new StaffAuthorizationService(
@@ -119,6 +126,12 @@ registerFranchiseRoutes(app, {
   staffAuthorization,
 });
 registerCommissionRoutes(app, { commission, consumerSessions: sessions, staffAuthorization });
+registerHqReadRoutes(app, { hqRead: new HqReadService(db), staffAuthorization });
+registerStaffAdminRoutes(app, {
+  staffAdmin: new StaffAdminService(db, passwordHasher),
+  staffAuthorization,
+});
+registerAuditRoutes(app, { audit: new AuditService(db), staffAuthorization });
 const aiQueue = new RedisAiQueue(config.REDIS_URL, () =>
   app.log.error({ errorCode: 'REDIS_UNAVAILABLE' }, 'AI queue Redis error'),
 );

@@ -44,6 +44,7 @@ export const staffAccounts = pgTable(
     id: uuid('id').primaryKey().defaultRandom(),
     loginIdentifier: text('login_identifier').notNull(),
     passwordHash: text('password_hash').notNull(),
+    sessionVersion: integer('session_version').notNull().default(0),
     enabled: boolean('enabled').notNull().default(true),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
