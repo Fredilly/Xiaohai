@@ -24,7 +24,7 @@ describe('server abuse controls', () => {
         url: '/api/v1/staff/auth/login',
         headers: { 'x-forwarded-for': String(i) },
       });
-      expect(response.statusCode).toBe(404); // route not registered; hook runs first
+      expect(response.statusCode).toBe(404);
     }
     const blocked = await app.inject({
       method: 'POST',
@@ -41,6 +41,29 @@ describe('server abuse controls', () => {
     expect(blocked.headers['retry-after']).toBe('60');
     expect(counts.size).toBe(1);
   });
+
+  it('separates forwarded clients only when the deployment trusts its proxy hop', async () => {
+    const counts = new Map<string, number>();
+    const store: RateLimitStore = {
+      consume: (key) => {
+        const next = (counts.get(key) ?? 0) + 1;
+        counts.set(key, next);
+        return Promise.resolve(next);
+      },
+    };
+    const app = buildApp({ logger: false, rateLimitStore: store, trustProxy: 1 });
+    apps.push(app);
+    for (const address of ['198.51.100.10', '198.51.100.11']) {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/v1/staff/auth/login',
+        headers: { 'x-forwarded-for': address },
+      });
+      expect(response.statusCode).toBe(404);
+    }
+    expect(counts.size).toBe(2);
+  });
+
   it('fails closed for protected writes on store failure and leaves reads available', async () => {
     const app = buildApp({
       logger: false,
@@ -54,6 +77,7 @@ describe('server abuse controls', () => {
     expect(denied.body).not.toContain('redis secret');
     expect((await app.inject({ method: 'GET', url: '/health' })).statusCode).toBe(200);
   });
+
   it('classifies AI writes and password resets without limiting reads', () => {
     expect(ratePolicy('POST', '/api/v1/ai/story/works')?.name).toBe('ai-write');
     expect(ratePolicy('POST', '/api/v1/staff/admin/accounts/abc/reset-password')?.name).toBe(
@@ -61,6 +85,7 @@ describe('server abuse controls', () => {
     );
     expect(ratePolicy('GET', '/api/v1/ai/story/works')).toBeNull();
   });
+
   it('returns opaque errors for unhandled exceptions', async () => {
     const app = buildApp({ logger: false });
     apps.push(app);
@@ -75,6 +100,31 @@ describe('server abuse controls', () => {
       requestId: response.headers['x-request-id'],
     });
   });
+
+  it('preserves framework client-error status without leaking parser details', async () => {
+    const app = buildApp({ logger: false });
+    apps.push(app);
+    app.post('/parse-test', () => ({ ok: true }));
+    const malformed = await app.inject({
+      method: 'POST',
+      url: '/parse-test',
+      headers: { 'content-type': 'application/json' },
+      payload: '{"broken":',
+    });
+    expect(malformed.statusCode).toBe(400);
+    expect(malformed.json<{ error: { code: string } }>().error.code).toBe('INVALID_REQUEST');
+    expect(malformed.body).not.toContain('Unexpected');
+
+    const unsupported = await app.inject({
+      method: 'POST',
+      url: '/parse-test',
+      headers: { 'content-type': 'application/xml' },
+      payload: '<test />',
+    });
+    expect(unsupported.statusCode).toBe(415);
+    expect(unsupported.json<{ error: { code: string } }>().error.code).toBe('INVALID_REQUEST');
+  });
+
   it('does not accept caller-chosen request IDs for audit correlation', async () => {
     const app = buildApp({ logger: false });
     apps.push(app);
