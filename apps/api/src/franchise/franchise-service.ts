@@ -10,6 +10,7 @@ import type {
   UpdateFranchiseApplicationStatusRequest,
 } from '@xiaohai/contracts/franchise';
 import {
+  auditLogs,
   franchiseApplications,
   franchiseFollowups,
   staffAccounts,
@@ -157,38 +158,68 @@ export class FranchiseService {
     return this.getApplication(id);
   }
 
-  async review(id: string, staffAccountId: string, input: ReviewFranchiseApplicationRequest) {
+  async review(
+    id: string,
+    staffAccountId: string,
+    input: ReviewFranchiseApplicationRequest,
+    requestId: string,
+  ) {
     const current = await this.requireApplication(id, input.version);
     if (!['ASSIGNED', 'FOLLOWING_UP'].includes(current.status)) {
       throw new FranchiseError('INVALID_STATE');
     }
     const now = new Date();
-    await this.updateVersioned(id, input.version, {
-      status: input.decision,
-      reviewedByStaffAccountId: staffAccountId,
-      reviewNote: input.note ?? null,
-      reviewedAt: now,
-      approvedAt: input.decision === 'APPROVED' ? now : null,
-      rejectedAt: input.decision === 'REJECTED' ? now : null,
-      updatedAt: now,
-    });
+    await this.updateVersioned(
+      id,
+      input.version,
+      {
+        status: input.decision,
+        reviewedByStaffAccountId: staffAccountId,
+        reviewNote: input.note ?? null,
+        reviewedAt: now,
+        approvedAt: input.decision === 'APPROVED' ? now : null,
+        rejectedAt: input.decision === 'REJECTED' ? now : null,
+        updatedAt: now,
+      },
+      {
+        actorStaffAccountId: staffAccountId,
+        requestId,
+        actionKey: 'franchise.application.review',
+        metadata: { decision: input.decision },
+      },
+    );
     return this.getApplication(id);
   }
 
-  async updateStatus(id: string, input: UpdateFranchiseApplicationStatusRequest) {
+  async updateStatus(
+    id: string,
+    input: UpdateFranchiseApplicationStatusRequest,
+    actorStaffAccountId: string,
+    requestId: string,
+  ) {
     const current = await this.requireApplication(id, input.version);
     if (!canTransition(current.status as FranchiseApplicationStatus, input.status)) {
       throw new FranchiseError('INVALID_STATE');
     }
     const now = new Date();
-    await this.updateVersioned(id, input.version, {
-      status: input.status,
-      signedAt: input.status === 'SIGNED' ? now : current.signedAt,
-      preparingAt: input.status === 'PREPARING' ? now : current.preparingAt,
-      openedAt: input.status === 'OPENED' ? now : current.openedAt,
-      closedAt: input.status === 'CLOSED' ? now : current.closedAt,
-      updatedAt: now,
-    });
+    await this.updateVersioned(
+      id,
+      input.version,
+      {
+        status: input.status,
+        signedAt: input.status === 'SIGNED' ? now : current.signedAt,
+        preparingAt: input.status === 'PREPARING' ? now : current.preparingAt,
+        openedAt: input.status === 'OPENED' ? now : current.openedAt,
+        closedAt: input.status === 'CLOSED' ? now : current.closedAt,
+        updatedAt: now,
+      },
+      {
+        actorStaffAccountId,
+        requestId,
+        actionKey: 'franchise.application.status',
+        metadata: { status: input.status },
+      },
+    );
     return this.getApplication(id);
   }
 
@@ -212,13 +243,30 @@ export class FranchiseService {
     id: string,
     version: number,
     values: Partial<typeof franchiseApplications.$inferInsert>,
+    audit?: {
+      actorStaffAccountId: string;
+      requestId: string;
+      actionKey: string;
+      metadata: Record<string, string>;
+    },
   ) {
-    const updated = await this.db
-      .update(franchiseApplications)
-      .set({ ...values, version: version + 1 })
-      .where(and(eq(franchiseApplications.id, id), eq(franchiseApplications.version, version)))
-      .returning({ id: franchiseApplications.id });
-    if (updated.length === 0) throw new FranchiseError('STALE_VERSION');
+    await this.db.transaction(async (tx) => {
+      const updated = await tx
+        .update(franchiseApplications)
+        .set({ ...values, version: version + 1 })
+        .where(and(eq(franchiseApplications.id, id), eq(franchiseApplications.version, version)))
+        .returning({ id: franchiseApplications.id });
+      if (updated.length === 0) throw new FranchiseError('STALE_VERSION');
+      if (audit)
+        await tx.insert(auditLogs).values({
+          actorStaffAccountId: audit.actorStaffAccountId,
+          actionKey: audit.actionKey,
+          resourceType: 'FRANCHISE_APPLICATION',
+          resourceId: id,
+          requestId: audit.requestId,
+          metadata: audit.metadata,
+        });
+    });
   }
 }
 

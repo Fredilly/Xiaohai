@@ -24,7 +24,8 @@ const provider =
   config.AI_PROVIDER === 'DEEPSEEK'
     ? new DeepSeekAiProvider(config.DEEPSEEK_API_KEY!, config.DEEPSEEK_BASE_URL)
     : new MockAiProvider();
-const processor = new AiJobProcessor(db, provider, new BaselineModerationAdapter());
+const moderation = new BaselineModerationAdapter(config.APP_ENV !== 'dev');
+const processor = new AiJobProcessor(db, provider, moderation);
 const imageProvider = new MockImageProvider();
 const imageProcessor = config.PICTURE_BOOK_IMAGE_ENABLED
   ? new ImageJobProcessor(db, imageProvider, config.PICTURE_BOOK_IMAGE_TIMEOUT_MS)
@@ -32,12 +33,7 @@ const imageProcessor = config.PICTURE_BOOK_IMAGE_ENABLED
 
 const videoProvider = new MockVideoProvider();
 const videoProcessor = config.ANIMATION_VIDEO_ENABLED
-  ? new VideoJobProcessor(
-      db,
-      videoProvider,
-      config.ANIMATION_VIDEO_TIMEOUT_MS,
-      new BaselineModerationAdapter(),
-    )
+  ? new VideoJobProcessor(db, videoProvider, config.ANIMATION_VIDEO_TIMEOUT_MS, moderation)
   : null;
 const compositionProvider = new MockCompositionProvider();
 const compositionProcessor = config.ANIMATION_COMPOSITION_ENABLED

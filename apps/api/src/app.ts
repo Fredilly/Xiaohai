@@ -4,7 +4,10 @@ import Fastify, {
   type FastifyReply,
   type FastifyRequest,
 } from 'fastify';
+import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
+import { safeLoggerOptions } from './security/logging.js';
+import { registerAbuseControls, type RateLimitStore } from './security/rate-limit.js';
 import {
   adminHomeResponseSchema,
   apiErrorResponseSchema,
@@ -40,15 +43,48 @@ export interface BuildAppOptions {
   homeCms?: HomeCmsService;
   logger?: boolean;
   loggerInstance?: FastifyBaseLogger;
+  rateLimitStore?: RateLimitStore;
+  trustProxy?: boolean | number;
 }
 
 export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
+  let trustProxy: boolean | ((_address: string, hop: number) => boolean);
+  if (typeof options.trustProxy === 'number') {
+    const trustedHopCount = options.trustProxy;
+    trustProxy = (_address: string, hop: number) => hop < trustedHopCount;
+  } else {
+    trustProxy = options.trustProxy ?? false;
+  }
   const app = Fastify({
     ...(options.loggerInstance
       ? { loggerInstance: options.loggerInstance }
-      : { logger: options.logger ?? true }),
-    requestIdHeader: 'x-request-id',
+      : { logger: options.logger === false ? false : safeLoggerOptions }),
+    // Correlation IDs used in audit records must not be supplied by the caller.
+    genReqId: () => randomUUID(),
+    disableRequestLogging: true,
+    trustProxy,
   });
+  app.setErrorHandler((error, request, reply) => {
+    const status = safeClientErrorStatus(error);
+    let code = 'INTERNAL_ERROR';
+    let message = 'Internal server error';
+    if (status === 413) {
+      code = 'PAYLOAD_TOO_LARGE';
+      message = 'Payload too large';
+    } else if (status < 500) {
+      code = 'INVALID_REQUEST';
+      message = 'Invalid request';
+    }
+    request.log.warn({ requestId: request.id, errorCode: code }, 'Unhandled request error');
+    return reply.status(status).send({
+      error: {
+        code,
+        message,
+        requestId: request.id,
+      },
+    });
+  });
+  if (options.rateLimitStore) registerAbuseControls(app, options.rateLimitStore);
   app.addHook('onSend', (request, reply, _payload, done) => {
     void reply.header('x-request-id', request.id);
     done();
@@ -195,6 +231,14 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   }
 
   return app;
+}
+
+function safeClientErrorStatus(error: unknown): number {
+  if (typeof error !== 'object' || error === null || !('statusCode' in error)) return 500;
+  const status = (error as { statusCode?: unknown }).statusCode;
+  if (typeof status !== 'number' || !Number.isInteger(status)) return 500;
+  if (status < 400 || status >= 500) return 500;
+  return status;
 }
 
 function sendInvalidRequest(reply: FastifyReply, requestId: string) {

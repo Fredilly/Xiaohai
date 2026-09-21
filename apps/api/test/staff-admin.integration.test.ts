@@ -26,6 +26,7 @@ import {
 } from '../src/auth/staff-authorization.js';
 import { ScryptPasswordHasher } from '../src/auth/password.js';
 import { StaffSessionService } from '../src/auth/staff-session.js';
+import { ConsumerSessionService } from '../src/auth/session.js';
 import { registerStaffAdminRoutes } from '../src/hq/staff-admin-routes.js';
 import { StaffAdminService } from '../src/hq/staff-admin-service.js';
 
@@ -159,6 +160,19 @@ suite('M20 Staff administration PostgreSQL integration', () => {
     expect(
       (await app.inject({ method: 'GET', url: '/api/v1/staff/admin/accounts' })).statusCode,
     ).toBe(401);
+    const consumer = new ConsumerSessionService(
+      'm22-consumer-isolation-test-secret-at-least-32-characters',
+      300,
+    ).issue(randomUUID()).token;
+    expect(
+      (
+        await app.inject({
+          method: 'GET',
+          url: '/api/v1/staff/admin/accounts',
+          headers: bearer(consumer),
+        })
+      ).statusCode,
+    ).toBe(401);
     expect(
       (
         await app.inject({
@@ -173,7 +187,11 @@ suite('M20 Staff administration PostgreSQL integration', () => {
         await app.inject({
           method: 'GET',
           url: '/api/v1/staff/admin/accounts',
-          headers: bearer(storeScoped.token),
+          headers: {
+            ...bearer(storeScoped.token),
+            'x-data-scope': 'GLOBAL',
+            'x-store-id': randomUUID(),
+          },
         })
       ).statusCode,
     ).toBe(403);
