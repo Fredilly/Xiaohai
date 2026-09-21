@@ -34,6 +34,12 @@
       "import": "./dist/audit.js",
       "default": "./dist/audit.js"
     },
+    "./finance": {
+      "types": "./src/finance.ts",
+      "development": "./src/finance.ts",
+      "import": "./dist/finance.js",
+      "default": "./dist/finance.js"
+    },
     "./payments": {
       "types": "./src/payments.ts",
       "development": "./src/payments.ts",
