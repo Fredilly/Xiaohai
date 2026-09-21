@@ -35,7 +35,7 @@ export class StaffAuthService {
     if (!(await this.repository.recordSuccessfulLogin(staff.id, loggedInAt))) {
       throw new ConsumerAuthError('STAFF_AUTHENTICATION_FAILED', 401);
     }
-    const session = this.sessions.issue(staff.id);
+    const session = this.sessions.issue(staff.id, staff.sessionVersion);
     return {
       staff: { id: staff.id, loginIdentifier: staff.loginIdentifier },
       session: { token: session.token, expiresAt: session.expiresAt.toISOString() },

@@ -7,6 +7,7 @@ export interface StaffAccountRecord {
   id: string;
   loginIdentifier: string;
   passwordHash: string;
+  sessionVersion: number;
   enabled: boolean;
 }
 
@@ -24,6 +25,7 @@ export class DrizzleStaffAccountRepository implements StaffAccountRepository {
         id: staffAccounts.id,
         loginIdentifier: staffAccounts.loginIdentifier,
         passwordHash: staffAccounts.passwordHash,
+        sessionVersion: staffAccounts.sessionVersion,
         enabled: staffAccounts.enabled,
       })
       .from(staffAccounts)

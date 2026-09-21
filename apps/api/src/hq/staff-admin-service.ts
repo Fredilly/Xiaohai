@@ -1,4 +1,4 @@
-import { and, desc, eq, ilike, inArray } from 'drizzle-orm';
+import { and, desc, eq, ilike, inArray, sql } from 'drizzle-orm';
 import type {
   StaffAdminCreateAccount,
   StaffAdminListQuery,
@@ -151,7 +151,11 @@ export class StaffAdminService {
     await this.db.transaction(async (tx) => {
       const [updated] = await tx
         .update(staffAccounts)
-        .set({ passwordHash, updatedAt: new Date() })
+        .set({
+          passwordHash,
+          sessionVersion: sql`${staffAccounts.sessionVersion} + 1`,
+          updatedAt: new Date(),
+        })
         .where(eq(staffAccounts.id, id))
         .returning({ id: staffAccounts.id });
       if (!updated) throw new StaffAdminError('NOT_FOUND');

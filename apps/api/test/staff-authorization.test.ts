@@ -3,6 +3,7 @@ import { ConsumerSessionService } from '../src/auth/session.js';
 import {
   StaffAuthorizationService,
   type StaffAuthorizationContext,
+  type StaffAuthorizationRecord,
   type StaffAuthorizationRepository,
 } from '../src/auth/staff-authorization.js';
 import { StaffSessionService } from '../src/auth/staff-session.js';
@@ -15,9 +16,9 @@ const now = () => new Date('2026-09-14T10:00:00.000Z');
 class FakeRepository implements StaffAuthorizationRepository {
   constructor(public context: StaffAuthorizationContext | null) {}
 
-  loadContext(staffAccountId: string): Promise<StaffAuthorizationContext | null> {
+  loadContext(staffAccountId: string): Promise<StaffAuthorizationRecord | null> {
     if (this.context?.staffAccountId !== staffAccountId) return Promise.resolve(null);
-    return Promise.resolve(this.context);
+    return Promise.resolve(this.context ? { ...this.context, sessionVersion: 0 } : null);
   }
 }
 

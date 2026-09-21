@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray, like } from 'drizzle-orm';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { publicInventorySearchResponseSchema } from '@xiaohai/contracts/inventory';
 import {
@@ -22,26 +22,44 @@ const suite = database ? describe : describe.skip;
 suite('M13 book + store inventory PostgreSQL integration', () => {
   const service = new InventorySearchService(database!.db);
 
-  beforeEach(async () => {
-    await database!.db.delete(storeInventory);
-    await database!.db.delete(skus);
-    await database!.db.delete(products);
-    await database!.db.delete(bookEditions);
-    await database!.db.delete(books);
-    await database!.db.delete(stores);
-    await database!.db.delete(franchisees);
-    await database!.db.delete(regions);
-  });
+  async function cleanupM13Fixtures() {
+    if (!database) return;
+
+    const db = database.db;
+
+    const m13Skus = await db.select({ id: skus.id }).from(skus).where(like(skus.code, 'M13-%'));
+
+    const skuIds = m13Skus.map((row) => row.id);
+
+    if (skuIds.length > 0) {
+      await db.delete(storeInventory).where(inArray(storeInventory.skuId, skuIds));
+    }
+
+    const m13Stores = await db
+      .select({ id: stores.id })
+      .from(stores)
+      .where(like(stores.code, 'M13-%'));
+
+    const storeIds = m13Stores.map((row) => row.id);
+
+    if (storeIds.length > 0) {
+      await db.delete(storeInventory).where(inArray(storeInventory.storeId, storeIds));
+    }
+
+    await db.delete(skus).where(like(skus.code, 'M13-%'));
+    await db.delete(products).where(like(products.name, '小海找书%'));
+    await db.delete(bookEditions).where(eq(bookEditions.isbn, '9787300000013'));
+    await db.delete(books).where(eq(books.title, '小海找书测试'));
+
+    await db.delete(stores).where(like(stores.code, 'M13-%'));
+    await db.delete(franchisees).where(like(franchisees.code, 'M13-%'));
+    await db.delete(regions).where(like(regions.code, 'M13-%'));
+  }
+
+  beforeEach(cleanupM13Fixtures);
 
   afterAll(async () => {
-    await database!.db.delete(storeInventory);
-    await database!.db.delete(skus);
-    await database!.db.delete(products);
-    await database!.db.delete(bookEditions);
-    await database!.db.delete(books);
-    await database!.db.delete(stores);
-    await database!.db.delete(franchisees);
-    await database!.db.delete(regions);
+    await cleanupM13Fixtures();
     await database!.pool.end();
   });
 

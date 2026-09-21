@@ -230,6 +230,11 @@ suite('M20 Staff administration PostgreSQL integration', () => {
     expect(stored!.passwordHash).not.toBe(initialPassword);
     expect(await passwordHasher.verify(initialPassword, stored!.passwordHash)).toBe(true);
 
+    const preResetToken = sessions.issue(created.id).token;
+    await expect(authorization.authenticate(`Bearer ${preResetToken}`)).resolves.toMatchObject({
+      staffAccountId: created.id,
+    });
+
     const reset = await app.inject({
       method: 'POST',
       url: `/api/v1/staff/admin/accounts/${created.id}/reset-password`,
@@ -247,6 +252,11 @@ suite('M20 Staff administration PostgreSQL integration', () => {
     expect(afterReset).toBeDefined();
     expect(await passwordHasher.verify(initialPassword, afterReset!.passwordHash)).toBe(false);
     expect(await passwordHasher.verify(resetPassword, afterReset!.passwordHash)).toBe(true);
+
+    await expect(authorization.authenticate(`Bearer ${preResetToken}`)).rejects.toMatchObject({
+      code: 'STAFF_AUTHENTICATION_REQUIRED',
+      statusCode: 401,
+    });
 
     await app.close();
   });

@@ -28,18 +28,23 @@ export interface StaffAuthorizationContext {
   dataScopes: StaffDataScope[];
 }
 
+export interface StaffAuthorizationRecord extends StaffAuthorizationContext {
+  sessionVersion: number;
+}
+
 export interface StaffAuthorizationRepository {
-  loadContext(staffAccountId: string): Promise<StaffAuthorizationContext | null>;
+  loadContext(staffAccountId: string): Promise<StaffAuthorizationRecord | null>;
 }
 
 export class DrizzleStaffAuthorizationRepository implements StaffAuthorizationRepository {
   constructor(private readonly db: Database) {}
 
-  async loadContext(staffAccountId: string): Promise<StaffAuthorizationContext | null> {
+  async loadContext(staffAccountId: string): Promise<StaffAuthorizationRecord | null> {
     const [staff] = await this.db
       .select({
         id: staffAccounts.id,
         loginIdentifier: staffAccounts.loginIdentifier,
+        sessionVersion: staffAccounts.sessionVersion,
         enabled: staffAccounts.enabled,
       })
       .from(staffAccounts)
@@ -71,6 +76,7 @@ export class DrizzleStaffAuthorizationRepository implements StaffAuthorizationRe
     return {
       staffAccountId: staff.id,
       loginIdentifier: staff.loginIdentifier,
+      sessionVersion: staff.sessionVersion,
       permissions: permissionKeys,
       dataScopes,
     };
@@ -88,9 +94,17 @@ export class StaffAuthorizationService {
     const claims = token ? this.sessions.verify(token) : null;
     if (!claims) throw new ConsumerAuthError('STAFF_AUTHENTICATION_REQUIRED', 401);
 
-    const context = await this.repository.loadContext(claims.staffAccountId);
-    if (!context) throw new ConsumerAuthError('STAFF_AUTHENTICATION_REQUIRED', 401);
-    return context;
+    const record = await this.repository.loadContext(claims.staffAccountId);
+    if (!record || record.sessionVersion !== claims.sessionVersion) {
+      throw new ConsumerAuthError('STAFF_AUTHENTICATION_REQUIRED', 401);
+    }
+
+    return {
+      staffAccountId: record.staffAccountId,
+      loginIdentifier: record.loginIdentifier,
+      permissions: record.permissions,
+      dataScopes: record.dataScopes,
+    };
   }
 
   hasPermission(context: StaffAuthorizationContext, permissionKey: string): boolean {
