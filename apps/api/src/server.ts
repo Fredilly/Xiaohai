@@ -48,6 +48,8 @@ import { FranchiseService } from './franchise/franchise-service.js';
 import { registerFranchiseRoutes } from './franchise/franchise-routes.js';
 import { CommissionService } from './commission/commission-service.js';
 import { registerCommissionRoutes } from './commission/commission-routes.js';
+import { FinanceService } from './finance/finance-service.js';
+import { registerFinanceRoutes } from './finance/finance-routes.js';
 import { AuditService } from './hq/audit-service.js';
 import { registerAuditRoutes } from './hq/audit-routes.js';
 import { HqReadService } from './hq/hq-read-service.js';
@@ -126,6 +128,7 @@ registerFranchiseRoutes(app, {
   staffAuthorization,
 });
 registerCommissionRoutes(app, { commission, consumerSessions: sessions, staffAuthorization });
+registerFinanceRoutes(app, { finance: new FinanceService(db), staffAuthorization });
 registerHqReadRoutes(app, { hqRead: new HqReadService(db), staffAuthorization });
 registerStaffAdminRoutes(app, {
   staffAdmin: new StaffAdminService(db, passwordHasher),
