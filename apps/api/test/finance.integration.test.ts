@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import {
+  auditLogs,
   consumerUsers,
   createDatabase,
   financeLedgerEntries,
@@ -24,6 +25,7 @@ import {
 } from '../src/auth/staff-authorization.js';
 import { StaffSessionService } from '../src/auth/staff-session.js';
 import {
+  FINANCE_EXPORT_PERMISSION,
   FINANCE_READ_PERMISSION,
   FINANCE_RECONCILE_PERMISSION,
   registerFinanceRoutes,
@@ -49,6 +51,7 @@ suite('M21 finance PostgreSQL integration', () => {
   const testRoles: string[] = [];
 
   async function cleanup() {
+    await db.delete(auditLogs);
     await db.delete(financeReconciliationItems);
     await db.delete(financeReconciliationRuns);
     await db.delete(financeLedgerEntries);
@@ -128,8 +131,8 @@ suite('M21 finance PostgreSQL integration', () => {
       .insert(payments)
       .values({
         orderId: order!.id,
-        merchantId: 'm21-merchant',
-        appId: 'm21-app',
+        merchantId: 'm21-merchant-secret-marker',
+        appId: 'm21-app-sensitive-marker',
         outTradeNo: randomUUID(),
         amountMinor: 2500,
       })
@@ -194,6 +197,16 @@ suite('M21 finance PostgreSQL integration', () => {
         })
       ).statusCode,
     ).toBe(200);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/v1/staff/finance/exports',
+          headers: { authorization: `Bearer ${reader.token}` },
+          payload: range(),
+        })
+      ).statusCode,
+    ).toBe(403);
 
     const reconciler = await staffToken(FINANCE_RECONCILE_PERMISSION, true);
     expect(
@@ -206,6 +219,18 @@ suite('M21 finance PostgreSQL integration', () => {
         })
       ).statusCode,
     ).toBe(201);
+
+    const exporter = await staffToken(FINANCE_EXPORT_PERMISSION, true);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/v1/staff/finance/exports',
+          headers: { authorization: `Bearer ${exporter.token}` },
+          payload: range(),
+        })
+      ).statusCode,
+    ).toBe(200);
 
     await app.close();
   });
@@ -239,7 +264,7 @@ suite('M21 finance PostgreSQL integration', () => {
     expect(ledger.items[0]).toMatchObject({ paymentLedgerId: source.id, cashDeltaMinor: 2500 });
   });
 
-  it('persists missing reconciliation evidence without repairing the finance ledger', async () => {
+  it('persists missing reconciliation evidence and audit without repairing the finance ledger', async () => {
     const source = await paymentSource();
     const actor = await staffToken(FINANCE_RECONCILE_PERMISSION, true);
     const sourceBefore = await db
@@ -247,7 +272,11 @@ suite('M21 finance PostgreSQL integration', () => {
       .from(paymentLedger)
       .where(eq(paymentLedger.id, source.id));
 
-    const run = await finance.createReconciliationRun(actor.account.id, range());
+    const run = await finance.createReconciliationRun(
+      actor.account.id,
+      range(),
+      'm21-reconcile-test-request',
+    );
 
     expect(run).toMatchObject({
       status: 'COMPLETED',
@@ -267,6 +296,18 @@ suite('M21 finance PostgreSQL integration', () => {
     expect(await db.select().from(paymentLedger).where(eq(paymentLedger.id, source.id))).toEqual(
       sourceBefore,
     );
+
+    const reconciliationAudit = await db
+      .select()
+      .from(auditLogs)
+      .where(eq(auditLogs.actionKey, 'finance.reconcile'));
+    expect(reconciliationAudit).toHaveLength(1);
+    expect(reconciliationAudit[0]).toMatchObject({
+      actorStaffAccountId: actor.account.id,
+      resourceType: 'FINANCE_RECONCILIATION',
+      resourceId: run.id,
+      requestId: 'm21-reconcile-test-request',
+    });
   });
 
   it('persists amount mismatches and leaves existing finance history unchanged', async () => {
@@ -284,7 +325,7 @@ suite('M21 finance PostgreSQL integration', () => {
       .returning();
     const actor = await staffToken(FINANCE_RECONCILE_PERMISSION, true);
 
-    const run = await finance.createReconciliationRun(actor.account.id, range());
+    const run = await finance.createReconciliationRun(actor.account.id, range(), 'm21-mismatch-test');
 
     expect(run).toMatchObject({
       status: 'COMPLETED',
@@ -302,5 +343,63 @@ suite('M21 finance PostgreSQL integration', () => {
       id: financeEntry!.id,
       cashDeltaMinor: 1,
     });
+  });
+
+  it('exports bounded finance CSV and audits filters without leaking sensitive payment fields', async () => {
+    const source = await paymentSource();
+    const [entry] = await db
+      .insert(financeLedgerEntries)
+      .values({
+        eventKey: `payment-ledger:${source.eventKey}`,
+        sourceKind: 'PAYMENT_LEDGER',
+        paymentLedgerId: source.id,
+        eventType: 'PAYMENT',
+        cashDeltaMinor: 2500,
+        occurredAt: source.createdAt,
+      })
+      .returning();
+    const exporter = await staffToken(FINANCE_EXPORT_PERMISSION, true);
+    const app = buildApp({ logger: false });
+    registerFinanceRoutes(app, { finance, staffAuthorization: authorization });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/staff/finance/exports',
+      headers: { authorization: `Bearer ${exporter.token}` },
+      payload: {
+        ...range(),
+        sourceKind: 'PAYMENT_LEDGER',
+        eventType: 'PAYMENT',
+        limit: 10,
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['content-type']).toContain('text/csv');
+    expect(response.headers['content-disposition']).toContain('finance-ledger-');
+    expect(response.headers['x-exported-row-count']).toBe('1');
+    expect(response.body).toContain('event_key,source_kind,source_id,event_type');
+    expect(response.body).toContain(entry!.id);
+    expect(response.body).toContain(source.id);
+    expect(response.body).not.toContain('m21-merchant-secret-marker');
+    expect(response.body).not.toContain('m21-app-sensitive-marker');
+
+    const exportAudit = await db
+      .select()
+      .from(auditLogs)
+      .where(eq(auditLogs.actionKey, 'finance.export'));
+    expect(exportAudit).toHaveLength(1);
+    expect(exportAudit[0]).toMatchObject({
+      actorStaffAccountId: exporter.account.id,
+      resourceType: 'FINANCE_EXPORT',
+    });
+    expect(exportAudit[0]?.metadata).toMatchObject({
+      sourceKind: 'PAYMENT_LEDGER',
+      eventType: 'PAYMENT',
+      limit: 10,
+      exportedRowCount: 1,
+    });
+
+    await app.close();
   });
 });
