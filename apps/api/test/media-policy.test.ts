@@ -11,6 +11,7 @@ describe('media metadata security gate', () => {
   it('accepts passive HTTPS media references', () => expect(safeMediaReference(valid)).toBe(true));
   it('rejects active content, path traversal, huge assets and URL credentials', () => {
     expect(safeMediaReference({ ...valid, mimeType: 'text/html' })).toBe(false);
+    expect(safeMediaReference({ ...valid, mimeType: 'image/png' })).toBe(false);
     expect(safeMediaReference({ ...valid, objectKey: '../script.mp4' })).toBe(false);
     expect(safeMediaReference({ ...valid, objectKey: 'script.svg' })).toBe(false);
     expect(safeMediaReference({ ...valid, byteSize: 2 ** 31 })).toBe(false);
