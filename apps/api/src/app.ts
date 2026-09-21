@@ -4,6 +4,7 @@ import Fastify, {
   type FastifyReply,
   type FastifyRequest,
 } from 'fastify';
+import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { safeLoggerOptions } from './security/logging.js';
 import { registerAbuseControls, type RateLimitStore } from './security/rate-limit.js';
@@ -51,6 +52,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
       ? { loggerInstance: options.loggerInstance }
       : { logger: options.logger === false ? false : safeLoggerOptions }),
     // Correlation IDs used in audit records must not be supplied by the caller.
+    genReqId: () => randomUUID(),
     disableRequestLogging: true,
   });
   app.setErrorHandler((error, request, reply) => {

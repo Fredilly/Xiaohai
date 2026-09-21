@@ -85,6 +85,7 @@ describe('server abuse controls', () => {
     });
     expect(response.headers['x-request-id']).not.toBe('spoofed-audit-id');
     expect(response.headers['x-request-id']).toBeTypeOf('string');
+    expect(response.headers['x-request-id']).toMatch(/^[a-f0-9-]{36}$/);
   });
 });
 
