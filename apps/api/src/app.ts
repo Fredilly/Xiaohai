@@ -48,10 +48,13 @@ export interface BuildAppOptions {
 }
 
 export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
-  const trustProxy =
-    typeof options.trustProxy === 'number'
-      ? (_address: string, hop: number) => hop < options.trustProxy!
-      : (options.trustProxy ?? false);
+  let trustProxy: boolean | ((_address: string, hop: number) => boolean);
+  if (typeof options.trustProxy === 'number') {
+    const trustedHopCount = options.trustProxy;
+    trustProxy = (_address: string, hop: number) => hop < trustedHopCount;
+  } else {
+    trustProxy = options.trustProxy ?? false;
+  }
   const app = Fastify({
     ...(options.loggerInstance
       ? { loggerInstance: options.loggerInstance }
