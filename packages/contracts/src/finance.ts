@@ -144,6 +144,7 @@ export const financeExportRequestSchema = z
     to: z.iso.datetime(),
     sourceKind: financeSourceKindSchema.optional(),
     eventType: financeEventTypeSchema.optional(),
+    limit: z.number().int().min(1).max(10_000).default(5_000),
   })
   .strict()
   .superRefine(validateRange);
