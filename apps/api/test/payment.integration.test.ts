@@ -22,6 +22,7 @@ import type {
   WeChatPayProvider,
 } from '../src/payments/wechat-pay.js';
 import { CommerceService } from '../src/commerce/commerce-service.js';
+import { backfillFinanceLedger } from '../src/finance/finance-ledger.js';
 
 const database = process.env.DATABASE_URL ? createDatabase(process.env) : null;
 const suite = database ? describe : describe.skip;
@@ -137,6 +138,33 @@ suite('M6 real PostgreSQL payment transactions', () => {
     );
     await expect(service.callback('changed-raw', {})).rejects.toMatchObject({
       code: 'CALLBACK_CONFLICT',
+    });
+  });
+  it('backfills historical payment ledger exactly once', async () => {
+    await fixture();
+    await service.callback('historical-payment', {});
+    const [source] = await db.select().from(paymentLedger);
+    expect(source).toBeDefined();
+
+    await db.delete(financeLedgerEntries);
+
+    expect(await backfillFinanceLedger(db, { sourceKind: 'PAYMENT_LEDGER' })).toEqual({
+      paymentSources: 1,
+      commissionSources: 0,
+      insertedEntries: 1,
+    });
+    expect(await backfillFinanceLedger(db, { sourceKind: 'PAYMENT_LEDGER' })).toEqual({
+      paymentSources: 1,
+      commissionSources: 0,
+      insertedEntries: 0,
+    });
+
+    const [entry] = await db.select().from(financeLedgerEntries);
+    expect(entry).toMatchObject({
+      sourceKind: 'PAYMENT_LEDGER',
+      paymentLedgerId: source!.id,
+      eventType: 'PAYMENT',
+      cashDeltaMinor: 2500,
     });
   });
   it('rejects wrong amount/merchant and rolls back callback receipt', async () => {
