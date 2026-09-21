@@ -132,16 +132,27 @@ export function FinanceManager({
         <span className="badge">M21 · finance.read + GLOBAL</span>
         <h2>Finance Control / 财务控制</h2>
         <p>
-          本页读取统一 Finance Ledger 与内部对账结果。退款、佣金结算和提现审核仍回到原有业务模块执行，不在这里复制状态机。
+          本页读取统一 Finance Ledger
+          与内部对账结果。退款、佣金结算和提现审核仍回到原有业务模块执行，不在这里复制状态机。
         </p>
         <form className="ops-form compact-form" onSubmit={(event) => void submitFilters(event)}>
           <label>
             From
-            <input name="from" type="datetime-local" defaultValue={toLocalInput(defaults.from)} required />
+            <input
+              name="from"
+              type="datetime-local"
+              defaultValue={toLocalInput(defaults.from)}
+              required
+            />
           </label>
           <label>
             To
-            <input name="to" type="datetime-local" defaultValue={toLocalInput(defaults.to)} required />
+            <input
+              name="to"
+              type="datetime-local"
+              defaultValue={toLocalInput(defaults.to)}
+              required
+            />
           </label>
           <select name="sourceKind" defaultValue="">
             <option value="">全部来源</option>
@@ -174,7 +185,10 @@ export function FinanceManager({
             <Metric label="Cash Outflow" value={money(summary.cashOutflowMinor)} />
             <Metric label="Net Cash" value={money(summary.netCashMinor)} />
             <Metric label="Frozen Commission Δ" value={money(summary.commissionFrozenDeltaMinor)} />
-            <Metric label="Available Commission Δ" value={money(summary.commissionAvailableDeltaMinor)} />
+            <Metric
+              label="Available Commission Δ"
+              value={money(summary.commissionAvailableDeltaMinor)}
+            />
           </div>
         ) : (
           <p>暂无汇总。</p>
