@@ -162,6 +162,20 @@
       "when": 1789958299837,
       "tag": "0022_pink_doctor_faustus",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1789968965770,
+      "tag": "0023_fast_thundra",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1789976370467,
+      "tag": "0024_m21_finance_permissions",
+      "breakpoints": true
     }
   ]
 }

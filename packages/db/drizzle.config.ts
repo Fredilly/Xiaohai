@@ -18,6 +18,7 @@ export default defineConfig({
     './src/fulfillment-schema.ts',
     './src/franchise-schema.ts',
     './src/commission-schema.ts',
+    './src/finance-schema.ts',
     './src/audit-schema.ts',
   ],
   out: './migrations',

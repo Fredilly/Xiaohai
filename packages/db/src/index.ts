@@ -70,6 +70,11 @@ export {
   commissionLedger,
   withdrawalRequests,
 } from './commission-schema.js';
+export {
+  financeLedgerEntries,
+  financeReconciliationRuns,
+  financeReconciliationItems,
+} from './finance-schema.js';
 export { auditLogs } from './audit-schema.js';
 export {
   consumerUsers,

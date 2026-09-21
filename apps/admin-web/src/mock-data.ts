@@ -65,16 +65,24 @@ export const adminModules: ModulePreview[] = [
     status: '可查看',
   },
   {
-    key: 'finance',
+    key: 'payments',
     label: '支付 / 退款',
     description: 'M6 支付、整单退款与逐笔对账',
     status: '可查看',
+    requiredPermission: 'payments.read',
   },
   {
     key: 'commission',
     label: '佣金 / 提现',
     description: 'M18 规则、结算、冲正与提现审核',
     status: '可查看',
+  },
+  {
+    key: 'finance',
+    label: '财务控制',
+    description: 'M21 统一财务账本、内部对账、受控导出与财务审计入口',
+    status: '可查看',
+    requiredPermission: 'finance.read',
   },
   { key: 'cms', label: 'CMS / 运营', description: '首页内容与运营位管理', status: '可查看' },
   {
