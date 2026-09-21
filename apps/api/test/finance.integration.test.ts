@@ -51,7 +51,8 @@ suite('M21 finance PostgreSQL integration', () => {
   const testRoles: string[] = [];
 
   async function cleanup() {
-    await db.delete(auditLogs);
+    await db.delete(auditLogs).where(eq(auditLogs.actionKey, 'finance.export'));
+    await db.delete(auditLogs).where(eq(auditLogs.actionKey, 'finance.reconcile'));
     await db.delete(financeReconciliationItems);
     await db.delete(financeReconciliationRuns);
     await db.delete(financeLedgerEntries);
