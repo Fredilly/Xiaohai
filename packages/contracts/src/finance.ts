@@ -13,6 +13,22 @@ export const financeEventTypeSchema = z.enum([
 ]);
 
 const signedMinorSchema = z.number().int().safe();
+const MAX_FINANCE_RANGE_MS = 366 * 24 * 60 * 60 * 1000;
+
+function validateRange(
+  value: { from?: string; to?: string },
+  ctx: z.RefinementCtx,
+): void {
+  if (!value.from || !value.to) return;
+  const from = new Date(value.from).getTime();
+  const to = new Date(value.to).getTime();
+  if (to <= from) {
+    ctx.addIssue({ code: 'custom', path: ['to'], message: 'to must be after from' });
+    return;
+  }
+  if (to - from > MAX_FINANCE_RANGE_MS)
+    ctx.addIssue({ code: 'custom', path: ['to'], message: 'range must not exceed 366 days' });
+}
 
 export const financeLedgerEntrySchema = z
   .object({
@@ -50,10 +66,15 @@ const financeRangeSchema = z
     to: z.iso.datetime(),
   })
   .strict()
-  .superRefine((value, ctx) => {
-    if (new Date(value.to) <= new Date(value.from))
-      ctx.addIssue({ code: 'custom', path: ['to'], message: 'to must be after from' });
-  });
+  .superRefine(validateRange);
+
+export const financeSummaryQuerySchema = z
+  .object({
+    from: z.iso.datetime().optional(),
+    to: z.iso.datetime().optional(),
+  })
+  .strict()
+  .superRefine(validateRange);
 
 export const financeLedgerListQuerySchema = z
   .object({
@@ -64,10 +85,7 @@ export const financeLedgerListQuerySchema = z
     limit: z.coerce.number().int().min(1).max(100).default(50),
   })
   .strict()
-  .superRefine((value, ctx) => {
-    if (value.from && value.to && new Date(value.to) <= new Date(value.from))
-      ctx.addIssue({ code: 'custom', path: ['to'], message: 'to must be after from' });
-  });
+  .superRefine(validateRange);
 
 export const financeLedgerListResponseSchema = z
   .object({ items: z.array(financeLedgerEntrySchema) })
@@ -131,14 +149,12 @@ export const financeExportRequestSchema = z
     eventType: financeEventTypeSchema.optional(),
   })
   .strict()
-  .superRefine((value, ctx) => {
-    if (new Date(value.to) <= new Date(value.from))
-      ctx.addIssue({ code: 'custom', path: ['to'], message: 'to must be after from' });
-  });
+  .superRefine(validateRange);
 
 export type FinanceSourceKind = z.infer<typeof financeSourceKindSchema>;
 export type FinanceEventType = z.infer<typeof financeEventTypeSchema>;
 export type FinanceLedgerEntry = z.infer<typeof financeLedgerEntrySchema>;
+export type FinanceSummaryQuery = z.infer<typeof financeSummaryQuerySchema>;
 export type FinanceLedgerListQuery = z.infer<typeof financeLedgerListQuerySchema>;
 export type FinanceSummaryResponse = z.infer<typeof financeSummaryResponseSchema>;
 export type CreateFinanceReconciliationRunRequest = z.infer<
