@@ -75,6 +75,17 @@ describe('server abuse controls', () => {
       requestId: response.headers['x-request-id'],
     });
   });
+  it('does not accept caller-chosen request IDs for audit correlation', async () => {
+    const app = buildApp({ logger: false });
+    apps.push(app);
+    const response = await app.inject({
+      method: 'GET',
+      url: '/health',
+      headers: { 'x-request-id': 'spoofed-audit-id' },
+    });
+    expect(response.headers['x-request-id']).not.toBe('spoofed-audit-id');
+    expect(response.headers['x-request-id']).toBeTypeOf('string');
+  });
 });
 
 describe('log privacy', () => {

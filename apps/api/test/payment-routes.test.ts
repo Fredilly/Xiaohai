@@ -86,7 +86,10 @@ describe('payment routes security', () => {
       payload: { orderId: randomUUID(), amountMinor: 1 },
     });
     expect(response.statusCode).toBe(400);
-    expect(response.json<{ error: { requestId: string } }>().error.requestId).toBe('test-request');
+    expect(response.json<{ error: { requestId: string } }>().error.requestId).toBe(
+      response.headers['x-request-id'],
+    );
+    expect(response.headers['x-request-id']).not.toBe('test-request');
     const success = await app.inject({
       method: 'POST',
       url: '/api/v1/payments/wechat',

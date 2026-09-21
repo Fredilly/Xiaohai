@@ -50,7 +50,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     ...(options.loggerInstance
       ? { loggerInstance: options.loggerInstance }
       : { logger: options.logger === false ? false : safeLoggerOptions }),
-    requestIdHeader: 'x-request-id',
+    // Correlation IDs used in audit records must not be supplied by the caller.
     disableRequestLogging: true,
   });
   app.setErrorHandler((error, request, reply) => {
