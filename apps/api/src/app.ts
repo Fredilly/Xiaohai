@@ -44,6 +44,7 @@ export interface BuildAppOptions {
   logger?: boolean;
   loggerInstance?: FastifyBaseLogger;
   rateLimitStore?: RateLimitStore;
+  trustProxy?: boolean | number;
 }
 
 export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
@@ -54,16 +55,26 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     // Correlation IDs used in audit records must not be supplied by the caller.
     genReqId: () => randomUUID(),
     disableRequestLogging: true,
+    trustProxy: options.trustProxy ?? false,
   });
   app.setErrorHandler((error, request, reply) => {
+    const rawStatus =
+      typeof error === 'object' && error !== null && 'statusCode' in error
+        ? (error as { statusCode?: unknown }).statusCode
+        : undefined;
     const status =
-      error instanceof Error && 'statusCode' in error && error.statusCode === 413 ? 413 : 500;
-    const code = status === 413 ? 'PAYLOAD_TOO_LARGE' : 'INTERNAL_ERROR';
+      typeof rawStatus === 'number' && Number.isInteger(rawStatus) && rawStatus >= 400 && rawStatus < 500
+        ? rawStatus
+        : 500;
+    const code =
+      status === 413 ? 'PAYLOAD_TOO_LARGE' : status < 500 ? 'INVALID_REQUEST' : 'INTERNAL_ERROR';
+    const message =
+      status === 413 ? 'Payload too large' : status < 500 ? 'Invalid request' : 'Internal server error';
     request.log.warn({ requestId: request.id, errorCode: code }, 'Unhandled request error');
     return reply.status(status).send({
       error: {
         code,
-        message: status === 413 ? 'Payload too large' : 'Internal server error',
+        message,
         requestId: request.id,
       },
     });
