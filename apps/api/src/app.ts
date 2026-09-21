@@ -45,6 +45,7 @@ export interface BuildAppOptions {
   loggerInstance?: FastifyBaseLogger;
   rateLimitStore?: RateLimitStore;
   trustProxy?: boolean | number;
+  readiness?: () => Promise<boolean>;
 }
 
 export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
@@ -89,7 +90,31 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     void reply.header('x-request-id', request.id);
     done();
   });
+  app.addHook('onResponse', (request, reply, done) => {
+    // Route templates contain no consumer IDs or query values. Do not log raw URLs.
+    request.log.info(
+      {
+        event: 'API_REQUEST_METRIC',
+        route: request.routeOptions.url ?? 'unmatched',
+        method: request.method,
+        statusCode: reply.statusCode,
+        durationMs: Math.round(reply.elapsedTime),
+      },
+      'API request completed',
+    );
+    done();
+  });
   app.get('/health', () => healthResponseSchema.parse({ status: 'ok', service: 'api' }));
+  if (options.readiness) {
+    app.get('/ready', async (_request, reply) => {
+      try {
+        if (await options.readiness!()) return { status: 'ready' };
+      } catch {
+        // Dependency diagnostics are emitted separately without leaking infrastructure details.
+      }
+      return reply.status(503).send({ status: 'unavailable' });
+    });
+  }
 
   if (options.homeCms) {
     app.get('/api/v1/home', async (request, reply) => {

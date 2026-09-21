@@ -11,6 +11,7 @@ import { VideoJobProcessor } from './video-processor.js';
 import { MockVideoProvider } from './video-provider.js';
 import { CompositionProcessor } from './composition-processor.js';
 import { MockCompositionProvider } from './composition-provider.js';
+import { recoverStaleMedia } from './stale-media.js';
 
 const config = loadWorkerConfig(process.env);
 const logger = pino({ level: config.LOG_LEVEL });
@@ -40,6 +41,12 @@ const compositionProcessor = config.ANIMATION_COMPOSITION_ENABLED
   ? new CompositionProcessor(db, compositionProvider, config.ANIMATION_COMPOSITION_TIMEOUT_MS)
   : null;
 await processor.recoverStale();
+const mediaTimeouts = {
+  imageMs: config.PICTURE_BOOK_IMAGE_TIMEOUT_MS,
+  videoMs: config.ANIMATION_VIDEO_TIMEOUT_MS,
+  compositionMs: config.ANIMATION_COMPOSITION_TIMEOUT_MS,
+};
+let lastRecovery = 0;
 let stopping = false;
 const stop = () => {
   stopping = true;
@@ -48,6 +55,12 @@ process.on('SIGTERM', stop);
 process.on('SIGINT', stop);
 while (!stopping) {
   try {
+    if (Date.now() - lastRecovery > 60_000) {
+      await processor.recoverStale();
+      const recovered = await recoverStaleMedia(db, mediaTimeouts);
+      logger.info({ event: 'WORKER_HEALTH', recovered }, 'Worker recovery sweep');
+      lastRecovery = Date.now();
+    }
     // Redis is the wake-up queue; PostgreSQL claim is authoritative and recovers lost notifications.
     const queues = ['xiaohai:ai:jobs'];
     if (imageProcessor) queues.push('xiaohai:image:jobs');

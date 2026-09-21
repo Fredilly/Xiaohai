@@ -15,6 +15,7 @@ import {
 } from '@xiaohai/db';
 import { ImageJobProcessor } from '../src/image-processor.js';
 import { MockImageProvider, type ImageProvider } from '../src/image-provider.js';
+import { recoverStaleMedia } from '../src/stale-media.js';
 
 const database = process.env.DATABASE_URL ? createDatabase(process.env) : null;
 const suite = database ? describe : describe.skip;
@@ -186,5 +187,22 @@ suite('M10 image worker PostgreSQL integration', () => {
     expect(saved).toMatchObject({ status: 'FAILED', errorCode: 'IMAGE_PROVIDER_UNAVAILABLE' });
     expect(saved!.mediaAssetId).toBeNull();
     expect(await db.select().from(mediaAssets)).toHaveLength(0);
+  });
+
+  it('marks an orphaned image terminal once without publishing a stale asset', async () => {
+    const fixture = await queued();
+    await db
+      .update(workPageIllustrations)
+      .set({ status: 'RUNNING', updatedAt: new Date('2020-01-01') })
+      .where(eq(workPageIllustrations.id, fixture.illustration.id));
+    const timeouts = { imageMs: 5_000, videoMs: 5_000, compositionMs: 5_000 };
+    expect((await recoverStaleMedia(db, timeouts)).images).toBe(1);
+    expect((await recoverStaleMedia(db, timeouts)).images).toBe(0);
+    const [saved] = await db
+      .select()
+      .from(workPageIllustrations)
+      .where(eq(workPageIllustrations.id, fixture.illustration.id));
+    expect(saved).toMatchObject({ status: 'FAILED', errorCode: 'IMAGE_WORKER_TIMEOUT' });
+    expect(saved!.mediaAssetId).toBeNull();
   });
 });

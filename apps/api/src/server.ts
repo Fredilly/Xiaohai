@@ -100,6 +100,12 @@ const app = buildApp({
   staffAuthorization,
   homeCms,
   rateLimitStore,
+  readiness: async () => {
+    const result = await Promise.allSettled([pool.query('select 1'), rateLimitStore.ping()]);
+    const ready = result.every((item) => item.status === 'fulfilled' && item.value !== false);
+    if (!ready) app.log.warn({ event: 'DEPENDENCY_UNAVAILABLE' }, 'API readiness failed');
+    return ready;
+  },
   // Production V1 places exactly one HTTPS/WAF proxy hop in front of Fastify.
   // Direct local development remains untrusted so X-Forwarded-For cannot spoof rate-limit identity.
   trustProxy: config.APP_ENV === 'dev' ? false : 1,
