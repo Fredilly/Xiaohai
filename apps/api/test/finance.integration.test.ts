@@ -67,7 +67,8 @@ suite('M21 finance PostgreSQL integration', () => {
       await db.delete(staffDataScopes).where(eq(staffDataScopes.staffAccountId, id));
     }
     for (const id of testRoles.splice(0)) await db.delete(roles).where(eq(roles.id, id));
-    for (const id of staff.splice(0)) await db.delete(staffAccounts).where(eq(staffAccounts.id, id));
+    for (const id of staff.splice(0))
+      await db.delete(staffAccounts).where(eq(staffAccounts.id, id));
   }
 
   beforeEach(cleanup);
@@ -83,7 +84,10 @@ suite('M21 finance PostgreSQL integration', () => {
       .returning();
     staff.push(account!.id);
 
-    let [permissionRow] = await db.select().from(permissions).where(eq(permissions.key, permission));
+    let [permissionRow] = await db
+      .select()
+      .from(permissions)
+      .where(eq(permissions.key, permission));
     if (!permissionRow)
       [permissionRow] = await db
         .insert(permissions)
@@ -96,9 +100,7 @@ suite('M21 finance PostgreSQL integration', () => {
       .returning();
     testRoles.push(role!.id);
     await db.insert(staffRoles).values({ staffAccountId: account!.id, roleId: role!.id });
-    await db
-      .insert(rolePermissions)
-      .values({ roleId: role!.id, permissionId: permissionRow!.id });
+    await db.insert(rolePermissions).values({ roleId: role!.id, permissionId: permissionRow!.id });
     await db.insert(staffDataScopes).values({
       staffAccountId: account!.id,
       scopeType: global ? 'GLOBAL' : 'REGION',
@@ -156,9 +158,9 @@ suite('M21 finance PostgreSQL integration', () => {
     const app = buildApp({ logger: false });
     registerFinanceRoutes(app, { finance, staffAuthorization: authorization });
 
-    expect((await app.inject({ method: 'GET', url: '/api/v1/staff/finance/summary' })).statusCode).toBe(
-      401,
-    );
+    expect(
+      (await app.inject({ method: 'GET', url: '/api/v1/staff/finance/summary' })).statusCode,
+    ).toBe(401);
 
     const wrong = await staffToken('finance.unrelated', true);
     expect(
@@ -240,7 +242,10 @@ suite('M21 finance PostgreSQL integration', () => {
   it('persists missing reconciliation evidence without repairing the finance ledger', async () => {
     const source = await paymentSource();
     const actor = await staffToken(FINANCE_RECONCILE_PERMISSION, true);
-    const sourceBefore = await db.select().from(paymentLedger).where(eq(paymentLedger.id, source.id));
+    const sourceBefore = await db
+      .select()
+      .from(paymentLedger)
+      .where(eq(paymentLedger.id, source.id));
 
     const run = await finance.createReconciliationRun(actor.account.id, range());
 

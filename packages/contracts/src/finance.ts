@@ -15,10 +15,7 @@ export const financeEventTypeSchema = z.enum([
 const signedMinorSchema = z.number().int().safe();
 const MAX_FINANCE_RANGE_MS = 366 * 24 * 60 * 60 * 1000;
 
-function validateRange(
-  value: { from?: string; to?: string },
-  ctx: z.RefinementCtx,
-): void {
+function validateRange(value: { from?: string; to?: string }, ctx: z.RefinementCtx): void {
   if (!value.from || !value.to) return;
   const from = new Date(value.from).getTime();
   const to = new Date(value.to).getTime();

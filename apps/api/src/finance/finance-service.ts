@@ -125,28 +125,33 @@ export class FinanceService {
 
     try {
       await this.db.transaction(async (tx) => {
-        const [paymentSources, commissionSources, actualEntries] = await Promise.all([
-          tx
-            .select()
-            .from(paymentLedger)
-            .where(and(gte(paymentLedger.createdAt, rangeFrom), lte(paymentLedger.createdAt, rangeTo))),
-          tx
-            .select({ event: commissionEvents, ledger: commissionLedger })
-            .from(commissionEvents)
-            .leftJoin(commissionLedger, eq(commissionLedger.eventId, commissionEvents.id))
-            .where(
-              and(gte(commissionEvents.createdAt, rangeFrom), lte(commissionEvents.createdAt, rangeTo)),
+        const paymentSources = await tx
+          .select()
+          .from(paymentLedger)
+          .where(
+            and(gte(paymentLedger.createdAt, rangeFrom), lte(paymentLedger.createdAt, rangeTo)),
+          );
+
+        const commissionSources = await tx
+          .select({ event: commissionEvents, ledger: commissionLedger })
+          .from(commissionEvents)
+          .leftJoin(commissionLedger, eq(commissionLedger.eventId, commissionEvents.id))
+          .where(
+            and(
+              gte(commissionEvents.createdAt, rangeFrom),
+              lte(commissionEvents.createdAt, rangeTo),
             ),
-          tx
-            .select()
-            .from(financeLedgerEntries)
-            .where(
-              and(
-                gte(financeLedgerEntries.occurredAt, rangeFrom),
-                lte(financeLedgerEntries.occurredAt, rangeTo),
-              ),
+          );
+
+        const actualEntries = await tx
+          .select()
+          .from(financeLedgerEntries)
+          .where(
+            and(
+              gte(financeLedgerEntries.occurredAt, rangeFrom),
+              lte(financeLedgerEntries.occurredAt, rangeTo),
             ),
-        ]);
+          );
 
         const paymentActual = new Map<string, FinanceEntry>(
           actualEntries
