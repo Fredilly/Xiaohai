@@ -1,6 +1,7 @@
 import { and, desc, eq, gte, lte, sql } from 'drizzle-orm';
 import type {
   CreateFinanceReconciliationRunRequest,
+  FinanceEventType,
   FinanceLedgerListQuery,
   FinanceSummaryQuery,
 } from '@xiaohai/contracts/finance';
@@ -26,13 +27,13 @@ const commissionEventTypes = {
   WITHDRAWAL_HELD: 'WITHDRAWAL_HELD',
   WITHDRAWAL_RELEASED: 'WITHDRAWAL_RELEASED',
   WITHDRAWAL_PAID: 'WITHDRAWAL_PAID',
-} as const;
+} as const satisfies Record<string, FinanceEventType>;
 
 interface ExpectedMovement {
   sourceKind: 'PAYMENT_LEDGER' | 'COMMISSION_EVENT';
   sourceId: string;
   eventKey: string;
-  eventType: (typeof financeLedgerEntries.$inferSelect)['eventType'];
+  eventType: FinanceEventType;
   cashDeltaMinor: number;
   commissionFrozenDeltaMinor: number;
   commissionAvailableDeltaMinor: number;
@@ -120,6 +121,7 @@ export class FinanceService {
       .insert(financeReconciliationRuns)
       .values({ requestedByStaffAccountId, rangeFrom, rangeTo })
       .returning();
+    if (!run) throw new Error('Failed to create finance reconciliation run');
 
     try {
       await this.db.transaction(async (tx) => {
@@ -146,22 +148,22 @@ export class FinanceService {
             ),
         ]);
 
-        const paymentActual = new Map(
+        const paymentActual = new Map<string, FinanceEntry>(
           actualEntries
             .filter((entry) => entry.paymentLedgerId)
-            .map((entry) => [entry.paymentLedgerId!, entry]),
+            .map((entry) => [entry.paymentLedgerId!, entry] as const),
         );
-        const commissionActual = new Map(
+        const commissionActual = new Map<string, FinanceEntry>(
           actualEntries
             .filter((entry) => entry.commissionEventId)
-            .map((entry) => [entry.commissionEventId!, entry]),
+            .map((entry) => [entry.commissionEventId!, entry] as const),
         );
 
         const expected: ExpectedMovement[] = paymentSources.map((source) => ({
           sourceKind: 'PAYMENT_LEDGER',
           sourceId: source.id,
           eventKey: source.eventKey,
-          eventType: source.kind,
+          eventType: source.kind as FinanceEventType,
           cashDeltaMinor: source.kind === 'PAYMENT' ? source.amountMinor : -source.amountMinor,
           commissionFrozenDeltaMinor: 0,
           commissionAvailableDeltaMinor: 0,
@@ -186,7 +188,7 @@ export class FinanceService {
           else mismatchCount += 1;
 
           return {
-            runId: run!.id,
+            runId: run.id,
             sourceKind: movement.sourceKind,
             sourceId: movement.sourceId,
             eventKey: movement.eventKey,
@@ -212,17 +214,17 @@ export class FinanceService {
             mismatchCount,
             completedAt: new Date(),
           })
-          .where(eq(financeReconciliationRuns.id, run!.id));
+          .where(eq(financeReconciliationRuns.id, run.id));
       });
     } catch (error) {
       await this.db
         .update(financeReconciliationRuns)
         .set({ status: 'FAILED', completedAt: new Date() })
-        .where(eq(financeReconciliationRuns.id, run!.id));
+        .where(eq(financeReconciliationRuns.id, run.id));
       throw error;
     }
 
-    return this.getReconciliationRun(run!.id);
+    return this.getReconciliationRun(run.id);
   }
 }
 
