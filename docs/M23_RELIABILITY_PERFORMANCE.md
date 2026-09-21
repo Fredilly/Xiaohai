@@ -2,7 +2,7 @@
 
 ## Baseline and measurement
 
-The repeatable in-process 100-request `/health` sample prints throughput, p95 and errors in `pnpm check`. It excludes network, PostgreSQL and Redis; it is only a regression smoke sample. CI runs full API/Worker integration and E2E with PostgreSQL 17 and Redis 7.4. Capture realistic production-like latency, throughput, connection saturation and error rates in staging before selecting SLAs. No production SLA is inferred from CI hardware.
+The repeatable in-process 100-request `/health` sample prints throughput, p95 and errors in `pnpm check`. It excludes network, PostgreSQL and Redis; it is only a regression smoke sample. The integration suite additionally measures 32 concurrent PostgreSQL-backed inventory API reads with scope and result assertions. CI runs full API/Worker integration and E2E with PostgreSQL 17 and Redis 7.4. Capture realistic production-like latency, throughput, connection saturation and error rates in staging before selecting SLAs. No production SLA is inferred from CI hardware.
 
 Provisional engineering triggers for investigation, subject to operations review: 5xx rate >1% for five minutes; p95 API latency >1 second for five minutes; any payment/inventory/ledger invariant violation; any failed restore; any stuck worker work past provider timeout plus 60 seconds. These are alert proposals, not contractual promises.
 
