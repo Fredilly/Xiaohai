@@ -58,29 +58,16 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     trustProxy: options.trustProxy ?? false,
   });
   app.setErrorHandler((error, request, reply) => {
-    const rawStatus =
-      typeof error === 'object' && error !== null && 'statusCode' in error
-        ? (error as { statusCode?: unknown }).statusCode
-        : undefined;
-    const status =
-      typeof rawStatus === 'number' &&
-      Number.isInteger(rawStatus) &&
-      rawStatus >= 400 &&
-      rawStatus < 500
-        ? rawStatus
-        : 500;
-    const code =
-      status === 413
-        ? 'PAYLOAD_TOO_LARGE'
-        : status < 500
-          ? 'INVALID_REQUEST'
-          : 'INTERNAL_ERROR';
-    const message =
-      status === 413
-        ? 'Payload too large'
-        : status < 500
-          ? 'Invalid request'
-          : 'Internal server error';
+    const status = safeClientErrorStatus(error);
+    let code = 'INTERNAL_ERROR';
+    let message = 'Internal server error';
+    if (status === 413) {
+      code = 'PAYLOAD_TOO_LARGE';
+      message = 'Payload too large';
+    } else if (status < 500) {
+      code = 'INVALID_REQUEST';
+      message = 'Invalid request';
+    }
     request.log.warn({ requestId: request.id, errorCode: code }, 'Unhandled request error');
     return reply.status(status).send({
       error: {
@@ -237,6 +224,14 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   }
 
   return app;
+}
+
+function safeClientErrorStatus(error: unknown): number {
+  if (typeof error !== 'object' || error === null || !('statusCode' in error)) return 500;
+  const status = (error as { statusCode?: unknown }).statusCode;
+  if (typeof status !== 'number' || !Number.isInteger(status)) return 500;
+  if (status < 400 || status >= 500) return 500;
+  return status;
 }
 
 function sendInvalidRequest(reply: FastifyReply, requestId: string) {
