@@ -68,8 +68,8 @@ describe('M21 finance contracts', () => {
 
     expect(createFinanceReconciliationRunRequestSchema.parse(range)).toEqual(range);
     expect(financeExportRequestSchema.parse(range)).toEqual(range);
-    expect(financeExportRequestSchema.safeParse({ ...range, consumerUserId: paymentLedgerId }).success).toBe(
-      false,
-    );
+    expect(
+      financeExportRequestSchema.safeParse({ ...range, consumerUserId: paymentLedgerId }).success,
+    ).toBe(false);
   });
 });

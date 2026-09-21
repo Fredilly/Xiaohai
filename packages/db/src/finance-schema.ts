@@ -104,15 +104,20 @@ export const financeReconciliationItems = pgTable(
     sourceId: uuid('source_id').notNull(),
     eventKey: text('event_key').notNull(),
     eventType: text('event_type').notNull(),
-    financeLedgerEntryId: uuid('finance_ledger_entry_id').references(() => financeLedgerEntries.id, {
-      onDelete: 'restrict',
-    }),
+    financeLedgerEntryId: uuid('finance_ledger_entry_id').references(
+      () => financeLedgerEntries.id,
+      {
+        onDelete: 'restrict',
+      },
+    ),
     outcome: text('outcome').notNull(),
     expectedCashDeltaMinor: integer('expected_cash_delta_minor').notNull(),
     actualCashDeltaMinor: integer('actual_cash_delta_minor'),
     expectedCommissionFrozenDeltaMinor: integer('expected_commission_frozen_delta_minor').notNull(),
     actualCommissionFrozenDeltaMinor: integer('actual_commission_frozen_delta_minor'),
-    expectedCommissionAvailableDeltaMinor: integer('expected_commission_available_delta_minor').notNull(),
+    expectedCommissionAvailableDeltaMinor: integer(
+      'expected_commission_available_delta_minor',
+    ).notNull(),
     actualCommissionAvailableDeltaMinor: integer('actual_commission_available_delta_minor'),
     createdAt: createdAt(),
   },
