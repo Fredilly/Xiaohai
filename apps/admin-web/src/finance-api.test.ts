@@ -92,7 +92,8 @@ describe('M21 Finance admin adapter', () => {
     const [reconcileUrl, reconcileInit] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(reconcileUrl).toContain('/api/v1/staff/finance/reconciliation-runs');
     expect(reconcileInit.method).toBe('POST');
-    expect(JSON.parse(String(reconcileInit.body))).toEqual(range);
+    if (typeof reconcileInit.body !== 'string') throw new Error('Expected JSON request body');
+    expect(JSON.parse(reconcileInit.body)).toEqual(range);
 
     const [exportUrl, exportInit] = fetchMock.mock.calls[1] as [string, RequestInit];
     expect(exportUrl).toContain('/api/v1/staff/finance/exports');
