@@ -9,6 +9,7 @@ import { ContentManager } from './content-manager';
 import { AiManager } from './ai-manager';
 import { FranchiseManager } from './franchise-manager';
 import { CommissionManager } from './commission-manager';
+import { FinanceManager } from './finance-manager';
 import { HqDashboard } from './hq-dashboard';
 import { HqOperationsManager } from './hq-operations-manager';
 import { HqSupportManager } from './hq-support-manager';
@@ -147,6 +148,12 @@ function Shell({
         ) : active === 'cms' ? (
           <CmsManager token={token} />
         ) : active === 'finance' ? (
+          <FinanceManager
+            token={token}
+            canReconcile={me.permissions.includes('finance.reconcile')}
+            canExport={me.permissions.includes('finance.export')}
+          />
+        ) : active === 'payments' ? (
           <PaymentsManager token={token} />
         ) : active === 'catalog' ? (
           <CatalogManager token={token} />
