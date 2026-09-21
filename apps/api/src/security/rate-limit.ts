@@ -47,9 +47,9 @@ export function registerAbuseControls(app: FastifyInstance, store: RateLimitStor
   app.addHook('onRequest', async (request, reply) => {
     const policy = ratePolicy(request.method, request.url.split('?')[0] ?? '');
     if (!policy) return;
-    // Fastify trustProxy defaults to false. Never accept forwarded client IP headers here.
-    const address = request.socket.remoteAddress ?? 'unknown';
-    const principal = createHash('sha256').update(address).digest('hex');
+    // request.ip is socket-derived by default and becomes forwarded-client aware only when Fastify
+    // trustProxy is explicitly configured for the deployment topology.
+    const principal = createHash('sha256').update(request.ip || 'unknown').digest('hex');
     const key = `xiaohai:security:limit:${policy.name}:${principal}`;
     let count: number;
     try {
