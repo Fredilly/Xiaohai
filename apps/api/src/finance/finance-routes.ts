@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import {
   createFinanceReconciliationRunRequestSchema,
+  financeExportRequestSchema,
   financeLedgerListQuerySchema,
   financeLedgerListResponseSchema,
   financeReconciliationRunSchema,
@@ -17,6 +18,7 @@ import { FinanceServiceError, type FinanceService } from './finance-service.js';
 
 export const FINANCE_READ_PERMISSION = 'finance.read';
 export const FINANCE_RECONCILE_PERMISSION = 'finance.reconcile';
+export const FINANCE_EXPORT_PERMISSION = 'finance.export';
 
 export function registerFinanceRoutes(
   app: FastifyInstance,
@@ -59,7 +61,11 @@ export function registerFinanceRoutes(
     if (!input.success) return invalid(reply, request.id);
     try {
       const context = await authorize(request, FINANCE_RECONCILE_PERMISSION);
-      const run = await options.finance.createReconciliationRun(context.staffAccountId, input.data);
+      const run = await options.finance.createReconciliationRun(
+        context.staffAccountId,
+        input.data,
+        request.id,
+      );
       return reply.status(201).send(financeReconciliationRunSchema.parse(run));
     } catch (error) {
       return fail(request, reply, error);
@@ -74,6 +80,26 @@ export function registerFinanceRoutes(
       return financeReconciliationRunSchema.parse(
         await options.finance.getReconciliationRun(params.data.id),
       );
+    } catch (error) {
+      return fail(request, reply, error);
+    }
+  });
+
+  app.post('/api/v1/staff/finance/exports', async (request, reply) => {
+    const input = financeExportRequestSchema.safeParse(request.body);
+    if (!input.success) return invalid(reply, request.id);
+    try {
+      const context = await authorize(request, FINANCE_EXPORT_PERMISSION);
+      const exported = await options.finance.exportLedger(
+        context.staffAccountId,
+        request.id,
+        input.data,
+      );
+      return reply
+        .header('content-type', 'text/csv; charset=utf-8')
+        .header('content-disposition', `attachment; filename="${exported.filename}"`)
+        .header('x-exported-row-count', String(exported.rowCount))
+        .send(exported.csv);
     } catch (error) {
       return fail(request, reply, error);
     }
