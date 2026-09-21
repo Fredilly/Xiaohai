@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { and, desc, eq } from 'drizzle-orm';
 import {
+  auditLogs,
   orders,
   payments,
   paymentCallbacks,
@@ -124,7 +125,7 @@ export class PaymentService {
     });
   }
 
-  async requestRefund(paymentId: string, staffId: string) {
+  async requestRefund(paymentId: string, staffId: string, requestId: string = randomUUID()) {
     this.provider.assertConfigured();
     const payment = await this.byId(paymentId);
     const refund = await this.db.transaction(async (tx) => {
@@ -148,6 +149,14 @@ export class PaymentService {
           .update(orders)
           .set({ status: 'REFUNDING', updatedAt: new Date() })
           .where(eq(orders.id, order.id));
+      await tx.insert(auditLogs).values({
+        actorStaffAccountId: staffId,
+        actionKey: 'payment.refund.request',
+        resourceType: 'REFUND',
+        resourceId: created!.id,
+        requestId,
+        metadata: { paymentId, originalOrderStatus: order.status },
+      });
       return created!;
     });
     if (refund.status !== 'PENDING') return refundView(refund);
@@ -165,13 +174,24 @@ export class PaymentService {
     return refundView(updated!);
   }
 
-  async reconcile(paymentId: string, staffId: string) {
+  async reconcile(paymentId: string, staffId: string, requestId: string = randomUUID()) {
     this.provider.assertConfigured();
     const payment = await this.byId(paymentId);
-    const [run] = await this.db
-      .insert(reconciliationRuns)
-      .values({ requestedBy: staffId })
-      .returning();
+    const [run] = await this.db.transaction(async (tx) => {
+      const [created] = await tx
+        .insert(reconciliationRuns)
+        .values({ requestedBy: staffId })
+        .returning();
+      await tx.insert(auditLogs).values({
+        actorStaffAccountId: staffId,
+        actionKey: 'payment.reconcile.request',
+        resourceType: 'PAYMENT_RECONCILIATION',
+        resourceId: created!.id,
+        requestId,
+        metadata: { paymentId },
+      });
+      return [created];
+    });
     let outcome = 'FAILED';
     try {
       const transaction = await this.provider.query(payment.outTradeNo);

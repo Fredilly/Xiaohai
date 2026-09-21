@@ -56,7 +56,7 @@ export function registerPaymentRoutes(
       const input = refundRequestSchema.safeParse(request.body);
       if (!input.success) throw new PaymentError('INVALID_REQUEST', 400);
       const result = refundResponseSchema.parse(
-        await options.payments.requestRefund(input.data.paymentId, staffId),
+        await options.payments.requestRefund(input.data.paymentId, staffId, request.id),
       );
       request.log.info(
         {
@@ -78,7 +78,7 @@ export function registerPaymentRoutes(
       const staffId = await staff(request, 'payments.reconcile');
       const params = z.object({ id: z.uuid() }).safeParse(request.params);
       if (!params.success) throw new PaymentError('INVALID_REQUEST', 400);
-      const result = await options.payments.reconcile(params.data.id, staffId);
+      const result = await options.payments.reconcile(params.data.id, staffId, request.id);
       request.log[
         result.outcome === 'FAILED' || result.outcome === 'REVIEW_REQUIRED' ? 'warn' : 'info'
       ]({ requestId: request.id, paymentId: params.data.id, ...result }, 'Payment reconciliation');

@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import {
+  auditLogs,
   createDatabase,
   consumerUsers,
   financeLedgerEntries,
@@ -49,6 +50,8 @@ suite('M6 real PostgreSQL payment transactions', () => {
   const createdUsers: string[] = [],
     createdStaff: string[] = [];
   async function cleanup() {
+    if (createdStaff.length)
+      await db.delete(auditLogs).where(inArray(auditLogs.actorStaffAccountId, createdStaff));
     await db.delete(financeLedgerEntries);
     await db.delete(reconciliationItems);
     await db.delete(reconciliationRuns);
@@ -215,6 +218,13 @@ suite('M6 real PostgreSQL payment transactions', () => {
     );
     const result = await service.requestRefund(f.payment.id, f.staff.id);
     expect(result.status).toBe('PROCESSING');
+    const records = await db.select().from(auditLogs).where(eq(auditLogs.resourceId, result.id));
+    expect(records).toHaveLength(1);
+    expect(records[0]).toMatchObject({
+      actorStaffAccountId: f.staff.id,
+      actionKey: 'payment.refund.request',
+      resourceType: 'REFUND',
+    });
     expect((await service.requestRefund(f.payment.id, f.staff.id)).id).toBe(result.id);
     expect(provider.refund).toHaveBeenCalledTimes(1);
     const [refund] = await db.select().from(refunds);
