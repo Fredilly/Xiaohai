@@ -2,10 +2,12 @@ import { and, desc, eq, gte, lte, sql } from 'drizzle-orm';
 import type {
   CreateFinanceReconciliationRunRequest,
   FinanceEventType,
+  FinanceExportRequest,
   FinanceLedgerListQuery,
   FinanceSummaryQuery,
 } from '@xiaohai/contracts/finance';
 import {
+  auditLogs,
   commissionEvents,
   commissionLedger,
   financeLedgerEntries,
@@ -94,6 +96,50 @@ export class FinanceService {
     return { items: rows.map(serializeFinanceEntry) };
   }
 
+  async exportLedger(
+    actorStaffAccountId: string,
+    requestId: string,
+    input: FinanceExportRequest,
+  ) {
+    return this.db.transaction(async (tx) => {
+      const rows = await tx
+        .select()
+        .from(financeLedgerEntries)
+        .where(
+          and(
+            gte(financeLedgerEntries.occurredAt, new Date(input.from)),
+            lte(financeLedgerEntries.occurredAt, new Date(input.to)),
+            input.sourceKind ? eq(financeLedgerEntries.sourceKind, input.sourceKind) : undefined,
+            input.eventType ? eq(financeLedgerEntries.eventType, input.eventType) : undefined,
+          ),
+        )
+        .orderBy(financeLedgerEntries.occurredAt, financeLedgerEntries.id)
+        .limit(input.limit);
+
+      await tx.insert(auditLogs).values({
+        actorStaffAccountId,
+        actionKey: 'finance.export',
+        resourceType: 'FINANCE_EXPORT',
+        resourceId: null,
+        requestId,
+        metadata: {
+          from: input.from,
+          to: input.to,
+          sourceKind: input.sourceKind ?? null,
+          eventType: input.eventType ?? null,
+          limit: input.limit,
+          exportedRowCount: rows.length,
+        },
+      });
+
+      return {
+        csv: financeCsv(rows),
+        rowCount: rows.length,
+        filename: `finance-ledger-${dateStamp(input.from)}-${dateStamp(input.to)}.csv`,
+      };
+    });
+  }
+
   async getReconciliationRun(id: string) {
     const [run] = await this.db
       .select()
@@ -114,6 +160,7 @@ export class FinanceService {
   async createReconciliationRun(
     requestedByStaffAccountId: string,
     input: CreateFinanceReconciliationRunRequest,
+    requestId = 'internal',
   ) {
     const rangeFrom = new Date(input.from);
     const rangeTo = new Date(input.to);
@@ -220,6 +267,21 @@ export class FinanceService {
             completedAt: new Date(),
           })
           .where(eq(financeReconciliationRuns.id, run.id));
+
+        await tx.insert(auditLogs).values({
+          actorStaffAccountId: requestedByStaffAccountId,
+          actionKey: 'finance.reconcile',
+          resourceType: 'FINANCE_RECONCILIATION',
+          resourceId: run.id,
+          requestId,
+          metadata: {
+            from: input.from,
+            to: input.to,
+            matchedCount,
+            missingCount,
+            mismatchCount,
+          },
+        });
       });
     } catch (error) {
       await this.db
@@ -299,4 +361,47 @@ function serializeRun(
     completedAt: run.completedAt?.toISOString() ?? null,
     items: items.map((item) => ({ ...item, createdAt: item.createdAt.toISOString() })),
   };
+}
+
+function financeCsv(rows: FinanceEntry[]): string {
+  const header = [
+    'id',
+    'event_key',
+    'source_kind',
+    'source_id',
+    'event_type',
+    'currency',
+    'cash_delta_minor',
+    'commission_frozen_delta_minor',
+    'commission_available_delta_minor',
+    'occurred_at',
+    'created_at',
+  ].join(',');
+
+  const lines = rows.map((row) =>
+    [
+      csvText(row.id),
+      csvText(row.eventKey),
+      csvText(row.sourceKind),
+      csvText(row.paymentLedgerId ?? row.commissionEventId ?? ''),
+      csvText(row.eventType),
+      csvText(row.currency),
+      row.cashDeltaMinor,
+      row.commissionFrozenDeltaMinor,
+      row.commissionAvailableDeltaMinor,
+      csvText(row.occurredAt.toISOString()),
+      csvText(row.createdAt.toISOString()),
+    ].join(','),
+  );
+
+  return `${[header, ...lines].join('\n')}\n`;
+}
+
+function csvText(value: string): string {
+  const hardened = /^[=+\-@]/.test(value) ? `'${value}` : value;
+  return `"${hardened.replaceAll('"', '""')}"`;
+}
+
+function dateStamp(value: string): string {
+  return new Date(value).toISOString().slice(0, 10);
 }
