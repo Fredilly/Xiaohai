@@ -48,6 +48,10 @@ export interface BuildAppOptions {
 }
 
 export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
+  const trustProxy =
+    typeof options.trustProxy === 'number'
+      ? (_address: string, hop: number) => hop < options.trustProxy!
+      : (options.trustProxy ?? false);
   const app = Fastify({
     ...(options.loggerInstance
       ? { loggerInstance: options.loggerInstance }
@@ -55,7 +59,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     // Correlation IDs used in audit records must not be supplied by the caller.
     genReqId: () => randomUUID(),
     disableRequestLogging: true,
-    trustProxy: options.trustProxy ?? false,
+    trustProxy,
   });
   app.setErrorHandler((error, request, reply) => {
     const status = safeClientErrorStatus(error);
