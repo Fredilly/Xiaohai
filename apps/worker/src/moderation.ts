@@ -6,6 +6,7 @@ export interface ModerationAdapter {
   moderate(text: string, phase: 'INPUT' | 'OUTPUT'): Promise<ModerationResult>;
 }
 export class BaselineModerationAdapter implements ModerationAdapter {
+  constructor(private readonly enforceApproval = false) {}
   moderate(text: string, _phase: 'INPUT' | 'OUTPUT'): Promise<ModerationResult> {
     void _phase;
     const normalized = text.trim();
@@ -13,7 +14,7 @@ export class BaselineModerationAdapter implements ModerationAdapter {
     if (normalized.length > 20000)
       return Promise.resolve({ status: 'BLOCKED', reasonCodes: ['CONTENT_TOO_LONG'] });
     return Promise.resolve({
-      status: 'REVIEW_REQUIRED',
+      status: this.enforceApproval ? 'BLOCKED' : 'REVIEW_REQUIRED',
       reasonCodes: ['PRODUCTION_POLICY_NOT_CONFIGURED'],
     });
   }

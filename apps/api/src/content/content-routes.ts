@@ -11,6 +11,7 @@ import type { ConsumerSessionService } from '../auth/session.js';
 import type { StaffAuthorizationService } from '../auth/staff-authorization.js';
 import { ConsumerAuthError } from '../auth/errors.js';
 import { ContentError, type ContentService } from './content-service.js';
+import { safeMediaReference } from '../security/media-policy.js';
 
 export const CONTENT_MANAGE_PERMISSION = 'content.manage';
 export function registerContentRoutes(
@@ -134,7 +135,7 @@ export function registerContentRoutes(
   });
   app.post('/api/v1/staff/content/media', async (request, reply) => {
     const input = mediaInputSchema.safeParse(request.body);
-    if (!input.success) return invalid(reply, request.id);
+    if (!input.success || !safeMediaReference(input.data)) return invalid(reply, request.id);
     try {
       await staff(request);
       return reply.status(201).send(await options.content.createMedia(input.data));
