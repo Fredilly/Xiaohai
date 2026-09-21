@@ -56,6 +56,7 @@ import { HqReadService } from './hq/hq-read-service.js';
 import { registerHqReadRoutes } from './hq/hq-read-routes.js';
 import { StaffAdminService } from './hq/staff-admin-service.js';
 import { registerStaffAdminRoutes } from './hq/staff-admin-routes.js';
+import { RedisRateLimitStore } from './security/rate-limit.js';
 
 const config = loadServiceConfig(process.env);
 const { db, pool } = createDatabase(process.env);
@@ -92,7 +93,8 @@ const homeCms = new HomeCmsService(db);
 const commission = new CommissionService(db);
 const commerce = new CommerceService(db, commission);
 const content = new ContentService(db);
-const app = buildApp({ consumerAuth, staffAuth, staffAuthorization, homeCms });
+const rateLimitStore = new RedisRateLimitStore(config.REDIS_URL);
+const app = buildApp({ consumerAuth, staffAuth, staffAuthorization, homeCms, rateLimitStore });
 registerCommerceRoutes(app, { commerce, consumerSessions: sessions, staffAuthorization });
 registerPaymentRoutes(app, {
   payments: new PaymentService(db, loadWeChatPayProvider(process.env), commission),
@@ -220,6 +222,7 @@ registerAnimationRoutes(app, {
 });
 
 app.addHook('onClose', async () => {
+  await rateLimitStore.close();
   await aiQueue.close();
   await imageQueue.close();
   await videoQueue.close();

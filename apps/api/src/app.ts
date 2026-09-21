@@ -5,6 +5,8 @@ import Fastify, {
   type FastifyRequest,
 } from 'fastify';
 import { z } from 'zod';
+import { safeLoggerOptions } from './security/logging.js';
+import { registerAbuseControls, type RateLimitStore } from './security/rate-limit.js';
 import {
   adminHomeResponseSchema,
   apiErrorResponseSchema,
@@ -40,15 +42,31 @@ export interface BuildAppOptions {
   homeCms?: HomeCmsService;
   logger?: boolean;
   loggerInstance?: FastifyBaseLogger;
+  rateLimitStore?: RateLimitStore;
 }
 
 export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   const app = Fastify({
     ...(options.loggerInstance
       ? { loggerInstance: options.loggerInstance }
-      : { logger: options.logger ?? true }),
+      : { logger: options.logger === false ? false : safeLoggerOptions }),
     requestIdHeader: 'x-request-id',
+    disableRequestLogging: true,
   });
+  app.setErrorHandler((error, request, reply) => {
+    const status =
+      error instanceof Error && 'statusCode' in error && error.statusCode === 413 ? 413 : 500;
+    const code = status === 413 ? 'PAYLOAD_TOO_LARGE' : 'INTERNAL_ERROR';
+    request.log.warn({ requestId: request.id, errorCode: code }, 'Unhandled request error');
+    return reply.status(status).send({
+      error: {
+        code,
+        message: status === 413 ? 'Payload too large' : 'Internal server error',
+        requestId: request.id,
+      },
+    });
+  });
+  if (options.rateLimitStore) registerAbuseControls(app, options.rateLimitStore);
   app.addHook('onSend', (request, reply, _payload, done) => {
     void reply.header('x-request-id', request.id);
     done();
