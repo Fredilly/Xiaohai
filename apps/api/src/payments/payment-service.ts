@@ -18,6 +18,7 @@ import {
   type RefundResult,
   type WeChatPayProvider,
 } from './wechat-pay.js';
+import { projectPaymentLedgerEntry } from '../finance/finance-ledger.js';
 
 type Db = ReturnType<typeof createDatabase>['db'];
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
@@ -288,12 +289,17 @@ export class PaymentService {
           .set({ status: 'PAID', updatedAt: new Date() })
           .where(eq(orders.id, order.id));
       // Late payment on CANCELLED stays CANCELLED and is flagged for controlled full refund.
-      await tx.insert(paymentLedger).values({
-        paymentId: payment.id,
-        eventKey: `payment:${payment.id}`,
-        kind: 'PAYMENT',
-        amountMinor: payment.amountMinor,
-      });
+      const [ledgerEntry] = await tx
+        .insert(paymentLedger)
+        .values({
+          paymentId: payment.id,
+          eventKey: `payment:${payment.id}`,
+          kind: 'PAYMENT',
+          amountMinor: payment.amountMinor,
+        })
+        .returning();
+
+      await projectPaymentLedgerEntry(tx, ledgerEntry!);
       if (result.trade_state === 'SUCCESS' && order.status === 'UNPAID')
         await this.commissions?.freezeForPaidOrder(tx, order.id, payment.id);
     } else if (['CLOSED', 'REVOKED'].includes(result.trade_state)) {
@@ -339,12 +345,17 @@ export class PaymentService {
       .set({ status: next, providerRefundId: result.refund_id, updatedAt: new Date() })
       .where(eq(refunds.id, refund.id));
     if (next === 'SUCCEEDED') {
-      await tx.insert(paymentLedger).values({
-        paymentId: payment.id,
-        eventKey: `refund:${refund.id}`,
-        kind: 'REFUND',
-        amountMinor: refund.amountMinor,
-      });
+      const [ledgerEntry] = await tx
+        .insert(paymentLedger)
+        .values({
+          paymentId: payment.id,
+          eventKey: `refund:${refund.id}`,
+          kind: 'REFUND',
+          amountMinor: refund.amountMinor,
+        })
+        .returning();
+
+      await projectPaymentLedgerEntry(tx, ledgerEntry!);
       await this.commissions?.reverseForRefund(
         tx,
         order.id,

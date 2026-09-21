@@ -14,6 +14,7 @@ import {
   withdrawalRequests,
   type createDatabase,
 } from '@xiaohai/db';
+import { projectCommissionEvent } from '../finance/finance-ledger.js';
 
 type Db = ReturnType<typeof createDatabase>['db'];
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
@@ -129,12 +130,17 @@ export class CommissionService {
       })
       .onConflictDoNothing()
       .returning();
-    if (event)
+    if (event) {
       await tx.insert(commissionLedger).values({
         eventId: event.id,
         beneficiaryConsumerUserId: event.beneficiaryConsumerUserId,
         frozenDeltaMinor: amountMinor,
       });
+
+      await projectCommissionEvent(tx, event, {
+        frozenDeltaMinor: amountMinor,
+      });
+    }
   }
 
   async reverseForRefund(
@@ -185,13 +191,22 @@ export class CommissionService {
       })
       .onConflictDoNothing()
       .returning();
-    if (event)
+    if (event) {
+      const frozenDeltaMinor = settled ? 0 : -amountMinor;
+      const availableDeltaMinor = settled ? -amountMinor : 0;
+
       await tx.insert(commissionLedger).values({
         eventId: event.id,
         beneficiaryConsumerUserId: event.beneficiaryConsumerUserId,
-        frozenDeltaMinor: settled ? 0 : -amountMinor,
-        availableDeltaMinor: settled ? -amountMinor : 0,
+        frozenDeltaMinor,
+        availableDeltaMinor,
       });
+
+      await projectCommissionEvent(tx, event, {
+        frozenDeltaMinor,
+        availableDeltaMinor,
+      });
+    }
   }
 
   async getAccount(consumerUserId: string) {
@@ -390,13 +405,19 @@ export class CommissionService {
         })
         .onConflictDoNothing()
         .returning();
-      if (event)
+      if (event) {
         await tx.insert(commissionLedger).values({
           eventId: event.id,
           beneficiaryConsumerUserId: event.beneficiaryConsumerUserId,
           frozenDeltaMinor: -event.amountMinor,
           availableDeltaMinor: event.amountMinor,
         });
+
+        await projectCommissionEvent(tx, event, {
+          frozenDeltaMinor: -event.amountMinor,
+          availableDeltaMinor: event.amountMinor,
+        });
+      }
       return { settled: true };
     });
   }
@@ -523,8 +544,8 @@ export class CommissionService {
           row.amountMinor,
           row.amountMinor,
         );
-      else
-        await tx
+      else {
+        const [event] = await tx
           .insert(commissionEvents)
           .values({
             eventKey: `withdrawal:${id}:${status.toLowerCase()}`,
@@ -533,7 +554,11 @@ export class CommissionService {
             withdrawalRequestId: id,
             amountMinor: row.amountMinor,
           })
-          .onConflictDoNothing();
+          .onConflictDoNothing()
+          .returning();
+
+        if (event) await projectCommissionEvent(tx, event);
+      }
       return withdrawalView(updated!);
     });
   }
@@ -562,12 +587,17 @@ async function appendWithdrawalMovement(
     })
     .onConflictDoNothing()
     .returning();
-  if (event)
+  if (event) {
     await tx.insert(commissionLedger).values({
       eventId: event.id,
       beneficiaryConsumerUserId: consumerUserId,
       availableDeltaMinor,
     });
+
+    await projectCommissionEvent(tx, event, {
+      availableDeltaMinor,
+    });
+  }
 }
 function referralView(r: typeof referralLinks.$inferSelect) {
   return {

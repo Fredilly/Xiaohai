@@ -4,6 +4,7 @@ import { eq } from 'drizzle-orm';
 import {
   createDatabase,
   consumerUsers,
+  financeLedgerEntries,
   orders,
   payments,
   paymentCallbacks,
@@ -47,6 +48,7 @@ suite('M6 real PostgreSQL payment transactions', () => {
   const createdUsers: string[] = [],
     createdStaff: string[] = [];
   async function cleanup() {
+    await db.delete(financeLedgerEntries);
     await db.delete(reconciliationItems);
     await db.delete(reconciliationRuns);
     await db.delete(paymentCallbacks);
@@ -119,6 +121,17 @@ suite('M6 real PostgreSQL payment transactions', () => {
     await Promise.all([service.callback('same-raw', {}), service.callback('same-raw', {})]);
     expect(await db.select().from(paymentCallbacks)).toHaveLength(1);
     expect(await db.select().from(paymentLedger)).toHaveLength(1);
+
+    const financeEntries = await db.select().from(financeLedgerEntries);
+    expect(financeEntries).toHaveLength(1);
+    expect(financeEntries[0]).toMatchObject({
+      sourceKind: 'PAYMENT_LEDGER',
+      eventType: 'PAYMENT',
+      cashDeltaMinor: 2500,
+      commissionFrozenDeltaMinor: 0,
+      commissionAvailableDeltaMinor: 0,
+    });
+
     expect((await db.select().from(orders).where(eq(orders.id, f.order.id)))[0]?.status).toBe(
       'PAID',
     );
@@ -195,6 +208,20 @@ suite('M6 real PostgreSQL payment transactions', () => {
       'REFUNDED',
     );
     expect(await db.select().from(paymentLedger)).toHaveLength(2);
+
+    const financeEntries = await db.select().from(financeLedgerEntries);
+    expect(financeEntries).toHaveLength(2);
+    expect(
+      financeEntries
+        .map((entry) => ({
+          eventType: entry.eventType,
+          cashDeltaMinor: entry.cashDeltaMinor,
+        }))
+        .sort((a, b) => a.eventType.localeCompare(b.eventType)),
+    ).toEqual([
+      { eventType: 'PAYMENT', cashDeltaMinor: 2500 },
+      { eventType: 'REFUND', cashDeltaMinor: -2500 },
+    ]);
   });
   it('refund timeout retains one PENDING intent and same number for retries', async () => {
     const f = await fixture();

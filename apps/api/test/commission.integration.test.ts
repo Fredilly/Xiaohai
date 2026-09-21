@@ -7,6 +7,7 @@ import {
   commissionRules,
   consumerUsers,
   createDatabase,
+  financeLedgerEntries,
   orders,
   payments,
   permissions,
@@ -53,6 +54,7 @@ suite('M18 referral and commission PostgreSQL integration', () => {
     testRoles: string[] = [];
 
   async function cleanup() {
+    await db.delete(financeLedgerEntries);
     await db.delete(commissionLedger);
     await db.delete(commissionEvents);
     await db.delete(withdrawalRequests);
@@ -365,6 +367,29 @@ suite('M18 referral and commission PostgreSQL integration', () => {
       .where(eq(commissionLedger.beneficiaryConsumerUserId, fixture.beneficiary.id));
 
     expect(snapshot(afterDuplicateSettle)).toEqual(settledSnapshot);
+
+    const financeEntries = await db.select().from(financeLedgerEntries);
+    expect(financeEntries).toHaveLength(2);
+    expect(
+      financeEntries
+        .map((entry) => ({
+          eventType: entry.eventType,
+          frozen: entry.commissionFrozenDeltaMinor,
+          available: entry.commissionAvailableDeltaMinor,
+        }))
+        .sort((a, b) => a.eventType.localeCompare(b.eventType)),
+    ).toEqual([
+      {
+        eventType: 'COMMISSION_FROZEN',
+        frozen: 600,
+        available: 0,
+      },
+      {
+        eventType: 'COMMISSION_SETTLED',
+        frozen: -600,
+        available: 600,
+      },
+    ]);
   });
 
   it('freezes from explicit active policy once and settles through append-only ledger', async () => {

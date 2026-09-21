@@ -1,4 +1,5 @@
-import { commissionEvents, financeLedgerEntries, paymentLedger, type createDatabase } from '@xiaohai/db';
+import type { commissionEvents, paymentLedger } from '@xiaohai/db';
+import { financeLedgerEntries, type createDatabase } from '@xiaohai/db';
 
 type Db = ReturnType<typeof createDatabase>['db'];
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
