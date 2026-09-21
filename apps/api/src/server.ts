@@ -94,7 +94,16 @@ const commission = new CommissionService(db);
 const commerce = new CommerceService(db, commission);
 const content = new ContentService(db);
 const rateLimitStore = new RedisRateLimitStore(config.REDIS_URL);
-const app = buildApp({ consumerAuth, staffAuth, staffAuthorization, homeCms, rateLimitStore });
+const app = buildApp({
+  consumerAuth,
+  staffAuth,
+  staffAuthorization,
+  homeCms,
+  rateLimitStore,
+  // Production V1 places exactly one HTTPS/WAF proxy hop in front of Fastify.
+  // Direct local development remains untrusted so X-Forwarded-For cannot spoof rate-limit identity.
+  trustProxy: config.APP_ENV === 'dev' ? false : 1,
+});
 registerCommerceRoutes(app, { commerce, consumerSessions: sessions, staffAuthorization });
 registerPaymentRoutes(app, {
   payments: new PaymentService(db, loadWeChatPayProvider(process.env), commission),
