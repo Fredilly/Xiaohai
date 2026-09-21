@@ -118,7 +118,10 @@ export async function backfillFinanceLedger(
     let insertedEntries = 0;
 
     if (!options.sourceKind || options.sourceKind === 'PAYMENT_LEDGER') {
-      const sources = await tx.select().from(paymentLedgerTable).orderBy(paymentLedgerTable.createdAt);
+      const sources = await tx
+        .select()
+        .from(paymentLedgerTable)
+        .orderBy(paymentLedgerTable.createdAt);
       paymentSources = sources.length;
 
       for (const source of sources) insertedEntries += await projectPaymentLedgerEntry(tx, source);
