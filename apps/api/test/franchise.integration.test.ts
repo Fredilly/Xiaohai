@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import {
   franchiseApplicationListResponseSchema,
@@ -6,6 +6,7 @@ import {
   franchiseApplicationViewSchema,
 } from '@xiaohai/contracts/franchise';
 import {
+  auditLogs,
   createDatabase,
   franchiseApplications,
   franchiseFollowups,
@@ -41,14 +42,24 @@ testSuite('M17 franchise PostgreSQL integration', () => {
   );
   const service = new FranchiseService(database!.db);
 
-  beforeEach(async () => {
+  async function cleanup() {
+    const applications = await database!.db
+      .select({ id: franchiseApplications.id })
+      .from(franchiseApplications);
+    if (applications.length)
+      await database!.db.delete(auditLogs).where(
+        inArray(
+          auditLogs.resourceId,
+          applications.map((application) => application.id),
+        ),
+      );
     await database!.db.delete(franchiseFollowups);
     await database!.db.delete(franchiseApplications);
-  });
+  }
+  beforeEach(cleanup);
 
   afterAll(async () => {
-    await database!.db.delete(franchiseFollowups);
-    await database!.db.delete(franchiseApplications);
+    await cleanup();
     await database?.pool.end();
   });
 
@@ -270,6 +281,17 @@ testSuite('M17 franchise PostgreSQL integration', () => {
       version: 5,
     });
     expect(view.approvedAt).not.toBeNull();
+    const reviewAudit = await database!.db
+      .select()
+      .from(auditLogs)
+      .where(eq(auditLogs.resourceId, created.id));
+    expect(reviewAudit).toHaveLength(1);
+    expect(reviewAudit[0]).toMatchObject({
+      actorStaffAccountId: operator.id,
+      actionKey: 'franchise.application.review',
+      metadata: { decision: 'APPROVED' },
+    });
+    expect(JSON.stringify(reviewAudit[0])).not.toContain('审核通过');
 
     for (const status of ['SIGNED', 'PREPARING', 'OPENED'] as const) {
       response = await app.inject({
@@ -288,6 +310,11 @@ testSuite('M17 franchise PostgreSQL integration', () => {
       .from(franchiseFollowups)
       .where(eq(franchiseFollowups.franchiseApplicationId, created.id));
     expect(rows).toHaveLength(2);
+    const audit = await database!.db
+      .select()
+      .from(auditLogs)
+      .where(eq(auditLogs.resourceId, created.id));
+    expect(audit).toHaveLength(4); // review + 3 lifecycle transitions
     await app.close();
   });
 

@@ -37,8 +37,8 @@ Age thresholds, guardian consent, visibility, deletion and export deadlines for 
 
 ## 审计与测试 / Audit and testing
 
-员工创建、禁用、重置密码、角色及数据范围变更使用同事务 `audit_logs`；财务对账及导出同样留痕。支付、退款、佣金、库存和加盟的审计边界应结合各自的不可变事件及操作记录复核，不用数量化日志替代语义审计。
-Staff creation, disabling, password resets and role/data-scope changes write transactional `audit_logs`; finance reconciliation and exports are also recorded. Payment, refunds, commissions, inventory and franchise audit boundaries need review alongside their immutable events and operation records; log volume is not evidence of meaningful audit coverage.
+员工创建、禁用、重置密码、角色及数据范围变更使用同事务 `audit_logs`；财务对账及导出、退款申请、支付对账、加盟审批及状态变更同样留痕。库存和佣金的审计边界还需结合各自的不可变流水复核，不用数量化日志替代语义审计。
+Staff creation, disabling, password resets and role/data-scope changes write transactional `audit_logs`; finance reconciliation and exports, refund requests, payment reconciliation, and franchise review/status changes are also recorded. Inventory and commission audit boundaries must additionally be reviewed against their immutable ledgers; log volume is not evidence of meaningful audit coverage.
 
 验证命令：`pnpm check`、`pnpm --filter @xiaohai/db db:check`、`pnpm test:integration`、`pnpm test:e2e`、`git diff --check`。Redis 限流、多身份越权、禁用员工、权限撤销及财务/库存范围必须以真实 PostgreSQL/Redis 集成测试和人工 review 验收。
 Verification commands: `pnpm check`, `pnpm --filter @xiaohai/db db:check`, `pnpm test:integration`, `pnpm test:e2e`, and `git diff --check`. Redis rate limits, cross-identity access, disabled Staff, permission revocation and finance/inventory scope require real PostgreSQL/Redis integration tests and human review.

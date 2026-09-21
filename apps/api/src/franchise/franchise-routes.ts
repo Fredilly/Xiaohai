@@ -137,6 +137,7 @@ export function registerFranchiseRoutes(
         params.data.id,
         context.staffAccountId,
         input.data,
+        request.id,
       );
       request.log.info(
         { requestId: request.id, applicationId: params.data.id, action: 'REVIEW' },
@@ -153,8 +154,13 @@ export function registerFranchiseRoutes(
     const input = updateFranchiseApplicationStatusRequestSchema.safeParse(request.body);
     if (!params.success || !input.success) return invalid(reply, request.id);
     try {
-      await staff(request, franchisePermissions.manage);
-      const result = await options.franchise.updateStatus(params.data.id, input.data);
+      const context = await staff(request, franchisePermissions.manage);
+      const result = await options.franchise.updateStatus(
+        params.data.id,
+        input.data,
+        context.staffAccountId,
+        request.id,
+      );
       request.log.info(
         { requestId: request.id, applicationId: params.data.id, action: 'STATUS' },
         'Franchise application status changed',
