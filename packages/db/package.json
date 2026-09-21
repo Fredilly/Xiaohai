@@ -15,6 +15,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "db:check": "drizzle-kit check",
+    "test:reliability-integration": "node --test test/reliability-scan.integration.test.mjs",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node --env-file-if-exists ../../.env --import tsx/esm src/migrate.ts",
     "db:seed-local-home": "node --env-file-if-exists ../../.env --import tsx/esm src/seed-local-home-cli.ts",
