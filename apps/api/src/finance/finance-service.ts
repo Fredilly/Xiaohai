@@ -54,11 +54,11 @@ export class FinanceService {
   async getSummary(input: FinanceSummaryQuery) {
     const [row] = await this.db
       .select({
-        cashInflowMinor: sql<number>`coalesce(sum(case when ${financeLedgerEntries.cashDeltaMinor} > 0 then ${financeLedgerEntries.cashDeltaMinor} else 0 end), 0)::int`,
-        cashOutflowMinor: sql<number>`coalesce(sum(case when ${financeLedgerEntries.cashDeltaMinor} < 0 then -${financeLedgerEntries.cashDeltaMinor} else 0 end), 0)::int`,
-        netCashMinor: sql<number>`coalesce(sum(${financeLedgerEntries.cashDeltaMinor}), 0)::int`,
-        commissionFrozenDeltaMinor: sql<number>`coalesce(sum(${financeLedgerEntries.commissionFrozenDeltaMinor}), 0)::int`,
-        commissionAvailableDeltaMinor: sql<number>`coalesce(sum(${financeLedgerEntries.commissionAvailableDeltaMinor}), 0)::int`,
+        cashInflowMinor: sql<string>`coalesce(sum(case when ${financeLedgerEntries.cashDeltaMinor} > 0 then ${financeLedgerEntries.cashDeltaMinor}::numeric else 0::numeric end), 0)::text`,
+        cashOutflowMinor: sql<string>`coalesce(sum(case when ${financeLedgerEntries.cashDeltaMinor} < 0 then -${financeLedgerEntries.cashDeltaMinor}::numeric else 0::numeric end), 0)::text`,
+        netCashMinor: sql<string>`coalesce(sum(${financeLedgerEntries.cashDeltaMinor}::numeric), 0)::text`,
+        commissionFrozenDeltaMinor: sql<string>`coalesce(sum(${financeLedgerEntries.commissionFrozenDeltaMinor}::numeric), 0)::text`,
+        commissionAvailableDeltaMinor: sql<string>`coalesce(sum(${financeLedgerEntries.commissionAvailableDeltaMinor}::numeric), 0)::text`,
       })
       .from(financeLedgerEntries)
       .where(
@@ -69,11 +69,11 @@ export class FinanceService {
       );
 
     return {
-      cashInflowMinor: Number(row?.cashInflowMinor ?? 0),
-      cashOutflowMinor: Number(row?.cashOutflowMinor ?? 0),
-      netCashMinor: Number(row?.netCashMinor ?? 0),
-      commissionFrozenDeltaMinor: Number(row?.commissionFrozenDeltaMinor ?? 0),
-      commissionAvailableDeltaMinor: Number(row?.commissionAvailableDeltaMinor ?? 0),
+      cashInflowMinor: financeAggregateMinor(row?.cashInflowMinor),
+      cashOutflowMinor: financeAggregateMinor(row?.cashOutflowMinor),
+      netCashMinor: financeAggregateMinor(row?.netCashMinor),
+      commissionFrozenDeltaMinor: financeAggregateMinor(row?.commissionFrozenDeltaMinor),
+      commissionAvailableDeltaMinor: financeAggregateMinor(row?.commissionAvailableDeltaMinor),
       currency: 'CNY' as const,
     };
   }
@@ -289,6 +289,17 @@ export class FinanceService {
 
     return this.getReconciliationRun(run.id);
   }
+}
+
+function financeAggregateMinor(value: string | null | undefined): number {
+  const exact = BigInt(value ?? '0');
+  const safeLimit = BigInt(Number.MAX_SAFE_INTEGER);
+
+  if (exact > safeLimit || exact < -safeLimit) {
+    throw new Error('Finance aggregate exceeds JavaScript safe integer range');
+  }
+
+  return Number(exact);
 }
 
 function expectedCommissionMovement(

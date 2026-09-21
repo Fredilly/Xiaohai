@@ -114,7 +114,7 @@ suite('M21 finance PostgreSQL integration', () => {
     return { account: account!, token: staffSessions.issue(account!.id).token };
   }
 
-  async function paymentSource() {
+  async function paymentSource(amountMinor = 2500) {
     const [user] = await db.insert(consumerUsers).values({}).returning();
     consumers.push(user!.id);
     const [order] = await db
@@ -122,8 +122,8 @@ suite('M21 finance PostgreSQL integration', () => {
       .values({
         consumerUserId: user!.id,
         orderNumber: randomUUID(),
-        subtotalMinor: 2500,
-        totalMinor: 2500,
+        subtotalMinor: amountMinor,
+        totalMinor: amountMinor,
         addressSnapshot: {},
         clientRequestId: randomUUID(),
       })
@@ -135,7 +135,7 @@ suite('M21 finance PostgreSQL integration', () => {
         merchantId: 'm21-merchant-secret-marker',
         appId: 'm21-app-sensitive-marker',
         outTradeNo: randomUUID(),
-        amountMinor: 2500,
+        amountMinor,
       })
       .returning();
     const [ledger] = await db
@@ -144,7 +144,7 @@ suite('M21 finance PostgreSQL integration', () => {
         paymentId: payment!.id,
         eventKey: `m21-payment-${randomUUID()}`,
         kind: 'PAYMENT',
-        amountMinor: 2500,
+        amountMinor,
       })
       .returning();
     return ledger!;
@@ -263,6 +263,40 @@ suite('M21 finance PostgreSQL integration', () => {
     });
     expect(ledger.items).toHaveLength(1);
     expect(ledger.items[0]).toMatchObject({ paymentLedgerId: source.id, cashDeltaMinor: 2500 });
+  });
+
+  it('aggregates finance summary safely above the PostgreSQL int32 boundary', async () => {
+    const amountMinor = 1_500_000_000;
+    const sourceA = await paymentSource(amountMinor);
+    const sourceB = await paymentSource(amountMinor);
+
+    await db.insert(financeLedgerEntries).values([
+      {
+        eventKey: `payment-ledger:${sourceA.eventKey}`,
+        sourceKind: 'PAYMENT_LEDGER',
+        paymentLedgerId: sourceA.id,
+        eventType: 'PAYMENT',
+        cashDeltaMinor: amountMinor,
+        occurredAt: sourceA.createdAt,
+      },
+      {
+        eventKey: `payment-ledger:${sourceB.eventKey}`,
+        sourceKind: 'PAYMENT_LEDGER',
+        paymentLedgerId: sourceB.id,
+        eventType: 'PAYMENT',
+        cashDeltaMinor: amountMinor,
+        occurredAt: sourceB.createdAt,
+      },
+    ]);
+
+    const totalMinor = amountMinor * 2;
+    expect(totalMinor).toBeGreaterThan(2_147_483_647);
+    expect(await finance.getSummary(range())).toMatchObject({
+      cashInflowMinor: 3_000_000_000,
+      cashOutflowMinor: 0,
+      netCashMinor: 3_000_000_000,
+      currency: 'CNY',
+    });
   });
 
   it('persists missing reconciliation evidence and audit without repairing the finance ledger', async () => {
