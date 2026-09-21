@@ -63,13 +63,24 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
         ? (error as { statusCode?: unknown }).statusCode
         : undefined;
     const status =
-      typeof rawStatus === 'number' && Number.isInteger(rawStatus) && rawStatus >= 400 && rawStatus < 500
+      typeof rawStatus === 'number' &&
+      Number.isInteger(rawStatus) &&
+      rawStatus >= 400 &&
+      rawStatus < 500
         ? rawStatus
         : 500;
     const code =
-      status === 413 ? 'PAYLOAD_TOO_LARGE' : status < 500 ? 'INVALID_REQUEST' : 'INTERNAL_ERROR';
+      status === 413
+        ? 'PAYLOAD_TOO_LARGE'
+        : status < 500
+          ? 'INVALID_REQUEST'
+          : 'INTERNAL_ERROR';
     const message =
-      status === 413 ? 'Payload too large' : status < 500 ? 'Invalid request' : 'Internal server error';
+      status === 413
+        ? 'Payload too large'
+        : status < 500
+          ? 'Invalid request'
+          : 'Internal server error';
     request.log.warn({ requestId: request.id, errorCode: code }, 'Unhandled request error');
     return reply.status(status).send({
       error: {
