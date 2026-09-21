@@ -1,207 +1,49 @@
-# M22 Security & Privacy / 安全与隐私
+# M22 安全与隐私 / M22 Security & Privacy
 
-## Goal / 目标
+## 范围与依据 / Scope and basis
 
-Harden Xiaohai for production security, privacy, and child-safety requirements without changing completed M1-M21 business semantics.
+本阶段依照 Issue #30 和 `DEVELOPMENT_TASKS.md` 加固已有系统，不改变 M1–M21 财务、库存与授权语义。安全评审必须在合并前独立完成。
+This milestone follows Issue #30 and `DEVELOPMENT_TASKS.md`, hardening the existing system without changing M1–M21 finance, inventory or authorization semantics. Independent security review is required before merging.
 
-M22 is a production-hardening milestone. It does not add new commerce, finance, store, AI-creation, or inventory business features.
+## 信任边界与威胁 / Trust boundaries and threats
 
-## Source requirements / 依据
+小程序消费者、门店端员工、总部后台员工使用不同会话；服务端核验身份、权限、数据范围及资源归属。API 与 PostgreSQL 之间是业务事实边界；Redis 只承载限流与异步唤醒。支付回调必须验签，AI/微信/地图/配送服务响应均是外部输入。媒体元数据与真实对象存储也是不同的边界。
+Mini Program consumers, Store staff and HQ staff use distinct sessions; the server verifies identity, permissions, data scope and ownership. The API–PostgreSQL boundary defines business truth; Redis only handles rate limiting and asynchronous wake-ups. Payment callbacks require signature verification, and AI, WeChat, map and delivery providers are external inputs. Media metadata and actual object storage are separate boundaries.
 
-M22 must cover:
+主要滥用途径包括暴力登录、伪造身份或范围、猜测资源 ID、重复财务操作、伪造媒体元数据、恶意内容、包含凭据的日志和过度导出个人信息。客户端提交的门店、区域、价格和角色不可作为授权事实。
+Primary abuse paths include brute-force login, forged identity or scope, guessed resource IDs, repeated financial actions, spoofed media metadata, unsafe content, credential-bearing logs and excessive PII exports. Client-submitted store, region, price and role fields are not authorization facts.
 
-- threat review
-- secret management
-- RBAC/Data Scope abuse tests
-- secure uploads
-- rate limiting
-- PII minimization and log redaction
-- child/privacy requirements
-- moderation
-- privileged-action audit coverage
+## 安全控制 / Security controls
 
-Done means the critical controls are implemented, tested, documented, and independently reviewed.
+API 在受保护写请求到达路由前使用 Redis 原子递增并设置过期时间。微信和员工登录每分钟每来源 10 次，公开加盟提交每小时 5 次，AI 写入每分钟 30 次，密码重置每小时 5 次。以未经代理信任转换的 socket 地址计算哈希键，不接受 `X-Forwarded-For`；超限 429，Redis 故障时受保护写入 503。限额是暂定的技术保护值，正式额度仍待运营确定。
+The API uses atomic Redis increments with expiry before protected write routes. WeChat and Staff login allow 10 attempts per minute per source, public franchise submissions 5 per hour, AI writes 30 per minute and password resets 5 per hour. Keys hash the socket address without trusting `X-Forwarded-For`; exceeded limits return 429 and Redis failure returns 503 for protected writes. These thresholds are provisional technical safeguards; production quotas await operations decisions.
 
-## Existing baseline observed / 当前基础
+Pino 以白名单序列化请求 ID 与方法，不记录请求 URL、header、body 或 query；密码、会话、微信身份、密钥和异常对象使用集中脱敏。公共未处理错误返回统一代码和 request ID，不返回原始异常。密钥扫描拒绝本地环境文件、私钥、证书及常见服务 token；示例值允许保留。
+Pino serializes only request ID and method, omitting URL, headers, body and query; passwords, sessions, WeChat identifiers, keys and exception objects receive centralized redaction. Unhandled public errors return a stable code and request ID, not raw exceptions. Secret scanning rejects local environment files, private keys, certificates and common service tokens while allowing example values.
 
-The repository already has meaningful security foundations:
+当前没有二进制上传端点；员工媒体端点只登记元数据。该登记入口现在校验被动媒体 MIME、1 GiB 上限、安全 object key 和无凭据、无查询串的 HTTPS 播放 URL。真实对象存储尚需服务端生成 key、字节级内容校验、扫描与授权访问，不能把元数据校验视作上传安全完成。
+There is no binary upload endpoint today; the Staff media route only registers metadata. That route now checks passive media MIME, a 1 GiB ceiling, safe object keys and HTTPS playback URLs without credentials or query strings. Real object storage still needs server-generated keys, byte-level validation, scanning and authorized access; metadata checks do not constitute complete upload security.
 
-- Consumer and Staff identities are separate.
-- Staff authorization is server-side RBAC + Data Scope; client-provided store/region IDs are not an authorization source.
-- API responses include request IDs.
-- Staff session invalidation/versioning exists from earlier IAM/HQ work.
-- Privileged HQ/Finance actions have an operational audit-log foundation.
-- Payment and commission authority remains server-side with append-only ledgers and reconciliation.
-- CI runs a repository secret-policy scan.
-- The secret scan currently rejects tracked `.env` files (except examples), WeChat private project config, common private-key files, private-key blocks, OpenAI-style `sk-...` tokens, and AWS access-key IDs.
-- CI runs formatting, lint, typecheck, unit tests, integration tests, E2E, migration guard, and high-severity production dependency audit when dependency files change.
-- AI jobs already expose a `moderation` field in their persisted/read model, so M22 should extend the existing AI model rather than introduce a second moderation source of truth.
+Worker 的基线审核没有正式策略：开发环境结果仍为 `REVIEW_REQUIRED`，staging/production 对未配置策略的文本和场景输入返回 `BLOCKED`，阻止继续生成。发布内容的审核流程与图片、合成视频内容审核尚需专门审核供应商与产品政策，不应声称已完成全面审核。
+Worker baseline moderation has no approved policy: development still returns `REVIEW_REQUIRED`, while staging and production return `BLOCKED` for unconfigured text and scene inputs and stop generation. Published content and image/composed-video moderation still require a dedicated moderation provider and product policy; comprehensive moderation is not claimed.
 
-## Gaps confirmed or requiring hardening / 已确认或需加固
+## 个人数据与儿童安全 / PII and child safety
 
-### 1. Rate limiting
+微信 openid/session key、地址与电话、员工账号、加盟申请、支付标识和 AI 提示词属于不同敏感等级。认证凭据不得返回或写日志；财务导出及总部详情必须以服务端权限和用途为界；审计事件保存 actor、action、resource 与 request ID，避免完整业务负载。已有 API 的详细个人信息仅在有明确业务用途与对应权限时可访问。
+WeChat openid/session keys, addresses and phones, Staff accounts, franchise applications, payment identifiers and AI prompts have different sensitivity levels. Credentials must not be returned or logged; finance exports and HQ details must be limited by server permissions and purpose. Audit events should retain actor, action, resource and request ID rather than full business payloads. Detailed PII in existing APIs is accessible only for defined business purposes and permissions.
 
-The current Fastify bootstrap does not register a centralized rate limiter. Authentication, public submission endpoints, and expensive AI operations therefore need explicit abuse controls.
+儿童个人信息的年龄门槛、监护人同意、可见范围、删除和导出时限尚无获批政策。上线前必须由产品与法务批准，不能把本阶段技术控制解读为法律合规结论。
+Age thresholds, guardian consent, visibility, deletion and export deadlines for child data have no approved policy yet. Product and legal approval is needed before launch; the technical controls here are not a legal compliance determination.
 
-### 2. Log redaction / PII
+## 审计与测试 / Audit and testing
 
-The API has structured logging and request IDs, but the Fastify bootstrap does not currently configure centralized logger redaction. M22 must prevent authorization tokens, cookies, passwords, WeChat codes/identifiers, addresses, phone/email, payment credentials, provider secrets, and raw AI prompts where inappropriate from leaking to logs.
+员工创建、禁用、重置密码、角色及数据范围变更使用同事务 `audit_logs`；财务对账及导出同样留痕。支付、退款、佣金、库存和加盟的审计边界应结合各自的不可变事件及操作记录复核，不用数量化日志替代语义审计。
+Staff creation, disabling, password resets and role/data-scope changes write transactional `audit_logs`; finance reconciliation and exports are also recorded. Payment, refunds, commissions, inventory and franchise audit boundaries need review alongside their immutable events and operation records; log volume is not evidence of meaningful audit coverage.
 
-### 3. Secret policy depth
+验证命令：`pnpm check`、`pnpm --filter @xiaohai/db db:check`、`pnpm test:integration`、`pnpm test:e2e`、`git diff --check`。Redis 限流、多身份越权、禁用员工、权限撤销及财务/库存范围必须以真实 PostgreSQL/Redis 集成测试和人工 review 验收。
+Verification commands: `pnpm check`, `pnpm --filter @xiaohai/db db:check`, `pnpm test:integration`, `pnpm test:e2e`, and `git diff --check`. Redis rate limits, cross-identity access, disabled Staff, permission revocation and finance/inventory scope require real PostgreSQL/Redis integration tests and human review.
 
-The repository secret scan is useful but intentionally small. M22 should extend detection for project-specific provider credentials and ensure production configuration cannot silently use development/test secrets or unsafe fallbacks.
+## 待确认决策与剩余风险 / Decisions Needed and remaining risks
 
-### 4. RBAC abuse coverage
-
-Existing feature tests cover many expected authorization paths. M22 needs an adversarial matrix that deliberately tries cross-store, cross-region, missing-permission, forged-scope, stale-session, disabled-account, privilege-escalation, and self-lockout scenarios across sensitive routes.
-
-### 5. Upload security
-
-Architecture requires validated object-storage uploads. M22 must inventory every existing upload/media entry point and enforce one shared policy for MIME/type, size, extension/content mismatch, object-key ownership, public/private exposure, and unsafe active content. If a production upload path is not implemented yet, M22 should add the reusable policy layer and tests without inventing an unrelated storage product.
-
-### 6. Privacy / child safety
-
-Data collection must be minimized. Consumer-facing and AI flows need an explicit inventory of collected PII, purpose, retention, visibility, deletion/export implications, and child-safety constraints. Legal/product choices that are not defined by the PRD must be recorded as Decisions Needed instead of guessed in code.
-
-### 7. Moderation
-
-AI/content architecture requires moderation, but M22 must verify enforcement rather than only storage of moderation metadata. Unsafe input/output states must fail closed where required, with tests covering bypass attempts and staff-only review paths.
-
-### 8. Privileged-action audit completeness
-
-M20/M21 provide the audit foundation. M22 must inventory sensitive mutations and verify that high-risk operations record actor, action, resource, request ID, and safe metadata without secrets/PII.
-
-## Threat model / 威胁模型
-
-M22 focuses on the following production threats:
-
-1. Credential stuffing and brute-force login attempts.
-2. Session theft, stale sessions, disabled accounts, and privilege changes not taking effect promptly.
-3. IDOR / broken object-level authorization across stores, regions, consumers, and HQ resources.
-4. Privilege escalation through client-controlled permission/scope/resource identifiers.
-5. Secret leakage through Git, configuration, logs, errors, exports, or client bundles.
-6. PII leakage through logs, admin views, CSV exports, audit metadata, or over-broad APIs.
-7. Malicious or oversized uploads, content-type spoofing, active-content payloads, and unsafe public exposure.
-8. Abuse of expensive AI endpoints and queue exhaustion.
-9. Unsafe AI/public content bypassing moderation.
-10. Missing audit evidence for privileged mutations.
-11. Child data collection or exposure beyond the documented minimum.
-
-## Implementation slices / 实施切片
-
-### M22-A — Security inventory and threat review
-
-- Map public, consumer-authenticated, Staff, Store, HQ, payment, AI, upload/media, export, and webhook surfaces.
-- Classify data: public, internal, PII, payment-sensitive, secret, child-sensitive.
-- Produce route-to-control matrix: auth, permission, data scope, rate limit, validation, audit, logging/redaction.
-- Record unresolved legal/product privacy decisions under Decisions Needed.
-
-Deliverable: this document expanded with the verified inventory and test matrix.
-
-### M22-B — Logging and secret hardening
-
-- Centralize Fastify/Pino redaction for sensitive headers and body/query fields.
-- Ensure error logs use codes/IDs instead of raw credentials, tokens, provider payloads, or unnecessary PII.
-- Expand `check:secrets` for project-relevant credential formats while keeping false positives manageable.
-- Add tests for redaction and secret-policy fixtures.
-- Tighten production config validation so known development/test fallback secrets are rejected in production.
-
-### M22-C — Rate limiting and abuse controls
-
-- Add a centralized rate-limit abstraction suitable for production deployment.
-- Apply stricter limits to Consumer/Staff login, public franchise submission, AI job creation/retry, and other high-cost or anonymous surfaces found by inventory.
-- Key limits by trusted server context (IP/session/staff/consumer as appropriate), never by arbitrary client IDs.
-- Return stable public error responses and request IDs.
-- Add deterministic tests for allow/deny/reset behavior.
-
-Redis may be used because the locked architecture explicitly allows Redis for rate limits, but canonical business state must remain outside Redis.
-
-### M22-D — RBAC/Data Scope adversarial suite
-
-Add integration coverage for:
-
-- no token / malformed token
-- missing permission
-- wrong Data Scope
-- forged store/region/resource IDs
-- cross-store access
-- cross-region access
-- disabled Staff account
-- stale session after password reset / role / scope revocation
-- role escalation attempts
-- self-lockout protections where applicable
-- GLOBAL-only HQ/Finance/Audit/Staff-admin surfaces
-
-The suite should reuse production authorization services, not mock away the security boundary.
-
-### M22-E — Upload/media security
-
-- Inventory actual upload paths first.
-- Introduce one reusable upload policy with explicit allowlists and size ceilings.
-- Reject MIME/extension mismatch and unsafe active formats where applicable.
-- Generate server-owned object keys; do not trust client object paths for ownership.
-- Keep private/source assets non-public unless business rules explicitly publish them.
-- Test malformed metadata, oversize input, unsupported content, and ownership violations.
-
-### M22-F — PII minimization and privacy
-
-- Inventory PII fields and all API/admin/export/log exposure.
-- Remove fields from responses that are not required for the caller's task.
-- Redact sensitive metadata in audit/log records.
-- Ensure finance exports, support views, and Staff views remain purpose-bounded.
-- Document retention/deletion/export responsibilities and flag policy gaps for product/legal approval.
-- Do not invent consent ages, retention periods, or legal bases not specified by approved requirements.
-
-### M22-G — Moderation and child-safety enforcement
-
-- Verify moderation state transitions for AI input/output and public content.
-- Add fail-closed behavior where moderation is required before publication/exposure.
-- Prevent clients from setting trusted moderation outcomes.
-- Add bypass/adversarial tests.
-- Keep moderation decisions auditable without storing unnecessary sensitive prompt content in operational logs.
-
-### M22-H — Audit completeness and final verification
-
-- Build a privileged-action inventory.
-- Add missing audit events only for materially sensitive operations.
-- Verify audit metadata contains actor/resource/request ID and excludes secrets/PII not needed for audit.
-- Run full repository checks, PostgreSQL/Redis integration, E2E, dependency audit, secret scan, and branch-vs-main review.
-- Require independent review before merge.
-
-## Non-goals / 非目标
-
-- M23 load/performance tuning, backup/restore drills, broad monitoring/alert tuning.
-- M24 real-device WeChat experience acceptance.
-- M25 production account/domain/payment/filing activation.
-- New business workflows unrelated to security/privacy hardening.
-- Rewriting M1-M21 authorization or financial business semantics unless a verified security defect requires a focused fix.
-
-## Initial acceptance criteria / 初始完成标准
-
-M22 is ready for PR only when:
-
-- threat/control inventory is documented
-- critical auth/RBAC/Data Scope abuse cases are automated
-- sensitive logs are centrally redacted and tested
-- high-risk endpoints have tested rate limits
-- secret policy/config hardening is tested
-- upload security is enforced on every existing upload entry point or explicitly documented as not yet applicable
-- PII exposure inventory is reviewed and unnecessary fields are removed/redacted
-- moderation enforcement and bypass tests cover applicable AI/public flows
-- privileged-action audit coverage is reviewed
-- full CI/integration/E2E is green
-- no production secrets are committed
-- independent review is requested
-
-## Decisions Needed / 待确认
-
-The following must not be guessed if the approved product documents do not define them:
-
-- exact child/guardian consent model and age rules
-- PII retention periods and deletion/export SLA
-- which AI/public-content categories require blocking vs Staff review
-- production object-storage/CDN malware scanning provider, if external scanning is required
-- production WAF/rate-limit edge provider and final numeric quotas
-- incident-response contacts and security escalation SLA
-
-These can be implemented once product/legal/operations decisions are approved; M22 may establish safe defaults and technical enforcement points without pretending those policy decisions are already final.
+待定：儿童年龄与监护同意、数据保留/删除/导出期限、正式审核分类与供应商、生产对象存储/CDN/恶意文件扫描、边缘限流与配额、事件响应联系人及 SLA。当前媒体登记仍引用外部对象 key；生产存储集成前不能开放原始二进制上传。地理位置与来源 IP 共享出口会影响按来源限流的公平性。
+Pending: child age and guardian consent, data retention/deletion/export periods, moderation categories and provider, production object storage/CDN/malware scanning, edge rate limits and quotas, and incident contacts/SLA. Media registration still references an external object key; raw binary upload must remain unavailable pending production storage integration. Shared IPs and geographic routing may affect fairness of source-based rate limits.
