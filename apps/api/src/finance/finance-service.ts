@@ -96,11 +96,7 @@ export class FinanceService {
     return { items: rows.map(serializeFinanceEntry) };
   }
 
-  async exportLedger(
-    actorStaffAccountId: string,
-    requestId: string,
-    input: FinanceExportRequest,
-  ) {
+  async exportLedger(actorStaffAccountId: string, requestId: string, input: FinanceExportRequest) {
     return this.db.transaction(async (tx) => {
       const rows = await tx
         .select()

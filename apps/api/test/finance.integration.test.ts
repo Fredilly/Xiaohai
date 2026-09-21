@@ -326,7 +326,11 @@ suite('M21 finance PostgreSQL integration', () => {
       .returning();
     const actor = await staffToken(FINANCE_RECONCILE_PERMISSION, true);
 
-    const run = await finance.createReconciliationRun(actor.account.id, range(), 'm21-mismatch-test');
+    const run = await finance.createReconciliationRun(
+      actor.account.id,
+      range(),
+      'm21-mismatch-test',
+    );
 
     expect(run).toMatchObject({
       status: 'COMPLETED',
