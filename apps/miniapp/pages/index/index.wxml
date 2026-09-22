@@ -1,4 +1,9 @@
 <view class="page">
+  <view class="home-search" bindtap="openShop">
+    <image class="search-icon" src="/assets/ui/search.svg" />
+    <text>搜索童书与好故事</text>
+    <text class="search-action">去商城 ›</text>
+  </view>
   <view wx:if="{{loading}}" class="state-card">首页加载中…</view>
   <view wx:elif="{{error}}" class="state-card">
     <text class="state-title">首页暂时无法加载</text>
@@ -21,12 +26,13 @@
         <text wx:if="{{item.config.eyebrow}}" class="eyebrow">{{item.config.eyebrow}}</text>
         <text class="hero-title">{{item.title}}</text>
         <text wx:if="{{item.subtitle}}" class="hero-subtitle">{{item.subtitle}}</text>
-        <text wx:if="{{item.action}}" class="hero-cta">开始创作 →</text>
+        <text wx:if="{{item.action}}" class="hero-cta">立即探索 →</text>
       </view>
       <view wx:elif="{{item.sectionType === 'FEATURE_GRID'}}" class="section">
         <view class="section-head"><text class="section-title">{{item.title}}</text><text class="section-note">{{item.subtitle}}</text></view>
         <view class="grid">
           <view class="card" wx:for="{{item.config.items}}" wx:for-item="entry" wx:key="key" data-target="{{entry.key}}" bindtap="openAction">
+            <view class="feature-icon"><image src="/assets/ui/{{entry.key === 'shop' ? 'shop' : entry.key === 'story-create' || entry.key === 'ai' ? 'magic' : entry.key === 'picture-books' ? 'book' : entry.key === 'animations' ? 'play' : 'star'}}.svg" /></view>
             <text class="card-title">{{entry.title}}</text>
             <text wx:if="{{entry.subtitle}}" class="card-subtitle">{{entry.subtitle}}</text>
             <text wx:if="{{entry.badge}}" class="badge">{{entry.badge}}</text>

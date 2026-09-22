@@ -1,125 +1,189 @@
 .page {
   min-height: 100vh;
-  padding: 32rpx 28rpx 80rpx;
+  padding: 24rpx 26rpx 80rpx;
   box-sizing: border-box;
-  background: #f6f7f8;
+  background: #f7f8fa;
+  color: #35404b;
 }
-
+.home-search {
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
+  min-height: 76rpx;
+  padding: 0 22rpx;
+  margin-bottom: 22rpx;
+  border-radius: 24rpx;
+  background: #fff;
+  color: #858d97;
+  font-size: 24rpx;
+  box-shadow: 0 8rpx 22rpx rgba(74, 80, 96, 0.04);
+}
+.home-search:active,
+.card:active,
+.hero-actionable:active,
+.banner:active {
+  opacity: 0.8;
+}
+.search-icon {
+  width: 32rpx;
+  height: 32rpx;
+}
+.search-action {
+  margin-left: auto;
+  color: #8c7ea2;
+  font-size: 22rpx;
+}
 .hero,
 .section,
 .state-card {
   margin-bottom: 24rpx;
-  padding: 32rpx;
-  border-radius: 24rpx;
-  background: #ffffff;
+  padding: 28rpx;
+  border: 1rpx solid #f0eff2;
+  border-radius: 28rpx;
+  background: #fff;
+  box-shadow: 0 8rpx 26rpx rgba(74, 80, 96, 0.045);
 }
-
 .hero,
 .state-card {
   display: flex;
   flex-direction: column;
   gap: 12rpx;
 }
-
 .hero {
   overflow: hidden;
+  min-height: 268rpx;
+  background: linear-gradient(125deg, #f7e5ed, #e8e6f4 56%, #e0eff5);
+  border-color: #f1eaf0;
 }
-
 .hero-actionable {
-  border: 2rpx solid #e8dec8;
+  border-color: #e9e2ef;
 }
-
 .hero-media {
   width: 100%;
   height: 260rpx;
   margin-bottom: 8rpx;
-  border-radius: 18rpx;
-  background: #f4f5f6;
+  border-radius: 20rpx;
+  background: #e8edf3;
 }
-
 .hero-cta {
-  margin-top: 8rpx;
-  font-size: 26rpx;
-  font-weight: 600;
-  color: #315d45;
-}
-
-.eyebrow,
-.section-note {
-  font-size: 22rpx;
-  color: #7a7f87;
-}
-
-.hero-title,
-.state-title {
-  font-size: 44rpx;
+  align-self: flex-start;
+  margin-top: 12rpx;
+  padding: 12rpx 24rpx;
+  border-radius: 999rpx;
+  background: #fff;
+  color: #806d93;
+  font-size: 24rpx;
   font-weight: 700;
 }
-
+.eyebrow {
+  font-size: 21rpx;
+  letter-spacing: 2rpx;
+  color: #867a96;
+}
+.hero-title,
+.state-title {
+  font-size: 42rpx;
+  font-weight: 800;
+  line-height: 1.35;
+}
 .hero-subtitle,
 .state-copy,
 .card-subtitle,
 .list-meta {
-  font-size: 26rpx;
-  color: #626871;
+  font-size: 24rpx;
+  color: #697581;
+  line-height: 1.55;
 }
-
 .section-head {
   display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 20rpx;
+  flex-direction: column;
+  gap: 5rpx;
   margin-bottom: 20rpx;
 }
-
-.section-title,
-.card-title,
-.list-title {
-  font-size: 30rpx;
-  font-weight: 600;
+.section-title {
+  font-size: 31rpx;
+  font-weight: 800;
+  color: #35404b;
 }
-
+.section-note {
+  font-size: 22rpx;
+  color: #9099a3;
+}
 .grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, 1fr);
   gap: 16rpx;
 }
-
 .card,
 .list-card {
-  padding: 24rpx;
-  border-radius: 18rpx;
-  background: #f4f5f6;
+  padding: 22rpx;
+  border-radius: 22rpx;
+  background: #f7f8fb;
 }
-
 .card {
   display: flex;
   flex-direction: column;
-  gap: 10rpx;
+  gap: 8rpx;
+  min-height: 176rpx;
 }
-
+.card:nth-child(4n + 1) {
+  background: #f8edf2;
+}
+.card:nth-child(4n + 2) {
+  background: #eff2fa;
+}
+.card:nth-child(4n + 3) {
+  background: #eef5f6;
+}
+.card:nth-child(4n + 4) {
+  background: #f0f5ef;
+}
+.feature-icon {
+  width: 64rpx;
+  height: 64rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 20rpx;
+  background: rgba(255, 255, 255, 0.78);
+}
+.feature-icon image {
+  width: 36rpx;
+  height: 36rpx;
+}
+.card-title,
+.list-title {
+  font-size: 27rpx;
+  font-weight: 700;
+}
 .badge {
   align-self: flex-start;
   padding: 4rpx 12rpx;
   border-radius: 999rpx;
-  background: #eceff2;
-  font-size: 20rpx;
+  background: rgba(255, 255, 255, 0.8);
+  color: #76818b;
+  font-size: 19rpx;
 }
-
 .book-list {
   display: flex;
   flex-direction: column;
   gap: 12rpx;
 }
-
 .list-main {
   display: flex;
   flex-direction: column;
   gap: 6rpx;
 }
-
 .banner {
   display: flex;
   flex-direction: column;
   gap: 10rpx;
+  background: #edf5f2;
+}
+.state-card button {
+  align-self: flex-start;
+  margin: 10rpx 0 0;
+  border-radius: 999rpx;
+  background: #e8e6f4;
+  color: #536277;
 }

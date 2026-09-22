@@ -6,22 +6,22 @@ const AVATAR_STORAGE_KEY = 'xiaohai.consumer.avatar';
 type ChooseAvatarEvent = { detail: { avatarUrl?: string } };
 
 const orderActions = [
-  { key: 'orders', title: '待付款', icon: '付' },
-  { key: 'orders', title: '待发货', icon: '发' },
-  { key: 'orders', title: '待收货', icon: '收' },
-  { key: 'orders', title: '待评价', icon: '评' },
-  { key: 'orders', title: '退款/售后', icon: '退' },
+  { key: 'orders', title: '待付款', icon: 'wallet' },
+  { key: 'orders', title: '待发货', icon: 'truck' },
+  { key: 'orders', title: '待收货', icon: 'package' },
+  { key: 'orders', title: '待评价', icon: 'star' },
+  { key: 'orders', title: '退款/售后', icon: 'return' },
 ];
 
 const serviceTiles = [
-  { key: 'works', title: 'AI作品', icon: '作', tone: 'blue' },
-  { key: 'animations', title: 'AI动画', icon: '动', tone: 'purple' },
-  { key: 'purchased', title: '我的动画', icon: '影', tone: 'pink' },
-  { key: 'my-rental', title: '我的租借', icon: '租', tone: 'green' },
-  { key: 'commission', title: '我的佣金', icon: '佣', tone: 'orange' },
-  { key: 'address', title: '地址管理', icon: '址', tone: 'cyan' },
-  { key: 'member', title: '会员中心', icon: '会', tone: 'yellow' },
-  { key: 'settings', title: '设置', icon: '设', tone: 'navy' },
+  { key: 'works', title: 'AI作品', icon: 'magic', tone: 'blue' },
+  { key: 'animations', title: 'AI动画', icon: 'play', tone: 'purple' },
+  { key: 'purchased', title: '我的动画', icon: 'film', tone: 'pink' },
+  { key: 'my-rental', title: '我的租借', icon: 'book', tone: 'green' },
+  { key: 'commission', title: '我的佣金', icon: 'coin', tone: 'orange' },
+  { key: 'address', title: '地址管理', icon: 'pin', tone: 'cyan' },
+  { key: 'member', title: '会员中心', icon: 'crown', tone: 'yellow' },
+  { key: 'settings', title: '设置', icon: 'settings', tone: 'navy' },
 ];
 
 function shortId(value: string): string {

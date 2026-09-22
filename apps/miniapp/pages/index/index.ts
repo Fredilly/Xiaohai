@@ -14,6 +14,9 @@ Page({
       this.setData({ loading: false, error: true, sections: [] });
     }
   },
+  openShop() {
+    void wx.navigateTo({ url: '/pages/shop/shop' });
+  },
   retry() {
     void this.loadHome();
   },

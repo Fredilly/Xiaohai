@@ -136,6 +136,18 @@ Page({
     });
   },
 
+  scrollToStores() {
+    void wx.pageScrollTo({ selector: '#store-list', duration: 300 });
+  },
+
+  scrollToMap() {
+    void wx.pageScrollTo({ selector: '#store-map', duration: 300 });
+  },
+
+  openRentals() {
+    void wx.navigateTo({ url: '/pages/rentals/rentals' });
+  },
+
   openBookSearch() {
     void wx.navigateTo({ url: '/pages/book-search/book-search' });
   },

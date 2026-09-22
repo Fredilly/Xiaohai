@@ -6,7 +6,7 @@
     <view class="profile-row">
       <button class="avatar-button" open-type="chooseAvatar" bindchooseavatar="chooseAvatar">
         <image wx:if="{{avatarUrl}}" class="avatar-image" src="{{avatarUrl}}" mode="aspectFill" />
-        <view wx:else class="avatar-fallback">海</view>
+        <view wx:else class="avatar-fallback"><image class="avatar-symbol" src="/assets/ui/user.svg" /></view>
       </button>
 
       <view class="profile-copy">
@@ -15,7 +15,7 @@
         <text wx:if="{{isLoggedIn}}" class="profile-id">ID {{consumerDisplayId}}</text>
       </view>
 
-      <view class="profile-setting" data-key="settings" bindtap="openFeature">设</view>
+      <view class="profile-setting" data-key="settings" bindtap="openFeature"><image class="setting-symbol" src="/assets/ui/settings.svg" /></view>
     </view>
 
     <button
@@ -62,7 +62,7 @@
           data-key="{{item.key}}"
           bindtap="openFeature"
         >
-          <view class="order-icon">{{item.icon}}</view>
+          <view class="order-icon"><image class="tile-symbol" src="/assets/ui/{{item.icon}}.svg" /></view>
           <text class="order-title">{{item.title}}</text>
         </view>
       </view>
@@ -81,7 +81,7 @@
           data-key="{{item.key}}"
           bindtap="openFeature"
         >
-          <view class="service-icon tone-{{item.tone}}">{{item.icon}}</view>
+          <view class="service-icon tone-{{item.tone}}"><image class="tile-symbol" src="/assets/ui/{{item.icon}}.svg" /></view>
           <text class="service-title">{{item.title}}</text>
         </view>
       </view>
