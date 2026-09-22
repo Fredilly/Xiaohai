@@ -12,7 +12,7 @@ describe('real visual fallbacks', () => {
     expect(resolveEditorialBookCover('PEW PEW TIGER and his magic puffs', null)).toBe(
       '/assets/books/book-pew-pew-tiger.jpg',
     );
-    expect(resolveEditorialBookCover("DoDo’s HAIRY DAY", null)).toBe(
+    expect(resolveEditorialBookCover('DoDo’s HAIRY DAY', null)).toBe(
       '/assets/books/book-dodos-hairy-day.jpg',
     );
     expect(resolveEditorialBookCover('归云日记', null)).toBe('/assets/books/book-yuns-diary.jpg');
