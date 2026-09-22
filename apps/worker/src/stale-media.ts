@@ -100,10 +100,7 @@ export async function recoverStaleMedia(
           .update(aiAnimations)
           .set({ status: 'GENERATING', updatedAt: recoveredAt })
           .where(
-            and(
-              eq(aiAnimations.id, composition.animationId),
-              eq(aiAnimations.status, 'COMPOSING'),
-            ),
+            and(eq(aiAnimations.id, composition.animationId), eq(aiAnimations.status, 'COMPOSING')),
           );
       }
     }
