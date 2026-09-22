@@ -1,0 +1,7 @@
+.order-summary .state-pill {
+  display: inline-block;
+  margin-top: 13rpx;
+}
+.order-summary .price {
+  flex: none;
+}

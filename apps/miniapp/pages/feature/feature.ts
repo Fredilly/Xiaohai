@@ -1,25 +1,15 @@
-import { featureCopy } from '../../services/mock';
-import { demoBooks } from '../../services/preview-books';
-
+const previewTitles: Record<string, string> = {
+  member: '会员中心',
+  settings: '设置',
+  purchased: '我的动画',
+  share: '分享与活动',
+  fulfillment: '自提与配送',
+};
 Page({
-  data: {
-    title: '功能预览',
-    intro: '该页面尚未接入正式业务 API。',
-    sections: [] as string[],
-    books: demoBooks,
-    showBooks: false,
-  },
+  data: { title: '服务暂未开放', intro: '我们正在准备这项服务。' },
   onLoad(query: Record<string, string | undefined>) {
-    const key = query.key ?? '';
-    const content = featureCopy[key];
-    if (content) {
-      this.setData({
-        title: content.title,
-        intro: content.intro,
-        sections: content.sections,
-        showBooks: key === 'shop' || key === 'book-search',
-      });
-      void wx.setNavigationBarTitle({ title: content.title });
-    }
+    const title = previewTitles[query.key ?? ''] || '服务暂未开放';
+    this.setData({ title });
+    void wx.setNavigationBarTitle({ title });
   },
 });

@@ -1,1 +1,19 @@
-<view class="page"><view class="section"><input placeholder="书名 / 作者 / ISBN" value="{{q}}" bindinput="onInput"/><button size="mini" bindtap="search">搜索</button><button size="mini" bindtap="cart">购物车</button></view><view wx:if="{{loading}}" class="state-card">商城加载中…</view><view wx:elif="{{error}}" class="state-card">加载失败<button bindtap="search">重试</button></view><view wx:elif="{{products.length===0}}" class="state-card">暂无可售商品</view><view wx:else class="section"><view class="list-card" wx:for="{{products}}" wx:key="id" data-id="{{item.id}}" bindtap="open"><view class="list-main"><text class="list-title">{{item.title || item.name}}</text><text class="list-meta">{{item.author || ''}} · {{item.publisher || ''}}</text></view><text class="price">¥{{item.skus[0].priceMinor / 100}}</text></view></view></view>
+<view class="page">
+  <text class="page-heading">小海商城</text>
+  <view class="commerce-toolbar">
+    <input placeholder="搜索书名、作者或 ISBN" value="{{q}}" bindinput="onInput" confirm-type="search" bindconfirm="search" />
+    <button bindtap="search">搜索</button>
+    <button bindtap="cart">购物车</button>
+  </view>
+  <view wx:if="{{loading}}" class="state-card"><text class="state-title">正在找好书…</text></view>
+  <view wx:elif="{{error}}" class="state-card"><text class="state-title">商品暂时无法加载</text><button bindtap="search">重试</button></view>
+  <view wx:elif="{{products.length===0}}" class="state-card"><text class="state-title">暂时没有找到商品</text><text class="state-copy">换个书名或作者试试。</text></view>
+  <view wx:else class="commerce-list">
+    <view class="list-card" wx:for="{{products}}" wx:key="id" data-id="{{item.id}}" bindtap="open">
+      <image wx:if="{{item.coverUrl}}" class="book-cover" src="{{item.coverUrl}}" mode="aspectFill" />
+      <view wx:else class="book-cover book-cover-placeholder">暂无封面</view>
+      <view class="list-main"><text class="list-title">{{item.title || item.name}}</text><text class="list-meta">{{item.author || item.publisher || '查看商品详情'}}</text><text class="price">¥{{item.skus[0].priceMinor / 100}}</text></view>
+      <text class="arrow">›</text>
+    </view>
+  </view>
+</view>

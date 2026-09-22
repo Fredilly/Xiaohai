@@ -1,0 +1,8 @@
+.reader-list .list-card {
+  display: flex;
+  gap: 18rpx;
+}
+.reader-list .state-pill {
+  display: inline-block;
+  margin-top: 12rpx;
+}

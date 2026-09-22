@@ -1,6 +1,6 @@
-<view class="page">
+<view class="page pangzhu">
   <view class="hero hero-soft">
-    <text class="eyebrow">FRANCHISE</text>
+
     <text class="hero-title">加盟合作</text>
     <text class="hero-subtitle">了解胖竹书店加盟合作的基础条件和流程，并提交意向申请。申请提交不代表审核通过或正式签约。</text>
   </view>
@@ -8,7 +8,7 @@
   <view wx:if="{{submitted}}" class="card success-card">
     <text class="card-title">申请已提交</text>
     <text class="card-subtitle">申请编号：{{applicationNumber}}</text>
-    <text class="card-subtitle">总部会根据申请信息进行后续联系。本页面暂不提供审核进度、合同签署或费用支付功能。</text>
+    <text class="card-subtitle">总部会根据申请信息进行后续联系。提交申请不代表合作已经确认。</text>
   </view>
 
   <block wx:else>
@@ -77,7 +77,7 @@
 
       <text wx:if="{{errorMessage}}" class="error-copy">{{errorMessage}}</text>
       <button class="primary-btn submit-btn" loading="{{submitting}}" disabled="{{submitting}}" bindtap="submit">提交加盟申请</button>
-      <text class="privacy-copy">提交后信息仅用于加盟业务联系与审核，不会在普通业务日志中展示手机号或邮箱。</text>
+      <text class="privacy-copy">提交的信息仅用于加盟联系与申请处理。</text>
     </view>
   </block>
 </view>

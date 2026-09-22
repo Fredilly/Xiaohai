@@ -1,0 +1,8 @@
+.commerce-list .list-card {
+  padding: 20rpx;
+}
+.commerce-list .price {
+  display: block;
+  margin-top: 12rpx;
+  color: #a06c79;
+}

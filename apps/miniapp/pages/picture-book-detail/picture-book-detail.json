@@ -1,1 +1,6 @@
-{ "navigationBarTitleText": "绘本工作台" }
+{
+  "navigationBarTitleText": "绘本工作台",
+  "navigationBarBackgroundColor": "#e9eff5",
+  "navigationBarTextStyle": "black",
+  "backgroundColor": "#f7f8fa"
+}

@@ -1,0 +1,38 @@
+.address-add {
+  margin: 0;
+  padding: 0 20rpx;
+  font-size: 22rpx;
+  min-height: 66rpx;
+  line-height: 66rpx;
+}
+.address-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+}
+.address-card {
+  padding: 26rpx;
+  border: 1rpx solid #edf0f2;
+  border-radius: 24rpx;
+  background: #fff;
+}
+.address-heading,
+.address-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10rpx;
+}
+.address-card .state-copy {
+  display: block;
+  margin-top: 10rpx;
+}
+.address-actions {
+  margin-top: 18rpx;
+  padding-top: 12rpx;
+  border-top: 1rpx solid #edf0f2;
+}
+.address-actions button {
+  margin: 0;
+  font-size: 21rpx;
+}

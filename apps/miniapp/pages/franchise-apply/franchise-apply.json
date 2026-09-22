@@ -1,3 +1,6 @@
 {
-  "navigationBarTitleText": "加盟合作"
+  "navigationBarTitleText": "加盟合作",
+  "navigationBarBackgroundColor": "#e7f0e8",
+  "navigationBarTextStyle": "black",
+  "backgroundColor": "#f7f8fa"
 }

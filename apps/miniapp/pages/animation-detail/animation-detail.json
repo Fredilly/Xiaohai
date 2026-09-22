@@ -1,1 +1,6 @@
-{ "navigationBarTitleText": "AI 动画工作台" }
+{
+  "navigationBarTitleText": "AI 动画工作台",
+  "navigationBarBackgroundColor": "#e9eff5",
+  "navigationBarTextStyle": "black",
+  "backgroundColor": "#f7f8fa"
+}

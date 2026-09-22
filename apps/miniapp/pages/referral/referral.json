@@ -1,1 +1,6 @@
-{ "navigationBarTitleText": "好友分享" }
+{
+  "navigationBarTitleText": "好友分享",
+  "navigationBarBackgroundColor": "#e9eff5",
+  "navigationBarTextStyle": "black",
+  "backgroundColor": "#f7f8fa"
+}

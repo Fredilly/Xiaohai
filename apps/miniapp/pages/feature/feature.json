@@ -1,3 +1,6 @@
 {
-  "navigationBarTitleText": "功能预览"
+  "navigationBarTitleText": "功能预览",
+  "navigationBarBackgroundColor": "#e9eff5",
+  "navigationBarTextStyle": "black",
+  "backgroundColor": "#f7f8fa"
 }

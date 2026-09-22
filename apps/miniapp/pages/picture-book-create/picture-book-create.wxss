@@ -1,11 +1,14 @@
-.card input {
+.creation-form {
+  text-align: left;
+}
+.creation-form input {
   width: 100%;
   margin: 16rpx 0;
 }
 .step-label {
   display: block;
-  margin: 16rpx 0 10rpx;
-  color: #718da0;
+  margin: 12rpx 0;
   font-size: 23rpx;
+  color: #718da0;
   font-weight: 700;
 }

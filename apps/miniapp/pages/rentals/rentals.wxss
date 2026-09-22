@@ -7,3 +7,12 @@
   margin-top: 12rpx;
   color: #6f6b62;
 }
+.rental-list {
+  padding: 0;
+  background: transparent;
+}
+.rental-list .card {
+  min-height: 0;
+  margin-bottom: 14rpx;
+  border-left: 5rpx solid #8aac94;
+}

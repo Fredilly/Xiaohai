@@ -1,10 +1,10 @@
 <view class="page">
   <view wx:if="{{loading}}" class="state-card">订单加载中…</view>
-  <view wx:elif="{{error}}" class="state-card">订单不可访问或操作失败</view>
+  <view wx:elif="{{error}}" class="state-card">订单不可访问或操作失败<button wx:if="{{id}}" bindtap="load">重试</button></view>
   <view wx:elif="{{order}}" class="section">
     <view class="card">
       <text class="section-title">{{order.orderNumber}}</text>
-      <text class="list-meta">状态 {{order.status}} · ¥{{order.totalMinor/100}}</text>
+      <text class="list-meta">状态 {{order.status === 'UNPAID' ? '待付款' : order.status === 'PAID' ? '已付款' : order.status === 'PROCESSING' ? '处理中' : order.status === 'PICKUP_READY' ? '待自提' : order.status === 'DELIVERING' ? '配送中' : order.status === 'COMPLETED' ? '已完成' : order.status === 'CANCELLED' ? '已取消' : order.status === 'REFUNDING' ? '退款中' : '已退款'}} · ¥{{order.totalMinor/100}}</text>
       <view wx:for="{{order.items}}" wx:key="id" class="order-line">
         <text>{{item.productName}} · {{item.skuName}} × {{item.quantity}}</text>
         <text>¥{{item.lineTotalMinor/100}}</text>
@@ -33,9 +33,9 @@
       <block wx:if="{{fulfillment.delivery}}">
         <text class="list-meta">配送范围：{{fulfillment.delivery.zoneName}}</text>
         <text class="list-meta">配送费：¥{{fulfillment.deliveryFeeMinor/100}}</text>
-        <text class="list-meta">配送状态：{{fulfillment.delivery.status}}</text>
+        <text class="list-meta">配送状态：{{fulfillment.delivery.status === 'DELIVERED' ? '已送达' : fulfillment.delivery.status === 'CANCELLED' ? '已取消' : '配送处理中'}}</text>
         <text class="muted">
-          当前配送由 {{fulfillment.delivery.providerKey}} 履约；真实第三方配送商未配置时不会伪造骑手或轨迹。
+          配送进度请以本页更新为准。
         </text>
       </block>
     </view>
@@ -52,6 +52,6 @@
     </button>
     <button bindtap="load">刷新订单状态</button>
     <text class="muted">{{paymentMessage}}</text>
-    <view class="demo-note">支付、取货码、配送状态均以服务端状态为准，请勿重复付款或重复核销。</view>
+
   </view>
 </view>

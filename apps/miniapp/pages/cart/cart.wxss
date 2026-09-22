@@ -1,0 +1,30 @@
+.cart-line {
+  align-items: flex-start !important;
+}
+.cart-line .price {
+  display: block;
+  margin-top: 14rpx;
+}
+.cart-line .state-pill {
+  display: inline-block;
+  margin-top: 10rpx;
+}
+.quantity-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  max-width: 210rpx;
+  gap: 5rpx;
+  font-size: 24rpx;
+}
+.quantity-actions button {
+  margin: 0;
+  padding: 0 14rpx;
+  min-width: 55rpx;
+}
+.money-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}

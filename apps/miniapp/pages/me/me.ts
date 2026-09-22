@@ -79,7 +79,7 @@ Page({
         consumerUserId: '',
         consumerDisplayId: '',
         isLoggedIn: false,
-        status: '登录失败，请检查 AppID、网络与后端配置',
+        status: '登录失败，请检查网络后重试',
       });
     } finally {
       this.setData({ isLoading: false });

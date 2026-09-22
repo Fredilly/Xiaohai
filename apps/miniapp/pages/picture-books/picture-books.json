@@ -1,1 +1,6 @@
-{ "navigationBarTitleText": "我的绘本" }
+{
+  "navigationBarTitleText": "我的绘本",
+  "navigationBarBackgroundColor": "#e9eff5",
+  "navigationBarTextStyle": "black",
+  "backgroundColor": "#f7f8fa"
+}

@@ -45,3 +45,12 @@
   color: #9a463b;
   font-size: 23rpx;
 }
+.step-label {
+  display: block;
+  margin: 28rpx 0 12rpx;
+  padding-top: 15rpx;
+  border-top: 1rpx solid #e8edf1;
+  color: #6b8296;
+  font-size: 23rpx;
+  font-weight: 700;
+}

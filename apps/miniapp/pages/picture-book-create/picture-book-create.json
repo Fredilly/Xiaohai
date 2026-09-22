@@ -1,1 +1,6 @@
-{ "navigationBarTitleText": "创建绘本" }
+{
+  "navigationBarTitleText": "创建绘本",
+  "navigationBarBackgroundColor": "#e9eff5",
+  "navigationBarTextStyle": "black",
+  "backgroundColor": "#f7f8fa"
+}
