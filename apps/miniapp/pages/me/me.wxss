@@ -1,6 +1,6 @@
 .me-page {
   min-height: 100vh;
-  background: #f6f6f8;
+  background: #f7f7fa;
   padding-bottom: 44rpx;
 }
 
@@ -8,14 +8,14 @@
   position: relative;
   overflow: hidden;
   padding: 30rpx 30rpx 40rpx;
-  background: linear-gradient(135deg, #ff4c93 0%, #ff5ca1 45%, #4c8dff 130%);
+  background: linear-gradient(135deg, #e9a7bf 0%, #c9b2dc 54%, #9fc0dc 100%);
   color: #fff;
 }
 
 .hero-orb {
   position: absolute;
   border-radius: 999rpx;
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.12);
 }
 
 .hero-orb-one {
@@ -48,8 +48,8 @@
   border-radius: 999rpx;
   overflow: hidden;
   background: #fff;
-  border: 6rpx solid rgba(255, 255, 255, 0.72);
-  box-shadow: 0 10rpx 28rpx rgba(117, 36, 89, 0.16);
+  border: 6rpx solid rgba(255, 255, 255, 0.78);
+  box-shadow: 0 10rpx 26rpx rgba(92, 77, 108, 0.12);
 }
 
 .avatar-button::after {
@@ -68,7 +68,7 @@
   align-items: center;
   justify-content: center;
   background: #fff;
-  color: #025a7e;
+  color: #55798f;
   font-size: 44rpx;
   font-weight: 800;
 }
@@ -89,7 +89,7 @@
   display: block;
   margin-top: 8rpx;
   font-size: 22rpx;
-  color: rgba(255, 255, 255, 0.9);
+  color: rgba(255, 255, 255, 0.92);
   line-height: 1.4;
 }
 
@@ -100,8 +100,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(255, 255, 255, 0.18);
-  border: 1rpx solid rgba(255, 255, 255, 0.32);
+  background: rgba(255, 255, 255, 0.22);
+  border: 1rpx solid rgba(255, 255, 255, 0.38);
   color: #fff;
   font-size: 24rpx;
   font-weight: 800;
@@ -117,7 +117,7 @@
   border: 0;
   border-radius: 999rpx;
   background: rgba(255, 255, 255, 0.94);
-  color: #ff3f8d;
+  color: #bd718f;
   font-size: 25rpx;
   font-weight: 800;
 }
@@ -149,7 +149,7 @@
   top: 18rpx;
   width: 1rpx;
   height: 50rpx;
-  background: rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.34);
 }
 
 .stat-value {
@@ -159,7 +159,7 @@
 
 .stat-label {
   font-size: 23rpx;
-  color: rgba(255, 255, 255, 0.86);
+  color: rgba(255, 255, 255, 0.9);
 }
 
 .content-shell {
@@ -169,7 +169,8 @@
 .me-card {
   background: #fff;
   border-radius: 28rpx;
-  box-shadow: 0 10rpx 28rpx rgba(32, 35, 40, 0.05);
+  border: 1rpx solid #f0eef2;
+  box-shadow: 0 10rpx 28rpx rgba(62, 58, 72, 0.045);
 }
 
 .order-card,
@@ -190,14 +191,14 @@
 .card-heading-title {
   font-size: 31rpx;
   font-weight: 800;
-  color: #222;
+  color: #2f3035;
 }
 
 .card-heading-link {
   display: flex;
   align-items: center;
   gap: 6rpx;
-  color: #878787;
+  color: #92939a;
   font-size: 23rpx;
 }
 
@@ -226,15 +227,15 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #fff0f6;
-  color: #ff3f8d;
+  background: #fae7ee;
+  color: #c96f8e;
   font-size: 24rpx;
   font-weight: 900;
 }
 
 .order-title {
   margin-top: 14rpx;
-  color: #363636;
+  color: #45464b;
   font-size: 21rpx;
   text-align: center;
   white-space: nowrap;
@@ -254,47 +255,54 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #fff;
   font-size: 25rpx;
   font-weight: 900;
-  box-shadow: 0 8rpx 20rpx rgba(20, 28, 44, 0.1);
+  box-shadow: 0 8rpx 18rpx rgba(48, 52, 63, 0.07);
 }
 
 .tone-blue {
-  background: linear-gradient(135deg, #72b4ff, #4c8dff);
+  background: #c7dbf2;
+  color: #567aa2;
 }
 
 .tone-purple {
-  background: linear-gradient(135deg, #c9a9ff, #8c62ef);
+  background: #d9caec;
+  color: #79649a;
 }
 
 .tone-pink {
-  background: linear-gradient(135deg, #ff8dbc, #ff4c93);
+  background: #f3c7d6;
+  color: #a45f78;
 }
 
 .tone-green {
-  background: linear-gradient(135deg, #5cad7c, #146739);
+  background: #c9dfd0;
+  color: #53775f;
 }
 
 .tone-orange {
-  background: linear-gradient(135deg, #ffb56a, #ff7a43);
+  background: #f5d2b7;
+  color: #a66d46;
 }
 
 .tone-cyan {
-  background: linear-gradient(135deg, #70e5e3, #30b8c5);
+  background: #c3e4e2;
+  color: #4b7d7b;
 }
 
 .tone-yellow {
-  background: linear-gradient(135deg, #ffd86c, #f7ad25);
+  background: #f2dfb9;
+  color: #94783e;
 }
 
 .tone-navy {
-  background: linear-gradient(135deg, #3b86a9, #025a7e);
+  background: #bdd6e1;
+  color: #4e7180;
 }
 
 .service-title {
   margin-top: 13rpx;
-  color: #383838;
+  color: #45464b;
   font-size: 22rpx;
   text-align: center;
   white-space: nowrap;
@@ -305,7 +313,7 @@
   align-items: flex-start;
   gap: 12rpx;
   margin: 24rpx 10rpx 0;
-  color: #999;
+  color: #9b9ca2;
   font-size: 20rpx;
   line-height: 1.6;
 }
@@ -319,5 +327,5 @@
 }
 
 .brand-dot.pink {
-  background: #ff4c93;
+  background: #df91ad;
 }
