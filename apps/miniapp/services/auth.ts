@@ -1,4 +1,5 @@
 import { getApiBaseUrl } from '../config';
+import { saveConsumerSession } from './consumer-session';
 
 interface LoginResponse {
   consumer: { id: string };
@@ -12,6 +13,7 @@ export async function loginWithWeChat(): Promise<LoginResponse> {
   const response = await new Promise<WechatMiniprogram.RequestSuccessCallbackResult>(
     (resolve, reject) => {
       wx.request({
+        timeout: 10000,
         url: `${getApiBaseUrl()}/api/v1/auth/wechat/login`,
         method: 'POST',
         data: { code: login.code },
@@ -23,7 +25,11 @@ export async function loginWithWeChat(): Promise<LoginResponse> {
   if (response.statusCode !== 200 || !isLoginResponse(response.data)) {
     throw new Error('Consumer login failed');
   }
-  wx.setStorageSync('consumer_session_token', response.data.session.token);
+  saveConsumerSession(
+    response.data.session.token,
+    response.data.session.expiresAt,
+    response.data.consumer.id,
+  );
   return response.data;
 }
 

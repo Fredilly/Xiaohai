@@ -49,6 +49,7 @@ Page({
     }
   },
   async generatePlan(event: WechatMiniprogram.TouchEvent) {
+    if (this.data.busy) return;
     const operation = String(event.currentTarget.dataset.operation) as AnimationPlanningOperation;
     this.setData({ busy: true, error: '' });
     try {
@@ -72,6 +73,7 @@ Page({
     }
   },
   async generateScene(event: WechatMiniprogram.TouchEvent) {
+    if (this.data.busy) return;
     const sceneId = String(event.currentTarget.dataset.sceneId || '');
     if (!sceneId) return;
     this.setData({ busy: true, polling: true, error: '' });
@@ -80,7 +82,9 @@ Page({
       await this.pollDetail((detail) => {
         const scene = detail.scenes.find((item) => item.id === sceneId);
         const latest = scene?.generations[scene.generations.length - 1];
-        return Boolean(latest && ['READY', 'FAILED', 'CANCELLED'].includes(latest.status));
+        if (latest?.status === 'FAILED' || latest?.status === 'CANCELLED')
+          throw new Error('Scene generation failed');
+        return latest?.status === 'READY';
       });
     } catch (error) {
       this.setData({ error: this.message(error, '场景生成失败，请稍后重试。') });
@@ -89,6 +93,7 @@ Page({
     }
   },
   async compose() {
+    if (this.data.busy) return;
     const detail = this.data.detail;
     if (!detail) return;
     const ids = this.readyGenerationIds(detail);
@@ -98,7 +103,9 @@ Page({
       await composeAnimation(this.data.id, ids);
       await this.pollDetail((next) => {
         const latest = next.compositions[next.compositions.length - 1];
-        return Boolean(latest && ['READY', 'FAILED', 'CANCELLED'].includes(latest.status));
+        if (latest?.status === 'FAILED' || latest?.status === 'CANCELLED')
+          throw new Error('Composition failed');
+        return latest?.status === 'READY';
       });
     } catch (error) {
       this.setData({ error: this.message(error, '合成失败，请稍后重试。') });

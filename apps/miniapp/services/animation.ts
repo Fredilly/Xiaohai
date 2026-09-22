@@ -1,3 +1,4 @@
+import { consumerToken, clearConsumerSession } from './consumer-session';
 import type {
   Animation,
   AnimationCompositionAccepted,
@@ -10,7 +11,7 @@ import type {
 } from '@xiaohai/contracts/animation';
 import { getApiBaseUrl } from '../config';
 
-const token = () => String(wx.getStorageSync('consumer_session_token') || '');
+const token = consumerToken;
 
 export class AnimationApiError extends Error {
   constructor(readonly status: number) {
@@ -23,6 +24,7 @@ async function request<T>(path: string, method: 'GET' | 'POST' = 'GET', data?: o
   const response = await new Promise<WechatMiniprogram.RequestSuccessCallbackResult>(
     (resolve, reject) =>
       wx.request({
+        timeout: 10000,
         url: `${getApiBaseUrl()}${path}`,
         method,
         data,
@@ -31,6 +33,7 @@ async function request<T>(path: string, method: 'GET' | 'POST' = 'GET', data?: o
         fail: reject,
       }),
   );
+  if (response.statusCode === 401) clearConsumerSession();
   if (response.statusCode < 200 || response.statusCode >= 300)
     throw new AnimationApiError(response.statusCode);
   return response.data as T;

@@ -1,9 +1,8 @@
+import { consumerToken, clearConsumerSession } from './consumer-session';
 import type { RentalView } from '@xiaohai/contracts/rental';
 import { getApiBaseUrl } from '../config';
 
-function token() {
-  return String(wx.getStorageSync('consumer_session_token') || '');
-}
+const token = consumerToken;
 async function request<T>(
   path: string,
   method: 'GET' | 'POST' = 'GET',
@@ -14,6 +13,7 @@ async function request<T>(
   const response = await new Promise<WechatMiniprogram.RequestSuccessCallbackResult>(
     (resolve, reject) =>
       wx.request({
+        timeout: 10000,
         url: `${getApiBaseUrl()}${path}`,
         method,
         data: data as WechatMiniprogram.IAnyObject | undefined,
@@ -22,6 +22,7 @@ async function request<T>(
         fail: reject,
       }),
   );
+  if (response.statusCode === 401) clearConsumerSession();
   if (response.statusCode < 200 || response.statusCode >= 300) {
     const body = response.data as { error?: { code?: string } };
     throw new Error(body?.error?.code ?? `HTTP_${response.statusCode}`);

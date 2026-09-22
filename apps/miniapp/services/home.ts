@@ -17,6 +17,7 @@ export async function getPublicHome(): Promise<HomeResponse> {
   const response = await new Promise<WechatMiniprogram.RequestSuccessCallbackResult>(
     (resolve, reject) => {
       wx.request({
+        timeout: 10000,
         url: `${getApiBaseUrl()}/api/v1/home`,
         method: 'GET',
         success: resolve,

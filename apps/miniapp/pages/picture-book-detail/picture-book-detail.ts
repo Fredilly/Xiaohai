@@ -42,6 +42,7 @@ Page({
     }
   },
   async generatePlan(event: WechatMiniprogram.TouchEvent) {
+    if (this.data.busy) return;
     const operation = String(event.currentTarget.dataset.operation) as PictureBookTextOperation;
     this.setData({ busy: true, error: '' });
     try {
@@ -70,6 +71,7 @@ Page({
     }
   },
   async illustrate(event: WechatMiniprogram.TouchEvent) {
+    if (this.data.busy) return;
     const pageId = String(event.currentTarget.dataset.pageId || '');
     const regenerate = String(event.currentTarget.dataset.regenerate || '') === 'true';
     if (!pageId) return;
@@ -82,9 +84,11 @@ Page({
         this.setData({ detail });
         const page = detail.pages.find((item: PictureBookPage) => item.id === pageId);
         const latest = page?.illustrations[page.illustrations.length - 1];
-        if (latest && ['READY', 'FAILED'].includes(latest.status)) return;
+        if (latest?.status === 'READY') return;
+        if (latest?.status === 'FAILED') throw new Error('Illustration failed');
         await sleep(1000);
       }
+      throw new Error('Illustration polling timed out');
     } catch (error) {
       this.setData({
         error:

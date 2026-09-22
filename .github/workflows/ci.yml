@@ -42,7 +42,7 @@ jobs:
           schema=false
           migration=false
 
-          if printf '%s\n' "$files" | grep -Eq '^(apps/api/|apps/worker/|packages/(db|domain|contracts|validation|config)/|\.github/workflows/)'; then
+          if printf '%s\n' "$files" | grep -Eq '^(apps/api/|apps/worker/|apps/miniapp/|packages/(db|domain|contracts|validation|config)/|\.github/workflows/)'; then
             risky=true
           fi
           if printf '%s\n' "$files" | grep -Eq '(^|/)(package\.json|pnpm-lock\.yaml)$'; then

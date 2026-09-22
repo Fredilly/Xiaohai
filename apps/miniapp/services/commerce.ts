@@ -1,5 +1,6 @@
+import { consumerToken, clearConsumerSession } from './consumer-session';
 import { getApiBaseUrl } from '../config';
-const token = () => String(wx.getStorageSync('consumer_session_token') || '');
+const token = consumerToken;
 export class CommerceApiError extends Error {
   constructor(readonly status: number) {
     super(`Commerce API ${status}`);
@@ -13,6 +14,7 @@ export async function request<T>(
   const response = await new Promise<WechatMiniprogram.RequestSuccessCallbackResult>(
     (resolve, reject) =>
       wx.request({
+        timeout: 10000,
         url: `${getApiBaseUrl()}${path}`,
         method,
         data,
@@ -21,6 +23,7 @@ export async function request<T>(
         fail: reject,
       }),
   );
+  if (response.statusCode === 401) clearConsumerSession();
   if (response.statusCode < 200 || response.statusCode >= 300)
     throw new CommerceApiError(response.statusCode);
   return response.data as T;

@@ -11,6 +11,7 @@ export async function submitFranchiseApplication(
   const response = await new Promise<WechatMiniprogram.RequestSuccessCallbackResult>(
     (resolve, reject) =>
       wx.request({
+        timeout: 10000,
         url: `${getApiBaseUrl()}/api/v1/franchise/applications`,
         method: 'POST',
         data: input,
