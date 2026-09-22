@@ -44,22 +44,28 @@
   },
   "requiredPrivateInfos": ["getLocation"],
   "tabBar": {
-    "color": "#7a766d",
-    "selectedColor": "#315d45",
+    "color": "#A2ABB5",
+    "selectedColor": "#718DA0",
     "backgroundColor": "#ffffff",
     "borderStyle": "white",
     "list": [
       {
         "pagePath": "pages/index/index",
-        "text": "首页"
+        "text": "首页",
+        "iconPath": "assets/tabbar/home-default.png",
+        "selectedIconPath": "assets/tabbar/home-selected.png"
       },
       {
         "pagePath": "pages/global/global",
-        "text": "胖竹全球"
+        "text": "胖竹全球",
+        "iconPath": "assets/tabbar/store-default.png",
+        "selectedIconPath": "assets/tabbar/store-selected.png"
       },
       {
         "pagePath": "pages/me/me",
-        "text": "我的"
+        "text": "我的",
+        "iconPath": "assets/tabbar/user-default.png",
+        "selectedIconPath": "assets/tabbar/user-selected.png"
       }
     ]
   }
