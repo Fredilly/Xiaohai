@@ -1,4 +1,5 @@
 <view class="page">
+  <view class="brand-row"><image class="brand-logo" src="/assets/brand/xiaohai-logo.png" mode="aspectFit" /><view class="brand-copy"><text class="brand-name">小海童话</text><text class="brand-note">陪每一个好奇的故事长大</text></view></view>
   <view class="home-search" bindtap="openShop">
     <image class="search-icon" src="/assets/ui/search.svg" />
     <text>搜索童书与好故事</text>
@@ -18,20 +19,21 @@
     <block wx:for="{{sections}}" wx:key="id">
       <view
         wx:if="{{item.sectionType === 'HERO'}}"
-        class="hero {{item.action ? 'hero-actionable' : ''}}"
+        class="hero {{item.mediaUrl ? 'hero-with-media' : 'hero-without-media'}} {{item.action ? 'hero-actionable' : ''}}"
         data-target="{{item.action.target}}"
         bindtap="openAction"
       >
         <image wx:if="{{item.mediaUrl}}" class="hero-media" src="{{item.mediaUrl}}" mode="aspectFill" />
+        <view wx:if="{{!item.mediaUrl}}" class="hero-illustration" aria-hidden="true"><view class="illustration-book"><view class="book-left"></view><view class="book-right"></view></view><view class="illustration-spark">✦</view></view>
         <text wx:if="{{item.config.eyebrow}}" class="eyebrow">{{item.config.eyebrow}}</text>
         <text class="hero-title">{{item.title}}</text>
         <text wx:if="{{item.subtitle}}" class="hero-subtitle">{{item.subtitle}}</text>
         <text wx:if="{{item.action}}" class="hero-cta">立即探索 →</text>
       </view>
-      <view wx:elif="{{item.sectionType === 'FEATURE_GRID'}}" class="section">
+      <view wx:elif="{{item.sectionType === 'FEATURE_GRID'}}" class="section feature-section">
         <view class="section-head"><text class="section-title">{{item.title}}</text><text class="section-note">{{item.subtitle}}</text></view>
         <view class="grid">
-          <view class="card" wx:for="{{item.config.items}}" wx:for-item="entry" wx:key="key" data-target="{{entry.key}}" bindtap="openAction">
+          <view class="card {{entry.key === 'shop' ? 'card-featured' : ''}}" wx:for="{{item.config.items}}" wx:for-item="entry" wx:key="key" data-target="{{entry.key}}" bindtap="openAction">
             <view class="feature-icon"><image src="/assets/ui/{{entry.key === 'shop' ? 'shop' : entry.key === 'story-create' || entry.key === 'ai' ? 'magic' : entry.key === 'picture-books' ? 'book' : entry.key === 'animations' ? 'play' : 'star'}}.svg" /></view>
             <text class="card-title">{{entry.title}}</text>
             <text wx:if="{{entry.subtitle}}" class="card-subtitle">{{entry.subtitle}}</text>

@@ -1,5 +1,6 @@
 import { getPublicHome, type HomeSection } from '../../services/home';
 import { resolveHomeTargetUrl } from './home-navigation';
+import { homeDisplaySections } from './home-display';
 Page({
   data: { loading: true, error: false, pageTitle: '小海童话', sections: [] as HomeSection[] },
   onLoad() {
@@ -9,7 +10,11 @@ Page({
     this.setData({ loading: true, error: false });
     try {
       const home = await getPublicHome();
-      this.setData({ loading: false, pageTitle: home.page.title, sections: home.sections });
+      this.setData({
+        loading: false,
+        pageTitle: home.page.title,
+        sections: homeDisplaySections(home.sections),
+      });
     } catch {
       this.setData({ loading: false, error: true, sections: [] });
     }

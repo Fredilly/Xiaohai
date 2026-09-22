@@ -267,3 +267,63 @@
   margin-left: 18rpx;
   text-decoration: underline;
 }
+/* Let real map and store data lead; keep secondary services compact. */
+.hero-soft {
+  padding: 28rpx 30rpx;
+  margin-bottom: 14rpx;
+  background: #e6f0e7;
+}
+.hero-title {
+  margin: 0 0 8rpx;
+}
+.hero-links {
+  margin-top: 16rpx;
+}
+.service-heading {
+  margin: 18rpx 4rpx 12rpx;
+}
+.service-grid {
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10rpx;
+}
+.service-entry {
+  min-height: 98rpx;
+  gap: 8rpx;
+  font-size: 19rpx;
+  border: 0;
+  background: #f1f6f1;
+}
+.service-entry-primary {
+  grid-column: span 2;
+  flex-direction: row;
+  min-height: 104rpx;
+  gap: 14rpx;
+  justify-content: flex-start;
+  padding-left: 22rpx;
+  font-size: 25rpx;
+  font-weight: 700;
+  background: #e7f1e8;
+}
+.service-icon {
+  width: 40rpx;
+  height: 40rpx;
+  background: transparent;
+}
+.service-icon image {
+  width: 30rpx;
+  height: 30rpx;
+}
+.service-entry-primary .service-icon {
+  width: 48rpx;
+  height: 48rpx;
+}
+.service-entry-primary .service-icon image {
+  width: 38rpx;
+  height: 38rpx;
+}
+.service-hint {
+  margin-bottom: 10rpx;
+}
+.franchise-card {
+  margin-top: 28rpx;
+}

@@ -1,26 +1,20 @@
 <view class="page">
   <view class="hero hero-soft">
-    <text class="eyebrow">PANGZHU GLOBAL</text>
     <text class="hero-title">胖竹全球</text>
     <text class="hero-subtitle">从身边的一家书店出发，找好书，也发现更多阅读空间。</text>
     <view class="hero-links"><text bindtap="scrollToStores">探索门店 ↓</text><text bindtap="scrollToMap">查看地图 ↗</text></view>
   </view>
 
-  <view class="service-heading"><text>在胖竹，可以这样读书</text><text>线下服务</text></view>
+  <view class="service-heading"><text>从这里开始</text></view>
   <view class="service-grid">
-    <view class="service-entry" bindtap="scrollToStores"><view class="service-icon"><image src="/assets/ui/globe.svg" /></view><text>全球门店</text></view>
-    <view class="service-entry" bindtap="useNearby"><view class="service-icon"><image src="/assets/ui/pin.svg" /></view><text>附近门店</text></view>
-    <view class="service-entry" bindtap="openBookSearch"><view class="service-icon"><image src="/assets/ui/search.svg" /></view><text>图书查询</text></view>
+    <view class="service-entry service-entry-primary" bindtap="useNearby"><view class="service-icon"><image src="/assets/ui/pin.svg" /></view><text>附近门店</text></view>
+    <view class="service-entry service-entry-primary" bindtap="openBookSearch"><view class="service-icon"><image src="/assets/ui/search.svg" /></view><text>图书查询</text></view>
     <view class="service-entry" bindtap="openBookSearch"><view class="service-icon"><image src="/assets/ui/book.svg" /></view><text>门店库存</text></view>
     <view class="service-entry" bindtap="openRentals"><view class="service-icon"><image src="/assets/ui/book.svg" /></view><text>图书租借</text></view>
     <view class="service-entry" bindtap="scrollToStores"><view class="service-icon"><image src="/assets/ui/package.svg" /></view><text>自提配送</text></view>
+    <view class="service-entry" bindtap="scrollToStores"><view class="service-icon"><image src="/assets/ui/globe.svg" /></view><text>全球门店</text></view>
   </view>
   <view class="service-hint">到店自提和同城配送以门店详情及实际服务为准。</view>
-  <view class="card franchise-card" bindtap="openFranchise">
-    <view><text class="card-title">一起开一家有故事的书店</text><text class="card-subtitle">了解胖竹加盟合作与申请流程</text></view>
-    <text class="franchise-link">了解加盟 ›</text>
-  </view>
-
   <view class="store-search card">
     <view class="search-row">
       <input class="search-input" value="{{query}}" placeholder="搜索门店名称" bindinput="onQueryInput" confirm-type="search" bindconfirm="submitSearch" />
@@ -87,4 +81,9 @@
       </view>
     </view>
   </view>
+  <view class="card franchise-card" bindtap="openFranchise">
+    <view><text class="card-title">一起开一家有故事的书店</text><text class="card-subtitle">了解胖竹加盟合作与申请流程</text></view>
+    <text class="franchise-link">了解加盟 ›</text>
+  </view>
+
 </view>

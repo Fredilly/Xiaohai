@@ -56,7 +56,7 @@ export const DEFAULT_LOCAL_HOME_SECTIONS = [
   {
     sectionType: 'FEATURE_GRID',
     title: '开始探索',
-    subtitle: '已有功能入口',
+    subtitle: '找到你喜欢的故事方式',
     displayOrder: 1,
     enabled: true,
     publicationState: 'PUBLISHED',
@@ -66,19 +66,16 @@ export const DEFAULT_LOCAL_HOME_SECTIONS = [
           key: 'story-create',
           title: 'AI 故事',
           subtitle: '从一个想法开始创作',
-          badge: 'M9',
         },
         {
           key: 'picture-books',
           title: 'AI 绘本',
           subtitle: '查看并继续故事绘本',
-          badge: 'M10',
         },
         {
           key: 'animations',
           title: 'AI 动画',
           subtitle: '查看故事动画作品',
-          badge: 'M11',
         },
         {
           key: 'shop',
