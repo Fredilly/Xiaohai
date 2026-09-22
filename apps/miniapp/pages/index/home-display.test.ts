@@ -25,4 +25,30 @@ describe('home display content', () => {
     ]);
     expect((sections[0]?.config.items as { badge: string }[])[0]?.badge).toBe('M9');
   });
+
+  it('uses supplied editorial art only when a CMS hero has no media', () => {
+    const sections: HomeSection[] = [
+      {
+        id: 'fallback',
+        sectionType: 'HERO',
+        title: '亲子阅读',
+        displayOrder: 1,
+        config: {},
+        mediaUrl: null,
+      },
+      {
+        id: 'cms',
+        sectionType: 'HERO',
+        title: '运营活动',
+        displayOrder: 2,
+        config: {},
+        mediaUrl: 'https://cdn.example.com/cms-hero.jpg',
+      },
+    ];
+
+    const display = homeDisplaySections(sections);
+    expect(display[0]?.mediaUrl).toBe('/assets/brand/home-parent-reading.jpg');
+    expect(display[1]?.mediaUrl).toBe('https://cdn.example.com/cms-hero.jpg');
+    expect(sections[0]?.mediaUrl).toBeNull();
+  });
 });
