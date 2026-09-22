@@ -26,7 +26,7 @@ describe('home display content', () => {
     expect((sections[0]?.config.items as { badge: string }[])[0]?.badge).toBe('M9');
   });
 
-  it('uses supplied editorial art only when a CMS hero has no media', () => {
+  it('uses supplied editorial art only when a matching CMS hero has no media', () => {
     const sections: HomeSection[] = [
       {
         id: 'fallback',
@@ -44,11 +44,21 @@ describe('home display content', () => {
         config: {},
         mediaUrl: 'https://cdn.example.com/cms-hero.jpg',
       },
+      {
+        id: 'unrelated',
+        sectionType: 'HERO',
+        title: '把一个想法变成故事',
+        subtitle: '小海 AI · 故事创作',
+        displayOrder: 3,
+        config: {},
+        mediaUrl: null,
+      },
     ];
 
     const display = homeDisplaySections(sections);
     expect(display[0]?.mediaUrl).toBe('/assets/brand/home-parent-reading.jpg');
     expect(display[1]?.mediaUrl).toBe('https://cdn.example.com/cms-hero.jpg');
+    expect(display[2]?.mediaUrl).toBeNull();
     expect(sections[0]?.mediaUrl).toBeNull();
   });
 });
