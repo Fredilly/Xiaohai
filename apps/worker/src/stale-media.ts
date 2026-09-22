@@ -20,7 +20,11 @@ export async function recoverStaleMedia(
   const cutoff = (timeoutMs: number) => new Date(now - timeoutMs - 60_000);
   const images = await db
     .update(workPageIllustrations)
-    .set({ status: 'FAILED', errorCode: 'IMAGE_WORKER_TIMEOUT', updatedAt: recoveredAt })
+    .set({
+      status: 'FAILED',
+      errorCode: 'IMAGE_WORKER_TIMEOUT',
+      updatedAt: recoveredAt,
+    })
     .where(
       and(
         eq(workPageIllustrations.status, 'RUNNING'),
@@ -30,7 +34,11 @@ export async function recoverStaleMedia(
     .returning({ id: workPageIllustrations.id });
   const videos = await db
     .update(animationSceneGenerations)
-    .set({ status: 'FAILED', errorCode: 'VIDEO_WORKER_TIMEOUT', updatedAt: recoveredAt })
+    .set({
+      status: 'FAILED',
+      errorCode: 'VIDEO_WORKER_TIMEOUT',
+      updatedAt: recoveredAt,
+    })
     .where(
       and(
         eq(animationSceneGenerations.status, 'RUNNING'),
