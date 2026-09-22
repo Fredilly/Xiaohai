@@ -27,6 +27,10 @@ export class RedisRateLimitStore implements RateLimitStore {
   async close(): Promise<void> {
     if (this.client.isOpen) await this.client.quit();
   }
+  async ping(): Promise<boolean> {
+    if (!this.client.isOpen) await this.client.connect();
+    return (await this.client.ping()) === 'PONG';
+  }
 }
 
 type Policy = { name: string; limit: number; windowSeconds: number };

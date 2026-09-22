@@ -330,6 +330,38 @@ suite('M13 book + store inventory PostgreSQL integration', () => {
     expect(invalid.statusCode).toBe(400);
   });
 
+  it('measures concurrent PostgreSQL-backed inventory reads without leaking inactive stores', async () => {
+    await seedInventory();
+    const app = makeApp();
+    const started = performance.now();
+    const responses = await Promise.all(
+      Array.from({ length: 32 }, async () => {
+        const requestAt = performance.now();
+        const response = await app.inject('/api/v1/inventory/books?q=M13-BAR-001&limit=10');
+        return { response, ms: performance.now() - requestAt };
+      }),
+    );
+    const totalMs = performance.now() - started;
+    const durations = responses.map(({ ms }) => ms).sort((a, b) => a - b);
+    for (const { response } of responses) {
+      expect(response.statusCode).toBe(200);
+      const result = publicInventorySearchResponseSchema.parse(response.json());
+      expect(result.items).toHaveLength(2);
+      expect(result.items.every((item) => item.store.code.startsWith('M13-'))).toBe(true);
+      expect(result.items.every((item) => item.store.code.includes('OFF') === false)).toBe(true);
+    }
+    console.info(
+      JSON.stringify({
+        event: 'M23_DB_READ_SAMPLE',
+        requests: responses.length,
+        p95Ms: Math.round(durations[Math.ceil(durations.length * 0.95) - 1]!),
+        throughputPerSecond: Math.round((responses.length * 1000) / totalMs),
+        errors: 0,
+      }),
+    );
+    await app.close();
+  });
+
   it('enforces store inventory database invariants', async () => {
     const seeded = await seedInventory();
 
