@@ -1,6 +1,10 @@
 import { listProducts, type Product } from '../../services/commerce';
+import { resolveEditorialBookCover } from '../../utils/real-visuals';
+
+type DisplayProduct = Product & { displayCoverUrl: string };
+
 Page({
-  data: { q: '', products: [] as Product[], loading: true, error: false },
+  data: { q: '', products: [] as DisplayProduct[], loading: true, error: false },
   onLoad() {
     void this.load();
   },
@@ -14,7 +18,16 @@ Page({
     this.setData({ loading: true, error: false });
     try {
       const r = await listProducts(this.data.q);
-      this.setData({ products: r.products, loading: false });
+      this.setData({
+        products: r.products.map((product) => ({
+          ...product,
+          displayCoverUrl: resolveEditorialBookCover(
+            product.title ?? product.name,
+            product.coverUrl,
+          ),
+        })),
+        loading: false,
+      });
     } catch {
       this.setData({ loading: false, error: true, products: [] });
     }
