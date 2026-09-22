@@ -22,6 +22,8 @@ describe('Mini Program Animation boundary', () => {
       {},
       { sceneGenerationIds: ['generation-id'] },
     ]);
-    expect(JSON.stringify(requests)).not.toMatch(/provider|model|mediaAsset|cost|timeout/i);
+    expect(JSON.stringify(requests.map((request) => request.data))).not.toMatch(
+      /provider|model|mediaAsset|cost|timeout/i,
+    );
   });
 });

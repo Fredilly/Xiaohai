@@ -17,11 +17,16 @@ Page({
   onLoad(query: Record<string, string | undefined>) {
     if (query.id) {
       this.setData({ id: query.id });
-      void this.load();
+    } else {
+      this.setData({ loading: false, error: true });
     }
+  },
+  onShow() {
+    if (this.data.id) void this.load();
   },
 
   async load() {
+    this.setData({ loading: true, error: false });
     try {
       const order = await getOrder(this.data.id);
       let fulfillment: FulfillmentView | null = null;

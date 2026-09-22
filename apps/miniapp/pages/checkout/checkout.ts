@@ -12,6 +12,7 @@ type PickerEvent = { detail: { value: string } };
 type MethodEvent = { currentTarget: { dataset: { method?: FulfillmentMethod } } };
 
 Page({
+  quoteSequence: 0,
   data: {
     addresses: [] as Address[],
     stores: [] as PublicStore[],
@@ -78,18 +79,23 @@ Page({
   },
 
   async preview() {
+    const quoteSequence = ++this.quoteSequence;
     const method = this.data.method === 'DELIVERY' ? 'DELIVERY' : 'PICKUP';
-    if (!this.data.storeId) return;
-    if (method === 'DELIVERY' && !this.data.addressId) return;
+    const storeId = this.data.storeId;
+    const addressId = this.data.addressId;
+    if (!storeId) return;
+    if (method === 'DELIVERY' && !addressId) return;
     this.setData({ quoting: true, errorMessage: '' });
     try {
       const quote = await quoteFulfillment(
         method,
-        this.data.storeId,
-        method === 'DELIVERY' ? this.data.addressId : undefined,
+        storeId,
+        method === 'DELIVERY' ? addressId : undefined,
       );
+      if (quoteSequence !== this.quoteSequence) return;
       this.setData({ quote });
     } catch (error) {
+      if (quoteSequence !== this.quoteSequence) return;
       this.setData({
         quote: null,
         errorMessage:
@@ -98,12 +104,13 @@ Page({
             : '当前无法计算履约方式，请稍后重试。',
       });
     } finally {
-      this.setData({ quoting: false });
+      if (quoteSequence === this.quoteSequence) this.setData({ quoting: false });
     }
   },
 
   async create() {
-    if (this.data.creating || !this.data.quote || !this.data.clientRequestId) return;
+    if (this.data.creating || this.data.quoting || !this.data.quote || !this.data.clientRequestId)
+      return;
     const method = this.data.method === 'DELIVERY' ? 'DELIVERY' : 'PICKUP';
     this.setData({ creating: true, errorMessage: '' });
     try {

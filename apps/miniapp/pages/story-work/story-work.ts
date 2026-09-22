@@ -73,6 +73,7 @@ Page({
   },
 
   async generate(event: WechatMiniprogram.TouchEvent) {
+    if (this.data.generating) return;
     const rawOperation = String(event.currentTarget.dataset.operation || '');
 
     if (!operations.includes(rawOperation as StoryOperation)) return;

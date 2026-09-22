@@ -1,1 +1,9 @@
-<view class="page" wx:if="{{access}}"><view wx:if="{{access.access === 'LOCKED'}}" class="locked">该内容需要有效权益。购买/订阅规则尚未确定，本版本不会伪造购买入口。</view><video wx:else id="player" src="{{access.playbackUrl}}" initial-time="{{access.resumePositionSeconds}}" controls bindtimeupdate="time" bindended="ended"/><view wx:if="{{access.access === 'PREVIEW'}}">试看 {{access.previewSeconds}} 秒</view></view><view wx:else>{{error || '正在解析播放权限…'}}</view>
+<view class="page">
+  <view wx:if="{{loading}}">正在解析播放权限…</view>
+  <view wx:elif="{{access}}">
+    <view wx:if="{{access.access === 'LOCKED'}}" class="locked">该内容需要有效权益。购买/订阅规则尚未确定，本版本不会伪造购买入口。</view>
+    <video wx:else id="player" src="{{access.playbackUrl}}" initial-time="{{access.resumePositionSeconds}}" controls bindtimeupdate="time" bindended="ended" binderror="playbackError"/>
+    <view wx:if="{{access.access === 'PREVIEW'}}">试看 {{access.previewSeconds}} 秒</view>
+  </view>
+  <view wx:if="{{error}}">{{error}}<button bindtap="retry">重试</button></view>
+</view>

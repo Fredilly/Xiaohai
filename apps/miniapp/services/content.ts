@@ -1,6 +1,7 @@
+import { consumerToken, clearConsumerSession } from './consumer-session';
 import { getApiBaseUrl } from '../config';
 import type { PlaybackAccess, SeriesDetail, SeriesSummary } from '@xiaohai/contracts/content';
-const token = () => String(wx.getStorageSync('consumer_session_token') || '');
+const token = consumerToken;
 async function request<T>(
   path: string,
   method: 'GET' | 'POST' | 'PUT' | 'DELETE' = 'GET',
@@ -9,6 +10,7 @@ async function request<T>(
   const response = await new Promise<WechatMiniprogram.RequestSuccessCallbackResult>(
     (resolve, reject) =>
       wx.request({
+        timeout: 10000,
         url: `${getApiBaseUrl()}${path}`,
         method,
         data,
@@ -17,6 +19,7 @@ async function request<T>(
         fail: reject,
       }),
   );
+  if (response.statusCode === 401) clearConsumerSession();
   if (response.statusCode < 200 || response.statusCode >= 300)
     throw new Error(`Content API ${response.statusCode}`);
   return response.data as T;

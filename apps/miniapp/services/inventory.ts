@@ -13,6 +13,7 @@ async function request<T>(path: string): Promise<T> {
   const response = await new Promise<WechatMiniprogram.RequestSuccessCallbackResult>(
     (resolve, reject) =>
       wx.request({
+        timeout: 10000,
         url: `${getApiBaseUrl()}${path}`,
         method: 'GET',
         success: resolve,

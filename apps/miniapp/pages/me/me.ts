@@ -1,4 +1,5 @@
 import { loginWithWeChat } from '../../services/auth';
+import { storedConsumerId } from '../../services/consumer-session';
 import { meFeatures } from '../../services/mock';
 Page({
   data: {
@@ -11,7 +12,7 @@ Page({
   onShow() {
     try {
       const app = getApp<IAppOption>();
-      const consumerUserId = app.globalData?.consumerUserId || '';
+      const consumerUserId = storedConsumerId() || app.globalData?.consumerUserId || '';
       this.setData({
         consumerUserId,
         isLoggedIn: Boolean(consumerUserId),
@@ -22,6 +23,7 @@ Page({
     }
   },
   async login() {
+    if (this.data.isLoading) return;
     this.setData({ isLoading: true, status: '登录中…' });
     try {
       const result = await loginWithWeChat();
