@@ -17,11 +17,12 @@ import { StaffAdminManager } from './staff-admin-manager';
 import { SystemManager } from './system-manager';
 import { getStaffMe, loginStaff } from './staff-auth';
 import { adminModules } from './mock-data';
+import { NavIcon } from './nav-icon';
 
 const tokenKey = 'staff_session_token';
 
 function Login({ onSignedIn }: { onSignedIn: (token: string) => void }) {
-  const [status, setStatus] = useState('请使用 Staff Account 登录');
+  const [status, setStatus] = useState('');
   const [busy, setBusy] = useState(false);
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -35,7 +36,7 @@ function Login({ onSignedIn }: { onSignedIn: (token: string) => void }) {
       sessionStorage.setItem(tokenKey, r.session.token);
       onSignedIn(r.session.token);
     } catch {
-      setStatus('登录失败，请检查账号、密码与 API 状态');
+      setStatus('无法登录，请检查账号和密码，或稍后重试。');
     } finally {
       setBusy(false);
     }
@@ -43,9 +44,9 @@ function Login({ onSignedIn }: { onSignedIn: (token: string) => void }) {
   return (
     <main className="login-page">
       <section className="login-card">
-        <div className="brand-mark">小海童话 · HQ</div>
+        <div className="brand-mark">小海童话 · 总部</div>
         <h1>总部运营后台</h1>
-        <p className="muted">真实权限始终由服务端 RBAC + Data Scope 决定。</p>
+        <p className="muted">统一管理门店、商品与日常运营。</p>
         <form onSubmit={(e) => void submit(e)}>
           <label>
             登录账号
@@ -57,7 +58,11 @@ function Login({ onSignedIn }: { onSignedIn: (token: string) => void }) {
           </label>
           <button disabled={busy}>{busy ? '登录中…' : '登录后台'}</button>
         </form>
-        <p>{status}</p>
+        {status && (
+          <p className="form-error" role="alert">
+            {status}
+          </p>
+        )}
       </section>
     </main>
   );
@@ -87,35 +92,58 @@ function Shell({
     [me.permissions],
   );
   const module = useMemo(
-    () => adminModules.find((item) => item.key === active) ?? adminModules[0]!,
-    [active],
+    () => visibleModules.find((item) => item.key === active) ?? visibleModules[0]!,
+    [active, visibleModules],
   );
+  const current = visibleModules.some((item) => item.key === active) ? active : module.key;
+  const groups = [
+    { label: '概览', keys: ['dashboard'] },
+    {
+      label: '业务',
+      keys: ['stores', 'catalog', 'inventory', 'orders', 'users', 'rental', 'fulfillment'],
+    },
+    { label: '内容', keys: ['content', 'ai', 'cms'] },
+    { label: '商业', keys: ['franchise', 'payments', 'commission', 'finance'] },
+    { label: '系统', keys: ['staff', 'system'] },
+  ];
 
   return (
     <div className="shell">
       <aside>
         <div className="brand">
           <strong>小海童话</strong>
-          <span>总部后台</span>
+          <span>总部运营后台</span>
         </div>
-        <nav>
-          {visibleModules.map((item) => (
-            <button
-              className={item.key === active ? 'nav-active' : ''}
-              key={item.key}
-              onClick={() => {
-                window.location.hash = `#/${item.key}`;
-              }}
-            >
-              {item.label}
-            </button>
-          ))}
+        <nav aria-label="总部功能导航">
+          {groups.map((group) => {
+            const items = visibleModules.filter((item) => group.keys.includes(item.key));
+            return items.length ? (
+              <div className="nav-group" key={group.label}>
+                <span className="nav-group-title">{group.label}</span>
+                {items.map((item) => (
+                  <button
+                    className={item.key === current ? 'nav-active' : ''}
+                    aria-current={item.key === current ? 'page' : undefined}
+                    key={item.key}
+                    onClick={() => {
+                      window.location.hash = `#/${item.key}`;
+                    }}
+                  >
+                    <NavIcon name={item.key} />
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            ) : null;
+          })}
         </nav>
       </aside>
       <main className="workspace">
         <header>
           <div>
-            <span className="eyebrow">HQ WORKSPACE</span>
+            <span className="eyebrow">
+              总部运营 / {groups.find((group) => group.keys.includes(current))?.label}
+            </span>
             <h1>{module.label}</h1>
           </div>
           <div className="staff-chip">
@@ -123,47 +151,47 @@ function Shell({
             <button onClick={onLogout}>退出</button>
           </div>
         </header>
-        {active === 'dashboard' ? (
+        {current === 'dashboard' ? (
           <HqDashboard token={token} me={me} modules={visibleModules} />
-        ) : active === 'stores' ? (
+        ) : current === 'stores' ? (
           <HqOperationsManager token={token} me={me} mode="stores" />
-        ) : active === 'inventory' ? (
+        ) : current === 'inventory' ? (
           <HqOperationsManager token={token} me={me} mode="inventory" />
-        ) : active === 'orders' ? (
+        ) : current === 'orders' ? (
           <HqSupportManager token={token} mode="orders" />
-        ) : active === 'users' ? (
+        ) : current === 'users' ? (
           <HqSupportManager token={token} mode="users" />
-        ) : active === 'rental' ? (
+        ) : current === 'rental' ? (
           <HqOperationsManager token={token} me={me} mode="rental" />
-        ) : active === 'fulfillment' ? (
+        ) : current === 'fulfillment' ? (
           <HqOperationsManager token={token} me={me} mode="fulfillment" />
-        ) : active === 'staff' ? (
+        ) : current === 'staff' ? (
           <StaffAdminManager
             token={token}
             currentStaffId={me.staff.id}
             canManage={me.permissions.includes('staff.manage')}
           />
-        ) : active === 'system' ? (
+        ) : current === 'system' ? (
           <SystemManager token={token} me={me} modules={visibleModules} />
-        ) : active === 'cms' ? (
+        ) : current === 'cms' ? (
           <CmsManager token={token} />
-        ) : active === 'finance' ? (
+        ) : current === 'finance' ? (
           <FinanceManager
             token={token}
             canReconcile={me.permissions.includes('finance.reconcile')}
             canExport={me.permissions.includes('finance.export')}
           />
-        ) : active === 'payments' ? (
+        ) : current === 'payments' ? (
           <PaymentsManager token={token} />
-        ) : active === 'catalog' ? (
+        ) : current === 'catalog' ? (
           <CatalogManager token={token} />
-        ) : active === 'content' ? (
+        ) : current === 'content' ? (
           <ContentManager token={token} />
-        ) : active === 'ai' ? (
+        ) : current === 'ai' ? (
           <AiManager token={token} />
-        ) : active === 'franchise' ? (
+        ) : current === 'franchise' ? (
           <FranchiseManager token={token} staffId={me.staff.id} />
-        ) : active === 'commission' ? (
+        ) : current === 'commission' ? (
           <CommissionManager token={token} />
         ) : (
           <Preview title={module.label} description={module.description} me={me} />
@@ -184,20 +212,26 @@ function Preview({
 }) {
   return (
     <section className="panel preview">
-      <span className="badge">M20 待接入</span>
+      <span className="badge">暂未开放</span>
       <h2>{title}</h2>
       <p>{description}</p>
       <div className="empty-state">
-        <strong>不伪造正式能力</strong>
-        <span>对应 API、数据库与写操作会在 M20 所属阶段补齐。</span>
+        <strong>当前版本暂无可用操作</strong>
+        <span>此功能开放后可在这里使用。</span>
       </div>
       {title === 'Staff / 权限' && (
         <div className="context">
-          <p>Permissions: {me.permissions.join(' · ') || '暂无'}</p>
+          <p>可用权限：{me.permissions.length} 项</p>
           <p>
-            Data Scopes:{' '}
+            授权范围：{' '}
             {me.dataScopes
-              .map((scope) => `${scope.type}${scope.id ? `:${scope.id}` : ''}`)
+              .map((scope) =>
+                scope.type === 'GLOBAL'
+                  ? '全部数据'
+                  : scope.type === 'STORE'
+                    ? '指定门店'
+                    : '指定区域',
+              )
               .join(' · ') || '暂无'}
           </p>
         </div>
@@ -210,13 +244,17 @@ function App() {
   const [token, setToken] = useState(() => sessionStorage.getItem(tokenKey));
   const [me, setMe] = useState<StaffMeResponse | null>(null);
   const [checking, setChecking] = useState(Boolean(token));
+  const [authError, setAuthError] = useState(false);
+  const [retryKey, setRetryKey] = useState(0);
   useEffect(() => {
     if (!token) {
       setChecking(false);
       setMe(null);
+      setAuthError(false);
       return;
     }
     setChecking(true);
+    setAuthError(false);
     void getStaffMe(token)
       .then((r) => {
         if (!r) {
@@ -225,16 +263,33 @@ function App() {
           setMe(null);
         } else setMe(r);
       })
-      .catch(() => setMe(null))
+      .catch(() => {
+        setMe(null);
+        setAuthError(true);
+      })
       .finally(() => setChecking(false));
-  }, [token]);
+  }, [token, retryKey]);
   const logout = () => {
     sessionStorage.removeItem(tokenKey);
     setToken(null);
     setMe(null);
   };
   if (!token) return <Login onSignedIn={setToken} />;
-  if (checking || !me) return <main className="login-page">正在验证 Staff Session…</main>;
+  if (checking) return <main className="login-page">正在确认登录状态…</main>;
+  if (!me && authError)
+    return (
+      <main className="login-page">
+        <section className="login-card">
+          <h1>暂时无法进入后台</h1>
+          <p>无法确认登录状态，请检查网络后重试。</p>
+          <div className="button-row">
+            <button onClick={() => setRetryKey((value) => value + 1)}>重试</button>
+            <button onClick={logout}>退出登录</button>
+          </div>
+        </section>
+      </main>
+    );
+  if (!me) return <Login onSignedIn={setToken} />;
   return <Shell me={me} token={token} onLogout={logout} />;
 }
 

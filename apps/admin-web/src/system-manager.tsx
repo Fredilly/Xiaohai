@@ -79,67 +79,64 @@ export function SystemManager({ token, me, modules }: Props) {
   return (
     <div className="stack">
       <section className="panel">
-        <span className="eyebrow">SYSTEM STATUS</span>
+        <span className="eyebrow">运行情况</span>
         <h2>系统状态</h2>
         <div className="compact-row">
-          <span>API Health</span>
+          <span>服务状态</span>
           <strong>{health === 'loading' ? '检测中…' : health === 'ok' ? '正常' : '异常'}</strong>
         </div>
         <div className="compact-row">
-          <span>Service</span>
+          <span>服务</span>
           <strong>{healthService}</strong>
         </div>
         <div className="compact-row">
-          <span>当前 Staff</span>
+          <span>当前账号</span>
           <strong>{me.staff.loginIdentifier}</strong>
         </div>
         <div className="compact-row">
-          <span>Permissions</span>
+          <span>权限数量</span>
           <strong>{me.permissions.length}</strong>
         </div>
         <div className="compact-row">
-          <span>Data Scopes</span>
+          <span>授权范围数量</span>
           <strong>{me.dataScopes.length}</strong>
         </div>
         <div className="compact-row">
           <span>当前可见模块</span>
           <strong>{modules.length}</strong>
         </div>
-        <p className="muted">
-          M20 不提供任意 key/value
-          配置写入。系统配置继续由各领域模块或部署环境持有，避免创建绕过领域校验的通用配置入口。
-        </p>
+        <p className="muted">系统配置由相关业务模块和部署环境管理。</p>
       </section>
 
       <section className="panel">
-        <span className="eyebrow">OPERATIONAL AUDIT</span>
+        <span className="eyebrow">操作记录</span>
         <h2>操作审计</h2>
         {!canReadAudit ? (
           <div className="empty-state">
-            <strong>缺少 audit.read 权限</strong>
-            <span>审计读取需要显式权限与 GLOBAL Data Scope，前端不会替代服务端授权。</span>
+            <strong>当前账号没有审计查看权限</strong>
+            <span>如需查看审计记录，请联系管理员开通权限。</span>
           </div>
         ) : (
           <>
             <form className="filter-grid" onSubmit={(event) => void submitAuditFilter(event)}>
               <label>
-                Actor Staff ID
+                操作人编号
                 <input name="actorStaffAccountId" placeholder="UUID" />
               </label>
               <label>
-                Action
+                操作类型
                 <input name="actionKey" placeholder="staff.account.enabled" />
               </label>
               <label>
-                Resource Type
+                对象类型
                 <input name="resourceType" placeholder="staff_account" />
               </label>
               <label>
-                Resource ID
+                对象编号
                 <input name="resourceId" />
               </label>
               <label>
-                Request ID
+                请求编号
                 <input name="requestId" />
               </label>
               <button type="submit">查询审计</button>
@@ -148,7 +145,7 @@ export function SystemManager({ token, me, modules }: Props) {
             {auditRows.length === 0 ? (
               <div className="empty-state">
                 <strong>暂无审计记录</strong>
-                <span>Staff / RBAC / Data Scope 的 M20 写操作会进入 append-only audit log。</span>
+                <span>当前筛选条件下没有操作审计记录。</span>
               </div>
             ) : (
               <div className="table-wrap">
@@ -156,11 +153,11 @@ export function SystemManager({ token, me, modules }: Props) {
                   <thead>
                     <tr>
                       <th>时间</th>
-                      <th>Actor</th>
-                      <th>Action</th>
-                      <th>Resource</th>
-                      <th>Request</th>
-                      <th>Metadata</th>
+                      <th>操作人</th>
+                      <th>操作</th>
+                      <th>对象</th>
+                      <th>请求编号</th>
+                      <th>技术详情</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -175,7 +172,10 @@ export function SystemManager({ token, me, modules }: Props) {
                         </td>
                         <td>{row.requestId}</td>
                         <td>
-                          <Metadata value={row.metadata} />
+                          <details>
+                            <summary>查看</summary>
+                            <Metadata value={row.metadata} />
+                          </details>
                         </td>
                       </tr>
                     ))}

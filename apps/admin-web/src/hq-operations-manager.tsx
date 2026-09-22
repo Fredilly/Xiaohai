@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { StaffMeResponse } from '@xiaohai/contracts';
+import { displayStatus } from './display';
 import { HqInventoryWorkflows } from './hq-inventory-workflows';
 import {
   loadHqFulfillment,
@@ -37,7 +38,7 @@ const modeMeta: Record<
   },
   rental: {
     title: '租借',
-    description: '查看服务端 Data Scope 内的预约、借出、归还和逾期记录。',
+    description: '查看授权范围内的预约、借出、归还和逾期记录。',
     permission: 'rental.read',
   },
   fulfillment: {
@@ -153,7 +154,7 @@ export function HqOperationsManager({
       <section className="panel preview">
         <span className="badge">无当前权限</span>
         <h2>{meta.title}</h2>
-        <p>当前 Staff Session 缺少 {meta.permission}。前端不会尝试绕过服务端 RBAC。</p>
+        <p>当前账号没有查看此模块的权限。</p>
       </section>
     );
   }
@@ -161,11 +162,9 @@ export function HqOperationsManager({
   return (
     <>
       <section className="panel">
-        <span className="badge">M20 · REAL API</span>
         <h2>{meta.title}</h2>
         <p>{meta.description}</p>
-        <div className="context">
-          <p>服务端 RBAC + Data Scope 仍是最终授权边界。</p>
+        <div className="filter-bar">
           {stores && mode !== 'stores' && (
             <label>
               门店筛选
@@ -182,11 +181,14 @@ export function HqOperationsManager({
               </select>
             </label>
           )}
-          {!canReadStores && mode !== 'stores' && (
-            <p>未授予 stores.read，当前按后端 Data Scope 汇总。</p>
-          )}
+          {!canReadStores && mode !== 'stores' && <p>显示当前账号可查看的记录。</p>}
           {loading && <p>加载中…</p>}
-          {status && <p>加载失败：{status}</p>}
+          {status && (
+            <p role="alert">
+              加载失败，请稍后重试。
+              <button onClick={() => setRefreshKey((value) => value + 1)}>重试</button>
+            </p>
+          )}
         </div>
       </section>
       {mode === 'stores' && <StoresView stores={stores} />}
@@ -227,21 +229,37 @@ function StoresView({ stores }: { stores: StoresResult | null }) {
   return (
     <section className="panel">
       <h3>授权门店</h3>
-      <div className="module-grid">
-        {stores?.stores.map((store) => (
-          <div key={store.id} className="empty-state">
-            <strong>{store.name}</strong>
-            <span>
-              {store.code} · {store.region.name} · {store.city}
-            </span>
-            <span>
-              {store.operationalStatus}
-              {store.franchisee ? ` · ${store.franchisee.name}` : ' · 直营网点'}
-            </span>
-          </div>
-        ))}
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>门店</th>
+              <th>编码</th>
+              <th>区域</th>
+              <th>城市</th>
+              <th>运营状态</th>
+              <th>归属</th>
+            </tr>
+          </thead>
+          <tbody>
+            {stores?.stores.map((store) => (
+              <tr key={store.id}>
+                <td>
+                  <strong>{store.name}</strong>
+                </td>
+                <td>{store.code}</td>
+                <td>{store.region.name}</td>
+                <td>{store.city}</td>
+                <td>
+                  <span className="badge">{displayStatus(store.operationalStatus)}</span>
+                </td>
+                <td>{store.franchisee?.name ?? '直营'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
-      {stores?.stores.length === 0 && <p>当前 Data Scope 下没有可见门店。</p>}
+      {stores?.stores.length === 0 && <p>当前授权范围内没有可见门店。</p>}
     </section>
   );
 }
@@ -269,17 +287,34 @@ function InventoryView({
         <p>
           SKU：{inventory?.items.length ?? 0} · 可用库存：{available}
         </p>
-        <div className="module-grid">
-          {inventory?.items.slice(0, 24).map((item) => (
-            <div key={`${item.storeId}:${item.skuId}`} className="empty-state">
-              <strong>{item.skuName}</strong>
-              <span>{item.skuCode}</span>
-              <span>
-                on hand {item.onHand} · reserved {item.reserved} · available {item.available}
-              </span>
-            </div>
-          ))}
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>图书 / SKU</th>
+                <th>编码</th>
+                <th>当前库存</th>
+                <th>已占用</th>
+                <th>可用</th>
+              </tr>
+            </thead>
+            <tbody>
+              {inventory?.items.slice(0, 24).map((item) => (
+                <tr key={`${item.storeId}:${item.skuId}`}>
+                  <td>
+                    <strong>{item.skuName}</strong>
+                  </td>
+                  <td>{item.skuCode}</td>
+                  <td>{item.onHand}</td>
+                  <td>{item.reserved}</td>
+                  <td>{item.available}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
+        {inventory?.items.length === 0 && <p>暂无库存记录。</p>}
+        {(inventory?.items.length ?? 0) > 24 && <p>仅展示前 24 条记录，请使用门店筛选缩小范围。</p>}
       </section>
       {selectedStoreId && (
         <section className="panel">
@@ -291,11 +326,9 @@ function InventoryView({
       <section className="panel">
         <h3>采购上下文</h3>
         {canReadSuppliers ? (
-          <p>
-            供应商：{suppliers?.suppliers.length ?? 0}（写操作仍由服务端权限和 Data Scope 保护）
-          </p>
+          <p>当前可查看供应商：{suppliers?.suppliers.length ?? 0}</p>
         ) : (
-          <p>当前 Staff 没有 procurement.manage，不加载供应商或采购能力。</p>
+          <p>当前账号没有采购管理权限。</p>
         )}
       </section>
     </>
@@ -306,19 +339,35 @@ function RentalView({ rentals }: { rentals: RentalsResult | null }) {
   return (
     <section className="panel">
       <h3>租借记录</h3>
-      <div className="module-grid">
-        {rentals?.items.slice(0, 30).map((rental) => (
-          <div key={rental.id} className="empty-state">
-            <strong>{rental.rentalNumber}</strong>
-            <span>
-              {rental.storeName} · {rental.status}
-            </span>
-            <span>
-              {rental.items.length} items{rental.isOverdue ? ' · OVERDUE' : ''}
-            </span>
-          </div>
-        ))}
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>租借单号</th>
+              <th>门店</th>
+              <th>图书数量</th>
+              <th>状态</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rentals?.items.slice(0, 30).map((rental) => (
+              <tr key={rental.id}>
+                <td>
+                  <strong>{rental.rentalNumber}</strong>
+                </td>
+                <td>{rental.storeName}</td>
+                <td>{rental.items.length}</td>
+                <td>
+                  <span className="badge">
+                    {rental.isOverdue ? '已逾期' : displayStatus(rental.status)}
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
+      {(rentals?.items.length ?? 0) > 30 && <p>仅展示前 30 条记录，请按门店筛选。</p>}
       {rentals?.items.length === 0 && <p>当前范围没有租借记录。</p>}
     </section>
   );
@@ -328,20 +377,37 @@ function FulfillmentView({ fulfillment }: { fulfillment: FulfillmentResult | nul
   return (
     <section className="panel">
       <h3>订单履约</h3>
-      <div className="module-grid">
-        {fulfillment?.items.slice(0, 30).map((item) => (
-          <div key={item.orderId} className="empty-state">
-            <strong>{item.orderNumber}</strong>
-            <span>
-              {item.store.name} · {item.method} · {item.orderStatus}
-            </span>
-            <span>
-              {item.pickup ? `pickup ${item.pickup.status}` : ''}
-              {item.delivery ? `delivery ${item.delivery.status}` : ''}
-            </span>
-          </div>
-        ))}
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>订单号</th>
+              <th>门店</th>
+              <th>履约方式</th>
+              <th>订单状态</th>
+              <th>履约状态</th>
+            </tr>
+          </thead>
+          <tbody>
+            {fulfillment?.items.slice(0, 30).map((item) => (
+              <tr key={item.orderId}>
+                <td>
+                  <strong>{item.orderNumber}</strong>
+                </td>
+                <td>{item.store.name}</td>
+                <td>{displayStatus(item.method)}</td>
+                <td>{displayStatus(item.orderStatus)}</td>
+                <td>
+                  <span className="badge">
+                    {displayStatus(item.pickup?.status ?? item.delivery?.status ?? 'PENDING')}
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
+      {(fulfillment?.items.length ?? 0) > 30 && <p>仅展示前 30 条记录，请按门店筛选。</p>}
       {fulfillment?.items.length === 0 && <p>当前范围没有履约记录。</p>}
     </section>
   );

@@ -51,7 +51,7 @@ export function FranchiseManager({ token, staffId }: { token: string; staffId: s
   }
 
   useEffect(() => {
-    void load().catch(() => setMessage('无法读取加盟线索，需要 franchise.read 与 GLOBAL scope。'));
+    void load().catch(() => setMessage('无法读取加盟线索，请检查权限或稍后重试。'));
   }, [token]);
 
   async function open(id: string) {
@@ -83,7 +83,7 @@ export function FranchiseManager({ token, staffId }: { token: string; staffId: s
           : code === 'INVALID_STATE'
             ? '当前状态不允许执行该操作。'
             : code === 'STAFF_FORBIDDEN'
-              ? '当前账号没有所需权限或 GLOBAL scope。'
+              ? '当前账号没有所需权限。'
               : '操作失败，请检查输入和当前状态。',
       );
     } finally {
@@ -156,7 +156,7 @@ export function FranchiseManager({ token, staffId }: { token: string; staffId: s
       <div className="franchise-toolbar">
         <div>
           <h2>加盟线索管理</h2>
-          <p>服务端执行 Staff RBAC、GLOBAL Data Scope、状态机与版本检查。</p>
+          <p>查看加盟线索、跟进记录与当前审核状态。</p>
         </div>
         <button disabled={busy} onClick={() => void load().catch(() => setMessage('刷新失败'))}>
           刷新

@@ -5,6 +5,7 @@ import {
   refundResponseSchema,
   type PaymentStatus,
 } from '@xiaohai/contracts/payments';
+import { displayStatus, money } from './display';
 
 const configuredBase: unknown = import.meta.env.VITE_API_BASE_URL;
 const base = typeof configuredBase === 'string' ? configuredBase : 'http://127.0.0.1:3000';
@@ -26,10 +27,17 @@ export function PaymentsManager({ token }: { token: string }) {
     setRows(data.payments);
   }
   useEffect(() => {
-    void load().catch(() => setMessage('无法读取支付记录，需要 payments.read 与 GLOBAL scope。'));
+    void load().catch(() => setMessage('无法读取支付记录，请检查权限或稍后重试。'));
   }, [token]);
   async function act(id: string, refund: boolean) {
-    if (refund && !window.confirm('确认对该支付发起整单退款？金额由服务端确定。')) return;
+    if (
+      !window.confirm(
+        refund
+          ? '确认对该支付发起整单退款？金额由服务端确定。'
+          : '确认查询微信支付状态并执行对账？',
+      )
+    )
+      return;
     setBusy(true);
     try {
       const result = await call(
@@ -51,31 +59,49 @@ export function PaymentsManager({ token }: { token: string }) {
   return (
     <section className="panel">
       <h2>支付与整单退款</h2>
-      <p>
-        最近 100 笔。服务端验证 payments.read / payments.refund / payments.reconcile 与 GLOBAL
-        scope。
-      </p>
+      <p>显示最近 100 笔支付记录。退款和对账操作会保留审计记录。</p>
       <p role="status">{message}</p>
       <button disabled={busy} onClick={() => void load().catch(() => setMessage('刷新失败'))}>
         刷新
       </button>
-      {rows.map((row) => (
-        <article key={row.id}>
-          <p>
-            订单 {row.orderId} · {row.status} · ¥{(row.amountMinor / 100).toFixed(2)}{' '}
-            {row.reviewRequired ? '需人工处理' : ''}
-          </p>
-          <button disabled={busy} onClick={() => void act(row.id, false)}>
-            查询微信并对账
-          </button>
-          <button
-            disabled={busy || row.status !== 'SUCCEEDED'}
-            onClick={() => void act(row.id, true)}
-          >
-            整单退款
-          </button>
-        </article>
-      ))}
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>订单编号</th>
+              <th>金额</th>
+              <th>支付状态</th>
+              <th>处理</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.id}>
+                <td>
+                  <code>{row.orderId}</code>
+                </td>
+                <td>{money(row.amountMinor)}</td>
+                <td>
+                  <span className="badge">{displayStatus(row.status)}</span>
+                  {row.reviewRequired && ' · 需人工处理'}
+                </td>
+                <td className="row-actions">
+                  <button disabled={busy} onClick={() => void act(row.id, false)}>
+                    查询微信并对账
+                  </button>
+                  <button
+                    disabled={busy || row.status !== 'SUCCEEDED'}
+                    onClick={() => void act(row.id, true)}
+                  >
+                    整单退款
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {!rows.length && <p>暂无支付记录。</p>}
     </section>
   );
 }

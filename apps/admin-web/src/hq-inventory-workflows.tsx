@@ -253,9 +253,7 @@ export function HqInventoryWorkflows({
   return (
     <section className="panel">
       <h3>总部库存操作</h3>
-      <p>
-        所有写操作复用 M14 Staff API；页面只提供操作上下文，服务端继续执行权限与 Data Scope 校验。
-      </p>
+      <p>请核对门店、图书和数量；提交后的库存变化会留有流水记录。</p>
       {status && <p>{status}</p>}
 
       {canProcure && hasGlobalScope && (
@@ -308,7 +306,10 @@ export function HqInventoryWorkflows({
               <strong>{purchaseOrder.orderNumber}</strong> · {purchaseOrder.status}
               {purchaseOrder.status === 'DRAFT' && (
                 <>
-                  <button disabled={busy} onClick={() => purchaseAction('SUBMIT')}>
+                  <button
+                    disabled={busy}
+                    onClick={() => window.confirm('确认提交采购单？') && purchaseAction('SUBMIT')}
+                  >
                     提交
                   </button>
                   <button disabled={busy} onClick={() => purchaseAction('CANCEL')}>
@@ -325,7 +326,12 @@ export function HqInventoryWorkflows({
                   </button>
                 )}
               {receipt?.status === 'DRAFT' && canReceive && (
-                <button disabled={busy} onClick={postReceipt}>
+                <button
+                  disabled={busy}
+                  onClick={() =>
+                    window.confirm('确认过账收货单？此操作会更新库存。') && postReceipt()
+                  }
+                >
                   过账 {receipt.receiptNumber}
                 </button>
               )}
@@ -376,7 +382,13 @@ export function HqInventoryWorkflows({
                   </button>
                 )}
               {stocktake.status === 'REVIEWED' && (
-                <button disabled={busy} onClick={() => stocktakeAction('POST')}>
+                <button
+                  disabled={busy}
+                  onClick={() =>
+                    window.confirm('确认过账盘点差异？此操作会更新库存。') &&
+                    stocktakeAction('POST')
+                  }
+                >
                   过账差异
                 </button>
               )}
@@ -428,12 +440,18 @@ export function HqInventoryWorkflows({
                 </>
               )}
               {transfer.status === 'SUBMITTED' && (
-                <button disabled={busy} onClick={() => transferAction('DISPATCH')}>
+                <button
+                  disabled={busy}
+                  onClick={() => window.confirm('确认发出调拨单？') && transferAction('DISPATCH')}
+                >
                   发出
                 </button>
               )}
               {transfer.status === 'IN_TRANSIT' && (
-                <button disabled={busy} onClick={() => transferAction('RECEIVE')}>
+                <button
+                  disabled={busy}
+                  onClick={() => window.confirm('确认收到调拨图书？') && transferAction('RECEIVE')}
+                >
                   收货
                 </button>
               )}

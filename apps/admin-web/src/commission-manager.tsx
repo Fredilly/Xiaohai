@@ -7,6 +7,7 @@ import {
   settleCommission,
   type CommissionOverview,
 } from './commission-api';
+import { displayStatus, money } from './display';
 
 export function CommissionManager({ token }: { token: string }) {
   const [data, setData] = useState<CommissionOverview>({
@@ -21,7 +22,7 @@ export function CommissionManager({ token }: { token: string }) {
         setData(value);
         setMessage('');
       })
-      .catch(() => setMessage('加载失败：需要佣金权限与 GLOBAL Data Scope。'));
+      .catch(() => setMessage('加载失败，请检查权限或稍后重试。'));
   useEffect(() => {
     void load();
   }, [token]);
@@ -47,7 +48,7 @@ export function CommissionManager({ token }: { token: string }) {
   return (
     <section className="panel">
       <h2>佣金与提现</h2>
-      <p className="muted">比例、冻结期由已审核规则明确配置；前端金额不作为账务依据。</p>
+      <p className="muted">查看佣金规则、待审核提现与冻结记录。</p>
       <p>{message}</p>
       <form onSubmit={(e) => void submit(e)}>
         <label>
@@ -69,37 +70,63 @@ export function CommissionManager({ token }: { token: string }) {
         <button>创建草稿</button>
       </form>
       <h3>规则</h3>
-      {data.rules.map((rule) => (
-        <div className="context" key={rule.id}>
-          <strong>{rule.name}</strong>
-          <span>
-            {rule.status} · {rule.rateBasisPoints} bp · 冻结 {rule.freezeDays} 天
-          </span>
-          <button
-            onClick={() =>
-              void changeCommissionRuleStatus(
-                token,
-                rule.id,
-                rule.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE',
-                rule.version,
-              ).then(load)
-            }
-          >
-            {rule.status === 'ACTIVE' ? '停用' : '启用'}
-          </button>
-        </div>
-      ))}
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>名称</th>
+              <th>状态</th>
+              <th>比例</th>
+              <th>冻结期</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.rules.map((rule) => (
+              <tr key={rule.id}>
+                <td>
+                  <strong>{rule.name}</strong>
+                </td>
+                <td>{displayStatus(rule.status)}</td>
+                <td>{(rule.rateBasisPoints / 100).toFixed(2)}%</td>
+                <td>{rule.freezeDays} 天</td>
+                <td>
+                  <button
+                    onClick={() =>
+                      window.confirm(
+                        `确定${rule.status === 'ACTIVE' ? '停用' : '启用'}佣金规则？`,
+                      ) &&
+                      void changeCommissionRuleStatus(
+                        token,
+                        rule.id,
+                        rule.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE',
+                        rule.version,
+                      ).then(load)
+                    }
+                  >
+                    {rule.status === 'ACTIVE' ? '停用' : '启用'}
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {!data.rules.length && <p>暂无佣金规则。</p>}
       <h3>提现审核</h3>
       {data.withdrawals.map((item) => (
         <div className="context" key={item.id}>
-          <strong>¥{(item.amountMinor / 100).toFixed(2)}</strong>
-          <span>
-            {item.status} · {item.consumerUserId}
-          </span>
+          <strong>{money(item.amountMinor)}</strong>
+          <span>{displayStatus(item.status)}</span>
+          <details>
+            <summary>申请人编号</summary>
+            <code>{item.consumerUserId}</code>
+          </details>
           {item.status === 'REQUESTED' && (
             <>
               <button
                 onClick={() =>
+                  window.confirm('确认批准提现申请？') &&
                   void reviewWithdrawal(token, item.id, 'APPROVE', item.version).then(load)
                 }
               >
@@ -107,6 +134,7 @@ export function CommissionManager({ token }: { token: string }) {
               </button>
               <button
                 onClick={() =>
+                  window.confirm('确认拒绝提现申请并释放金额？') &&
                   void reviewWithdrawal(token, item.id, 'REJECT', item.version).then(load)
                 }
               >
@@ -117,6 +145,7 @@ export function CommissionManager({ token }: { token: string }) {
           {item.status === 'APPROVED' && (
             <button
               onClick={() =>
+                window.confirm('仅在实际完成打款后确认：标记为已打款？') &&
                 void reviewWithdrawal(token, item.id, 'MARK_PAID', item.version).then(load)
               }
             >
@@ -128,12 +157,19 @@ export function CommissionManager({ token }: { token: string }) {
       <h3>冻结佣金</h3>
       {data.earnings.map((item) => (
         <div className="context" key={item.id}>
-          <strong>¥{(item.amountMinor / 100).toFixed(2)}</strong>
+          <strong>{money(item.amountMinor)}</strong>
           <span>
-            {item.state} · 冻结至 {new Date(item.frozenUntil).toLocaleString()}
+            {displayStatus(item.state)} · 冻结至 {new Date(item.frozenUntil).toLocaleString()}
           </span>
           {item.state === 'FROZEN' && new Date(item.frozenUntil) <= new Date() && (
-            <button onClick={() => void settleCommission(token, item.id).then(load)}>结算</button>
+            <button
+              onClick={() =>
+                window.confirm('确认结算这笔佣金？') &&
+                void settleCommission(token, item.id).then(load)
+              }
+            >
+              结算
+            </button>
           )}
         </div>
       ))}

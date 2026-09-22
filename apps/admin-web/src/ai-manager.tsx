@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import type { AiJob } from '@xiaohai/contracts/ai';
 import { AiApiError, cancelAiJob, enqueueAiJob, listAiJobs, retryAiJob } from './ai-api';
+import { displayStatus } from './display';
 export function AiManager({ token }: { token: string }) {
   const [jobs, setJobs] = useState<AiJob[]>([]),
     [message, setMessage] = useState(''),
@@ -11,7 +12,7 @@ export function AiManager({ token }: { token: string }) {
     } catch (error) {
       setMessage(
         error instanceof AiApiError && error.status === 403
-          ? '需要 ai.manage + GLOBAL 权限。'
+          ? '当前账号没有 AI 作业管理权限。'
           : 'AI 作业加载失败。',
       );
     }
@@ -30,11 +31,11 @@ export function AiManager({ token }: { token: string }) {
         timeoutMs: 30000,
         maxAttempts: 3,
       });
-      setMessage('已入队；刷新查看 worker 状态。');
+      setMessage('作业已提交，请刷新查看进度。');
       await load();
       event.currentTarget.reset();
     } catch {
-      setMessage('入队失败，请检查权限、Redis、字段或 Provider 配置。');
+      setMessage('提交失败，请检查输入或稍后重试。');
     } finally {
       setBusy(false);
     }
@@ -54,36 +55,33 @@ export function AiManager({ token }: { token: string }) {
     <section className="panel">
       <div className="section-toolbar">
         <div>
-          <span className="badge">M8 · AI Platform</span>
+          <span className="badge">作业管理</span>
           <h2>AI 作业监控</h2>
         </div>
         <button onClick={() => void load()}>刷新</button>
       </div>
-      <p className="muted">
-        仅平台通用文本探针；不是 M9 故事、M10 绘本或 M11 动画流程。Prompt 发送至选定服务端
-        Provider。
-      </p>
+      <p className="muted">此处用于平台作业诊断；故事、绘本与动画作品请在各自的业务流程中管理。</p>
       <form className="cms-form" onSubmit={(event) => void submit(event)}>
         <label>
           项目标题
           <input name="title" required maxLength={120} />
         </label>
         <label>
-          Provider
+          服务提供方
           <select name="provider">
-            <option value="MOCK">MOCK（仅开发/测试启用）</option>
+            <option value="MOCK">测试服务（仅测试环境可用）</option>
             <option value="DEEPSEEK">DEEPSEEK</option>
           </select>
         </label>
         <label>
-          Model
+          模型
           <input name="model" required defaultValue="deepseek-chat" maxLength={120} />
         </label>
         <label>
-          平台探针输入
+          测试内容
           <textarea name="prompt" required maxLength={20000} />
         </label>
-        <button disabled={busy}>入队</button>
+        <button disabled={busy}>提交作业</button>
       </form>
       <p role="status">{message}</p>
       <div className="cms-list">
@@ -92,14 +90,14 @@ export function AiManager({ token }: { token: string }) {
             <div>
               <strong>{job.projectTitle}</strong>
               <span>
-                {job.provider} · {job.model} · attempts {job.attemptCount}/{job.maxAttempts}
+                {job.provider === 'MOCK' ? '测试服务' : job.provider} · {job.model} · 重试{' '}
+                {job.attemptCount}/{job.maxAttempts}
               </span>
               <span>
-                moderation {job.moderation?.input ?? 'pending'} /{' '}
-                {job.moderation?.output ?? 'pending'} · tokens {job.usage?.totalTokens ?? 'n/a'}
+                审核：{job.moderation?.input ?? '待处理'} / {job.moderation?.output ?? '待处理'}
               </span>
             </div>
-            <span>{job.status}</span>
+            <span className="badge">{displayStatus(job.status)}</span>
             <button
               disabled={busy || !['QUEUED', 'RUNNING'].includes(job.status)}
               onClick={() => void action(job, 'cancel')}

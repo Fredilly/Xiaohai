@@ -10,6 +10,7 @@ import {
 } from './cms-api';
 import { CmsSectionEditor } from './cms-section-editor';
 import { formValuesFromSection, newSectionFormValues } from './cms-section-form';
+import { displayStatus } from './display';
 
 export function CmsManager({ token }: { token: string }) {
   const [home, setHome] = useState<AdminHomeResponse | null>(null);
@@ -46,11 +47,11 @@ export function CmsManager({ token }: { token: string }) {
     }
   }
 
-  if (state === 'loading') return <section className="panel">正在加载首页 CMS…</section>;
+  if (state === 'loading') return <section className="panel">正在加载首页内容…</section>;
   if (state === 'unauthorized')
-    return <section className="panel">Staff Session 已失效，请重新登录。</section>;
+    return <section className="panel">登录状态已失效，请重新登录。</section>;
   if (state === 'forbidden')
-    return <section className="panel">当前 Staff 没有 cms.home.manage + GLOBAL 权限。</section>;
+    return <section className="panel">当前账号没有首页内容管理权限。</section>;
   if (state === 'conflict')
     return (
       <section className="panel">
@@ -61,7 +62,7 @@ export function CmsManager({ token }: { token: string }) {
   if (state === 'error' || !home)
     return (
       <section className="panel">
-        <p>CMS 加载失败。</p>
+        <p>首页内容加载失败。</p>
         <button onClick={() => void load()}>重试</button>
       </section>
     );
@@ -72,15 +73,17 @@ export function CmsManager({ token }: { token: string }) {
     <section className="panel">
       <div className="section-toolbar">
         <div>
-          <span className="badge">M4 · PostgreSQL CMS</span>
           <h2>首页内容</h2>
-          <p>
-            页面状态：{home.page.publicationState} · version {home.page.version}
-          </p>
+          <p>页面状态：{displayStatus(home.page.publicationState)}</p>
         </div>
         <div className="cms-actions">
           <button
             onClick={() =>
+              window.confirm(
+                home.page.publicationState === 'PUBLISHED'
+                  ? '确定取消发布首页？'
+                  : '确定发布首页？',
+              ) &&
               void mutate(() =>
                 updateCmsPublication(
                   token,
@@ -92,13 +95,13 @@ export function CmsManager({ token }: { token: string }) {
           >
             {home.page.publicationState === 'PUBLISHED' ? '取消发布首页' : '发布首页'}
           </button>
-          <button onClick={() => setEditor('new')}>新增 Section</button>
+          <button onClick={() => setEditor('new')}>新增内容区</button>
         </div>
       </div>
       {message && <p role="status">{message}</p>}
       {editor && (
         <div className="cms-editor-panel">
-          <h3>{editor === 'new' ? '新增 Section' : `编辑：${editor.title}`}</h3>
+          <h3>{editor === 'new' ? '新增内容区' : `编辑：${editor.title}`}</h3>
           <CmsSectionEditor
             key={editor === 'new' ? `new-${nextOrder(sorted)}` : editor.id}
             initialValues={
@@ -106,14 +109,14 @@ export function CmsManager({ token }: { token: string }) {
                 ? newSectionFormValues(nextOrder(sorted))
                 : formValuesFromSection(editor)
             }
-            submitLabel={editor === 'new' ? '创建 Section' : '保存 Section'}
+            submitLabel={editor === 'new' ? '创建内容区' : '保存内容区'}
             onCancel={() => setEditor(null)}
             onSubmit={(input) => saveEditor(input, editingSection)}
           />
         </div>
       )}
       {sorted.length === 0 ? (
-        <div className="empty-state">暂无 Section，可先新增一个草稿运营位。</div>
+        <div className="empty-state">暂无内容区，可先新增一个草稿运营位。</div>
       ) : (
         <div className="cms-list">
           {sorted.map((section, index) => (
@@ -121,18 +124,21 @@ export function CmsManager({ token }: { token: string }) {
               <div>
                 <strong>{section.title}</strong>
                 <span>
-                  {section.sectionType} · order {section.displayOrder} · v{section.version}
+                  {section.sectionType} · 排序 {section.displayOrder}
                 </span>
               </div>
               <div>
                 <span>
-                  {section.enabled ? 'Enabled' : 'Disabled'} · {section.publicationState}
+                  {section.enabled ? '启用' : '停用'} · {displayStatus(section.publicationState)}
                 </span>
               </div>
               <div className="cms-actions">
                 <button onClick={() => setEditor(section)}>编辑</button>
                 <button
                   onClick={() =>
+                    window.confirm(
+                      section.enabled ? '确定停用这个内容区？' : '确定启用这个内容区？',
+                    ) &&
                     void mutate(() =>
                       updateCmsSection(token, section.id, {
                         version: section.version,
@@ -145,6 +151,9 @@ export function CmsManager({ token }: { token: string }) {
                 </button>
                 <button
                   onClick={() =>
+                    window.confirm(
+                      section.publicationState === 'PUBLISHED' ? '确定取消发布？' : '确定发布？',
+                    ) &&
                     void mutate(() =>
                       updateCmsSection(token, section.id, {
                         version: section.version,

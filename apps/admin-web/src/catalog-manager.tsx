@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import type { AdminProductInput } from '@xiaohai/contracts/commerce';
+import { displayStatus, money } from './display';
 import {
   CatalogApiError,
   createAdminProduct,
@@ -39,12 +40,12 @@ export function CatalogManager({ token }: { token: string }) {
   useEffect(() => {
     void load();
   }, [token]);
-  if (state === 'forbidden')
-    return <section className="panel">当前 Staff 没有 catalog.manage + GLOBAL 权限。</section>;
-  if (state === 'unauthorized') return <section className="panel">Staff Session 已失效。</section>;
+  if (state === 'forbidden') return <section className="panel">当前账号没有商品管理权限。</section>;
+  if (state === 'unauthorized')
+    return <section className="panel">登录状态已失效，请重新登录。</section>;
   return (
     <section className="panel">
-      <h2>商品管理 · M5</h2>
+      <h2>图书与商品</h2>
       <div className="section-toolbar">
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="搜索商品" />
         <button onClick={() => void load()}>搜索</button>
@@ -57,16 +58,49 @@ export function CatalogManager({ token }: { token: string }) {
       ) : products.length === 0 ? (
         <p>暂无商品</p>
       ) : (
-        products.map((p) => (
-          <article className="cms-row" key={p.id}>
-            <strong>{p.name}</strong>
-            <span>
-              {p.status} · {p.sku.code} · ¥{(p.sku.priceMinor / 100).toFixed(2)} ·{' '}
-              {p.sku.availableForSale ? '可售' : '停售'}
-            </span>
-            <button onClick={() => setEditing(p)}>编辑</button>
-          </article>
-        ))
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>商品</th>
+                <th>书名 / 作者</th>
+                <th>SKU 编码</th>
+                <th>价格</th>
+                <th>状态</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              {products.map((p) => (
+                <tr key={p.id}>
+                  <td className="product-cell">
+                    {p.coverUrl ? (
+                      <img src={p.coverUrl} alt="" />
+                    ) : (
+                      <span className="product-cover-empty">图书</span>
+                    )}
+                    <strong>{p.name}</strong>
+                  </td>
+                  <td>
+                    {p.book?.title ?? '—'}
+                    <br />
+                    <small>{p.book?.author ?? '—'}</small>
+                  </td>
+                  <td>{p.sku.code}</td>
+                  <td>{money(p.sku.priceMinor)}</td>
+                  <td>
+                    <span className="badge">
+                      {displayStatus(p.status)} · {p.sku.availableForSale ? '可售' : '停售'}
+                    </span>
+                  </td>
+                  <td>
+                    <button onClick={() => setEditing(p)}>编辑</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
       {(creating || editing) && (
         <ProductForm
@@ -227,7 +261,7 @@ function ProductForm({
         />
       </label>
       <label>
-        SKU code
+        SKU 编码
         <input
           required
           value={v.sku.code}
