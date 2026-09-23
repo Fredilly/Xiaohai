@@ -84,6 +84,7 @@ export function FinanceManager({
   }
 
   async function reconcile() {
+    if (!window.confirm('确认对当前时间范围运行内部对账？结果将留在对账记录中。')) return;
     try {
       setStatus('正在执行内部财务对账…');
       const next = await createFinanceReconciliation(token, range);
@@ -129,15 +130,12 @@ export function FinanceManager({
   return (
     <>
       <section className="panel">
-        <span className="badge">M21 · finance.read + GLOBAL</span>
-        <h2>Finance Control / 财务控制</h2>
-        <p>
-          本页读取统一 Finance Ledger
-          与内部对账结果。退款、佣金结算和提现审核仍回到原有业务模块执行，不在这里复制状态机。
-        </p>
+        <span className="badge">财务工作区</span>
+        <h2>财务控制</h2>
+        <p>查看财务流水与对账结果。退款、佣金和提现仍在各自业务模块处理。</p>
         <form className="ops-form compact-form" onSubmit={(event) => void submitFilters(event)}>
           <label>
-            From
+            开始时间
             <input
               name="from"
               type="datetime-local"
@@ -146,7 +144,7 @@ export function FinanceManager({
             />
           </label>
           <label>
-            To
+            结束时间
             <input
               name="to"
               type="datetime-local"
@@ -181,14 +179,11 @@ export function FinanceManager({
         <h3>财务汇总</h3>
         {summary ? (
           <div className="module-grid">
-            <Metric label="Cash Inflow" value={money(summary.cashInflowMinor)} />
-            <Metric label="Cash Outflow" value={money(summary.cashOutflowMinor)} />
-            <Metric label="Net Cash" value={money(summary.netCashMinor)} />
-            <Metric label="Frozen Commission Δ" value={money(summary.commissionFrozenDeltaMinor)} />
-            <Metric
-              label="Available Commission Δ"
-              value={money(summary.commissionAvailableDeltaMinor)}
-            />
+            <Metric label="现金流入" value={money(summary.cashInflowMinor)} />
+            <Metric label="现金流出" value={money(summary.cashOutflowMinor)} />
+            <Metric label="现金净额" value={money(summary.netCashMinor)} />
+            <Metric label="冻结佣金变动" value={money(summary.commissionFrozenDeltaMinor)} />
+            <Metric label="可用佣金变动" value={money(summary.commissionAvailableDeltaMinor)} />
           </div>
         ) : (
           <p>暂无汇总。</p>
@@ -197,18 +192,38 @@ export function FinanceManager({
 
       <section className="panel">
         <h3>统一财务流水</h3>
-        <div className="module-grid">
-          {entries.map((entry) => (
-            <div className="empty-state" key={entry.id}>
-              <strong>{entry.eventType}</strong>
-              <span>{entry.sourceKind}</span>
-              <span>Cash Δ {money(entry.cashDeltaMinor)}</span>
-              <span>Frozen Δ {money(entry.commissionFrozenDeltaMinor)}</span>
-              <span>Available Δ {money(entry.commissionAvailableDeltaMinor)}</span>
-              <small>{new Date(entry.occurredAt).toLocaleString()}</small>
-              <small>{entry.eventKey}</small>
-            </div>
-          ))}
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>时间</th>
+                <th>事件</th>
+                <th>来源</th>
+                <th>现金变动</th>
+                <th>冻结佣金变动</th>
+                <th>可用佣金变动</th>
+                <th>技术详情</th>
+              </tr>
+            </thead>
+            <tbody>
+              {entries.map((entry) => (
+                <tr key={entry.id}>
+                  <td>{new Date(entry.occurredAt).toLocaleString()}</td>
+                  <td>{entry.eventType}</td>
+                  <td>{entry.sourceKind}</td>
+                  <td>{money(entry.cashDeltaMinor)}</td>
+                  <td>{money(entry.commissionFrozenDeltaMinor)}</td>
+                  <td>{money(entry.commissionAvailableDeltaMinor)}</td>
+                  <td>
+                    <details>
+                      <summary>事件标识</summary>
+                      <code>{entry.eventKey}</code>
+                    </details>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
         {!entries.length && <p>当前筛选条件下没有统一财务流水。</p>}
       </section>

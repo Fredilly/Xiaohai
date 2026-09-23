@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import type { HqOrderListQuery } from '@xiaohai/contracts/hq';
 import { loadHqOrder, loadHqOrders, loadHqUser, loadHqUsers } from './hq-support-api';
+import { displayStatus, money } from './display';
 
 export type HqSupportMode = 'orders' | 'users';
 
@@ -56,9 +57,8 @@ function OrdersManager({ token }: { token: string }) {
   return (
     <>
       <section className="panel">
-        <span className="badge">M20-B · orders.read + GLOBAL</span>
-        <h2>HQ 订单支持视图</h2>
-        <p>订单价格、商品与地址均读取服务端快照；本页只读，不新增订单状态写入口。</p>
+        <h2>订单查询</h2>
+        <p>查询订单和下单时的商品、价格与地址信息。</p>
         <form className="ops-form compact-form" onSubmit={(event) => void submit(event)}>
           <select name="status" defaultValue="">
             <option value="">全部状态</option>
@@ -74,7 +74,7 @@ function OrdersManager({ token }: { token: string }) {
               'REFUNDED',
             ].map((value) => (
               <option value={value} key={value}>
-                {value}
+                {displayStatus(value)}
               </option>
             ))}
           </select>
@@ -86,15 +86,35 @@ function OrdersManager({ token }: { token: string }) {
 
       <section className="panel">
         <h3>订单列表</h3>
-        <div className="module-grid">
-          {orders.map((order) => (
-            <button key={order.id} onClick={() => void open(order.id)}>
-              <strong>{order.orderNumber}</strong>
-              <span>{order.status}</span>
-              <span>¥{(order.totalMinor / 100).toFixed(2)}</span>
-              <small>{new Date(order.createdAt).toLocaleString()}</small>
-            </button>
-          ))}
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>订单号</th>
+                <th>状态</th>
+                <th>金额</th>
+                <th>创建时间</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              {orders.map((order) => (
+                <tr key={order.id}>
+                  <td>
+                    <strong>{order.orderNumber}</strong>
+                  </td>
+                  <td>
+                    <span className="badge">{displayStatus(order.status)}</span>
+                  </td>
+                  <td>{money(order.totalMinor)}</td>
+                  <td>{new Date(order.createdAt).toLocaleString()}</td>
+                  <td>
+                    <button onClick={() => void open(order.id)}>查看详情</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
         {!orders.length && <p>当前筛选条件下没有订单。</p>}
       </section>
@@ -103,20 +123,23 @@ function OrdersManager({ token }: { token: string }) {
         <section className="panel">
           <h3>订单详情 · {detail.orderNumber}</h3>
           <div className="context">
-            <p>Consumer: {detail.consumerUserId}</p>
+            <details>
+              <summary>关联用户编号</summary>
+              {detail.consumerUserId}
+            </details>
             <p>
-              状态：{detail.status} · 总额：¥{(detail.totalMinor / 100).toFixed(2)}
+              状态：{displayStatus(detail.status)} · 总额：{money(detail.totalMinor)}
             </p>
             <p>
               支付：
               {detail.payment
-                ? `${detail.payment.status} · ¥${(detail.payment.amountMinor / 100).toFixed(2)}`
+                ? `${displayStatus(detail.payment.status)} · ${money(detail.payment.amountMinor)}`
                 : '无'}
             </p>
             <p>
               履约：
               {detail.fulfillment
-                ? `${detail.fulfillment.method} · ${detail.fulfillment.status}`
+                ? `${displayStatus(detail.fulfillment.method)} · ${displayStatus(detail.fulfillment.status)}`
                 : '未创建'}
             </p>
             {detail.address && (
@@ -183,14 +206,10 @@ function UsersManager({ token }: { token: string }) {
   return (
     <>
       <section className="panel">
-        <span className="badge">M20-B · users.read + GLOBAL</span>
-        <h2>Consumer 支持视图</h2>
-        <p>
-          只展示最小必要身份元数据与订单汇总；不返回 OpenID、UnionID、provider secret
-          或其他原始微信身份值。
-        </p>
+        <h2>用户查询</h2>
+        <p>查看用户的基本记录和订单汇总。</p>
         <form className="ops-form compact-form" onSubmit={(event) => void submit(event)}>
-          <input name="id" placeholder="Consumer UUID（可选）" />
+          <input name="id" placeholder="用户编号（可选）" />
           <button>查询</button>
         </form>
         <p>{status}</p>
@@ -198,16 +217,31 @@ function UsersManager({ token }: { token: string }) {
 
       <section className="panel">
         <h3>用户列表</h3>
-        <div className="module-grid">
-          {users.map((user) => (
-            <button key={user.id} onClick={() => void open(user.id)}>
-              <strong>{user.id}</strong>
-              <span>身份绑定：{user.identityCount}</span>
-              <small>
-                最近登录：{user.lastLoginAt ? new Date(user.lastLoginAt).toLocaleString() : '无'}
-              </small>
-            </button>
-          ))}
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>用户编号</th>
+                <th>身份绑定</th>
+                <th>最近登录</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              {users.map((user) => (
+                <tr key={user.id}>
+                  <td>
+                    <code>{user.id}</code>
+                  </td>
+                  <td>{user.identityCount}</td>
+                  <td>{user.lastLoginAt ? new Date(user.lastLoginAt).toLocaleString() : '无'}</td>
+                  <td>
+                    <button onClick={() => void open(user.id)}>查看详情</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
         {!users.length && <p>当前筛选条件下没有用户。</p>}
       </section>

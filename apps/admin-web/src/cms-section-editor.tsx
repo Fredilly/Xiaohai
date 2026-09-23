@@ -28,6 +28,31 @@ export function CmsSectionEditor({
   const [values, setValues] = useState(initialValues);
   const [validationError, setValidationError] = useState('');
   const [saving, setSaving] = useState(false);
+  const config = (() => {
+    try {
+      const parsed: unknown = JSON.parse(values.configJson);
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+        ? (parsed as Record<string, unknown>)
+        : {};
+    } catch {
+      return {};
+    }
+  })();
+  const action = (() => {
+    try {
+      const parsed: unknown = JSON.parse(values.actionJson);
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+        ? (parsed as { target?: string })
+        : {};
+    } catch {
+      return {};
+    }
+  })();
+  const updateConfig = (field: string, value: string) => {
+    const next = { ...config, [field]: value };
+    if (!value && field === 'eyebrow') delete next[field];
+    setValues({ ...values, configJson: JSON.stringify(next, null, 2) });
+  };
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -51,7 +76,7 @@ export function CmsSectionEditor({
     <form className="cms-form" onSubmit={(event) => void submit(event)}>
       <div className="cms-form-grid">
         <label>
-          Section 类型
+          内容类型
           <select
             value={values.sectionType}
             onChange={(event) => {
@@ -82,7 +107,7 @@ export function CmsSectionEditor({
           />
         </label>
         <label>
-          Display order
+          显示顺序
           <input
             required
             type="number"
@@ -103,8 +128,8 @@ export function CmsSectionEditor({
               })
             }
           >
-            <option value="DRAFT">DRAFT</option>
-            <option value="PUBLISHED">PUBLISHED</option>
+            <option value="DRAFT">草稿</option>
+            <option value="PUBLISHED">已发布</option>
           </select>
         </label>
         <label className="cms-checkbox">
@@ -113,21 +138,33 @@ export function CmsSectionEditor({
             checked={values.enabled}
             onChange={(event) => setValues({ ...values, enabled: event.target.checked })}
           />
-          Enabled
+          启用
         </label>
       </div>
+      {values.sectionType === 'HERO' && (
+        <label>
+          顶部短语（可选）
+          <input
+            maxLength={80}
+            value={typeof config.eyebrow === 'string' ? config.eyebrow : ''}
+            onChange={(event) => updateConfig('eyebrow', event.target.value)}
+          />
+        </label>
+      )}
+      {values.sectionType === 'BANNER' && (
+        <label>
+          横幅正文
+          <textarea
+            required
+            maxLength={500}
+            rows={3}
+            value={typeof config.body === 'string' ? config.body : ''}
+            onChange={(event) => updateConfig('body', event.target.value)}
+          />
+        </label>
+      )}
       <label>
-        Config JSON
-        <textarea
-          required
-          rows={8}
-          value={values.configJson}
-          onChange={(event) => setValues({ ...values, configJson: event.target.value })}
-        />
-        <small>按当前 Section type 的共享 Zod contract 校验；无效 JSON 不会提交。</small>
-      </label>
-      <label>
-        Media URL
+        图片地址
         <input
           type="url"
           placeholder="https://…（可选）"
@@ -136,15 +173,41 @@ export function CmsSectionEditor({
         />
       </label>
       <label>
-        Action JSON
-        <textarea
-          rows={4}
-          placeholder={'可选，例如 {"type":"PREVIEW","target":"shop"}'}
-          value={values.actionJson}
-          onChange={(event) => setValues({ ...values, actionJson: event.target.value })}
+        点击后跳转目标（可选）
+        <input
+          maxLength={64}
+          value={action.target ?? ''}
+          onChange={(event) =>
+            setValues({
+              ...values,
+              actionJson: event.target.value.trim()
+                ? JSON.stringify({ type: 'PREVIEW', target: event.target.value })
+                : '',
+            })
+          }
         />
-        <small>当前 contract 仅接受受控 PREVIEW action；留空表示无导航动作。</small>
       </label>
+      <details className="advanced-config">
+        <summary>高级配置：内容及跳转</summary>
+        <p>内容结构与跳转配置需符合当前内容类型要求；请在发布前预览页面。</p>
+        <label>
+          内容配置 JSON
+          <textarea
+            required
+            rows={8}
+            value={values.configJson}
+            onChange={(event) => setValues({ ...values, configJson: event.target.value })}
+          />
+        </label>
+        <label>
+          跳转配置 JSON（可选）
+          <textarea
+            rows={4}
+            value={values.actionJson}
+            onChange={(event) => setValues({ ...values, actionJson: event.target.value })}
+          />
+        </label>
+      </details>
       {validationError && <p className="cms-form-error">{validationError}</p>}
       <div className="cms-form-actions">
         <button type="button" onClick={onCancel} disabled={saving}>

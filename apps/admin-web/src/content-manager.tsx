@@ -73,13 +73,12 @@ export function ContentManager({ token }: { token: string }) {
     }
   }
 
-  if (state === 'loading') return <section className="panel">正在加载 M7 动画与媒体内容…</section>;
+  if (state === 'loading') return <section className="panel">正在加载动画与媒体内容…</section>;
 
   if (state === 'unauthorized')
-    return <section className="panel">Staff Session 已失效，请重新登录。</section>;
+    return <section className="panel">登录状态已失效，请重新登录。</section>;
 
-  if (state === 'forbidden')
-    return <section className="panel">当前 Staff 没有 content.manage + GLOBAL 权限。</section>;
+  if (state === 'forbidden') return <section className="panel">当前账号没有内容管理权限。</section>;
 
   if (state === 'error' || !data)
     return (
@@ -93,7 +92,7 @@ export function ContentManager({ token }: { token: string }) {
     <section className="panel">
       <div className="section-toolbar">
         <div>
-          <span className="badge">M7 · Stories & Animation</span>
+          <span className="badge">内容管理</span>
           <h2>动画 / 内容管理</h2>
           <p>
             Series {data.series.length} · Media {data.media.length}
@@ -164,7 +163,7 @@ export function ContentManager({ token }: { token: string }) {
       <h3>Series</h3>
 
       {data.series.length === 0 ? (
-        <div className="empty-state">暂无 Series，可先创建一个 DRAFT。</div>
+        <div className="empty-state">暂无动画系列，可先创建草稿。</div>
       ) : (
         <div className="cms-list">
           {data.series.map((series) => (
@@ -185,7 +184,7 @@ export function ContentManager({ token }: { token: string }) {
       <h3>Media</h3>
 
       {data.media.length === 0 ? (
-        <div className="empty-state">暂无 Media metadata。</div>
+        <div className="empty-state">暂无媒体记录。</div>
       ) : (
         <div className="cms-list">
           {data.media.map((media) => (
@@ -596,7 +595,7 @@ function EpisodeForm({
 
       {value.accessMode === 'PREVIEW' && (
         <label>
-          Preview seconds
+          试看时长（秒）
           <input
             required
             type="number"
@@ -656,7 +655,7 @@ function errorState(error: unknown): LoadState {
 }
 
 function stateMessage(state: LoadState): string {
-  if (state === 'unauthorized') return 'Staff Session 已失效。';
-  if (state === 'forbidden') return '缺少 content.manage + GLOBAL 权限。';
+  if (state === 'unauthorized') return '登录状态已失效。';
+  if (state === 'forbidden') return '当前账号没有内容管理权限。';
   return '保存失败。';
 }

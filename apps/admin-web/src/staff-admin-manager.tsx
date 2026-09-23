@@ -34,7 +34,7 @@ export function StaffAdminManager({
 
   const refresh = async (filters: { q?: string; enabled?: boolean } = {}) => {
     try {
-      setStatus('正在读取 Staff / RBAC 上下文…');
+      setStatus('正在加载员工与权限…');
       const [staffResult, roleResult, permissionResult] = await Promise.all([
         loadStaffAccounts(token, { ...filters, limit: 100 }),
         loadStaffRoles(token),
@@ -44,7 +44,7 @@ export function StaffAdminManager({
       setRoles(roleResult.items);
       setPermissions(permissionResult.items);
       setStatus(
-        `已加载 ${staffResult.items.length} 个 Staff、${roleResult.items.length} 个角色、${permissionResult.items.length} 个权限`,
+        `已加载 ${staffResult.items.length} 个员工账号、${roleResult.items.length} 个角色、${permissionResult.items.length} 个权限`,
       );
     } catch (error) {
       setStatus(error instanceof Error ? `加载失败：${error.message}` : '加载失败');
@@ -82,7 +82,7 @@ export function StaffAdminManager({
     const password = text(data, 'password');
     if (!loginIdentifier || !password) return;
     try {
-      setStatus('正在创建 Staff…');
+      setStatus('正在创建员工账号…');
       const created = await createStaffAccount(token, {
         loginIdentifier,
         password,
@@ -91,7 +91,7 @@ export function StaffAdminManager({
       form.reset();
       await refresh();
       setDetail(created);
-      setStatus(`Staff ${created.loginIdentifier} 已创建；请继续分配 Role 与 Data Scope。`);
+      setStatus(`${created.loginIdentifier} 已创建，请继续分配角色与授权范围。`);
     } catch (error) {
       setStatus(error instanceof Error ? `创建失败：${error.message}` : '创建失败');
     }
@@ -99,12 +99,20 @@ export function StaffAdminManager({
 
   async function toggleEnabled() {
     if (!detail) return;
+    if (
+      !window.confirm(
+        detail.enabled
+          ? `确定停用 ${detail.loginIdentifier}？`
+          : `确定启用 ${detail.loginIdentifier}？`,
+      )
+    )
+      return;
     try {
-      setStatus('正在更新 Staff 状态…');
+      setStatus('正在更新账号状态…');
       const updated = await setStaffEnabled(token, detail.id, !detail.enabled);
       setDetail(updated);
       await refresh();
-      setStatus(`Staff 已${updated.enabled ? '启用' : '停用'}。`);
+      setStatus(`账号已${updated.enabled ? '启用' : '停用'}。`);
     } catch (error) {
       setStatus(error instanceof Error ? `状态更新失败：${error.message}` : '状态更新失败');
     }
@@ -133,11 +141,11 @@ export function StaffAdminManager({
       .getAll('roleId')
       .filter((value): value is string => typeof value === 'string');
     try {
-      setStatus('正在替换 Staff Roles…');
+      setStatus('正在更新角色…');
       const updated = await replaceStaffRoles(token, detail.id, { roleIds });
       setDetail(updated);
       await refresh();
-      setStatus('Staff Roles 已替换。');
+      setStatus('角色已更新。');
     } catch (error) {
       setStatus(error instanceof Error ? `Role 更新失败：${error.message}` : 'Role 更新失败');
     }
@@ -148,11 +156,11 @@ export function StaffAdminManager({
     if (!detail) return;
     try {
       const dataScopes = parseScopes(text(new FormData(event.currentTarget), 'dataScopes'));
-      setStatus('正在替换 Data Scopes…');
+      setStatus('正在更新授权范围…');
       const updated = await replaceStaffDataScopes(token, detail.id, { dataScopes });
       setDetail(updated);
       await refresh();
-      setStatus('Staff Data Scopes 已替换。');
+      setStatus('授权范围已更新。');
     } catch (error) {
       setStatus(error instanceof Error ? `Scope 更新失败：${error.message}` : 'Scope 更新失败');
     }
@@ -161,12 +169,9 @@ export function StaffAdminManager({
   return (
     <>
       <section className="panel">
-        <span className="badge">M20-C · staff.read / staff.manage + GLOBAL</span>
-        <h2>Staff / RBAC / Data Scope</h2>
-        <p>
-          Staff、角色、权限和 Data Scope 均由服务端读取与校验。写操作要求 staff.manage + GLOBAL；
-          当前账号不能停用自己，也不能替换自己的 Role 或 Data Scope。密码哈希不会返回前端。
-        </p>
+        <span className="badge">员工管理</span>
+        <h2>员工与权限</h2>
+        <p>管理员工账号、角色与授权范围。当前账号无法修改自身的关键权限。</p>
         <form className="ops-form compact-form" onSubmit={(event) => void submit(event)}>
           <input name="q" maxLength={120} placeholder="登录账号搜索" />
           <select name="enabled" defaultValue="">
@@ -181,7 +186,7 @@ export function StaffAdminManager({
 
       {canManage && (
         <section className="panel">
-          <h3>创建 Staff</h3>
+          <h3>创建员工账号</h3>
           <form className="ops-form" onSubmit={(event) => void createAccount(event)}>
             <label>
               登录账号
@@ -194,35 +199,60 @@ export function StaffAdminManager({
             <label>
               <input name="enabled" type="checkbox" defaultChecked /> 创建后立即启用
             </label>
-            <button>创建 Staff</button>
+            <button>创建员工账号</button>
           </form>
-          <p className="muted">新账号默认没有 Role / Data Scope，需要创建后显式分配。</p>
+          <p className="muted">新账号创建后，需要分配角色与授权范围才能使用相应功能。</p>
         </section>
       )}
 
       <section className="panel">
-        <h3>Staff Accounts</h3>
-        <div className="module-grid">
-          {staff.map((account) => (
-            <button key={account.id} onClick={() => void open(account.id)}>
-              <strong>{account.loginIdentifier}</strong>
-              <span>{account.enabled ? '启用' : '停用'}</span>
-              <span>Roles: {account.roles.map((role) => role.key).join(' · ') || '无'}</span>
-              <small>Scopes: {formatScopes(account.dataScopes)}</small>
-            </button>
-          ))}
+        <h3>员工账号</h3>
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>登录账号</th>
+                <th>状态</th>
+                <th>角色</th>
+                <th>授权范围</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              {staff.map((account) => (
+                <tr key={account.id}>
+                  <td>
+                    <strong>{account.loginIdentifier}</strong>
+                  </td>
+                  <td>{account.enabled ? '启用' : '停用'}</td>
+                  <td>{account.roles.map((role) => role.key).join(' · ') || '无'}</td>
+                  <td>{formatScopes(account.dataScopes)}</td>
+                  <td>
+                    <button onClick={() => void open(account.id)}>查看详情</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
-        {!staff.length && <p>当前筛选条件下没有 Staff。</p>}
+        {!staff.length && <p>当前筛选条件下没有员工账号。</p>}
       </section>
 
       {detail && (
         <section className="panel">
-          <h3>Staff 详情 · {detail.loginIdentifier}</h3>
+          <h3>员工详情 · {detail.loginIdentifier}</h3>
           <div className="context">
-            <p>ID：{detail.id}</p>
+            <details>
+              <summary>账号编号</summary>
+              <code>{detail.id}</code>
+            </details>
             <p>状态：{detail.enabled ? '启用' : '停用'}</p>
-            <p>Roles：{detail.roles.map((role) => role.key).join(' · ') || '无'}</p>
-            <p>Data Scopes：{formatScopes(detail.dataScopes)}</p>
+            <p>角色：{detail.roles.map((role) => role.key).join(' · ') || '无'}</p>
+            <p>授权范围：{formatScopes(detail.dataScopes)}</p>
+            <details>
+              <summary>查看授权对象编号</summary>
+              <code>{scopeLines(detail.dataScopes) || '无'}</code>
+            </details>
             <p>
               最近登录：
               {detail.lastLoginAt ? new Date(detail.lastLoginAt).toLocaleString() : '无'}
@@ -236,7 +266,7 @@ export function StaffAdminManager({
                   disabled={detail.id === currentStaffId && detail.enabled}
                   onClick={() => void toggleEnabled()}
                 >
-                  {detail.enabled ? '停用 Staff' : '启用 Staff'}
+                  {detail.enabled ? '停用账号' : '启用账号'}
                 </button>
                 {detail.id === currentStaffId && (
                   <small>当前登录账号禁止自我停用 / 自改 Role / 自改 Scope。</small>
@@ -256,7 +286,7 @@ export function StaffAdminManager({
                 className="ops-form"
                 onSubmit={(event) => void saveRoles(event)}
               >
-                <strong>Roles</strong>
+                <strong>角色</strong>
                 {roles.map((role) => (
                   <label key={role.id}>
                     <input
@@ -269,7 +299,7 @@ export function StaffAdminManager({
                     {role.displayName} ({role.key})
                   </label>
                 ))}
-                <button disabled={detail.id === currentStaffId}>替换 Roles</button>
+                <button disabled={detail.id === currentStaffId}>更新角色</button>
               </form>
 
               <form
@@ -278,7 +308,7 @@ export function StaffAdminManager({
                 onSubmit={(event) => void saveScopes(event)}
               >
                 <label>
-                  Data Scopes（每行一个）
+                  授权范围（每行一个）
                   <textarea
                     name="dataScopes"
                     defaultValue={scopeLines(detail.dataScopes)}
@@ -286,11 +316,8 @@ export function StaffAdminManager({
                     placeholder={'GLOBAL\nSTORE:00000000-0000-4000-8000-000000000000'}
                   />
                 </label>
-                <small>
-                  GLOBAL 必须单独使用；REGION / FRANCHISEE / STORE 后必须跟真实
-                  UUID，服务端会验证目标是否存在。
-                </small>
-                <button disabled={detail.id === currentStaffId}>替换 Data Scopes</button>
+                <small>全部数据权限必须单独填写；指定区域、加盟商或门店时需填写其真实编号。</small>
+                <button disabled={detail.id === currentStaffId}>更新授权范围</button>
               </form>
             </>
           )}
@@ -298,21 +325,27 @@ export function StaffAdminManager({
       )}
 
       <section className="panel">
-        <h3>Roles / Permissions</h3>
+        <h3>角色与权限</h3>
         <div className="module-grid">
           {roles.map((role) => (
             <div className="empty-state" key={role.id}>
               <strong>{role.displayName}</strong>
-              <span>{role.key}</span>
+              <details>
+                <summary>角色标识</summary>
+                <code>{role.key}</code>
+              </details>
               <small>
-                {role.permissions.map((permission) => permission.key).join(' · ') || '无权限'}
+                {role.permissions
+                  .map((permission) => permission.displayName || permission.key)
+                  .join(' · ') || '无权限'}
               </small>
             </div>
           ))}
         </div>
         <p>
-          Permission catalog：
-          {permissions.map((permission) => permission.key).join(' · ') || '暂无'}
+          权限目录：
+          {permissions.map((permission) => permission.displayName || permission.key).join(' · ') ||
+            '暂无'}
         </p>
       </section>
     </>
@@ -325,9 +358,13 @@ function text(data: FormData, field: string) {
 }
 
 function formatScopes(scopes: StaffDetail['dataScopes']) {
-  return (
-    scopes.map((scope) => `${scope.type}${scope.id ? `:${scope.id}` : ''}`).join(' · ') || '无'
-  );
+  const names = {
+    GLOBAL: '全部数据',
+    REGION: '指定区域',
+    FRANCHISEE: '指定加盟商',
+    STORE: '指定门店',
+  };
+  return scopes.map((scope) => names[scope.type]).join(' · ') || '无';
 }
 
 function scopeLines(scopes: StaffDetail['dataScopes']) {
