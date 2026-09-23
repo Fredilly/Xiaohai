@@ -21,7 +21,11 @@ const BOOK_COVER_BY_TITLE = [
 ] as const;
 
 function normalizeTitle(value: string | null | undefined) {
-  return (value ?? '').toLowerCase().replace(/[’‘]/g, "'").replace(/\s+/g, ' ').trim();
+  return (value ?? '')
+    .toLowerCase()
+    .replace(/[’‘]/g, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 export function resolveHomeEditorialFallback(
