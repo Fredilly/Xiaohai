@@ -8,6 +8,7 @@
     "predev": "[ -f ../../.env ] || cp ../../.env.example ../../.env",
     "dev": "node --env-file ../../.env --conditions=development --import tsx/esm --watch src/server.ts",
     "finance:backfill": "node --env-file ../../.env --conditions=development --import tsx/esm src/finance/backfill.ts",
+    "seed:local-staff": "node --env-file ../../.env --conditions=development --import tsx/esm src/dev/seed-local-staff-cli.ts",
     "lint": "eslint src test",
     "start": "node dist/server.js",
     "test": "vitest run --exclude '**/*.integration.test.ts'",
