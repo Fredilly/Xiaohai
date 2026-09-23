@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { homeDisplaySections } from './home-display';
 import type { HomeSection } from '../../services/home';
+import { miniappRemoteAssets } from '../../src/config/assets';
 
 describe('home display content', () => {
   it('hides old development badges without changing CMS editorial badges or source data', () => {
@@ -56,7 +57,7 @@ describe('home display content', () => {
     ];
 
     const display = homeDisplaySections(sections);
-    expect(display[0]?.mediaUrl).toBe('/assets/brand/home-parent-reading.jpg');
+    expect(display[0]?.mediaUrl).toBe(miniappRemoteAssets.home.parentChildReading);
     expect(display[1]?.mediaUrl).toBe('https://cdn.example.com/cms-hero.jpg');
     expect(display[2]?.mediaUrl).toBeNull();
     expect(sections[0]?.mediaUrl).toBeNull();

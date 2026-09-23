@@ -2,13 +2,29 @@
  * Logical inventory for the legacy Xiaohai image archive from Issue #73.
  *
  * `legacyPath` is the exact, case-sensitive path inside xiaohai-old-images.zip.
- * `proposedBosObjectPath` is planning metadata only. Issue #70 will upload the
- * selected files and replace these archive references with stable HTTPS URLs.
+ * `proposedBosObjectPath` remains planning metadata for archive items that have
+ * not been selected for runtime use. Issue #70 deploys only the curated assets
+ * listed in `miniappRemoteAssets` below.
  */
 export interface LegacyImageAsset {
   legacyPath: `图片/${string}`;
   proposedBosObjectPath: `legacy/xiaohai/${string}`;
 }
+
+export const BOS_ASSET_ORIGIN = 'https://xiaohai-prod-assets.cd.bcebos.com' as const;
+
+/** Public, versioned objects deployed by Issue #70. */
+export const miniappRemoteAssets = {
+  home: {
+    parentChildReading: `${BOS_ASSET_ORIGIN}/home/hero/parent-child-reading-v1.jpg`,
+  },
+  shop: {
+    dinosaursNeedBigHandCover: `${BOS_ASSET_ORIGIN}/books/covers/dinosaurs-need-a-big-hand-v1.jpg`,
+    pewPewTigerCover: `${BOS_ASSET_ORIGIN}/books/covers/pew-pew-tiger-v1.jpg`,
+    dodosHairyDayCover: `${BOS_ASSET_ORIGIN}/books/covers/dodos-hairy-day-v1.jpg`,
+    yunsDiaryCover: `${BOS_ASSET_ORIGIN}/books/covers/yuns-diary-v1.jpg`,
+  },
+} as const;
 
 const asset = <TPath extends `图片/${string}`, TBosPath extends `legacy/xiaohai/${string}`>(
   legacyPath: TPath,

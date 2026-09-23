@@ -42,4 +42,23 @@ const ignore = await readFile('.gitignore', 'utf8');
 if (!ignore.includes('apps/miniapp/project.private.config.json')) {
   throw new Error('project.private.config.json must remain ignored.');
 }
+const assetManifest = await readFile(`${root}/src/config/assets.ts`, 'utf8');
+const runtimeVisuals = await readFile(`${root}/utils/real-visuals.ts`, 'utf8');
+if (!assetManifest.includes("BOS_ASSET_ORIGIN = 'https://xiaohai-prod-assets.cd.bcebos.com'")) {
+  throw new Error('Mini Program BOS assets must use the approved HTTPS origin.');
+}
+for (const objectPath of [
+  'home/hero/parent-child-reading-v1.jpg',
+  'books/covers/dinosaurs-need-a-big-hand-v1.jpg',
+  'books/covers/pew-pew-tiger-v1.jpg',
+  'books/covers/dodos-hairy-day-v1.jpg',
+  'books/covers/yuns-diary-v1.jpg',
+]) {
+  if (!assetManifest.includes(objectPath)) {
+    throw new Error(`Mini Program BOS asset manifest is missing ${objectPath}.`);
+  }
+}
+if (/\/assets\/(?:brand\/home-parent-reading|books\/book-)/.test(runtimeVisuals)) {
+  throw new Error('Large editorial images must not fall back to bundled Mini Program assets.');
+}
 console.log('Mini Program TypeScript structure and safe project config validated.');

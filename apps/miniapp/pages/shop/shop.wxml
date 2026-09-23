@@ -10,7 +10,7 @@
   <view wx:elif="{{products.length===0}}" class="state-card"><text class="state-title">暂时没有找到商品</text><text class="state-copy">换个书名或作者试试。</text></view>
   <view wx:else class="commerce-list">
     <view class="list-card" wx:for="{{products}}" wx:key="id" data-id="{{item.id}}" bindtap="open">
-      <image wx:if="{{item.displayCoverUrl}}" class="book-cover" src="{{item.displayCoverUrl}}" mode="aspectFill" />
+      <image wx:if="{{item.displayCoverUrl}}" class="book-cover" src="{{item.displayCoverUrl}}" mode="aspectFill" data-index="{{index}}" binderror="coverError" />
       <view wx:else class="book-cover book-cover-placeholder">暂无封面</view>
       <view class="list-main"><text class="list-title">{{item.title || item.name}}</text><text class="list-meta">{{item.author || item.publisher || '查看商品详情'}}</text><text class="price">¥{{item.skus[0].priceMinor / 100}}</text></view>
       <text class="arrow">›</text>

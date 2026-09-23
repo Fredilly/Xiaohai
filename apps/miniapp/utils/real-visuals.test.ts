@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { BOS_ASSET_ORIGIN, miniappRemoteAssets } from '../src/config/assets';
 import { resolveEditorialBookCover, resolveHomeEditorialFallback } from './real-visuals';
 
 describe('real visual fallbacks', () => {
@@ -8,17 +9,19 @@ describe('real visual fallbacks', () => {
     );
   });
 
-  it('uses curated local covers only for matching real titles', () => {
+  it('uses curated BOS covers only for matching real titles', () => {
     expect(resolveEditorialBookCover('Dinosaurs Need a Big Hand', null)).toBe(
-      '/assets/books/book-dinosaurs-need-a-big-hand.jpg',
+      miniappRemoteAssets.shop.dinosaursNeedBigHandCover,
     );
     expect(resolveEditorialBookCover('PEW PEW TIGER and his magic puffs', null)).toBe(
-      '/assets/books/book-pew-pew-tiger.jpg',
+      miniappRemoteAssets.shop.pewPewTigerCover,
     );
     expect(resolveEditorialBookCover('DoDo’s HAIRY DAY', null)).toBe(
-      '/assets/books/book-dodos-hairy-day.jpg',
+      miniappRemoteAssets.shop.dodosHairyDayCover,
     );
-    expect(resolveEditorialBookCover('归云日记', null)).toBe('/assets/books/book-yuns-diary.jpg');
+    expect(resolveEditorialBookCover('归云日记', null)).toBe(
+      miniappRemoteAssets.shop.yunsDiaryCover,
+    );
   });
 
   it('keeps the honest empty-cover state for unrelated titles', () => {
@@ -27,8 +30,20 @@ describe('real visual fallbacks', () => {
 
   it('uses the supplied home artwork only for matching editorial copy', () => {
     expect(resolveHomeEditorialFallback('亲子阅读', null)).toBe(
-      '/assets/brand/home-parent-reading.jpg',
+      miniappRemoteAssets.home.parentChildReading,
     );
     expect(resolveHomeEditorialFallback('把一个想法变成故事', '小海 AI · 故事创作')).toBe('');
+  });
+
+  it('keeps every deployed runtime asset on the approved HTTPS origin', () => {
+    const urls = [
+      miniappRemoteAssets.home.parentChildReading,
+      ...Object.values(miniappRemoteAssets.shop),
+    ];
+    expect(urls).toHaveLength(5);
+    for (const url of urls) {
+      expect(url.startsWith(`${BOS_ASSET_ORIGIN}/`)).toBe(true);
+      expect(url).toMatch(/-v1\.jpg$/);
+    }
   });
 });
