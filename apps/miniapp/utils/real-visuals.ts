@@ -21,11 +21,7 @@ const BOOK_COVER_BY_TITLE = [
 ] as const;
 
 function normalizeTitle(value: string | null | undefined) {
-  return (value ?? '')
-    .toLowerCase()
-    .replace(/[’‘]/g, "'")
-    .replace(/\s+/g, ' ')
-    .trim();
+  return (value ?? '').toLowerCase().replace(/[’‘]/g, "'").replace(/\s+/g, ' ').trim();
 }
 
 export function resolveHomeEditorialFallback(
@@ -34,11 +30,7 @@ export function resolveHomeEditorialFallback(
 ) {
   const copy = normalizeTitle(`${title ?? ''} ${subtitle ?? ''}`);
   if (!copy) return '';
-  if (
-    copy.includes('亲子阅读') ||
-    copy.includes('亲子绘本') ||
-    copy.includes('绘本乐园')
-  ) {
+  if (copy.includes('亲子阅读') || copy.includes('亲子绘本') || copy.includes('绘本乐园')) {
     return HOME_EDITORIAL_FALLBACK;
   }
   return '';
