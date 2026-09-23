@@ -1,1 +1,6 @@
-{ "navigationBarTitleText": "小海童话" }
+{
+  "navigationBarTitleText": "小海童话",
+  "navigationBarBackgroundColor": "#e9eff5",
+  "navigationBarTextStyle": "black",
+  "backgroundColor": "#f7f8fa"
+}

@@ -5,10 +5,19 @@
   margin: 16rpx 0;
   padding: 12rpx;
   border-radius: 12rpx;
-  background: #f7f4ed;
+  background: #f7f9fa;
   font-size: 22rpx;
 }
 video {
   width: 100%;
   margin-top: 18rpx;
+}
+video {
+  width: 100%;
+  margin-top: 20rpx;
+  border-radius: 18rpx;
+  background: #18212c;
+}
+.scene {
+  border-left: 5rpx solid #c4d5e3;
 }

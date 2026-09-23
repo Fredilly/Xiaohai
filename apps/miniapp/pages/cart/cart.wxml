@@ -1,1 +1,13 @@
-<view class="page"><view wx:if="{{loading}}" class="state-card">购物车加载中…</view><view wx:elif="{{error}}" class="state-card">请先登录或稍后重试<button bindtap="load">重试</button></view><view wx:elif="{{!cart || cart.items.length===0}}" class="state-card">购物车为空</view><view wx:else class="section"><view class="list-card" wx:for="{{cart.items}}" wx:key="id"><view class="list-main"><text class="list-title">{{item.productName}} · {{item.skuName}}</text><text>¥{{item.lineTotalMinor/100}} · {{item.availableForSale?'可售':'不可售'}}</text><button size="mini" data-id="{{item.id}}" bindtap="minus">-</button><text>{{item.quantity}}</text><button size="mini" data-id="{{item.id}}" bindtap="plus">+</button><button size="mini" data-id="{{item.id}}" bindtap="remove">删除</button></view></view><text>小计 ¥{{cart.subtotalMinor/100}}</text><button bindtap="checkout">确认订单</button></view></view>
+<view class="page">
+  <text class="page-heading">购物车</text>
+  <view wx:if="{{loading}}" class="state-card">正在加载购物车…</view>
+  <view wx:elif="{{error}}" class="state-card"><text class="state-title">购物车暂时不可用</text><button bindtap="load">重试</button></view>
+  <view wx:elif="{{!cart || cart.items.length===0}}" class="state-card"><text class="state-title">购物车还空着</text><text class="state-copy">去挑一本喜欢的书吧。</text></view>
+  <block wx:else>
+    <view class="commerce-list"><view class="list-card cart-line" wx:for="{{cart.items}}" wx:key="id">
+      <view class="list-main"><text class="list-title">{{item.productName}}</text><text class="list-meta">{{item.skuName}}</text><text class="state-pill {{item.availableForSale ? '' : 'failed'}}">{{item.availableForSale ? '可购买' : '暂不可购买'}}</text><text class="price">¥{{item.lineTotalMinor/100}}</text></view>
+      <view class="quantity-actions"><button size="mini" data-id="{{item.id}}" bindtap="minus">−</button><text>{{item.quantity}}</text><button size="mini" data-id="{{item.id}}" bindtap="plus">＋</button><button size="mini" data-id="{{item.id}}" bindtap="remove">删除</button></view>
+    </view></view>
+    <view class="bottom-action"><view class="money-row"><text>商品小计</text><text class="price">¥{{cart.subtotalMinor/100}}</text></view><button class="primary-btn" bindtap="checkout">确认订单</button></view>
+  </block>
+</view>

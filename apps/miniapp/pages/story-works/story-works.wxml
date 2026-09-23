@@ -10,7 +10,7 @@
 
   <view wx:elif="{{error}}" class="state-card">
     <text class="state-title">加载失败</text>
-    <text class="state-copy">请确认已经登录，并检查网络与后端服务。</text>
+    <text class="state-copy">请确认已经登录，并检查网络后重试。</text>
     <button class="primary-btn" bindtap="retry">重新加载</button>
   </view>
 
@@ -20,7 +20,7 @@
     <button class="primary-btn" bindtap="createStory">创作第一个故事</button>
   </view>
 
-  <view wx:else class="work-list">
+  <view wx:else class="work-list reader-list">
     <view
       wx:for="{{works}}"
       wx:key="id"

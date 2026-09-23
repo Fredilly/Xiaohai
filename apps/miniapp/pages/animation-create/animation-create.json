@@ -1,1 +1,6 @@
-{ "navigationBarTitleText": "创建 AI 动画" }
+{
+  "navigationBarTitleText": "创建 AI 动画",
+  "navigationBarBackgroundColor": "#e9eff5",
+  "navigationBarTextStyle": "black",
+  "backgroundColor": "#f7f8fa"
+}

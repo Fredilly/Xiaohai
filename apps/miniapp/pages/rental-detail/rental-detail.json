@@ -1,1 +1,6 @@
-{ "navigationBarTitleText": "租借详情" }
+{
+  "navigationBarTitleText": "租借详情",
+  "navigationBarBackgroundColor": "#e7f0e8",
+  "navigationBarTextStyle": "black",
+  "backgroundColor": "#f7f8fa"
+}

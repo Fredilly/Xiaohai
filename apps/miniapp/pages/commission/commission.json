@@ -1,3 +1,6 @@
 {
-  "navigationBarTitleText": "分享与佣金"
+  "navigationBarTitleText": "分享与佣金",
+  "navigationBarBackgroundColor": "#e9eff5",
+  "navigationBarTextStyle": "black",
+  "backgroundColor": "#f7f8fa"
 }

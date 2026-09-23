@@ -1,6 +1,6 @@
-<view class="page">
+<view class="page pangzhu">
   <view class="hero hero-soft">
-    <text class="eyebrow">BOOK FINDER</text>
+
     <text class="hero-title">找书</text>
     <text class="hero-subtitle">按书名、作者、出版社、ISBN 或图书编码搜索，直接查看哪些胖竹门店有货。</text>
   </view>
@@ -90,6 +90,6 @@
   </view>
 
   <view class="demo-note">
-    租借预约由真实库存驱动；自提核销码与配送属于后续里程碑，当前不会伪造这些能力。
+    租借请以当前门店可租状态为准；自提与配送请在结算时确认是否可选。
   </view>
 </view>

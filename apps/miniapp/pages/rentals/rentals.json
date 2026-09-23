@@ -1,1 +1,6 @@
-{ "navigationBarTitleText": "我的租借" }
+{
+  "navigationBarTitleText": "我的租借",
+  "navigationBarBackgroundColor": "#e7f0e8",
+  "navigationBarTextStyle": "black",
+  "backgroundColor": "#f7f8fa"
+}

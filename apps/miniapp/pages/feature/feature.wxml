@@ -1,7 +1,4 @@
 <view class="page">
-  <view class="hero"><text class="eyebrow">FRONTEND PREVIEW</text><text class="hero-title">{{title}}</text><text class="hero-subtitle">{{intro}}</text></view>
-  <view class="demo-note">当前页面使用 frontend mock / placeholder。不会创建真实订单、支付、库存扣减、租借、配送、佣金到账或 AI 生成任务。</view>
-  <view class="section"><view class="section-head"><text class="section-title">页面结构</text><text class="section-note">等待 API 接入</text></view><view class="chips"><text class="chip" wx:for="{{sections}}" wx:key="*this">{{item}}</text></view></view>
-  <view wx:if="{{showBooks}}" class="section"><view class="section-head"><text class="section-title">Demo 内容</text></view><view class="book-list"><view class="list-card" wx:for="{{books}}" wx:key="title"><view class="list-main"><text class="list-title">{{item.title}}</text><text class="list-meta">{{item.author}} · {{item.note}}</text></view><text class="price">{{item.price}}</text></view></view></view>
-  <view class="state-card"><text class="state-title">正式能力尚未接入</text><text class="state-copy">页面结构、导航和状态展示已经准备。后续对应里程碑会通过 service 层把 mock 替换为正式 API。</text></view>
+  <view class="hero"><text class="hero-title">{{title}}</text><text class="hero-subtitle">{{intro}}</text></view>
+  <view class="state-card"><text class="state-title">这项服务尚未开放</text><text class="state-copy">开放后可以在这里查看和使用。当前页面不会提交交易或生成作品。</text></view>
 </view>

@@ -1,1 +1,6 @@
-{ "navigationBarTitleText": "播放" }
+{
+  "navigationBarTitleText": "播放",
+  "navigationBarBackgroundColor": "#e9eff5",
+  "navigationBarTextStyle": "black",
+  "backgroundColor": "#f7f8fa"
+}

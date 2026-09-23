@@ -9,7 +9,7 @@
 }
 .page-card {
   background: #fff;
-  border: 1rpx solid #ebe5da;
+  border: 1rpx solid #e8edf1;
   border-radius: 24rpx;
   padding: 24rpx;
 }
@@ -26,8 +26,29 @@
   margin: 18rpx 0;
   padding: 22rpx;
   border-radius: 16rpx;
-  background: #f7f4ed;
+  background: #f7f9fa;
 }
 .revision-list {
   margin-top: 14rpx;
+}
+.page-card {
+  border: 1rpx solid #e8edf1;
+  border-radius: 23rpx;
+  background: #fff;
+  margin: 20rpx 0;
+  padding: 25rpx;
+}
+.story-copy {
+  display: block;
+  line-height: 1.85;
+  font-size: 27rpx;
+  margin: 20rpx 0;
+}
+.revision-card {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+  padding: 16rpx;
+  background: #f7f9fa;
+  border-radius: 13rpx;
 }

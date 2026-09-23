@@ -1,11 +1,32 @@
-.page {
-  padding: 32rpx;
+.playback-page {
+  padding: 24rpx 0 80rpx;
+  background: #161d25;
+  min-height: 100vh;
+  color: #f8fafb;
 }
-.page video {
+.player {
   width: 100%;
+  height: 422rpx;
+  background: #10161c;
 }
 .locked {
-  background: #fff;
-  padding: 32rpx;
-  border-radius: 20rpx;
+  padding: 100rpx 34rpx;
+  text-align: center;
+}
+.locked .state-title,
+.locked .state-copy {
+  color: #f8fafb;
+}
+.preview-note {
+  padding: 22rpx 30rpx;
+  color: #d9e4ec;
+  font-size: 23rpx;
+}
+.playback-page .state-card {
+  margin: 26rpx;
+  background: #26323e;
+  border: 0;
+}
+.playback-page .state-copy {
+  color: #f8fafb;
 }

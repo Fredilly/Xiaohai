@@ -1,3 +1,6 @@
 {
-  "navigationBarTitleText": "胖竹全球"
+  "navigationBarTitleText": "胖竹全球",
+  "navigationBarBackgroundColor": "#e7f1e9",
+  "navigationBarTextStyle": "black",
+  "backgroundColor": "#f7f8fa"
 }

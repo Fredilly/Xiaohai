@@ -1,1 +1,9 @@
-<view class="page"><view wx:if="{{loading}}" class="state-card">订单加载中…</view><view wx:elif="{{error}}" class="state-card">请先登录或重试</view><view wx:elif="{{orders.length===0}}" class="state-card">暂无订单</view><view wx:else class="section"><view class="list-card" wx:for="{{orders}}" wx:key="id" data-id="{{item.id}}" bindtap="open"><text>{{item.orderNumber}}</text><text>{{item.status}} · ¥{{item.totalMinor/100}}</text></view></view></view>
+<view class="page">
+  <text class="page-heading">我的订单</text>
+  <view wx:if="{{loading}}" class="state-card">正在加载订单…</view>
+  <view wx:elif="{{error}}" class="state-card"><text class="state-title">订单暂时无法加载</text><button bindtap="load">重试</button></view>
+  <view wx:elif="{{orders.length===0}}" class="state-card"><text class="state-title">还没有订单</text></view>
+  <view wx:else class="commerce-list"><view class="list-card order-summary" wx:for="{{orders}}" wx:key="id" data-id="{{item.id}}" bindtap="open">
+    <view class="list-main"><text class="list-title">订单 {{item.orderNumber}}</text><text class="state-pill {{item.status === 'UNPAID' ? 'pending' : ''}}">{{item.status === 'UNPAID' ? '待付款' : item.status === 'PAID' ? '已付款' : item.status === 'PROCESSING' ? '处理中' : item.status === 'PICKUP_READY' ? '待自提' : item.status === 'DELIVERING' ? '配送中' : item.status === 'CANCELLED' ? '已取消' : item.status === 'COMPLETED' ? '已完成' : item.status === 'REFUNDING' ? '退款中' : '已退款'}}</text></view><text class="price">¥{{item.totalMinor/100}}</text><text class="arrow">›</text>
+  </view></view>
+</view>

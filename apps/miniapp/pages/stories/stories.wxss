@@ -1,35 +1,35 @@
-.page {
-  padding: 32rpx;
-}
-.search {
+.story-list {
   display: flex;
-  gap: 16rpx;
-  margin-bottom: 24rpx;
+  flex-direction: column;
+  gap: 15rpx;
 }
-.search input {
+.story-row {
+  display: flex;
+  align-items: center;
+  gap: 19rpx;
+  padding: 17rpx;
+  border-radius: 22rpx;
+  background: #fff;
+}
+.story-row:active {
+  opacity: 0.78;
+}
+.story-cover {
+  flex: none;
+  width: 176rpx;
+  height: 142rpx;
+  border-radius: 15rpx;
+}
+.story-copy {
   flex: 1;
-  background: #fff;
-  padding: 20rpx;
-  border-radius: 16rpx;
+  min-width: 0;
 }
-.card {
-  display: flex;
-  gap: 20rpx;
-  background: #fff;
-  padding: 20rpx;
-  border-radius: 20rpx;
-  margin-bottom: 20rpx;
+.story-copy .list-meta {
+  margin-top: 9rpx;
 }
-.card image {
-  width: 180rpx;
-  height: 120rpx;
-  border-radius: 12rpx;
-}
-.card text {
-  display: block;
-  margin-bottom: 8rpx;
-}
-.title {
-  font-weight: 700;
-  font-size: 32rpx;
+.story-description {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }

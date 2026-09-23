@@ -1,1 +1,6 @@
-{ "navigationBarTitleText": "动画详情" }
+{
+  "navigationBarTitleText": "动画详情",
+  "navigationBarBackgroundColor": "#e9eff5",
+  "navigationBarTextStyle": "black",
+  "backgroundColor": "#f7f8fa"
+}

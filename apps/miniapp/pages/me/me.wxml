@@ -1,45 +1,91 @@
-<view class="page">
-  <view class="profile-card">
-    <view class="avatar">海</view>
-    <view class="profile-main">
-      <text class="profile-title">我的小海</text>
-      <text class="profile-status">{{status}}</text>
-      <text wx:if="{{isLoggedIn}}" class="profile-status">ID {{consumerUserId}}</text>
+<view class="me-page">
+  <view class="profile-hero">
+    <view class="hero-orb hero-orb-one"></view>
+    <view class="hero-orb hero-orb-two"></view>
+
+    <view class="profile-row">
+      <button class="avatar-button" open-type="chooseAvatar" bindchooseavatar="chooseAvatar">
+        <image wx:if="{{avatarUrl}}" class="avatar-image" src="{{avatarUrl}}" mode="aspectFill" />
+        <view wx:else class="avatar-fallback"><image class="avatar-symbol" src="/assets/ui/user.svg" /></view>
+      </button>
+
+      <view class="profile-copy">
+        <text class="profile-name">{{isLoggedIn ? '小海用户' : '欢迎来到小海'}}</text>
+        <text class="profile-status">{{status}}</text>
+        <text wx:if="{{isLoggedIn}}" class="profile-id">ID {{consumerDisplayId}}</text>
+      </view>
+
+      <view class="profile-setting" data-key="settings" bindtap="openFeature"><image class="setting-symbol" src="/assets/ui/settings.svg" /></view>
     </view>
-  </view>
 
-  <button
-    wx:if="{{!isLoggedIn}}"
-    class="primary-btn"
-    loading="{{isLoading}}"
-    disabled="{{isLoading}}"
-    bindtap="login"
-  >
-    微信登录
-  </button>
+    <button
+      wx:if="{{!isLoggedIn}}"
+      class="login-button"
+      loading="{{isLoading}}"
+      disabled="{{isLoading}}"
+      bindtap="login"
+    >
+      微信登录
+    </button>
 
-  <view class="demo-note">
-    保留现有 Consumer WeChat Login。订单、租借、加盟和分享佣金入口按各自服务端状态运行；会员仍为预览。
-  </view>
-
-  <view class="section">
-    <view class="section-head">
-      <text class="section-title">我的服务</text>
-    </view>
-    <view class="menu-list">
-      <view
-        class="menu-row"
-        wx:for="{{features}}"
-        wx:key="key"
-        data-key="{{item.key}}"
-        bindtap="openFeature"
-      >
-        <view class="menu-copy">
-          <text class="menu-title">{{item.title}}</text>
-          <text class="menu-subtitle">{{item.subtitle}}</text>
-        </view>
-        <text class="arrow">›</text>
+    <view class="profile-stats">
+      <view class="profile-stat">
+        <text class="stat-value">—</text>
+        <text class="stat-label">收藏</text>
+      </view>
+      <view class="profile-stat">
+        <text class="stat-value">—</text>
+        <text class="stat-label">优惠券</text>
+      </view>
+      <view class="profile-stat">
+        <text class="stat-value">—</text>
+        <text class="stat-label">积分</text>
       </view>
     </view>
+  </view>
+
+  <view class="content-shell">
+    <view class="me-card order-card">
+      <view class="card-heading">
+        <text class="card-heading-title">订单中心</text>
+        <view class="card-heading-link" data-key="orders" bindtap="openFeature">
+          <text>查看全部</text>
+          <text class="chevron">›</text>
+        </view>
+      </view>
+
+      <view class="order-grid">
+        <view
+          class="order-item"
+          wx:for="{{orderActions}}"
+          wx:key="title"
+          data-key="{{item.key}}"
+          bindtap="openFeature"
+        >
+          <view class="order-icon"><image class="tile-symbol" src="/assets/ui/{{item.icon}}.svg" /></view>
+          <text class="order-title">{{item.title}}</text>
+        </view>
+      </view>
+    </view>
+
+    <view class="me-card service-card">
+      <view class="card-heading">
+        <text class="card-heading-title">我的服务</text>
+      </view>
+
+      <view class="service-grid">
+        <view
+          class="service-item"
+          wx:for="{{serviceTiles}}"
+          wx:key="title"
+          data-key="{{item.key}}"
+          bindtap="openFeature"
+        >
+          <view class="service-icon tone-{{item.tone}}"><image class="tile-symbol" src="/assets/ui/{{item.icon}}.svg" /></view>
+          <text class="service-title">{{item.title}}</text>
+        </view>
+      </view>
+    </view>
+
   </view>
 </view>

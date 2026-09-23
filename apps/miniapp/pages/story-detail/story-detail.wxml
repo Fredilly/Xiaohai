@@ -1,1 +1,6 @@
-<view class="page" wx:if="{{detail}}"><image wx:if="{{detail.coverUrl}}" src="{{detail.coverUrl}}" mode="aspectFill"/><view class="title">{{detail.title}}</view><view>{{detail.description}}</view><view class="episode" wx:for="{{detail.episodes}}" wx:key="id" data-id="{{item.id}}" bindtap="play"><text>第{{item.episodeNumber}}集 · {{item.title}}</text><text wx:if="{{item.accessMode === 'FREE'}}">免费</text><text wx:elif="{{item.accessMode === 'PREVIEW'}}">试看</text><text wx:else>需权益</text></view></view><view wx:else>{{error || '加载中…'}}</view>
+<view class="page">
+  <block wx:if="{{detail}}"><image wx:if="{{detail.coverUrl}}" class="story-hero-cover" src="{{detail.coverUrl}}" mode="aspectFill" /><text class="page-heading">{{detail.title}}</text><text class="state-copy story-intro">{{detail.description}}</text>
+    <text class="section-title">选集</text><view class="episode" wx:for="{{detail.episodes}}" wx:key="id" data-id="{{item.id}}" bindtap="play"><text>第{{item.episodeNumber}}集 · {{item.title}}</text><text class="state-pill {{item.accessMode === 'PREVIEW' ? 'pending' : ''}}">{{item.accessMode === 'FREE' ? '免费' : item.accessMode === 'PREVIEW' ? '试看' : '需观看权益'}}</text></view>
+  </block>
+  <view wx:else class="state-card">{{error || '正在加载故事…'}}</view>
+</view>

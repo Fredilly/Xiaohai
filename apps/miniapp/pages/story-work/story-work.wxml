@@ -11,7 +11,7 @@
 
   <block wx:else>
     <view class="hero hero-soft">
-      <text class="eyebrow">STORY WORKSPACE</text>
+
       <text class="hero-title">{{work.title}}</text>
       <text class="hero-subtitle">
         {{work.controls.theme}} · {{work.controls.ageRange}} · {{work.controls.style}}
@@ -113,10 +113,10 @@
         <view wx:for="{{versions}}" wx:key="id" class="version-card">
           <view class="version-head">
             <text class="version-title">第 {{item.versionNumber}} 版</text>
-            <text class="badge">{{item.operation}}</text>
+            <text class="badge">{{item.operation === 'OUTLINE' ? '大纲' : item.operation === 'BODY' ? '正文' : item.operation === 'REWRITE' ? '改写' : item.operation === 'CONTINUE' ? '续写' : '润色'}}</text>
           </view>
 
-          <text class="version-kind">{{item.contentKind}}</text>
+
           <text class="content-text">{{item.content}}</text>
         </view>
       </view>
