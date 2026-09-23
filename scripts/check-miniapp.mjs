@@ -44,6 +44,15 @@ if (!ignore.includes('apps/miniapp/project.private.config.json')) {
 }
 const assetManifest = await readFile(`${root}/src/config/assets.ts`, 'utf8');
 const runtimeVisuals = await readFile(`${root}/utils/real-visuals.ts`, 'utf8');
+const [homeTemplate, homeStyles, shopTemplate, globalStyles, productTemplate, productStyles] =
+  await Promise.all([
+    readFile(`${root}/pages/index/index.wxml`, 'utf8'),
+    readFile(`${root}/pages/index/index.wxss`, 'utf8'),
+    readFile(`${root}/pages/shop/shop.wxml`, 'utf8'),
+    readFile(`${root}/app.wxss`, 'utf8'),
+    readFile(`${root}/pages/product/product.wxml`, 'utf8'),
+    readFile(`${root}/pages/product/product.wxss`, 'utf8'),
+  ]);
 if (!assetManifest.includes("BOS_ASSET_ORIGIN = 'https://xiaohai-prod-assets.cd.bcebos.com'")) {
   throw new Error('Mini Program BOS assets must use the approved HTTPS origin.');
 }
@@ -60,5 +69,23 @@ for (const objectPath of [
 }
 if (/\/assets\/(?:brand\/home-parent-reading|books\/book-)/.test(runtimeVisuals)) {
   throw new Error('Large editorial images must not fall back to bundled Mini Program assets.');
+}
+for (const [name, template, handler] of [
+  ['home hero', homeTemplate, 'binderror="mediaError"'],
+  ['shop cover', shopTemplate, 'binderror="coverError"'],
+  ['product cover', productTemplate, 'binderror="coverError"'],
+]) {
+  if (!template.includes(handler)) {
+    throw new Error(`${name} must keep an image-load failure fallback.`);
+  }
+}
+for (const [name, styles, fixedSizePattern] of [
+  ['home hero', homeStyles, /\.hero-media\s*{[^}]*height:\s*260rpx/s],
+  ['shop cover', globalStyles, /\.book-cover\s*{[^}]*width:\s*112rpx[^}]*height:\s*150rpx/s],
+  ['product cover', productStyles, /\.product-cover\s*{[^}]*height:\s*390rpx/s],
+]) {
+  if (!fixedSizePattern.test(styles)) {
+    throw new Error(`${name} must reserve image space to avoid remote-load layout shifts.`);
+  }
 }
 console.log('Mini Program TypeScript structure and safe project config validated.');
