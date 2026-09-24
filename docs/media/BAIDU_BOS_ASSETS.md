@@ -24,7 +24,7 @@ The version suffix makes replacement explicit: publish a new object such as `-v2
 
 ## Runtime boundary
 
-`apps/miniapp/src/config/assets.ts` is the source of truth for deployed static image URLs. CMS and API media URLs still take precedence; the BOS objects are curated fallbacks for known editorial content only. A failed image request falls back to the existing no-cover or illustrated state and does not alter product, entitlement, payment, or inventory state.
+`apps/miniapp/src/config/assets.ts` is the source of truth for deployed static image URLs. Explicit CMS/API media URLs still take precedence. A media-less home `HERO` uses the curated BOS home fallback, and known book titles without an API cover use their matching BOS cover fallback. A failed image request falls back to the existing no-cover or illustrated state and does not alter product, entitlement, payment, or inventory state.
 
 The following assets intentionally remain local:
 
@@ -34,23 +34,24 @@ The following assets intentionally remain local:
 
 ## WeChat configuration
 
-Before previewing with a real AppID, add this exact origin to the Mini Program **downloadFile legal domains** in the WeChat public platform:
+The authorized Xiaohai Mini Program has been configured with this exact origin under **downloadFile legal domains**:
 
 `https://xiaohai-prod-assets.cd.bcebos.com`
 
-This is an account-level setting and must not be simulated in `project.config.json`. Keep the safe tourist AppID and do not commit `project.private.config.json`.
+This is an account-level setting and must not be simulated in `project.config.json`. Keep the safe tourist AppID in the tracked project config and do not commit `project.private.config.json`.
 
 ## Verification checklist
 
-Automated verification checks the manifest, TypeScript references, public HTTP status, MIME type, byte size, and SHA-256 equality with the selected source files. DevTools and real-device checks must use an authorized AppID and must be recorded honestly.
+Automated verification checks the manifest, TypeScript references, public HTTP status, MIME type, byte size, and SHA-256 equality with the selected source files. DevTools and real-device checks must use the authorized Mini Program environment and must be recorded honestly.
 
 | Environment | Check | Status before manual validation |
 | --- | --- | --- |
 | HTTPS | Five versioned objects return `200 image/jpeg` and match source SHA-256 | PASS |
 | Unit / static checks | Manifest origin, object keys, and fallback resolution | Automated in CI |
-| WeChat DevTools | Home editorial fallback, shop covers, product cover, failure placeholder | BLOCKED until authorized AppID validation |
-| iOS / Android | Normal network image display | BLOCKED until real-device validation |
-| iOS / Android | Weak/offline load shows placeholders without blocking navigation | BLOCKED until real-device validation |
+| WeChat account config | BOS origin present in `downloadFile` legal domains | PASS |
+| WeChat DevTools | Home BOS hero fallback, shop covers, product cover, failure placeholder | Manual check required |
+| iOS / Android | Normal network image display | Blocked by separate API reachability Issue #76 until staging API is available |
+| iOS / Android | Weak/offline load shows placeholders without blocking navigation | Blocked by separate API reachability Issue #76 until staging API is available |
 
 For weak-network testing, open the home, shop, and product-detail flows once with cache disabled or cleared; throttle or disconnect the network; confirm the page remains usable and the image region changes to the existing placeholder. Reconnect and retry/reopen to confirm recovery. Do not record an unexecuted row as PASS.
 
@@ -60,14 +61,16 @@ DevTools may temporarily disable legal-domain validation for local visual debugg
 
 | Target | Network | Flow | Expected | Status | Evidence |
 | --- | --- | --- | --- | --- | --- |
-| WeChat DevTools | Normal | Home editorial section | BOS image loads inside the reserved hero area; CMS media still wins when present | BLOCKED | Add screenshot and DevTools version |
-| WeChat DevTools | Normal | Shop → known book | Correct BOS cover loads; unrelated/no-cover item keeps “暂无封面” | BLOCKED | Add screenshots |
-| WeChat DevTools | Normal | Product detail | Correct BOS cover loads inside the fixed-height cover area | BLOCKED | Add screenshot |
-| iPhone | Normal | Home → shop → product | Images load without broken controls or material layout movement | BLOCKED | Record device, iOS, WeChat version, screenshots |
-| Android | Normal | Home → shop → product | Images load without broken controls or material layout movement | BLOCKED | Record device, Android, WeChat version, screenshots |
-| iPhone | Weak/offline | Home → shop → product | Failed images switch to illustration/no-cover UI; navigation remains usable | BLOCKED | Record network profile and video/screenshots |
-| Android | Weak/offline | Home → shop → product | Failed images switch to illustration/no-cover UI; navigation remains usable | BLOCKED | Record network profile and video/screenshots |
-| DevTools or device | Forced invalid image request | Home, shop, product | `binderror` fallback appears and no business state changes | BLOCKED | Record method and screenshots |
+| WeChat DevTools | Normal | Home editorial section | BOS image loads inside the reserved hero area; CMS media still wins when present | PENDING | Add screenshot and DevTools version |
+| WeChat DevTools | Normal | Shop → known book | Correct BOS cover loads; unrelated/no-cover item keeps “暂无封面” | PENDING | Add screenshots |
+| WeChat DevTools | Normal | Product detail | Correct BOS cover loads inside the fixed-height cover area | PENDING | Add screenshot |
+| iPhone | Normal | Home → shop → product | Images load without broken controls or material layout movement | BLOCKED BY #76 | Record device, iOS, WeChat version, screenshots |
+| Android | Normal | Home → shop → product | Images load without broken controls or material layout movement | BLOCKED BY #76 | Record device, Android, WeChat version, screenshots |
+| iPhone | Weak/offline | Home → shop → product | Failed images switch to illustration/no-cover UI; navigation remains usable | BLOCKED BY #76 | Record network profile and video/screenshots |
+| Android | Weak/offline | Home → shop → product | Failed images switch to illustration/no-cover UI; navigation remains usable | BLOCKED BY #76 | Record network profile and video/screenshots |
+| DevTools or device | Forced invalid image request | Home, shop, product | `binderror` fallback appears and no business state changes | PENDING | Record method and screenshots |
+
+Issue #76 owns the separate problem where a real phone cannot reach the development API because `develop` currently points at `127.0.0.1`. Do not solve that problem in Issue #70 by committing a developer LAN IP or changing API/server/payment/database behavior.
 
 ## Rollback
 
