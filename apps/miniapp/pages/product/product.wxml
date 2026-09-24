@@ -2,7 +2,7 @@
   <view wx:if="{{loading}}" class="state-card">正在加载商品…</view>
   <view wx:elif="{{error}}" class="state-card"><text class="state-title">商品暂时不可用</text></view>
   <block wx:elif="{{product}}">
-    <view class="product-cover-wrap"><image wx:if="{{product.displayCoverUrl}}" class="product-cover" src="{{product.displayCoverUrl}}" mode="aspectFit" /><view wx:else class="product-cover-empty">暂无封面</view></view>
+    <view class="product-cover-wrap"><image wx:if="{{product.displayCoverUrl}}" class="product-cover" src="{{product.displayCoverUrl}}" mode="aspectFit" binderror="coverError" /><view wx:else class="product-cover-empty">暂无封面</view></view>
     <text class="page-heading">{{product.title || product.name}}</text>
     <text wx:if="{{product.author}}" class="product-meta">{{product.author}}</text>
     <text class="product-meta">ISBN {{product.isbn || '—'}} · {{product.publisher || '—'}}</text>

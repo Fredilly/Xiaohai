@@ -23,7 +23,7 @@
         data-target="{{item.action.target}}"
         bindtap="openAction"
       >
-        <image wx:if="{{item.mediaUrl}}" class="hero-media" src="{{item.mediaUrl}}" mode="aspectFill" />
+        <image wx:if="{{item.mediaUrl}}" class="hero-media" src="{{item.mediaUrl}}" mode="aspectFill" data-index="{{index}}" binderror="mediaError" />
         <view wx:if="{{!item.mediaUrl}}" class="hero-illustration" aria-hidden="true"><view class="illustration-book"><view class="book-left"></view><view class="book-right"></view></view><view class="illustration-spark">✦</view></view>
         <text wx:if="{{item.config.eyebrow}}" class="eyebrow">{{item.config.eyebrow}}</text>
         <text class="hero-title">{{item.title}}</text>

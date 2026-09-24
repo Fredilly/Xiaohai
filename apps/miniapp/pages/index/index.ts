@@ -25,6 +25,11 @@ Page({
   retry() {
     void this.loadHome();
   },
+  mediaError(event: WechatMiniprogram.TouchEvent) {
+    const index = Number(event.currentTarget.dataset.index);
+    if (!Number.isInteger(index) || !this.data.sections[index]) return;
+    this.setData({ [`sections[${index}].mediaUrl`]: '' });
+  },
   openAction(event: WechatMiniprogram.TouchEvent) {
     const target = String(event.currentTarget.dataset.target ?? '');
     if (!target) return;
