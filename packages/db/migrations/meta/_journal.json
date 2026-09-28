@@ -183,6 +183,13 @@
       "when": 1790582400000,
       "tag": "0025_bailian_provider",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1790583900348,
+      "tag": "0026_sticky_ghost_rider",
+      "breakpoints": true
     }
   ]
 }
