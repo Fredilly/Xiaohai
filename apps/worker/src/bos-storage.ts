@@ -1,12 +1,18 @@
 import baiduSdk from '@baiducloud/sdk';
 
+type BosPutObjectOptions = {
+  'Content-Type': string;
+  'Content-Length': number;
+};
+
 // @baiducloud/sdk 1.0.7 declares putObject() without its runtime parameters.
-// Keep the storage boundary explicit while deriving the constructor configuration from the SDK.
+// Keep the workaround at this SDK boundary and make the required top-level
+// upload headers explicit so mocks cannot accept the old nested { headers } shape.
 type BosPutObject = (
   bucket: string,
   objectKey: string,
   body: Buffer,
-  options: Record<string, string | number>,
+  options: BosPutObjectOptions,
 ) => Promise<unknown>;
 
 export type BosPutObjectClient = {
@@ -54,13 +60,12 @@ export const createBaiduBosStorage = (options: {
     endpoint: options.endpoint,
     credentials: { ak: options.accessKeyId, sk: options.secretAccessKey },
   });
+  const putObject = client.putObject.bind(client) as unknown as BosPutObject;
+
   return new BosStorage({
     bucket: options.bucket,
     publicOrigin: options.publicOrigin,
-    client: {
-      putObject: (bucket, objectKey, body, requestOptions) =>
-        client.putObject(bucket, objectKey, body, requestOptions),
-    },
+    client: { putObject },
   });
 };
 
