@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { vi } from 'vitest';
-import { BosStorage, type BosPutObjectClient } from '../src/bos-storage.js';
+import { BosStorage, type BosStorageOptions } from '../src/bos-storage.js';
 import {
   BailianImageProvider,
   ImageProviderError,
@@ -50,7 +50,7 @@ describe('BailianImageProvider', () => {
   };
 
   it('downloads the temporary image and uploads it to BOS before returning', async () => {
-    const putObject = vi.fn<BosPutObjectClient['putObject']>().mockResolvedValue({});
+    const putObject = vi.fn<BosStorageOptions['client']['putObject']>().mockResolvedValue({});
     const storage = new BosStorage({
       bucket: 'xiaohai-assets',
       publicOrigin: 'https://assets.example.com',
@@ -111,7 +111,7 @@ describe('BailianImageProvider', () => {
   });
 
   it('rejects an untrusted temporary URL without downloading or uploading it', async () => {
-    const putObject = vi.fn<BosPutObjectClient['putObject']>().mockResolvedValue({});
+    const putObject = vi.fn<BosStorageOptions['client']['putObject']>().mockResolvedValue({});
     const storage = new BosStorage({
       bucket: 'xiaohai-assets',
       publicOrigin: 'https://assets.example.com',
