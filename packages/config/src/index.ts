@@ -26,7 +26,7 @@ const serviceSchema = baseSchema.extend({
     .string()
     .default('false')
     .transform((value) => value === 'true'),
-  STORY_AI_PROVIDER: z.enum(['MOCK', 'DEEPSEEK']).default('MOCK'),
+  STORY_AI_PROVIDER: z.enum(['MOCK', 'DEEPSEEK', 'BAILIAN']).default('MOCK'),
   STORY_AI_MODEL: z.string().trim().min(1).max(128).default('mock-story-v1'),
   STORY_AI_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(10).default(3),
   STORY_AI_TIMEOUT_MS: z.coerce.number().int().min(1000).max(300000).default(30000),
@@ -34,7 +34,7 @@ const serviceSchema = baseSchema.extend({
     .string()
     .default('false')
     .transform((value) => value === 'true'),
-  PICTURE_BOOK_AI_PROVIDER: z.enum(['MOCK', 'DEEPSEEK']).default('MOCK'),
+  PICTURE_BOOK_AI_PROVIDER: z.enum(['MOCK', 'DEEPSEEK', 'BAILIAN']).default('MOCK'),
   PICTURE_BOOK_AI_MODEL: z.string().trim().min(1).max(128).default('mock-picture-book-v1'),
   PICTURE_BOOK_AI_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(10).default(3),
   PICTURE_BOOK_AI_TIMEOUT_MS: z.coerce.number().int().min(1000).max(300000).default(30000),
@@ -42,7 +42,7 @@ const serviceSchema = baseSchema.extend({
     .string()
     .default('false')
     .transform((value) => value === 'true'),
-  ANIMATION_AI_PROVIDER: z.enum(['MOCK', 'DEEPSEEK']).default('MOCK'),
+  ANIMATION_AI_PROVIDER: z.enum(['MOCK', 'DEEPSEEK', 'BAILIAN']).default('MOCK'),
   ANIMATION_AI_MODEL: z.string().trim().min(1).max(128).default('mock-animation-v1'),
   ANIMATION_AI_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(10).default(3),
   ANIMATION_AI_TIMEOUT_MS: z.coerce.number().int().min(1000).max(300000).default(30000),
@@ -76,13 +76,16 @@ export const loadServiceConfig = (env: NodeJS.ProcessEnv) => serviceSchema.parse
 const workerSchema = baseSchema.extend({
   DATABASE_URL: z.url().startsWith('postgresql://'),
   REDIS_URL: z.url().startsWith('redis://'),
-  AI_PROVIDER: z.enum(['MOCK', 'DEEPSEEK']).default('MOCK'),
+  AI_PROVIDER: z.enum(['MOCK', 'DEEPSEEK', 'BAILIAN']).default('MOCK'),
   AI_MOCK_ENABLED: z
     .string()
     .default('false')
     .transform((value) => value === 'true'),
   DEEPSEEK_API_KEY: z.string().min(1).optional(),
   DEEPSEEK_BASE_URL: z.url().startsWith('https://').default('https://api.deepseek.com'),
+  DASHSCOPE_API_KEY: z.string().min(1).optional(),
+  DASHSCOPE_WORKSPACE_ID: z.string().min(1).optional(),
+  DASHSCOPE_BASE_URL: z.url().startsWith('https://').optional(),
   AI_WORKER_POLL_MS: z.coerce.number().int().min(100).max(60000).default(1000),
   PICTURE_BOOK_IMAGE_ENABLED: z
     .string()
@@ -111,6 +114,10 @@ export const loadWorkerConfig = (env: NodeJS.ProcessEnv) => {
     throw new Error('AI Mock Provider is disabled');
   if (config.AI_PROVIDER === 'DEEPSEEK' && !config.DEEPSEEK_API_KEY)
     throw new Error('DeepSeek API key is required');
+  if (config.AI_PROVIDER === 'BAILIAN' && !config.DASHSCOPE_API_KEY)
+    throw new Error('Bailian API key is required');
+  if (config.AI_PROVIDER === 'BAILIAN' && !config.DASHSCOPE_BASE_URL)
+    throw new Error('Bailian base URL is required');
   return config;
 };
 export const loadDatabaseConfig = (env: NodeJS.ProcessEnv) => databaseSchema.parse(env);
