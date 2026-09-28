@@ -1,13 +1,6 @@
-import baiduSdk from '@baiducloud/sdk';
+import { BosClient } from '@baiducloud/sdk';
 
-export type BosPutObjectClient = {
-  putObject(
-    bucket: string,
-    objectKey: string,
-    body: Buffer,
-    options: { headers: Record<string, string | number> },
-  ): Promise<unknown>;
-};
+export type BosPutObjectClient = Pick<BosClient, 'putObject'>;
 
 export type BosStorageOptions = {
   bucket: string;
@@ -28,10 +21,8 @@ export class BosStorage {
     mimeType: string;
   }): Promise<{ objectKey: string; playbackUrl: string; byteSize: number }> {
     await this.options.client.putObject(this.options.bucket, input.objectKey, input.body, {
-      headers: {
-        'Content-Type': input.mimeType,
-        'Content-Length': input.body.byteLength,
-      },
+      'Content-Type': input.mimeType,
+      'Content-Length': input.body.byteLength,
     });
     return {
       objectKey: input.objectKey,
@@ -48,10 +39,10 @@ export const createBaiduBosStorage = (options: {
   bucket: string;
   publicOrigin: string;
 }): BosStorage => {
-  const client = new baiduSdk.BosClient({
+  const client = new BosClient({
     endpoint: options.endpoint,
     credentials: { ak: options.accessKeyId, sk: options.secretAccessKey },
-  }) as BosPutObjectClient;
+  });
   return new BosStorage({ bucket: options.bucket, publicOrigin: options.publicOrigin, client });
 };
 
