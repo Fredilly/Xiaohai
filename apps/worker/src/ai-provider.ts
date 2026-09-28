@@ -12,7 +12,7 @@ export interface AiProviderResult {
   costMetadata: Record<string, unknown>;
 }
 export interface AiProvider {
-  readonly name: 'MOCK' | 'DEEPSEEK';
+  readonly name: 'MOCK' | 'DEEPSEEK' | 'BAILIAN';
   generate(input: AiProviderInput): Promise<AiProviderResult>;
 }
 export class ProviderError extends Error {
@@ -125,6 +125,48 @@ const responseSchema = z.object({
     })
     .optional(),
 });
+export class BailianAiProvider implements AiProvider {
+  readonly name = 'BAILIAN' as const;
+  constructor(
+    private readonly apiKey: string,
+    private readonly baseUrl: string,
+    private readonly http: typeof fetch = fetch,
+  ) {}
+  async generate(input: AiProviderInput): Promise<AiProviderResult> {
+    try {
+      const response = await this.http(`${this.baseUrl.replace(/\/$/, '')}/chat/completions`, {
+        method: 'POST',
+        redirect: 'error',
+        signal: input.signal,
+        headers: { Authorization: `Bearer ${this.apiKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: input.model,
+          messages: [{ role: 'user', content: input.prompt }],
+          stream: false,
+        }),
+      });
+      if (!response.ok) throw new ProviderError('PROVIDER_UNAVAILABLE');
+      const parsed = responseSchema.safeParse(await response.json());
+      if (!parsed.success) throw new ProviderError('PROVIDER_RESPONSE_INVALID');
+      return {
+        text: parsed.data.choices[0]!.message.content,
+        assetReferences: [],
+        providerRequestId: response.headers.get('x-request-id') ?? parsed.data.id,
+        usage: {
+          inputTokens: parsed.data.usage?.prompt_tokens,
+          outputTokens: parsed.data.usage?.completion_tokens,
+          totalTokens: parsed.data.usage?.total_tokens,
+        },
+        costMetadata: { source: 'BAILIAN_USAGE_ONLY', amountMinor: null, currency: null },
+      };
+    } catch (error) {
+      if (error instanceof ProviderError) throw error;
+      if (input.signal.aborted) throw new ProviderError('PROVIDER_TIMEOUT');
+      throw new ProviderError('PROVIDER_UNAVAILABLE');
+    }
+  }
+}
+
 export class DeepSeekAiProvider implements AiProvider {
   readonly name = 'DEEPSEEK' as const;
   constructor(
