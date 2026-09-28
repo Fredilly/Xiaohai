@@ -59,7 +59,7 @@ export class ImageJobProcessor {
         const [asset] = await tx
           .insert(mediaAssets)
           .values({
-            provider: 'MOCK_IMAGE',
+            provider: result.assetProvider,
             objectKey: result.objectKey,
             playbackUrl: result.playbackUrl,
             mimeType: result.mimeType,
@@ -68,7 +68,13 @@ export class ImageJobProcessor {
           })
           .onConflictDoUpdate({
             target: [mediaAssets.provider, mediaAssets.objectKey],
-            set: { playbackUrl: result.playbackUrl, updatedAt: new Date() },
+            set: {
+              playbackUrl: result.playbackUrl,
+              mimeType: result.mimeType,
+              byteSize: result.byteSize,
+              status: 'READY',
+              updatedAt: new Date(),
+            },
           })
           .returning({ id: mediaAssets.id });
         await tx

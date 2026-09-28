@@ -5,6 +5,14 @@ const baseSchema = z.object({
   APP_ENV: appEnvironmentSchema.default('dev'),
   LOG_LEVEL: logLevelSchema.default('info'),
 });
+const optionalNonEmptyString = z.preprocess(
+  (value) => (value === '' ? undefined : value),
+  z.string().min(1).optional(),
+);
+const optionalHttpsUrl = z.preprocess(
+  (value) => (value === '' ? undefined : value),
+  z.url().startsWith('https://').optional(),
+);
 const serviceSchema = baseSchema.extend({
   HOST: z.string().default('127.0.0.1'),
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
@@ -26,7 +34,7 @@ const serviceSchema = baseSchema.extend({
     .string()
     .default('false')
     .transform((value) => value === 'true'),
-  STORY_AI_PROVIDER: z.enum(['MOCK', 'DEEPSEEK']).default('MOCK'),
+  STORY_AI_PROVIDER: z.enum(['MOCK', 'DEEPSEEK', 'BAILIAN']).default('MOCK'),
   STORY_AI_MODEL: z.string().trim().min(1).max(128).default('mock-story-v1'),
   STORY_AI_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(10).default(3),
   STORY_AI_TIMEOUT_MS: z.coerce.number().int().min(1000).max(300000).default(30000),
@@ -34,7 +42,7 @@ const serviceSchema = baseSchema.extend({
     .string()
     .default('false')
     .transform((value) => value === 'true'),
-  PICTURE_BOOK_AI_PROVIDER: z.enum(['MOCK', 'DEEPSEEK']).default('MOCK'),
+  PICTURE_BOOK_AI_PROVIDER: z.enum(['MOCK', 'DEEPSEEK', 'BAILIAN']).default('MOCK'),
   PICTURE_BOOK_AI_MODEL: z.string().trim().min(1).max(128).default('mock-picture-book-v1'),
   PICTURE_BOOK_AI_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(10).default(3),
   PICTURE_BOOK_AI_TIMEOUT_MS: z.coerce.number().int().min(1000).max(300000).default(30000),
@@ -42,7 +50,7 @@ const serviceSchema = baseSchema.extend({
     .string()
     .default('false')
     .transform((value) => value === 'true'),
-  ANIMATION_AI_PROVIDER: z.enum(['MOCK', 'DEEPSEEK']).default('MOCK'),
+  ANIMATION_AI_PROVIDER: z.enum(['MOCK', 'DEEPSEEK', 'BAILIAN']).default('MOCK'),
   ANIMATION_AI_MODEL: z.string().trim().min(1).max(128).default('mock-animation-v1'),
   ANIMATION_AI_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(10).default(3),
   ANIMATION_AI_TIMEOUT_MS: z.coerce.number().int().min(1000).max(300000).default(30000),
@@ -66,7 +74,7 @@ const serviceSchema = baseSchema.extend({
     .string()
     .default('false')
     .transform((value) => value === 'true'),
-  PICTURE_BOOK_IMAGE_PROVIDER: z.enum(['MOCK']).default('MOCK'),
+  PICTURE_BOOK_IMAGE_PROVIDER: z.enum(['MOCK', 'BAILIAN']).default('MOCK'),
   PICTURE_BOOK_IMAGE_MODEL: z.string().trim().min(1).max(128).default('mock-image-v1'),
   PICTURE_BOOK_IMAGE_TIMEOUT_MS: z.coerce.number().int().min(1000).max(300000).default(30000),
 });
@@ -76,21 +84,32 @@ export const loadServiceConfig = (env: NodeJS.ProcessEnv) => serviceSchema.parse
 const workerSchema = baseSchema.extend({
   DATABASE_URL: z.url().startsWith('postgresql://'),
   REDIS_URL: z.url().startsWith('redis://'),
-  AI_PROVIDER: z.enum(['MOCK', 'DEEPSEEK']).default('MOCK'),
+  AI_PROVIDER: z.enum(['MOCK', 'DEEPSEEK', 'BAILIAN']).default('MOCK'),
   AI_MOCK_ENABLED: z
     .string()
     .default('false')
     .transform((value) => value === 'true'),
   DEEPSEEK_API_KEY: z.string().min(1).optional(),
   DEEPSEEK_BASE_URL: z.url().startsWith('https://').default('https://api.deepseek.com'),
+  DASHSCOPE_API_KEY: optionalNonEmptyString,
+  DASHSCOPE_WORKSPACE_ID: optionalNonEmptyString,
+  DASHSCOPE_BASE_URL: optionalHttpsUrl,
   AI_WORKER_POLL_MS: z.coerce.number().int().min(100).max(60000).default(1000),
   PICTURE_BOOK_IMAGE_ENABLED: z
     .string()
     .default('false')
     .transform((value) => value === 'true'),
-  PICTURE_BOOK_IMAGE_PROVIDER: z.enum(['MOCK']).default('MOCK'),
+  PICTURE_BOOK_IMAGE_PROVIDER: z.enum(['MOCK', 'BAILIAN']).default('MOCK'),
   PICTURE_BOOK_IMAGE_MODEL: z.string().trim().min(1).max(128).default('mock-image-v1'),
   PICTURE_BOOK_IMAGE_TIMEOUT_MS: z.coerce.number().int().min(1000).max(300000).default(30000),
+  BAIDU_BOS_ENDPOINT: optionalHttpsUrl,
+  BAIDU_BOS_BUCKET: z.preprocess(
+    (value) => (value === '' ? undefined : value),
+    z.string().trim().min(3).max(63).optional(),
+  ),
+  BAIDU_BOS_PUBLIC_ORIGIN: optionalHttpsUrl,
+  BAIDU_BOS_ACCESS_KEY_ID: optionalNonEmptyString,
+  BAIDU_BOS_SECRET_ACCESS_KEY: optionalNonEmptyString,
   ANIMATION_VIDEO_ENABLED: z
     .string()
     .default('false')
@@ -111,6 +130,20 @@ export const loadWorkerConfig = (env: NodeJS.ProcessEnv) => {
     throw new Error('AI Mock Provider is disabled');
   if (config.AI_PROVIDER === 'DEEPSEEK' && !config.DEEPSEEK_API_KEY)
     throw new Error('DeepSeek API key is required');
+  if (config.AI_PROVIDER === 'BAILIAN' && !config.DASHSCOPE_API_KEY)
+    throw new Error('Bailian API key is required');
+  if (config.AI_PROVIDER === 'BAILIAN' && !config.DASHSCOPE_BASE_URL)
+    throw new Error('Bailian base URL is required');
+  if (config.PICTURE_BOOK_IMAGE_ENABLED && config.PICTURE_BOOK_IMAGE_PROVIDER === 'BAILIAN') {
+    if (!config.DASHSCOPE_API_KEY) throw new Error('Bailian API key is required for image jobs');
+    if (!config.DASHSCOPE_BASE_URL) throw new Error('Bailian base URL is required for image jobs');
+    if (!config.BAIDU_BOS_ENDPOINT) throw new Error('Baidu BOS endpoint is required');
+    if (!config.BAIDU_BOS_BUCKET) throw new Error('Baidu BOS bucket is required');
+    if (!config.BAIDU_BOS_PUBLIC_ORIGIN) throw new Error('Baidu BOS public origin is required');
+    if (!config.BAIDU_BOS_ACCESS_KEY_ID) throw new Error('Baidu BOS access key ID is required');
+    if (!config.BAIDU_BOS_SECRET_ACCESS_KEY)
+      throw new Error('Baidu BOS secret access key is required');
+  }
   return config;
 };
 export const loadDatabaseConfig = (env: NodeJS.ProcessEnv) => databaseSchema.parse(env);

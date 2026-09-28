@@ -24,12 +24,12 @@ type Db = ReturnType<typeof createDatabase>['db'];
 
 export type PictureBookAiConfig = {
   enabled: boolean;
-  provider: 'MOCK' | 'DEEPSEEK';
+  provider: 'MOCK' | 'DEEPSEEK' | 'BAILIAN';
   model: string;
   maxAttempts: number;
   timeoutMs: number;
   imageEnabled: boolean;
-  imageProvider: 'MOCK';
+  imageProvider: 'MOCK' | 'BAILIAN';
   imageModel: string;
 };
 

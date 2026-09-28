@@ -2,9 +2,9 @@
 
 ## 范围 / Scope
 
-M10 将已保存且归属于当前消费者的 Story BODY 转换为绘本。范围包括角色设定、分页分镜、逐页插画 revision、Mini Program 工作流，以及基于 Mock Image Provider 的可测试图片工程链路。M10 不包含动画生成。
+M10 将已保存且归属于当前消费者的 Story BODY 转换为绘本。范围包括角色设定、分页分镜、逐页插画 revision、Mini Program 工作流，以及可测试的图片工程链路。M10 不包含动画生成。
 
-M10 converts a saved Story BODY owned by the current consumer into a picture book. It includes character planning, page storyboards, per-page illustration revisions, the Mini Program workflow, and a testable image pipeline backed by the Mock Image Provider. M10 does not include animation generation.
+M10 converts a saved Story BODY owned by the current consumer into a picture book. It includes character planning, page storyboards, per-page illustration revisions, the Mini Program workflow, and a testable image pipeline. M10 does not include animation generation.
 
 ## 能力边界 / Capability boundaries
 
@@ -12,9 +12,9 @@ M10 converts a saved Story BODY owned by the current consumer into a picture boo
 
 Text tasks reuse the M8 `AiProvider`, `ai_jobs`, Redis wake-up signal, and worker state machine. `PICTURE_BOOK_CHARACTERS` generates structured character plans, while `PICTURE_BOOK_STORYBOARD` generates a structured cover and content pages. DeepSeek remains inside the text-provider boundary and is not treated as an image-generation model.
 
-图片任务使用独立的 `ImageProvider` 接口、独立 Redis wake-up key 和 `ImageJobProcessor`。PostgreSQL 的 `work_page_illustrations` 是权威任务状态；Redis 只发送不透明 illustration ID 作为唤醒信号。当前仅实现 `MockImageProvider`，它返回确定性的伪对象存储引用，不生成真实图片。
+图片任务使用独立的 `ImageProvider` 接口、独立 Redis wake-up key 和 `ImageJobProcessor`。PostgreSQL 的 `work_page_illustrations` 是权威任务状态；Redis 只发送不透明 illustration ID 作为唤醒信号。除返回确定性伪对象引用的 `MockImageProvider` 外，worker 还支持百炼 `qwen-image-3.0`：服务端下载供应商临时 HTTPS 图片，上传至百度 BOS 后才返回永久 media reference。
 
-Image tasks use a separate `ImageProvider` interface, a separate Redis wake-up key, and `ImageJobProcessor`. PostgreSQL `work_page_illustrations` is authoritative for task state; Redis carries only an opaque illustration ID as a wake-up signal. Only `MockImageProvider` is implemented now, and it returns deterministic fake object-storage references rather than real images.
+Image tasks use a separate `ImageProvider` interface, a separate Redis wake-up key, and `ImageJobProcessor`. PostgreSQL `work_page_illustrations` is authoritative for task state; Redis carries only an opaque illustration ID as a wake-up signal. In addition to `MockImageProvider`, the worker supports Bailian `qwen-image-3.0`: it downloads the provider's temporary HTTPS image and uploads it to Baidu BOS before returning a permanent media reference.
 
 ## 数据与状态机 / Data and state machines
 
@@ -62,9 +62,9 @@ The Mini Program preserves the existing Consumer Session, sends no provider/mode
 
 ## 配置与安全关闭 / Configuration and fail-closed behavior
 
-`PICTURE_BOOK_AI_ENABLED` 和 `PICTURE_BOOK_IMAGE_ENABLED` 默认均为 `false`。staging/production 示例保持关闭。文本配置包括 provider、model、attempt 和 timeout；图片配置包括独立 provider、model 和 timeout。生产 secret、供应商 key、证书或真实域名不得进入仓库。
+`PICTURE_BOOK_AI_ENABLED` 和 `PICTURE_BOOK_IMAGE_ENABLED` 默认均为 `false`。staging/production 示例保持关闭。文本配置包括 provider、model、attempt 和 timeout；图片配置包括独立 provider、model、timeout 与 BOS endpoint/bucket/public origin。百炼 API Key 和 BOS AK/SK 仅允许由 worker 的 secret manager 注入；生产 secret、供应商 key、证书或真实域名不得进入仓库。
 
-`PICTURE_BOOK_AI_ENABLED` and `PICTURE_BOOK_IMAGE_ENABLED` both default to `false`, and the staging/production examples keep them disabled. Text configuration includes provider, model, attempts, and timeout; image configuration has its own provider, model, and timeout. Production secrets, provider keys, certificates, and real domains must never enter the repository.
+`PICTURE_BOOK_AI_ENABLED` and `PICTURE_BOOK_IMAGE_ENABLED` both default to `false`, and the staging/production examples keep them disabled. Text configuration includes provider, model, attempts, and timeout; image configuration has its own provider, model, timeout, and BOS endpoint/bucket/public origin. The Bailian API key and BOS AK/SK may only be injected into the worker by a secret manager. Production secrets, provider keys, certificates, and real domains must never enter the repository.
 
 ## 测试与手动验证 / Testing and manual verification
 
@@ -78,14 +78,14 @@ Local Mock manual verification requires PostgreSQL and Redis, both Picture Book 
 
 ## 已知限制 / Known limitations
 
-当前没有真实图片生成供应商、真实对象存储/CDN、图片内容审核或正式 AI pricing。Mock URL 不可用于生产展示。当前没有页面到角色的显式选择，图片请求传递整本绘本的全部角色一致性约束。
+当前已有百炼图片生成与百度 BOS 永久存储适配层，但仍没有图片内容审核或正式 AI pricing；在这些发布门禁完成前不得将图片能力视为 production-ready。Mock URL 不可用于生产展示。当前没有页面到角色的显式选择，图片请求传递整本绘本的全部角色一致性约束。
 
-There is currently no real image-generation provider, production object storage/CDN, image moderation, or formal AI pricing. Mock URLs are not suitable for production display. Pages do not yet select characters explicitly, so image requests carry all character consistency constraints for the book.
+The Bailian image-generation and Baidu BOS persistence adapters now exist, but image moderation and formal AI pricing are still missing; the feature is not production-ready until those release gates are complete. Mock URLs are not suitable for production display. Pages do not yet select characters explicitly, so image requests carry all character consistency constraints for the book.
 
 ## 待确认决策 / Decisions Needed
 
-- 选择并安全评审真实 production image provider 及其模型能力、区域、数据保留和儿童内容条款。
-- Select and security-review the production image provider, including model capability, region, data retention, and child-content terms.
+- 完成百炼图片能力的区域、数据保留和儿童内容条款安全评审。
+- Complete the security review of the Bailian image capability, including region, data retention, and child-content terms.
 - 确定对象存储、CDN、签名 URL、生命周期与删除策略。
 - Decide object storage, CDN, signed URL, lifecycle, and deletion policies.
 - 确定输入/输出图片审核供应商、失败策略和人工复核流程。

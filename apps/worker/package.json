@@ -13,6 +13,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@baiducloud/sdk": "^1.0.7",
     "@xiaohai/config": "workspace:*",
     "@xiaohai/db": "workspace:*",
     "drizzle-orm": "catalog:",

@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { MockImageProvider } from '../src/image-provider.js';
+import { vi } from 'vitest';
+import { BosStorage, type BosStorageOptions } from '../src/bos-storage.js';
+import {
+  BailianImageProvider,
+  ImageProviderError,
+  MockImageProvider,
+} from '../src/image-provider.js';
 
 describe('MockImageProvider', () => {
   it('returns a deterministic storage reference and never image binary', async () => {
@@ -25,5 +31,107 @@ describe('MockImageProvider', () => {
 
     const nextRevision = await provider.generate({ ...input, generationKey: 'next-revision-id' });
     expect(nextRevision.objectKey).not.toBe(first.objectKey);
+  });
+});
+
+describe('BailianImageProvider', () => {
+  const input = {
+    generationKey: 'illustration-revision-id',
+    model: 'qwen-image-3.0',
+    prompt: 'fox in a forest',
+    consistency: [
+      {
+        consistencyKey: '7dbe8e93-17cc-4bd5-87a5-1c787287f734',
+        visualPrompt: 'orange fox with green scarf',
+        referenceMediaAssetId: null,
+      },
+    ],
+    signal: new AbortController().signal,
+  };
+
+  it('downloads the temporary image and uploads it to BOS before returning', async () => {
+    const putObject = vi.fn<BosStorageOptions['client']['putObject']>().mockResolvedValue({});
+    const storage = new BosStorage({
+      bucket: 'xiaohai-assets',
+      publicOrigin: 'https://assets.example.com',
+      client: { putObject },
+    });
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            data: [{ url: 'https://result.oss-cn-beijing.aliyuncs.com/temp.png' }],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json', 'x-request-id': 'req-1' } },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(Buffer.from('png-bytes'), {
+          status: 200,
+          headers: { 'content-type': 'image/png', 'content-length': '9' },
+        }),
+      );
+
+    const result = await new BailianImageProvider(
+      'not-a-real-key',
+      'https://workspace.example.com/compatible-mode/v1',
+      storage,
+      fetcher,
+    ).generate(input);
+
+    expect(fetcher).toHaveBeenNthCalledWith(
+      1,
+      'https://workspace.example.com/compatible-mode/v1/images/generations',
+      expect.objectContaining({ method: 'POST', signal: input.signal }),
+    );
+    const request = fetcher.mock.calls[0]![1]!;
+    expect(typeof request.body).toBe('string');
+    const requestBody = request.body as string;
+    expect(JSON.parse(requestBody)).toMatchObject({
+      model: 'qwen-image-3.0',
+      n: 1,
+      size: '1024x1024',
+    });
+    expect(requestBody).toContain('orange fox with green scarf');
+    expect(fetcher).toHaveBeenNthCalledWith(
+      2,
+      'https://result.oss-cn-beijing.aliyuncs.com/temp.png',
+      { signal: input.signal, redirect: 'error' },
+    );
+    expect(putObject).toHaveBeenCalledOnce();
+    expect(result).toEqual({
+      assetProvider: 'BAIDU_BOS',
+      objectKey: 'picture-books/bailian/illustration-revision-id.png',
+      playbackUrl: 'https://assets.example.com/picture-books/bailian/illustration-revision-id.png',
+      mimeType: 'image/png',
+      byteSize: 9,
+      providerRequestId: 'req-1',
+    });
+  });
+
+  it('rejects an untrusted temporary URL without downloading or uploading it', async () => {
+    const putObject = vi.fn<BosStorageOptions['client']['putObject']>().mockResolvedValue({});
+    const storage = new BosStorage({
+      bucket: 'xiaohai-assets',
+      publicOrigin: 'https://assets.example.com',
+      client: { putObject },
+    });
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      new Response(JSON.stringify({ data: [{ url: 'https://127.0.0.1/private.png' }] }), {
+        status: 200,
+      }),
+    );
+
+    await expect(
+      new BailianImageProvider(
+        'not-a-real-key',
+        'https://api.example.com',
+        storage,
+        fetcher,
+      ).generate(input),
+    ).rejects.toEqual(new ImageProviderError('IMAGE_PROVIDER_UNAVAILABLE'));
+    expect(fetcher).toHaveBeenCalledOnce();
+    expect(putObject).not.toHaveBeenCalled();
   });
 });

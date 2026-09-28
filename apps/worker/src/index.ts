@@ -3,10 +3,11 @@ import pino from 'pino';
 import { createClient } from 'redis';
 import { createDatabase } from '@xiaohai/db';
 import { AiJobProcessor } from './ai-processor.js';
-import { DeepSeekAiProvider, MockAiProvider } from './ai-provider.js';
+import { BailianAiProvider, DeepSeekAiProvider, MockAiProvider } from './ai-provider.js';
 import { BaselineModerationAdapter } from './moderation.js';
 import { ImageJobProcessor } from './image-processor.js';
-import { MockImageProvider } from './image-provider.js';
+import { BailianImageProvider, MockImageProvider } from './image-provider.js';
+import { createBaiduBosStorage } from './bos-storage.js';
 import { VideoJobProcessor } from './video-processor.js';
 import { MockVideoProvider } from './video-provider.js';
 import { CompositionProcessor } from './composition-processor.js';
@@ -24,10 +25,25 @@ await redis.connect();
 const provider =
   config.AI_PROVIDER === 'DEEPSEEK'
     ? new DeepSeekAiProvider(config.DEEPSEEK_API_KEY!, config.DEEPSEEK_BASE_URL)
-    : new MockAiProvider();
+    : config.AI_PROVIDER === 'BAILIAN'
+      ? new BailianAiProvider(config.DASHSCOPE_API_KEY!, config.DASHSCOPE_BASE_URL!)
+      : new MockAiProvider();
 const moderation = new BaselineModerationAdapter(config.APP_ENV !== 'dev');
 const processor = new AiJobProcessor(db, provider, moderation);
-const imageProvider = new MockImageProvider();
+const imageProvider =
+  config.PICTURE_BOOK_IMAGE_ENABLED && config.PICTURE_BOOK_IMAGE_PROVIDER === 'BAILIAN'
+    ? new BailianImageProvider(
+        config.DASHSCOPE_API_KEY!,
+        config.DASHSCOPE_BASE_URL!,
+        createBaiduBosStorage({
+          endpoint: config.BAIDU_BOS_ENDPOINT!,
+          bucket: config.BAIDU_BOS_BUCKET!,
+          publicOrigin: config.BAIDU_BOS_PUBLIC_ORIGIN!,
+          accessKeyId: config.BAIDU_BOS_ACCESS_KEY_ID!,
+          secretAccessKey: config.BAIDU_BOS_SECRET_ACCESS_KEY!,
+        }),
+      )
+    : new MockImageProvider();
 const imageProcessor = config.PICTURE_BOOK_IMAGE_ENABLED
   ? new ImageJobProcessor(db, imageProvider, config.PICTURE_BOOK_IMAGE_TIMEOUT_MS)
   : null;

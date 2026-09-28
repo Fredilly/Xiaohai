@@ -106,7 +106,7 @@ export const aiJobs = pgTable(
       'ai_jobs_type_check',
       sql`${t.jobType} in ('PLATFORM_TEXT','STORY_OUTLINE','STORY_BODY','STORY_REWRITE','STORY_CONTINUE','STORY_POLISH','PICTURE_BOOK_CHARACTERS','PICTURE_BOOK_STORYBOARD','ANIMATION_SCRIPT','ANIMATION_STORYBOARD')`,
     ),
-    check('ai_jobs_provider_check', sql`${t.provider} in ('MOCK','DEEPSEEK')`),
+    check('ai_jobs_provider_check', sql`${t.provider} in ('MOCK','DEEPSEEK','BAILIAN')`),
     check(
       'ai_jobs_status_check',
       sql`${t.status} in ('QUEUED','RUNNING','SUCCEEDED','FAILED','CANCELLED')`,
