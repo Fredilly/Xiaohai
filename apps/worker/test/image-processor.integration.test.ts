@@ -23,7 +23,7 @@ const suite = database ? describe : describe.skip;
 suite('M10 image worker PostgreSQL integration', () => {
   const db = database!.db;
 
-  async function queued() {
+  async function queued(provider: 'MOCK' | 'BAILIAN' = 'MOCK') {
     const [user] = await db.insert(consumerUsers).values({}).returning();
     const [project] = await db
       .insert(aiProjects)
@@ -135,7 +135,7 @@ suite('M10 image worker PostgreSQL integration', () => {
         pageId: page!.id,
         revisionNumber: 1,
         prompt: page!.illustrationPrompt!,
-        provider: 'MOCK',
+        provider,
         model: 'server-image-model',
         consistency,
       })
@@ -187,6 +187,30 @@ suite('M10 image worker PostgreSQL integration', () => {
     expect(saved).toMatchObject({ status: 'FAILED', errorCode: 'IMAGE_PROVIDER_UNAVAILABLE' });
     expect(saved!.mediaAssetId).toBeNull();
     expect(await db.select().from(mediaAssets)).toHaveLength(0);
+  });
+
+  it('publishes a Bailian revision only with its permanent BOS media asset', async () => {
+    const fixture = await queued('BAILIAN');
+    const generate = vi.fn<ImageProvider['generate']>().mockResolvedValue({
+      assetProvider: 'BAIDU_BOS',
+      objectKey: `picture-books/bailian/${fixture.illustration.id}.png`,
+      playbackUrl: `https://assets.example.com/picture-books/bailian/${fixture.illustration.id}.png`,
+      mimeType: 'image/png',
+      byteSize: 9,
+      providerRequestId: 'req-1',
+    });
+    await new ImageJobProcessor(db, { name: 'BAILIAN', generate }, 5_000).processOne();
+
+    const [saved] = await db
+      .select()
+      .from(workPageIllustrations)
+      .where(eq(workPageIllustrations.id, fixture.illustration.id));
+    const [asset] = await db
+      .select()
+      .from(mediaAssets)
+      .where(eq(mediaAssets.id, saved!.mediaAssetId!));
+    expect(saved).toMatchObject({ status: 'READY', errorCode: null });
+    expect(asset).toMatchObject({ provider: 'BAIDU_BOS', status: 'READY', byteSize: 9 });
   });
 
   it('marks an orphaned image terminal once without publishing a stale asset', async () => {

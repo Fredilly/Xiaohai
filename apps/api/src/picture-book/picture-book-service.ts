@@ -29,7 +29,7 @@ export type PictureBookAiConfig = {
   maxAttempts: number;
   timeoutMs: number;
   imageEnabled: boolean;
-  imageProvider: 'MOCK';
+  imageProvider: 'MOCK' | 'BAILIAN';
   imageModel: string;
 };
 
