@@ -149,12 +149,12 @@ describe('AI provider adapters', () => {
       costMetadata: { source: 'BAILIAN_USAGE_ONLY', amountMinor: null, currency: null },
     });
     expect(JSON.stringify(result)).not.toContain('private-bailian-key');
-    expect(http).toHaveBeenCalledWith(
-      'https://workspace.example.invalid/compatible-mode/v1/chat/completions',
-      expect.objectContaining({
-        method: 'POST',
-        headers: expect.objectContaining({ Authorization: 'Bearer private-bailian-key' }),
-      }),
+    expect(http).toHaveBeenCalledOnce();
+    const [url, init] = http.mock.calls[0]!;
+    expect(url).toBe('https://workspace.example.invalid/compatible-mode/v1/chat/completions');
+    expect(init?.method).toBe('POST');
+    expect((init?.headers as Record<string, string>).Authorization).toBe(
+      'Bearer private-bailian-key',
     );
   });
 
