@@ -1,6 +1,17 @@
-import { BosClient } from '@baiducloud/sdk';
+import baiduSdk from '@baiducloud/sdk';
 
-export type BosPutObjectClient = Pick<BosClient, 'putObject'>;
+type BaiduBosClient = InstanceType<typeof baiduSdk.BosClient>;
+
+// @baiducloud/sdk 1.0.7 ships an incomplete putObject(): BosResponse declaration.
+// Refine that official client type to the runtime signature documented and implemented by the SDK.
+type BosPutObjectClient = Pick<BaiduBosClient, 'putObject'> & {
+  putObject(
+    bucket: string,
+    objectKey: string,
+    body: Buffer,
+    options: Record<string, string | number>,
+  ): Promise<unknown>;
+};
 
 export type BosStorageOptions = {
   bucket: string;
@@ -39,10 +50,10 @@ export const createBaiduBosStorage = (options: {
   bucket: string;
   publicOrigin: string;
 }): BosStorage => {
-  const client = new BosClient({
+  const client = new baiduSdk.BosClient({
     endpoint: options.endpoint,
     credentials: { ak: options.accessKeyId, sk: options.secretAccessKey },
-  });
+  }) as BosPutObjectClient;
   return new BosStorage({ bucket: options.bucket, publicOrigin: options.publicOrigin, client });
 };
 
