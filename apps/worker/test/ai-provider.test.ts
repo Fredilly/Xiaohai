@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
-import { DeepSeekAiProvider, MockAiProvider, ProviderError } from '../src/ai-provider.js';
+import {
+  BailianAiProvider,
+  DeepSeekAiProvider,
+  MockAiProvider,
+  ProviderError,
+} from '../src/ai-provider.js';
 import { BaselineModerationAdapter } from '../src/moderation.js';
 describe('AI provider adapters', () => {
   it('keeps the mock explicit and records non-billable metadata', async () => {
@@ -116,6 +121,43 @@ describe('AI provider adapters', () => {
     const init = http.mock.calls[0]?.[1];
     expect((init?.headers as Record<string, string>).Authorization).toBe('Bearer private-key');
   });
+  it('maps Bailian OpenAI-compatible fields and x-request-id without leaking the API key', async () => {
+    const http = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: 'body-request-id',
+          choices: [{ message: { content: 'qwen result' } }],
+          usage: { prompt_tokens: 7, completion_tokens: 11, total_tokens: 18 },
+        }),
+        { status: 200, headers: { 'x-request-id': 'bailian-request-id' } },
+      ),
+    );
+    const provider = new BailianAiProvider(
+      'private-bailian-key',
+      'https://workspace.example.invalid/compatible-mode/v1',
+      http,
+    );
+    const result = await provider.generate({
+      model: 'qwen3.7-flash',
+      prompt: 'input',
+      signal: new AbortController().signal,
+    });
+    expect(result).toMatchObject({
+      text: 'qwen result',
+      providerRequestId: 'bailian-request-id',
+      usage: { inputTokens: 7, outputTokens: 11, totalTokens: 18 },
+      costMetadata: { source: 'BAILIAN_USAGE_ONLY', amountMinor: null, currency: null },
+    });
+    expect(JSON.stringify(result)).not.toContain('private-bailian-key');
+    expect(http).toHaveBeenCalledWith(
+      'https://workspace.example.invalid/compatible-mode/v1/chat/completions',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({ Authorization: 'Bearer private-bailian-key' }),
+      }),
+    );
+  });
+
   it('fails safely for invalid/provider error responses', async () => {
     const invalid = new DeepSeekAiProvider(
       'key',
