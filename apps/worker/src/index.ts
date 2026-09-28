@@ -3,7 +3,7 @@ import pino from 'pino';
 import { createClient } from 'redis';
 import { createDatabase } from '@xiaohai/db';
 import { AiJobProcessor } from './ai-processor.js';
-import { DeepSeekAiProvider, MockAiProvider } from './ai-provider.js';
+import { BailianAiProvider, DeepSeekAiProvider, MockAiProvider } from './ai-provider.js';
 import { BaselineModerationAdapter } from './moderation.js';
 import { ImageJobProcessor } from './image-processor.js';
 import { MockImageProvider } from './image-provider.js';
@@ -24,7 +24,9 @@ await redis.connect();
 const provider =
   config.AI_PROVIDER === 'DEEPSEEK'
     ? new DeepSeekAiProvider(config.DEEPSEEK_API_KEY!, config.DEEPSEEK_BASE_URL)
-    : new MockAiProvider();
+    : config.AI_PROVIDER === 'BAILIAN'
+      ? new BailianAiProvider(config.DASHSCOPE_API_KEY!, config.DASHSCOPE_BASE_URL!)
+      : new MockAiProvider();
 const moderation = new BaselineModerationAdapter(config.APP_ENV !== 'dev');
 const processor = new AiJobProcessor(db, provider, moderation);
 const imageProvider = new MockImageProvider();
