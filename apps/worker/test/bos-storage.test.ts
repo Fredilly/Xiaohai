@@ -26,7 +26,7 @@ describe('BosStorage', () => {
       'xiaohai-assets',
       'picture-books/bailian/id with space.png',
       body,
-      { headers: { 'Content-Type': 'image/png', 'Content-Length': body.byteLength } },
+      { 'Content-Type': 'image/png', 'Content-Length': body.byteLength },
     );
   });
 });
