@@ -29,7 +29,7 @@ type Db = ReturnType<typeof createDatabase>['db'];
 
 export type AnimationAiConfig = {
   enabled: boolean;
-  provider: 'MOCK' | 'DEEPSEEK';
+  provider: 'MOCK' | 'DEEPSEEK' | 'BAILIAN';
   model: string;
   maxAttempts: number;
   timeoutMs: number;
