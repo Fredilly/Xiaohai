@@ -1,16 +1,16 @@
 import baiduSdk from '@baiducloud/sdk';
 
-type BaiduBosClient = InstanceType<typeof baiduSdk.BosClient>;
+// @baiducloud/sdk 1.0.7 declares putObject() without its runtime parameters.
+// Keep the storage boundary explicit while deriving the constructor configuration from the SDK.
+type BosPutObject = (
+  bucket: string,
+  objectKey: string,
+  body: Buffer,
+  options: Record<string, string | number>,
+) => Promise<unknown>;
 
-// @baiducloud/sdk 1.0.7 ships an incomplete putObject(): BosResponse declaration.
-// Refine that official client type to the runtime signature documented and implemented by the SDK.
-type BosPutObjectClient = Pick<BaiduBosClient, 'putObject'> & {
-  putObject(
-    bucket: string,
-    objectKey: string,
-    body: Buffer,
-    options: Record<string, string | number>,
-  ): Promise<unknown>;
+export type BosPutObjectClient = {
+  putObject: BosPutObject;
 };
 
 export type BosStorageOptions = {
@@ -53,8 +53,15 @@ export const createBaiduBosStorage = (options: {
   const client = new baiduSdk.BosClient({
     endpoint: options.endpoint,
     credentials: { ak: options.accessKeyId, sk: options.secretAccessKey },
-  }) as BosPutObjectClient;
-  return new BosStorage({ bucket: options.bucket, publicOrigin: options.publicOrigin, client });
+  });
+  return new BosStorage({
+    bucket: options.bucket,
+    publicOrigin: options.publicOrigin,
+    client: {
+      putObject: (bucket, objectKey, body, requestOptions) =>
+        client.putObject(bucket, objectKey, body, requestOptions),
+    },
+  });
 };
 
 const encodeObjectKey = (objectKey: string): string =>
