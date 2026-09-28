@@ -176,6 +176,13 @@
       "when": 1789976370467,
       "tag": "0024_m21_finance_permissions",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1790582400000,
+      "tag": "0025_bailian_provider",
+      "breakpoints": true
     }
   ]
 }
