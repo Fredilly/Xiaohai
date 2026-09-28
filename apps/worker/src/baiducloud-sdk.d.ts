@@ -10,10 +10,7 @@ declare module '@baiducloud/sdk' {
   };
 
   class BosClient {
-    constructor(options: {
-      endpoint: string;
-      credentials: { ak: string; sk: string };
-    });
+    constructor(options: { endpoint: string; credentials: { ak: string; sk: string } });
 
     putObject(
       bucket: string,
@@ -23,9 +20,7 @@ declare module '@baiducloud/sdk' {
     ): Promise<unknown>;
   }
 
-  const sdk: {
-    BosClient: typeof BosClient;
-  };
+  const sdk: { BosClient: typeof BosClient };
 
   export default sdk;
 }
