@@ -21,7 +21,9 @@
         <view wx:if="{{item.illustrations.length === 0}}" class="image-placeholder">尚未生成插画</view>
         <view wx:else class="revision-list">
           <view wx:for="{{item.illustrations}}" wx:for-item="revision" wx:key="id" class="revision-card">
-            <text>第 {{revision.revisionNumber}} 次插画 · {{revision.status === 'SUCCEEDED' ? '已完成' : revision.status === 'FAILED' ? '生成失败' : revision.status === 'RUNNING' ? '制作中' : '排队中'}}</text>
+            <text>第 {{revision.revisionNumber}} 次插画 · {{revision.status === 'READY' ? '已完成' : revision.status === 'FAILED' ? '生成失败' : revision.status === 'RUNNING' ? '制作中' : '排队中'}}</text>
+
+            <image wx:if="{{revision.status === 'READY' && revision.playbackUrl}}" class="illustration-image" mode="widthFix" src="{{revision.playbackUrl}}" />
 
             <text wx:if="{{revision.errorCode}}" class="error-note">插画生成失败，可重新尝试。</text>
           </view>

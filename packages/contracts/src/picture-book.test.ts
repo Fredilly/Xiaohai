@@ -91,6 +91,7 @@ describe('picture-book contracts', () => {
         ...base,
         status: 'READY',
         mediaAssetId: null,
+        playbackUrl: null,
       }).success,
     ).toBe(false);
 
@@ -99,6 +100,7 @@ describe('picture-book contracts', () => {
         ...base,
         status: 'QUEUED',
         mediaAssetId: null,
+        playbackUrl: null,
       }).success,
     ).toBe(true);
   });

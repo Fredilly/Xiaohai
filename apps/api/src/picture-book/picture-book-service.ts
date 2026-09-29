@@ -3,6 +3,7 @@ import {
   aiJobs,
   aiProjects,
   characterProfiles,
+  mediaAssets,
   pictureBooks,
   workPageIllustrations,
   workPages,
@@ -144,11 +145,14 @@ export class PictureBookService {
   async listIllustrations(consumerUserId: string, pictureBookId: string, pageId: string) {
     await this.requireOwnedPage(consumerUserId, pictureBookId, pageId);
     const rows = await this.db
-      .select()
+      .select({ illustration: workPageIllustrations, media: mediaAssets })
       .from(workPageIllustrations)
+      .leftJoin(mediaAssets, eq(workPageIllustrations.mediaAssetId, mediaAssets.id))
       .where(eq(workPageIllustrations.pageId, pageId))
       .orderBy(asc(workPageIllustrations.revisionNumber));
-    return { illustrations: rows.map((row) => this.viewIllustration(row)) };
+    return {
+      illustrations: rows.map((row) => this.viewIllustration(row.illustration, row.media)),
+    };
   }
 
   private async requireOwnedPage(consumerUserId: string, pictureBookId: string, pageId: string) {
@@ -248,8 +252,9 @@ export class PictureBookService {
       pages.length === 0
         ? []
         : await this.db
-            .select()
+            .select({ illustration: workPageIllustrations, media: mediaAssets })
             .from(workPageIllustrations)
+            .leftJoin(mediaAssets, eq(workPageIllustrations.mediaAssetId, mediaAssets.id))
             .where(
               inArray(
                 workPageIllustrations.pageId,
@@ -261,9 +266,9 @@ export class PictureBookService {
     const byPage = new Map<string, typeof illustrations>();
 
     for (const illustration of illustrations) {
-      const rows = byPage.get(illustration.pageId) ?? [];
+      const rows = byPage.get(illustration.illustration.pageId) ?? [];
       rows.push(illustration);
-      byPage.set(illustration.pageId, rows);
+      byPage.set(illustration.illustration.pageId, rows);
     }
 
     return {
@@ -272,7 +277,9 @@ export class PictureBookService {
       pages: pages.map((row) =>
         this.viewPage(
           row,
-          (byPage.get(row.id) ?? []).map((item) => this.viewIllustration(item)),
+          (byPage.get(row.id) ?? []).map((item) =>
+            this.viewIllustration(item.illustration, item.media),
+          ),
         ),
       ),
     };
@@ -716,7 +723,10 @@ export class PictureBookService {
     };
   }
 
-  private viewIllustration(illustration: typeof workPageIllustrations.$inferSelect) {
+  private viewIllustration(
+    illustration: typeof workPageIllustrations.$inferSelect,
+    media: typeof mediaAssets.$inferSelect | null = null,
+  ) {
     return {
       id: illustration.id,
       pageId: illustration.pageId,
@@ -728,6 +738,8 @@ export class PictureBookService {
       errorCode: illustration.errorCode,
       sourceAiJobId: illustration.sourceAiJobId,
       mediaAssetId: illustration.mediaAssetId,
+      playbackUrl:
+        illustration.status === 'READY' && media?.status === 'READY' ? media.playbackUrl : null,
       createdAt: illustration.createdAt.toISOString(),
       updatedAt: illustration.updatedAt.toISOString(),
     };

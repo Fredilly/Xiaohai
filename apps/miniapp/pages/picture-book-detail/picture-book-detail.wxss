@@ -52,3 +52,9 @@
   background: #f7f9fa;
   border-radius: 13rpx;
 }
+.illustration-image {
+  display: block;
+  width: 100%;
+  margin-top: 16rpx;
+  border-radius: 16rpx;
+}
