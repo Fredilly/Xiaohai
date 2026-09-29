@@ -36,7 +36,7 @@ suite('M5 Commerce PostgreSQL integration', () => {
     await database!.db.delete(bookEditions);
     await database!.db.delete(books);
     await database!.db.delete(referralLinks);
-    await database!.pool.query('TRUNCATE TABLE consumer_users CASCADE');
+    await database!.db.delete(consumerUsers);
   });
   afterAll(async () => database?.pool.end());
   async function consumer() {
