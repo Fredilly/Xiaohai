@@ -59,6 +59,7 @@ export const pictureBookIllustrationSchema = z
     errorCode: z.string().nullable(),
     sourceAiJobId: z.uuid().nullable(),
     mediaAssetId: z.uuid().nullable(),
+    playbackUrl: z.url().nullable(),
     createdAt: z.iso.datetime(),
     updatedAt: z.iso.datetime(),
   })

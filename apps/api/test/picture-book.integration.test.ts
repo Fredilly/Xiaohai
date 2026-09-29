@@ -7,6 +7,7 @@ import {
   characterProfiles,
   consumerUsers,
   createDatabase,
+  mediaAssets,
   pictureBooks,
   workPageIllustrations,
   workPages,
@@ -720,6 +721,42 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
       consistencyKey: character!.consistencyKey,
       visualPrompt: character!.visualPrompt,
       referenceMediaAssetId: null,
+    });
+  });
+
+  it('exposes only a READY media asset playback URL for illustration previews', async () => {
+    const pictureBook = service();
+    const alice = await createUser();
+    const { book } = await createBook(pictureBook, alice);
+    const detail = await applyStoryboard(pictureBook, alice, book.id);
+    const page = detail.pages[0]!;
+    const accepted = await pictureBook.generateIllustration(alice, book.id, page.id);
+    const [asset] = await db
+      .insert(mediaAssets)
+      .values({
+        provider: 'BAIDU_BOS',
+        objectKey: `picture-book-test/${accepted.illustrationId}.png`,
+        playbackUrl: 'https://bos.example.test/picture-book-test/image.png',
+        mimeType: 'image/png',
+        byteSize: 1,
+        status: 'READY',
+      })
+      .returning();
+    await db
+      .update(workPageIllustrations)
+      .set({ status: 'READY', mediaAssetId: asset!.id })
+      .where(eq(workPageIllustrations.id, accepted.illustrationId));
+
+    const refreshed = await pictureBook.getPictureBook(alice, book.id);
+    expect(refreshed.pages[0]!.illustrations[0]).toMatchObject({
+      status: 'READY',
+      mediaAssetId: asset!.id,
+      playbackUrl: 'https://bos.example.test/picture-book-test/image.png',
+    });
+    expect(
+      (await pictureBook.listIllustrations(alice, book.id, page.id)).illustrations[0],
+    ).toMatchObject({
+      playbackUrl: 'https://bos.example.test/picture-book-test/image.png',
     });
   });
 
