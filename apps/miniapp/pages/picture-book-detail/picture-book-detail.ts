@@ -47,7 +47,7 @@ Page({
     this.setData({ busy: true, error: '' });
     try {
       const accepted = await generatePictureBookPlan(this.data.id, operation);
-      for (let index = 0; index < 90; index += 1) {
+      for (let index = 0; index < 150; index += 1) {
         const job = await getPictureBookJob(accepted.jobId);
         if (job.status === 'SUCCEEDED') {
           this.setData({ detail: await applyPictureBookJob(this.data.id, job.jobId) });
@@ -79,7 +79,7 @@ Page({
     try {
       await generateIllustration(this.data.id, pageId, regenerate);
       this.setData({ polling: true });
-      for (let index = 0; index < 90 && this.data.polling; index += 1) {
+      for (let index = 0; index < 150 && this.data.polling; index += 1) {
         const detail = await getPictureBook(this.data.id);
         this.setData({ detail });
         const page = detail.pages.find((item: PictureBookPage) => item.id === pageId);
