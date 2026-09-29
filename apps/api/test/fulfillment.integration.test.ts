@@ -96,7 +96,7 @@ suite('M16 pickup and delivery PostgreSQL integration', () => {
     await database!.db.delete(staffAccounts);
     await database!.db.delete(roles);
     await database!.db.delete(permissions);
-    await database!.db.delete(consumerUsers);
+    await database!.pool.query('TRUNCATE TABLE consumer_users CASCADE');
   }
 
   beforeEach(clean);

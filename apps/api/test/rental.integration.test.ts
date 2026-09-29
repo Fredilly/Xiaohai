@@ -79,7 +79,7 @@ suite('M15 rental PostgreSQL integration', () => {
     await database!.db.delete(stores);
     await database!.db.delete(franchisees);
     await database!.db.delete(regions);
-    await database!.db.delete(consumerUsers);
+    await database!.pool.query('TRUNCATE TABLE consumer_users CASCADE');
     await database!.db.delete(staffAccounts);
     await database!.db.delete(roles);
     await database!.db.delete(permissions);

@@ -449,7 +449,9 @@ export class PictureBookService {
           throw new PictureBookError('INVALID_STATE');
         }
 
-        const parsed = pictureBookCharacterPlanSchema.safeParse(this.parseJson(job.result.text));
+        const parsed = pictureBookCharacterPlanSchema.safeParse(
+          this.normalizeCharacterPlan(this.parseJson(job.result.text)),
+        );
 
         if (!parsed.success) throw new PictureBookError('INVALID_JOB_OUTPUT');
 
@@ -615,6 +617,26 @@ export class PictureBookService {
     }
   }
 
+  private normalizeCharacterPlan(value: unknown): unknown {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+
+    const candidate = value as { characters?: unknown };
+    if (!Array.isArray(candidate.characters)) return value;
+    const characters = candidate.characters as unknown[];
+
+    return {
+      ...candidate,
+      characters: characters.map((character: unknown) => {
+        if (!character || typeof character !== 'object' || Array.isArray(character)) {
+          return character;
+        }
+
+        const item = character as Record<string, unknown>;
+        return item.role === 'AUXILIARY' ? { ...item, role: 'SUPPORTING' } : item;
+      }),
+    };
+  }
+
   private buildPrompt(
     book: typeof pictureBooks.$inferSelect,
     work: typeof works.$inferSelect,
@@ -639,9 +661,11 @@ export class PictureBookService {
       return [
         ...common,
         '请识别绘本中需要保持视觉一致的主要与辅助角色。',
+        'role 只能是 "MAIN" 或 "SUPPORTING"。MAIN 仅用于主要角色；所有配角、辅助角色、次要角色一律使用 SUPPORTING。',
+        '禁止使用 AUXILIARY、SECONDARY 或任何其他 role 值。',
         'visualPrompt 必须描述稳定的外貌、服装、配色和辨识特征，不包含具体场景动作。',
         '输出格式：',
-        '{"characters":[{"name":"角色名","role":"MAIN","description":"角色说明","visualPrompt":"稳定视觉描述"}]}',
+        '{"characters":[{"name":"主角名","role":"MAIN","description":"主要角色说明","visualPrompt":"稳定视觉描述"},{"name":"配角名","role":"SUPPORTING","description":"配角说明","visualPrompt":"稳定视觉描述"}]}',
       ].join('\n\n');
     }
 

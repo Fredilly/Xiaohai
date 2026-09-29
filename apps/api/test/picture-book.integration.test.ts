@@ -535,6 +535,82 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
     }
   });
 
+  it('normalizes AUXILIARY characters, rejects unknown roles, and keeps character apply idempotent', async () => {
+    const pictureBook = service();
+    const alice = await createUser();
+    const { book } = await createBook(pictureBook, alice);
+    const accepted = await pictureBook.generate(alice, book.id, { operation: 'CHARACTERS' });
+
+    await succeed(
+      accepted.jobId,
+      JSON.stringify({
+        characters: [
+          {
+            name: '小狐狸',
+            role: 'MAIN',
+            description: '主要角色',
+            visualPrompt: 'orange fox with green scarf',
+          },
+          {
+            name: '小鸟',
+            role: 'SUPPORTING',
+            description: '配角',
+            visualPrompt: 'small blue bird with red satchel',
+          },
+          {
+            name: '萤火虫',
+            role: 'AUXILIARY',
+            description: '辅助角色',
+            visualPrompt: 'friendly glowing firefly',
+          },
+        ],
+      }),
+    );
+
+    const first = await pictureBook.applyJob(alice, book.id, accepted.jobId);
+    expect(first.characters.map((character) => character.role)).toEqual([
+      'MAIN',
+      'SUPPORTING',
+      'SUPPORTING',
+    ]);
+
+    const second = await pictureBook.applyJob(alice, book.id, accepted.jobId);
+    expect(second.characters.map((character) => character.role)).toEqual([
+      'MAIN',
+      'SUPPORTING',
+      'SUPPORTING',
+    ]);
+    expect(
+      await db.select().from(characterProfiles).where(eq(characterProfiles.pictureBookId, book.id)),
+    ).toHaveLength(3);
+
+    const { book: invalidBook } = await createBook(pictureBook, alice);
+    const invalid = await pictureBook.generate(alice, invalidBook.id, { operation: 'CHARACTERS' });
+    await succeed(
+      invalid.jobId,
+      JSON.stringify({
+        characters: [
+          {
+            name: '未知角色',
+            role: 'SECONDARY',
+            description: '非法角色枚举',
+            visualPrompt: 'unknown role',
+          },
+        ],
+      }),
+    );
+
+    await expect(pictureBook.applyJob(alice, invalidBook.id, invalid.jobId)).rejects.toMatchObject({
+      code: 'INVALID_JOB_OUTPUT',
+    });
+    expect(
+      await db
+        .select()
+        .from(characterProfiles)
+        .where(eq(characterProfiles.pictureBookId, invalidBook.id)),
+    ).toHaveLength(0);
+  });
+
   it('rejects invalid structured AI output without persisting partial storyboard data', async () => {
     const pictureBook = service();
 
