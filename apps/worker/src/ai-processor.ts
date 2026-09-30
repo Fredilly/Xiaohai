@@ -113,6 +113,8 @@ export class AiJobProcessor {
         code,
         { input: inputModeration.status, reasonCodes: inputModeration.reasonCodes },
         true,
+        undefined,
+        error instanceof ProviderError ? error : undefined,
       );
       return claimed.job.id;
     }
@@ -185,6 +187,7 @@ export class AiJobProcessor {
     moderation: ModerationMetadata | null,
     retryable: boolean,
     providerResult?: Awaited<ReturnType<AiProvider['generate']>>,
+    providerFailure?: ProviderError,
   ) {
     await this.db.transaction(async (tx) => {
       const [current] = await tx
@@ -202,9 +205,10 @@ export class AiJobProcessor {
             status: 'CANCELLED',
             errorCode: 'CANCELLED',
             moderation,
-            providerRequestId: providerResult?.providerRequestId,
+            providerRequestId:
+              providerResult?.providerRequestId ?? providerFailure?.providerRequestId,
             usage: providerResult?.usage,
-            costMetadata: providerResult?.costMetadata,
+            costMetadata: providerResult?.costMetadata ?? providerFailure?.failureMetadata,
             finishedAt: new Date(),
           })
           .where(eq(aiJobAttempts.id, claimed.attempt.id));
@@ -216,9 +220,10 @@ export class AiJobProcessor {
           status: code === 'PROVIDER_TIMEOUT' ? 'TIMED_OUT' : 'FAILED',
           errorCode: code,
           moderation,
-          providerRequestId: providerResult?.providerRequestId,
+          providerRequestId:
+            providerResult?.providerRequestId ?? providerFailure?.providerRequestId,
           usage: providerResult?.usage,
-          costMetadata: providerResult?.costMetadata,
+          costMetadata: providerResult?.costMetadata ?? providerFailure?.failureMetadata,
           finishedAt: new Date(),
         })
         .where(eq(aiJobAttempts.id, claimed.attempt.id));
@@ -232,7 +237,7 @@ export class AiJobProcessor {
           lastErrorCode: code,
           moderation,
           usage: providerResult?.usage,
-          costMetadata: providerResult?.costMetadata,
+          costMetadata: providerResult?.costMetadata ?? providerFailure?.failureMetadata,
           completedAt: terminal ? new Date() : null,
           updatedAt: new Date(),
         })
