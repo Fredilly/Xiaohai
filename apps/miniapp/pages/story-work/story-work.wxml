@@ -195,6 +195,12 @@
       </view>
 
       <text wx:if="{{draftStatus}}" class="save-note">{{draftStatus}}</text>
+      <button
+        wx:if="{{draftSaveFailed}}"
+        class="secondary-btn compact retry-save-btn"
+        disabled="{{savingDraft}}"
+        bindtap="retrySaveDraft"
+      >重试保存</button>
     </view>
   </block>
 </view>

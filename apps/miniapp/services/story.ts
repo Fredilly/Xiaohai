@@ -15,9 +15,20 @@ import { getApiBaseUrl } from '../config';
 const token = consumerToken;
 
 export class StoryApiError extends Error {
-  constructor(readonly status: number) {
+  constructor(
+    readonly status: number,
+    readonly code: string | null = null,
+  ) {
     super(`Story API ${status}`);
   }
+}
+
+function responseErrorCode(data: unknown): string | null {
+  if (!data || typeof data !== 'object') return null;
+  const error = (data as { error?: unknown }).error;
+  if (!error || typeof error !== 'object') return null;
+  const code = (error as { code?: unknown }).code;
+  return typeof code === 'string' ? code : null;
 }
 
 async function request<T>(
@@ -42,7 +53,7 @@ async function request<T>(
 
   if (response.statusCode === 401) clearConsumerSession();
   if (response.statusCode < 200 || response.statusCode >= 300) {
-    throw new StoryApiError(response.statusCode);
+    throw new StoryApiError(response.statusCode, responseErrorCode(response.data));
   }
 
   return response.data as T;

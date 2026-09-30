@@ -48,6 +48,7 @@ Page({
     loading: true,
     generating: false,
     savingDraft: false,
+    draftSaveFailed: false,
     confirming: false,
     statusText: '',
     draftStatus: '',
@@ -128,7 +129,11 @@ Page({
     const kind = String(event.currentTarget.dataset.kind || '') as StoryContentKind;
     if (!['OUTLINE', 'BODY'].includes(kind)) return;
     const field = kind === 'OUTLINE' ? 'outlineContent' : 'bodyContent';
-    this.setData({ [field]: String(event.detail.value || ''), draftStatus: '正在自动保存…' });
+    this.setData({
+      [field]: String(event.detail.value || ''),
+      draftStatus: '正在自动保存…',
+      draftSaveFailed: false,
+    });
     if (draftSaveTimer) clearTimeout(draftSaveTimer);
     draftSaveTimer = setTimeout(() => void this.saveDraft(kind), 700);
   },
@@ -139,7 +144,7 @@ Page({
     const content = (kind === 'OUTLINE' ? this.data.outlineContent : this.data.bodyContent).trim();
     if (!draft || !content || content === lastSavedContent[kind]) return draft;
 
-    this.setData({ savingDraft: true, draftStatus: '正在自动保存…' });
+    this.setData({ savingDraft: true, draftStatus: '正在自动保存…', draftSaveFailed: false });
     try {
       const updated = await updateStoryDraft(this.data.workId, kind, content, draft.draftRevision);
       lastSavedContent[kind] = updated.content;
@@ -150,19 +155,37 @@ Page({
         [kind === 'OUTLINE' ? 'outlineDraft' : 'bodyDraft']: updated,
         ...(hasNewerInput ? {} : { [contentField]: updated.content }),
         draftStatus: hasNewerInput ? '正在自动保存…' : '草稿已自动保存',
+        draftSaveFailed: false,
       });
       if (hasNewerInput) {
         if (draftSaveTimer) clearTimeout(draftSaveTimer);
         draftSaveTimer = setTimeout(() => void this.saveDraft(kind), 100);
       }
       return updated;
-    } catch {
-      this.setData({ draftStatus: '', errorMessage: '草稿保存冲突，正在重新加载最新内容' });
-      await this.load();
+    } catch (error) {
+      if (error instanceof StoryApiError && error.code === 'REVISION_CONFLICT') {
+        this.setData({
+          draftStatus: '',
+          draftSaveFailed: false,
+          errorMessage: '草稿已在其他设备更新，正在同步最新内容',
+        });
+        await this.load();
+      } else {
+        this.setData({
+          draftStatus: '自动保存失败，本地内容仍保留',
+          draftSaveFailed: true,
+          errorMessage: '草稿暂未保存，请检查网络后重试',
+        });
+      }
       return null;
     } finally {
       this.setData({ savingDraft: false });
     }
+  },
+
+  retrySaveDraft() {
+    if (this.data.savingDraft || !isContentKind(this.data.activeTab)) return;
+    void this.saveDraft(this.data.activeTab);
   },
 
   async generate(event: WechatMiniprogram.TouchEvent) {
