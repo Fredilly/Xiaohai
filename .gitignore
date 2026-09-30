@@ -8,6 +8,7 @@ test-results/
 
 .env
 .env.*
+benchmarks/story/raw/*.json
 !.env.example
 !.env.*.example
 
