@@ -45,7 +45,7 @@ const imageProvider =
       )
     : new MockImageProvider();
 const imageProcessor = config.PICTURE_BOOK_IMAGE_ENABLED
-  ? new ImageJobProcessor(db, imageProvider, config.PICTURE_BOOK_IMAGE_TIMEOUT_MS)
+  ? new ImageJobProcessor(db, imageProvider, config.PICTURE_BOOK_IMAGE_TIMEOUT_MS, logger)
   : null;
 
 const videoProvider = new MockVideoProvider();

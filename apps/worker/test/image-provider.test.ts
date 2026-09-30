@@ -130,8 +130,137 @@ describe('BailianImageProvider', () => {
         storage,
         fetcher,
       ).generate(input),
-    ).rejects.toEqual(new ImageProviderError('IMAGE_PROVIDER_UNAVAILABLE'));
+    ).rejects.toMatchObject({
+      code: 'IMAGE_PROVIDER_UNAVAILABLE',
+      details: { stage: 'VALIDATION' },
+    });
     expect(fetcher).toHaveBeenCalledOnce();
     expect(putObject).not.toHaveBeenCalled();
+  });
+
+  it.each([400, 403])('preserves safe Bailian error metadata for HTTP %s', async (status) => {
+    const storage = new BosStorage({
+      bucket: 'xiaohai-assets',
+      publicOrigin: 'https://assets.example.com',
+      client: { putObject: vi.fn().mockResolvedValue({}) },
+    });
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          request_id: 'body-request-id',
+          error: {
+            code: 'InvalidApiKey',
+            message: `Bearer secret-token api_key=private-key ${'x'.repeat(300)}\nnext`,
+          },
+        }),
+        { status, headers: { 'x-request-id': 'header-request-id' } },
+      ),
+    );
+
+    let caught: unknown;
+    try {
+      await new BailianImageProvider(
+        'secret',
+        'https://api.example.com',
+        storage,
+        fetcher,
+      ).generate(input);
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(ImageProviderError);
+    const error = caught as ImageProviderError;
+    expect(error).toMatchObject({
+      code: 'IMAGE_PROVIDER_UNAVAILABLE',
+      details: {
+        stage: 'BAILIAN_REQUEST',
+        httpStatus: status,
+        providerErrorCode: 'InvalidApiKey',
+        providerRequestId: 'header-request-id',
+      },
+    });
+    expect(error.details.safeMessage).toHaveLength(256);
+    expect(error.details.safeMessage).not.toContain('secret-token');
+    expect(error.details.safeMessage).not.toContain('private-key');
+    expect(error.details.safeMessage).not.toContain('\n');
+  });
+
+  it('marks temporary image HTTP failures separately', async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ data: [{ url: 'https://x.aliyuncs.com/a' }] })),
+      )
+      .mockResolvedValueOnce(new Response('bad', { status: 502 }));
+    const storage = new BosStorage({
+      bucket: 'xiaohai-assets',
+      publicOrigin: 'https://assets.example.com',
+      client: { putObject: vi.fn().mockResolvedValue({}) },
+    });
+    await expect(
+      new BailianImageProvider('secret', 'https://api.example.com', storage, fetcher).generate(
+        input,
+      ),
+    ).rejects.toMatchObject({ details: { stage: 'TEMPORARY_IMAGE_DOWNLOAD', httpStatus: 502 } });
+  });
+
+  it('marks MIME validation failures separately', async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ data: [{ url: 'https://x.aliyuncs.com/a' }] })),
+      )
+      .mockResolvedValueOnce(
+        new Response('not png', { status: 200, headers: { 'content-type': 'text/plain' } }),
+      );
+    const storage = new BosStorage({
+      bucket: 'xiaohai-assets',
+      publicOrigin: 'https://assets.example.com',
+      client: { putObject: vi.fn().mockResolvedValue({}) },
+    });
+    await expect(
+      new BailianImageProvider('secret', 'https://api.example.com', storage, fetcher).generate(
+        input,
+      ),
+    ).rejects.toMatchObject({ details: { stage: 'VALIDATION' } });
+  });
+
+  it('marks BOS failures separately and preserves provider timeout semantics', async () => {
+    const putObject = vi.fn().mockRejectedValue(new Error('BOS failed with sk=secret'));
+    const storage = new BosStorage({
+      bucket: 'xiaohai-assets',
+      publicOrigin: 'https://assets.example.com',
+      client: { putObject },
+    });
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ data: [{ url: 'https://x.aliyuncs.com/a' }] })),
+      )
+      .mockResolvedValueOnce(
+        new Response('png', { status: 200, headers: { 'content-type': 'image/png' } }),
+      );
+    await expect(
+      new BailianImageProvider('secret', 'https://api.example.com', storage, fetcher).generate(
+        input,
+      ),
+    ).rejects.toMatchObject({ details: { stage: 'BOS_UPLOAD' } });
+
+    const timeoutFetcher = vi
+      .fn<typeof fetch>()
+      .mockRejectedValue(new DOMException('timeout', 'TimeoutError'));
+    const controller = new AbortController();
+    controller.abort();
+    await expect(
+      new BailianImageProvider(
+        'secret',
+        'https://api.example.com',
+        storage,
+        timeoutFetcher,
+      ).generate({
+        ...input,
+        signal: controller.signal,
+      }),
+    ).rejects.toMatchObject({ code: 'IMAGE_PROVIDER_TIMEOUT' });
   });
 });
