@@ -402,6 +402,17 @@ suite('M9 Story AI PostgreSQL integration and ownership', () => {
     expect(await db.select().from(aiJobs)).toHaveLength(0);
   });
 
+  it('normalizes the QWEN configuration alias to the existing BAILIAN job provider', async () => {
+    const qwenStory = new StoryService(db, queue, { ...config, provider: 'QWEN' });
+    const alice = await createUser();
+    const work = await createWork(qwenStory, alice);
+
+    const accepted = await qwenStory.generate(alice, work.id, { operation: 'OUTLINE' });
+    const [job] = await db.select().from(aiJobs).where(eq(aiJobs.id, accepted.jobId));
+
+    expect(job).toMatchObject({ provider: 'BAILIAN', model: config.model });
+  });
+
   it('does not save unfinished or failed jobs as work versions', async () => {
     const story = service();
     const alice = await createUser();

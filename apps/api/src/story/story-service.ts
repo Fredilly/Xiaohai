@@ -11,7 +11,7 @@ type Db = ReturnType<typeof createDatabase>['db'];
 
 export type StoryAiConfig = {
   enabled: boolean;
-  provider: 'MOCK' | 'DEEPSEEK' | 'BAILIAN';
+  provider: 'MOCK' | 'DEEPSEEK' | 'BAILIAN' | 'QWEN';
   model: string;
   maxAttempts: number;
   timeoutMs: number;
@@ -145,7 +145,10 @@ export class StoryService {
       .values({
         projectId: work.aiProjectId,
         jobType: this.jobType(input.operation),
-        provider: this.config.provider,
+        // QWEN is the public configuration name for the existing DashScope/Bailian
+        // adapter. Persist the canonical provider name so existing job constraints
+        // and worker claim semantics remain unchanged.
+        provider: this.config.provider === 'QWEN' ? 'BAILIAN' : this.config.provider,
         model: this.config.model,
         input: {
           prompt: this.buildPrompt(work, input, source),

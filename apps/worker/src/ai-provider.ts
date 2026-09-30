@@ -15,9 +15,17 @@ export interface AiProvider {
   readonly name: 'MOCK' | 'DEEPSEEK' | 'BAILIAN';
   generate(input: AiProviderInput): Promise<AiProviderResult>;
 }
+export type ProviderFailureMetadata = {
+  source: string;
+  latencyMs: number;
+  failureType: 'AUTHENTICATION' | 'RATE_LIMIT' | 'SERVER' | 'NETWORK' | 'TIMEOUT';
+  httpStatus?: number;
+};
 export class ProviderError extends Error {
   constructor(
     readonly code: 'PROVIDER_TIMEOUT' | 'PROVIDER_UNAVAILABLE' | 'PROVIDER_RESPONSE_INVALID',
+    readonly providerRequestId?: string,
+    readonly failureMetadata?: ProviderFailureMetadata,
   ) {
     super(code);
   }
@@ -131,8 +139,10 @@ export class BailianAiProvider implements AiProvider {
     private readonly apiKey: string,
     private readonly baseUrl: string,
     private readonly http: typeof fetch = fetch,
+    private readonly metadataSource = 'BAILIAN_USAGE_ONLY',
   ) {}
   async generate(input: AiProviderInput): Promise<AiProviderResult> {
+    const startedAt = Date.now();
     try {
       const response = await this.http(`${this.baseUrl.replace(/\/$/, '')}/chat/completions`, {
         method: 'POST',
@@ -145,25 +155,70 @@ export class BailianAiProvider implements AiProvider {
           stream: false,
         }),
       });
-      if (!response.ok) throw new ProviderError('PROVIDER_UNAVAILABLE');
+      const providerRequestId = response.headers.get('x-request-id') ?? undefined;
+      if (!response.ok) {
+        throw new ProviderError('PROVIDER_UNAVAILABLE', providerRequestId, {
+          source: this.metadataSource,
+          latencyMs: Date.now() - startedAt,
+          failureType:
+            response.status === 401 || response.status === 403
+              ? 'AUTHENTICATION'
+              : response.status === 429
+                ? 'RATE_LIMIT'
+                : 'SERVER',
+          httpStatus: response.status,
+        });
+      }
       const parsed = responseSchema.safeParse(await response.json());
-      if (!parsed.success) throw new ProviderError('PROVIDER_RESPONSE_INVALID');
+      if (!parsed.success) {
+        throw new ProviderError('PROVIDER_RESPONSE_INVALID', providerRequestId, {
+          source: this.metadataSource,
+          latencyMs: Date.now() - startedAt,
+          failureType: 'SERVER',
+          httpStatus: response.status,
+        });
+      }
       return {
         text: parsed.data.choices[0]!.message.content,
         assetReferences: [],
-        providerRequestId: response.headers.get('x-request-id') ?? parsed.data.id,
+        providerRequestId: providerRequestId ?? parsed.data.id,
         usage: {
           inputTokens: parsed.data.usage?.prompt_tokens,
           outputTokens: parsed.data.usage?.completion_tokens,
           totalTokens: parsed.data.usage?.total_tokens,
         },
-        costMetadata: { source: 'BAILIAN_USAGE_ONLY', amountMinor: null, currency: null },
+        costMetadata: {
+          source: this.metadataSource,
+          amountMinor: null,
+          currency: null,
+          latencyMs: Date.now() - startedAt,
+        },
       };
     } catch (error) {
       if (error instanceof ProviderError) throw error;
-      if (input.signal.aborted) throw new ProviderError('PROVIDER_TIMEOUT');
-      throw new ProviderError('PROVIDER_UNAVAILABLE');
+      if (input.signal.aborted)
+        throw new ProviderError('PROVIDER_TIMEOUT', undefined, {
+          source: this.metadataSource,
+          latencyMs: Date.now() - startedAt,
+          failureType: 'TIMEOUT',
+        });
+      throw new ProviderError('PROVIDER_UNAVAILABLE', undefined, {
+        source: this.metadataSource,
+        latencyMs: Date.now() - startedAt,
+        failureType: 'NETWORK',
+      });
     }
+  }
+}
+
+/**
+ * Issue #80's QWEN configuration name uses the same DashScope
+ * OpenAI-compatible transport already implemented for Bailian. Keep one
+ * adapter implementation and one canonical database provider value.
+ */
+export class QwenAiProvider extends BailianAiProvider {
+  constructor(apiKey: string, baseUrl: string, http: typeof fetch = fetch) {
+    super(apiKey, baseUrl, http, 'QWEN_USAGE_ONLY');
   }
 }
 

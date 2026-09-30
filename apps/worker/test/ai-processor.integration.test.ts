@@ -164,6 +164,41 @@ suite('M8 worker PostgreSQL integration', () => {
     expect(attempt).toMatchObject({ status: 'TIMED_OUT', errorCode: 'PROVIDER_TIMEOUT' });
   });
 
+  it('persists safe provider failure metadata without response content', async () => {
+    const job = await queued(1);
+    const failed: AiProvider = {
+      name: 'MOCK',
+      generate: () =>
+        Promise.reject(
+          new ProviderError('PROVIDER_UNAVAILABLE', 'provider-request-safe', {
+            source: 'QWEN_USAGE_ONLY',
+            latencyMs: 42,
+            failureType: 'AUTHENTICATION',
+            httpStatus: 401,
+          }),
+        ),
+    };
+
+    await new AiJobProcessor(db, failed, new BaselineModerationAdapter()).processOne();
+
+    const [saved] = await db.select().from(aiJobs).where(eq(aiJobs.id, job.id));
+    const [attempt] = await db.select().from(aiJobAttempts).where(eq(aiJobAttempts.jobId, job.id));
+    expect(saved).toMatchObject({
+      status: 'FAILED',
+      lastErrorCode: 'PROVIDER_UNAVAILABLE',
+      costMetadata: {
+        source: 'QWEN_USAGE_ONLY',
+        latencyMs: 42,
+        failureType: 'AUTHENTICATION',
+        httpStatus: 401,
+      },
+    });
+    expect(attempt).toMatchObject({
+      providerRequestId: 'provider-request-safe',
+      errorCode: 'PROVIDER_UNAVAILABLE',
+    });
+  });
+
   it('recovers an expired worker lease and closes the abandoned attempt', async () => {
     const job = await queued(2);
     await db

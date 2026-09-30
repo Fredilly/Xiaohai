@@ -39,4 +39,26 @@ describe('worker foundation', () => {
       }).PICTURE_BOOK_IMAGE_PROVIDER,
     ).toBe('BAILIAN');
   });
+
+  it('loads Qwen through the DashScope key and configured OpenAI-compatible endpoint', () => {
+    const base = {
+      APP_ENV: 'dev',
+      DATABASE_URL: 'postgresql://u:p@localhost/db',
+      REDIS_URL: 'redis://localhost:6379',
+      AI_PROVIDER: 'QWEN',
+    };
+
+    expect(() => loadWorkerConfig(base)).toThrow('Qwen API key is required');
+
+    expect(
+      loadWorkerConfig({
+        ...base,
+        DASHSCOPE_API_KEY: 'test-only',
+        QWEN_BASE_URL: 'https://dashscope.example.com/compatible-mode/v1',
+      }),
+    ).toMatchObject({
+      AI_PROVIDER: 'QWEN',
+      QWEN_BASE_URL: 'https://dashscope.example.com/compatible-mode/v1',
+    });
+  });
 });
