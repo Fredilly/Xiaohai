@@ -4,12 +4,14 @@ import type { ImageProvider } from './image-provider.js';
 import { ImageProviderError } from './image-provider.js';
 
 type Db = ReturnType<typeof createDatabase>['db'];
+type ImageLogger = { error: (fields: Record<string, unknown>, message: string) => void };
 
 export class ImageJobProcessor {
   constructor(
     private readonly db: Db,
     private readonly provider: ImageProvider,
     private readonly timeoutMs: number,
+    private readonly logger?: ImageLogger,
   ) {}
 
   async processOne(): Promise<string | null> {
@@ -49,44 +51,50 @@ export class ImageJobProcessor {
         consistency: claimed.consistency,
         signal: AbortSignal.timeout(this.timeoutMs),
       });
-      await this.db.transaction(async (tx) => {
-        const [current] = await tx
-          .select({ status: workPageIllustrations.status })
-          .from(workPageIllustrations)
-          .where(eq(workPageIllustrations.id, claimed.id))
-          .for('update');
-        if (current?.status !== 'RUNNING') return;
-        const [asset] = await tx
-          .insert(mediaAssets)
-          .values({
-            provider: result.assetProvider,
-            objectKey: result.objectKey,
-            playbackUrl: result.playbackUrl,
-            mimeType: result.mimeType,
-            byteSize: result.byteSize,
-            status: 'READY',
-          })
-          .onConflictDoUpdate({
-            target: [mediaAssets.provider, mediaAssets.objectKey],
-            set: {
+      try {
+        await this.db.transaction(async (tx) => {
+          const [current] = await tx
+            .select({ status: workPageIllustrations.status })
+            .from(workPageIllustrations)
+            .where(eq(workPageIllustrations.id, claimed.id))
+            .for('update');
+          if (current?.status !== 'RUNNING') return;
+          const [asset] = await tx
+            .insert(mediaAssets)
+            .values({
+              provider: result.assetProvider,
+              objectKey: result.objectKey,
               playbackUrl: result.playbackUrl,
               mimeType: result.mimeType,
               byteSize: result.byteSize,
               status: 'READY',
+            })
+            .onConflictDoUpdate({
+              target: [mediaAssets.provider, mediaAssets.objectKey],
+              set: {
+                playbackUrl: result.playbackUrl,
+                mimeType: result.mimeType,
+                byteSize: result.byteSize,
+                status: 'READY',
+                updatedAt: new Date(),
+              },
+            })
+            .returning({ id: mediaAssets.id });
+          await tx
+            .update(workPageIllustrations)
+            .set({
+              status: 'READY',
+              mediaAssetId: asset!.id,
+              errorCode: null,
               updatedAt: new Date(),
-            },
-          })
-          .returning({ id: mediaAssets.id });
-        await tx
-          .update(workPageIllustrations)
-          .set({ status: 'READY', mediaAssetId: asset!.id, errorCode: null, updatedAt: new Date() })
-          .where(
-            and(
-              eq(workPageIllustrations.id, claimed.id),
-              eq(workPageIllustrations.status, 'RUNNING'),
-            ),
-          );
-        await tx.execute(sql`
+            })
+            .where(
+              and(
+                eq(workPageIllustrations.id, claimed.id),
+                eq(workPageIllustrations.status, 'RUNNING'),
+              ),
+            );
+          await tx.execute(sql`
           update picture_books pb
           set status = 'READY', updated_at = now()
           where pb.id = (
@@ -101,7 +109,13 @@ export class ImageJobProcessor {
               )
           )
         `);
-      });
+        });
+      } catch (error) {
+        throw new ImageProviderError('IMAGE_PROVIDER_UNAVAILABLE', {
+          stage: 'DB_READY_WRITEBACK',
+          safeMessage: sanitizeErrorMessage(error),
+        });
+      }
     } catch (error) {
       const code =
         error instanceof ImageProviderError
@@ -109,6 +123,22 @@ export class ImageJobProcessor {
           : error instanceof DOMException && error.name === 'TimeoutError'
             ? 'IMAGE_PROVIDER_TIMEOUT'
             : 'IMAGE_PROVIDER_UNAVAILABLE';
+      const details = error instanceof ImageProviderError ? error.details : {};
+      this.logger?.error(
+        {
+          illustrationId: claimed.id,
+          pageId: claimed.pageId,
+          provider: claimed.provider,
+          model: claimed.model,
+          stage: details.stage ?? 'BAILIAN_REQUEST',
+          errorCode: code,
+          httpStatus: details.httpStatus,
+          providerErrorCode: details.providerErrorCode,
+          safeMessage: details.safeMessage,
+          providerRequestId: details.providerRequestId,
+        },
+        'Picture book image generation failed',
+      );
       await this.db
         .update(workPageIllustrations)
         .set({ status: 'FAILED', errorCode: code, updatedAt: new Date() })
@@ -122,3 +152,15 @@ export class ImageJobProcessor {
     return claimed.id;
   }
 }
+
+const sanitizeErrorMessage = (error: unknown): string | undefined => {
+  if (!(error instanceof Error)) return undefined;
+  return error.message
+    .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, 'Bearer [REDACTED]')
+    .replace(
+      /((?:api[_-]?key|access[_-]?key|secret|ak|sk|signature|token)["'=:\s]+)[^\s,;]+/gi,
+      '$1[REDACTED]',
+    )
+    .replace(/[\r\n]+/g, ' ')
+    .slice(0, 256);
+};

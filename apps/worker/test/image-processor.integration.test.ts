@@ -14,7 +14,11 @@ import {
   workVersions,
 } from '@xiaohai/db';
 import { ImageJobProcessor } from '../src/image-processor.js';
-import { MockImageProvider, type ImageProvider } from '../src/image-provider.js';
+import {
+  ImageProviderError,
+  MockImageProvider,
+  type ImageProvider,
+} from '../src/image-provider.js';
 import { recoverStaleMedia } from '../src/stale-media.js';
 
 const database = process.env.DATABASE_URL ? createDatabase(process.env) : null;
@@ -187,6 +191,86 @@ suite('M10 image worker PostgreSQL integration', () => {
     expect(saved).toMatchObject({ status: 'FAILED', errorCode: 'IMAGE_PROVIDER_UNAVAILABLE' });
     expect(saved!.mediaAssetId).toBeNull();
     expect(await db.select().from(mediaAssets)).toHaveLength(0);
+  });
+
+  it('logs Bailian request timeout with its request stage', async () => {
+    const fixture = await queued('BAILIAN');
+    const errorLogger = vi.fn();
+    const provider: ImageProvider = {
+      name: 'BAILIAN',
+      generate: () =>
+        Promise.reject(
+          new ImageProviderError('IMAGE_PROVIDER_TIMEOUT', { stage: 'BAILIAN_REQUEST' }),
+        ),
+    };
+    await new ImageJobProcessor(db, provider, 5_000, { error: errorLogger }).processOne();
+    expect(errorLogger).toHaveBeenCalledWith(
+      expect.objectContaining({
+        illustrationId: fixture.illustration.id,
+        stage: 'BAILIAN_REQUEST',
+        errorCode: 'IMAGE_PROVIDER_TIMEOUT',
+      }),
+      expect.any(String),
+    );
+    const [saved] = await db
+      .select()
+      .from(workPageIllustrations)
+      .where(eq(workPageIllustrations.id, fixture.illustration.id));
+    expect(saved).toMatchObject({ status: 'FAILED', errorCode: 'IMAGE_PROVIDER_TIMEOUT' });
+  });
+
+  it('logs temporary download timeout without exposing prompt or secret', async () => {
+    await queued('BAILIAN');
+    const errorLogger = vi.fn();
+    const provider: ImageProvider = {
+      name: 'BAILIAN',
+      generate: () =>
+        Promise.reject(
+          new ImageProviderError('IMAGE_PROVIDER_TIMEOUT', {
+            stage: 'TEMPORARY_IMAGE_DOWNLOAD',
+            safeMessage: undefined,
+          }),
+        ),
+    };
+    await new ImageJobProcessor(db, provider, 5_000, { error: errorLogger }).processOne();
+    const fields = (errorLogger.mock.calls as unknown[][])[0]?.[0];
+    expect(fields).toMatchObject({
+      stage: 'TEMPORARY_IMAGE_DOWNLOAD',
+      errorCode: 'IMAGE_PROVIDER_TIMEOUT',
+    });
+    expect(JSON.stringify(fields)).not.toContain('fox in a forest');
+    expect(JSON.stringify(fields)).not.toContain('secret');
+  });
+
+  it('logs READY writeback failures separately and leaves the revision failed', async () => {
+    const fixture = await queued('BAILIAN');
+    const errorLogger = vi.fn();
+    const provider: ImageProvider = {
+      name: 'BAILIAN',
+      generate: () =>
+        Promise.resolve({
+          assetProvider: 'BAIDU_BOS',
+          objectKey: `picture-books/bailian/${fixture.illustration.id}.png`,
+          playbackUrl: 'https://assets.example.com/image.png',
+          mimeType: 'image/png',
+          byteSize: -1,
+          providerRequestId: 'req-1',
+        }),
+    };
+    await new ImageJobProcessor(db, provider, 5_000, { error: errorLogger }).processOne();
+    expect(errorLogger).toHaveBeenCalledWith(
+      expect.objectContaining({
+        stage: 'DB_READY_WRITEBACK',
+        errorCode: 'IMAGE_PROVIDER_UNAVAILABLE',
+      }),
+      expect.any(String),
+    );
+    const [saved] = await db
+      .select()
+      .from(workPageIllustrations)
+      .where(eq(workPageIllustrations.id, fixture.illustration.id));
+    expect(saved).toMatchObject({ status: 'FAILED', errorCode: 'IMAGE_PROVIDER_UNAVAILABLE' });
+    expect(saved!.mediaAssetId).toBeNull();
   });
 
   it('publishes a Bailian revision only with its permanent BOS media asset', async () => {

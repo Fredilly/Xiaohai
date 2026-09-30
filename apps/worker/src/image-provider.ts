@@ -30,8 +30,24 @@ export interface ImageProvider {
   generate(input: ImageGenerationInput): Promise<ImageGenerationResult>;
 }
 
+export type ImageProviderStage =
+  | 'BAILIAN_REQUEST'
+  | 'TEMPORARY_IMAGE_DOWNLOAD'
+  | 'VALIDATION'
+  | 'BOS_UPLOAD'
+  | 'DB_READY_WRITEBACK';
+
 export class ImageProviderError extends Error {
-  constructor(readonly code: 'IMAGE_PROVIDER_UNAVAILABLE' | 'IMAGE_PROVIDER_TIMEOUT') {
+  constructor(
+    readonly code: 'IMAGE_PROVIDER_UNAVAILABLE' | 'IMAGE_PROVIDER_TIMEOUT',
+    readonly details: {
+      stage?: ImageProviderStage;
+      httpStatus?: number;
+      providerErrorCode?: string;
+      safeMessage?: string;
+      providerRequestId?: string;
+    } = {},
+  ) {
     super(code);
   }
 }
@@ -68,6 +84,16 @@ const bailianImageResponseSchema = z.object({
   data: z.array(z.object({ url: z.url().startsWith('https://') })).min(1),
 });
 
+const bailianErrorResponseSchema = z.object({
+  request_id: z.string().min(1).optional(),
+  error: z
+    .object({
+      code: z.string().optional(),
+      message: z.string().optional(),
+    })
+    .optional(),
+});
+
 export class BailianImageProvider implements ImageProvider {
   readonly name = 'BAILIAN' as const;
 
@@ -81,41 +107,88 @@ export class BailianImageProvider implements ImageProvider {
 
   async generate(input: ImageGenerationInput): Promise<ImageGenerationResult> {
     try {
-      const response = await this.fetcher(`${this.baseUrl.replace(/\/$/, '')}/images/generations`, {
-        method: 'POST',
-        headers: {
-          authorization: `Bearer ${this.apiKey}`,
-          'content-type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: input.model,
-          prompt: buildPrompt(input.prompt, input.consistency),
-          n: 1,
-          size: '1024x1024',
-        }),
-        signal: input.signal,
-      });
-      if (!response.ok) throw new ImageProviderError('IMAGE_PROVIDER_UNAVAILABLE');
-      const parsed = bailianImageResponseSchema.safeParse(await response.json());
-      if (!parsed.success) throw new ImageProviderError('IMAGE_PROVIDER_UNAVAILABLE');
+      let response: Response;
+      try {
+        response = await this.fetcher(`${this.baseUrl.replace(/\/$/, '')}/images/generations`, {
+          method: 'POST',
+          headers: {
+            authorization: `Bearer ${this.apiKey}`,
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: input.model,
+            prompt: buildPrompt(input.prompt, input.consistency),
+            n: 1,
+            size: '1024x1024',
+          }),
+          signal: input.signal,
+        });
+      } catch {
+        if (input.signal.aborted)
+          throw new ImageProviderError('IMAGE_PROVIDER_TIMEOUT', { stage: 'BAILIAN_REQUEST' });
+        throw new ImageProviderError('IMAGE_PROVIDER_UNAVAILABLE', {
+          stage: 'BAILIAN_REQUEST',
+          safeMessage: undefined,
+        });
+      }
+      if (!response.ok) {
+        const requestId = response.headers.get('x-request-id') ?? undefined;
+        const errorBody = await readJson(response);
+        const error = bailianErrorResponseSchema.safeParse(errorBody);
+        throw new ImageProviderError('IMAGE_PROVIDER_UNAVAILABLE', {
+          stage: 'BAILIAN_REQUEST',
+          httpStatus: response.status,
+          providerErrorCode: error.success ? error.data.error?.code : undefined,
+          safeMessage: undefined,
+          providerRequestId: requestId ?? (error.success ? error.data.request_id : undefined),
+        });
+      }
+      const parsedBody = await readJson(response);
+      const parsed = bailianImageResponseSchema.safeParse(parsedBody);
+      if (!parsed.success)
+        throw new ImageProviderError('IMAGE_PROVIDER_UNAVAILABLE', { stage: 'VALIDATION' });
 
       const temporaryUrl = parsed.data.data[0]!.url;
-      assertTrustedTemporaryUrl(temporaryUrl);
-      const imageResponse = await this.fetcher(temporaryUrl, {
-        signal: input.signal,
-        redirect: 'error',
-      });
-      if (!imageResponse.ok) throw new ImageProviderError('IMAGE_PROVIDER_UNAVAILABLE');
-      const mimeType = imageResponse.headers.get('content-type')?.split(';')[0]?.trim();
-      if (mimeType !== 'image/png') throw new ImageProviderError('IMAGE_PROVIDER_UNAVAILABLE');
-      const contentLength = Number(imageResponse.headers.get('content-length'));
-      if (Number.isFinite(contentLength) && contentLength > this.maxDownloadBytes)
-        throw new ImageProviderError('IMAGE_PROVIDER_UNAVAILABLE');
-      const body = await readBoundedBody(imageResponse, this.maxDownloadBytes);
-      if (body.byteLength === 0) throw new ImageProviderError('IMAGE_PROVIDER_UNAVAILABLE');
+      let body: Buffer;
+      let mimeType: string;
+      try {
+        assertTrustedTemporaryUrl(temporaryUrl);
+        const imageResponse = await this.fetcher(temporaryUrl, {
+          signal: input.signal,
+          redirect: 'error',
+        });
+        if (!imageResponse.ok)
+          throw new ImageProviderError('IMAGE_PROVIDER_UNAVAILABLE', {
+            stage: 'TEMPORARY_IMAGE_DOWNLOAD',
+            httpStatus: imageResponse.status,
+          });
+        mimeType = imageResponse.headers.get('content-type')?.split(';')[0]?.trim() ?? '';
+        if (mimeType !== 'image/png')
+          throw new ImageProviderError('IMAGE_PROVIDER_UNAVAILABLE', { stage: 'VALIDATION' });
+        const contentLength = Number(imageResponse.headers.get('content-length'));
+        if (Number.isFinite(contentLength) && contentLength > this.maxDownloadBytes)
+          throw new ImageProviderError('IMAGE_PROVIDER_UNAVAILABLE', { stage: 'VALIDATION' });
+        body = await readBoundedBody(imageResponse, this.maxDownloadBytes);
+        if (body.byteLength === 0)
+          throw new ImageProviderError('IMAGE_PROVIDER_UNAVAILABLE', { stage: 'VALIDATION' });
+      } catch (error) {
+        if (error instanceof ImageProviderError) throw error;
+        if (input.signal.aborted)
+          throw new ImageProviderError('IMAGE_PROVIDER_TIMEOUT', {
+            stage: 'TEMPORARY_IMAGE_DOWNLOAD',
+          });
+        throw new ImageProviderError('IMAGE_PROVIDER_UNAVAILABLE', {
+          stage: 'TEMPORARY_IMAGE_DOWNLOAD',
+        });
+      }
 
       const objectKey = `picture-books/bailian/${encodeURIComponent(input.generationKey)}.png`;
-      const stored = await this.storage.putImage({ objectKey, body, mimeType });
+      let stored: Awaited<ReturnType<BosStorage['putImage']>>;
+      try {
+        stored = await this.storage.putImage({ objectKey, body, mimeType });
+      } catch {
+        throw new ImageProviderError('IMAGE_PROVIDER_UNAVAILABLE', { stage: 'BOS_UPLOAD' });
+      }
       return {
         assetProvider: 'BAIDU_BOS',
         ...stored,
@@ -131,6 +204,14 @@ export class BailianImageProvider implements ImageProvider {
   }
 }
 
+const readJson = async (response: Response): Promise<unknown> => {
+  try {
+    return await response.json();
+  } catch {
+    return undefined;
+  }
+};
+
 const buildPrompt = (prompt: string, consistency: ImageConsistencyReference[]): string => {
   if (consistency.length === 0) return prompt;
   const characterConstraints = consistency
@@ -140,7 +221,8 @@ const buildPrompt = (prompt: string, consistency: ImageConsistencyReference[]): 
 };
 
 const readBoundedBody = async (response: Response, maxBytes: number): Promise<Buffer> => {
-  if (!response.body) throw new ImageProviderError('IMAGE_PROVIDER_UNAVAILABLE');
+  if (!response.body)
+    throw new ImageProviderError('IMAGE_PROVIDER_UNAVAILABLE', { stage: 'VALIDATION' });
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
   let byteSize = 0;
@@ -150,7 +232,7 @@ const readBoundedBody = async (response: Response, maxBytes: number): Promise<Bu
     byteSize += value.byteLength;
     if (byteSize > maxBytes) {
       await reader.cancel();
-      throw new ImageProviderError('IMAGE_PROVIDER_UNAVAILABLE');
+      throw new ImageProviderError('IMAGE_PROVIDER_UNAVAILABLE', { stage: 'VALIDATION' });
     }
     chunks.push(value);
   }
@@ -165,6 +247,6 @@ const assertTrustedTemporaryUrl = (value: string): void => {
     url.password !== '' ||
     (url.hostname !== 'aliyuncs.com' && !url.hostname.endsWith('.aliyuncs.com'))
   ) {
-    throw new ImageProviderError('IMAGE_PROVIDER_UNAVAILABLE');
+    throw new ImageProviderError('IMAGE_PROVIDER_UNAVAILABLE', { stage: 'VALIDATION' });
   }
 };
