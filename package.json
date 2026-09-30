@@ -11,6 +11,7 @@
     "build": "turbo run build",
     "dev": "turbo run dev --parallel",
     "dev:local": "node scripts/dev-local.mjs",
+    "secret:set": "node scripts/set-local-secret.mjs",
     "seed:local-staff": "pnpm --filter @xiaohai/api seed:local-staff",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -20,7 +21,7 @@
     "test:integration": "pnpm --filter @xiaohai/api test:integration && pnpm --filter @xiaohai/worker test:integration",
     "test:e2e": "playwright test",
     "check:workspace": "node scripts/check-workspace.mjs",
-    "check:secrets": "node --test scripts/secret-policy.test.mjs && node scripts/check-secrets.mjs",
+    "check:secrets": "node --test scripts/secret-policy.test.mjs scripts/set-local-secret.test.mjs && node scripts/check-secrets.mjs",
     "check:miniapp": "node scripts/check-miniapp.mjs",
     "check": "pnpm check:workspace && pnpm check:miniapp && pnpm check:secrets && pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build"
   },
