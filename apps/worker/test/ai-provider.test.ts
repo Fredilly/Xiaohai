@@ -70,6 +70,24 @@ describe('AI provider adapters', () => {
     });
   });
 
+  it.each([10, 15])('keeps MOCK working for a structured %i-page Story', async (pageCount) => {
+    const result = await new MockAiProvider().generate({
+      model: 'mock-story-v1',
+      prompt: `XIAOHAI_TASK=STRUCTURED_STORY\nREQUESTED_PAGE_COUNT=${pageCount}`,
+      signal: new AbortController().signal,
+      responseFormat: 'json_object',
+    });
+    const story = JSON.parse(result.text) as {
+      characters: Array<{ visualDescription: string }>;
+      pages: Array<{ pageNumber: number; text: string }>;
+    };
+
+    expect(story.characters[0]?.visualDescription).toContain('绿色围巾');
+    expect(story.pages).toHaveLength(pageCount);
+    expect(story.pages.at(-1)?.pageNumber).toBe(pageCount);
+    expect(story.pages.every((page) => page.text.length > 0)).toBe(true);
+  });
+
   it('returns deterministic structured Animation fixtures for M11 planning tasks', async () => {
     const provider = new MockAiProvider();
     const signal = new AbortController().signal;
@@ -185,6 +203,7 @@ describe('AI provider adapters', () => {
       model: 'qwen-flash',
       prompt: 'private prompt',
       signal: new AbortController().signal,
+      responseFormat: 'json_object',
     });
 
     expect(result).toMatchObject({
@@ -198,6 +217,12 @@ describe('AI provider adapters', () => {
     expect(http.mock.calls[0]?.[0]).toBe(
       'https://dashscope.example.invalid/compatible-mode/v1/chat/completions',
     );
+    const requestBody = http.mock.calls[0]?.[1]?.body;
+    if (typeof requestBody !== 'string') throw new Error('expected JSON request body');
+    const body = JSON.parse(requestBody) as {
+      response_format?: { type?: string };
+    };
+    expect(body.response_format).toEqual({ type: 'json_object' });
   });
 
   it.each([

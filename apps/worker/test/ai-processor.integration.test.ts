@@ -20,7 +20,11 @@ suite('M8 worker PostgreSQL integration', () => {
   const db = database!.db;
   const staffIds: string[] = [];
 
-  async function queued(maxAttempts = 2) {
+  async function queued(
+    maxAttempts = 2,
+    input: typeof aiJobs.$inferInsert.input = { prompt: 'platform probe' },
+    jobType: typeof aiJobs.$inferInsert.jobType = 'PLATFORM_TEXT',
+  ) {
     const [staff] = await db
       .insert(staffAccounts)
       .values({ loginIdentifier: randomUUID(), passwordHash: 'integration-only' })
@@ -36,7 +40,8 @@ suite('M8 worker PostgreSQL integration', () => {
         projectId: project!.id,
         provider: 'MOCK',
         model: 'mock-v1',
-        input: { prompt: 'platform probe' },
+        jobType,
+        input,
         timeoutMs: 1000,
         maxAttempts,
       })
@@ -84,6 +89,58 @@ suite('M8 worker PostgreSQL integration', () => {
     const attempts = await db.select().from(aiJobAttempts).where(eq(aiJobAttempts.jobId, job.id));
     expect(saved).toMatchObject({ status: 'FAILED', lastErrorCode: 'PROVIDER_UNAVAILABLE' });
     expect(attempts).toHaveLength(2);
+  });
+
+  it('retries malformed structured Story output and never persists a partial result', async () => {
+    const input = {
+      prompt: 'structured story prompt',
+      context: {
+        kind: 'STORY' as const,
+        workId: randomUUID(),
+        operation: 'BODY' as const,
+        sourceVersionId: randomUUID(),
+        outputFormat: 'STRUCTURED_STORY' as const,
+        requestedPageCount: 10,
+      },
+    };
+    const job = await queued(2, input, 'STORY_BODY');
+    const malformed: AiProvider = {
+      name: 'MOCK',
+      generate: () =>
+        Promise.resolve({
+          text: '{"title":"partial"}',
+          assetReferences: [],
+          usage: { totalTokens: 3 },
+          costMetadata: { source: 'test' },
+        }),
+    };
+    const processor = new AiJobProcessor(db, malformed, new BaselineModerationAdapter());
+
+    await processor.processOne();
+    let [saved] = await db.select().from(aiJobs).where(eq(aiJobs.id, job.id));
+    expect(saved).toMatchObject({
+      status: 'QUEUED',
+      result: null,
+      lastErrorCode: 'PROVIDER_RESPONSE_INVALID',
+    });
+
+    await db
+      .update(aiJobs)
+      .set({ runAfter: new Date(0) })
+      .where(eq(aiJobs.id, job.id));
+    await processor.processOne();
+
+    [saved] = await db.select().from(aiJobs).where(eq(aiJobs.id, job.id));
+    const attempts = await db.select().from(aiJobAttempts).where(eq(aiJobAttempts.jobId, job.id));
+    expect(saved).toMatchObject({
+      status: 'FAILED',
+      result: null,
+      lastErrorCode: 'PROVIDER_RESPONSE_INVALID',
+    });
+    expect(attempts).toHaveLength(2);
+    expect(attempts.every((attempt) => attempt.errorCode === 'PROVIDER_RESPONSE_INVALID')).toBe(
+      true,
+    );
   });
 
   it('executes a full fresh budget after manual retry and preserves exhausted attempts', async () => {

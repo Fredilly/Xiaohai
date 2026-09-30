@@ -47,6 +47,19 @@
         bindinput="inputInstruction"
       />
 
+      <view class="page-count-control">
+        <text class="field-label">正文页数</text>
+        <picker
+          mode="selector"
+          range="{{pageCountOptions}}"
+          value="{{pageCountIndex}}"
+          bindchange="selectPageCount"
+        >
+          <view class="instruction">{{requestedPageCount}} 页</view>
+        </picker>
+        <text class="section-note">一次生成完整的 10–15 页结构化故事</text>
+      </view>
+
       <view class="action-grid">
         <button
           class="action-btn"
@@ -116,8 +129,24 @@
             <text class="badge">{{item.operation === 'OUTLINE' ? '大纲' : item.operation === 'BODY' ? '正文' : item.operation === 'REWRITE' ? '改写' : item.operation === 'CONTINUE' ? '续写' : '润色'}}</text>
           </view>
 
-
-          <text class="content-text">{{item.content}}</text>
+          <block wx:if="{{item.structuredStory}}">
+            <text class="card-title">{{item.structuredStory.title}}</text>
+            <text class="content-text">{{item.structuredStory.outline}}</text>
+            <view class="story-characters">
+              <text class="field-label">角色设定</text>
+              <view wx:for="{{item.structuredStory.characters}}" wx:key="name" wx:for-item="character">
+                <text class="content-text">{{character.name}}：{{character.description}}</text>
+                <text class="section-note">{{character.visualDescription}}</text>
+              </view>
+            </view>
+            <view class="story-pages">
+              <view wx:for="{{item.structuredStory.pages}}" wx:key="pageNumber" wx:for-item="page">
+                <text class="field-label">第 {{page.pageNumber}} 页 · {{page.scene}}</text>
+                <text class="content-text">{{page.text}}</text>
+              </view>
+            </view>
+          </block>
+          <text wx:else class="content-text">{{item.content}}</text>
         </view>
       </view>
     </view>

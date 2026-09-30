@@ -35,7 +35,7 @@ const serviceSchema = baseSchema.extend({
     .default('false')
     .transform((value) => value === 'true'),
   STORY_AI_PROVIDER: z.enum(['MOCK', 'DEEPSEEK', 'BAILIAN', 'QWEN']).default('MOCK'),
-  STORY_AI_MODEL: z.string().trim().min(1).max(128).default('mock-story-v1'),
+  STORY_AI_MODEL: z.string().trim().min(1).max(128).default('qwen-flash'),
   STORY_AI_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(10).default(3),
   STORY_AI_TIMEOUT_MS: z.coerce.number().int().min(1000).max(300000).default(30000),
   PICTURE_BOOK_AI_ENABLED: z

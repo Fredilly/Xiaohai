@@ -11,6 +11,10 @@ type InputEvent = {
   detail: { value?: string };
 };
 
+type PickerEvent = {
+  detail: { value?: string | number };
+};
+
 const operations: StoryOperation[] = ['OUTLINE', 'BODY', 'REWRITE', 'CONTINUE', 'POLISH'];
 
 const sleep = (milliseconds: number) =>
@@ -26,6 +30,9 @@ Page({
     latestOutlineId: '',
     latestBodyId: '',
     instruction: '',
+    pageCountOptions: [10, 11, 12, 13, 14, 15],
+    pageCountIndex: 0,
+    requestedPageCount: 10,
     loading: true,
     generating: false,
     statusText: '',
@@ -72,6 +79,12 @@ Page({
     this.setData({ instruction: String(event.detail.value || '') });
   },
 
+  selectPageCount(event: PickerEvent) {
+    const index = Number(event.detail.value ?? 0);
+    const requestedPageCount = this.data.pageCountOptions[index] ?? 10;
+    this.setData({ pageCountIndex: index, requestedPageCount });
+  },
+
   async generate(event: WechatMiniprogram.TouchEvent) {
     if (this.data.generating) return;
     const rawOperation = String(event.currentTarget.dataset.operation || '');
@@ -110,6 +123,7 @@ Page({
         operation,
         sourceVersionId,
         instruction: this.data.instruction.trim() || undefined,
+        ...(operation === 'BODY' ? { requestedPageCount: this.data.requestedPageCount } : {}),
       });
 
       this.setData({ statusText: 'AI 正在创作，请稍候…' });
