@@ -64,13 +64,33 @@
       <view wx:if="{{errorMessage}}" class="error-note">{{errorMessage}}</view>
 
       <text class="step-label">03　开始创作</text>
+      <text class="field-label">创作方式</text>
+      <view class="mode-grid">
+        <button
+          class="mode-btn {{creationMode === 'OUTLINE_FIRST' ? 'active' : ''}}"
+          data-mode="OUTLINE_FIRST"
+          bindtap="chooseMode"
+        >
+          <text class="mode-title">先大纲再正文</text>
+          <text class="mode-copy">先确认故事结构，再生成完整正文</text>
+        </button>
+        <button
+          class="mode-btn {{creationMode === 'DIRECT_BODY' ? 'active' : ''}}"
+          data-mode="DIRECT_BODY"
+          bindtap="chooseMode"
+        >
+          <text class="mode-title">直接生成正文</text>
+          <text class="mode-copy">跳过大纲，从想法直接开始写故事</text>
+        </button>
+      </view>
+      <text wx:if="{{saveStatus}}" class="save-note">{{saveStatus}}</text>
       <button
         class="primary-btn"
         loading="{{loading}}"
         disabled="{{loading}}"
         bindtap="submit"
       >
-        创建故事
+        保存并进入创作
       </button>
     </view>
 

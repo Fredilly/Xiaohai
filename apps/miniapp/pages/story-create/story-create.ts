@@ -1,9 +1,15 @@
 import { createStoryWork, StoryApiError } from '../../services/story';
+import type { StoryCreationMode } from '@xiaohai/contracts/story';
 
 type InputEvent = {
   currentTarget: { dataset: { field?: string } };
   detail: { value?: string };
 };
+
+const CREATE_DRAFT_KEY = 'story_create_form_draft_v1';
+let saveTimer: ReturnType<typeof setTimeout> | null = null;
+const isCreationMode = (value: string): value is StoryCreationMode =>
+  value === 'DIRECT_BODY' || value === 'OUTLINE_FIRST';
 
 Page({
   data: {
@@ -13,14 +19,45 @@ Page({
     ageRange: '6-8岁',
     theme: '',
     style: '温暖童话',
+    creationMode: 'OUTLINE_FIRST',
+    restored: false,
+    saveStatus: '',
     loading: false,
+    submitted: false,
     errorMessage: '',
   },
 
   onShow() {
+    if (!this.data.restored) {
+      const raw: unknown = wx.getStorageSync(CREATE_DRAFT_KEY);
+
+      if (raw && typeof raw === 'object') {
+        const saved = raw as Record<string, unknown>;
+        const savedString = (field: string, fallback: string) => {
+          const value = saved[field];
+          return typeof value === 'string' ? value : fallback;
+        };
+        this.setData({
+          title: savedString('title', this.data.title),
+          idea: savedString('idea', this.data.idea),
+          ageRange: savedString('ageRange', this.data.ageRange),
+          theme: savedString('theme', this.data.theme),
+          style: savedString('style', this.data.style),
+          creationMode: saved['creationMode'] === 'DIRECT_BODY' ? 'DIRECT_BODY' : 'OUTLINE_FIRST',
+          saveStatus: '已恢复上次未完成的创作信息',
+        });
+      }
+    }
+
     this.setData({
       isLoggedIn: Boolean(wx.getStorageSync('consumer_session_token')),
+      restored: true,
     });
+  },
+
+  onUnload() {
+    if (saveTimer) clearTimeout(saveTimer);
+    if (!this.data.submitted) this.saveLocalDraft();
   },
 
   input(event: InputEvent) {
@@ -30,6 +67,33 @@ Page({
     if (!['title', 'idea', 'ageRange', 'theme', 'style'].includes(field)) return;
 
     this.setData({ [field]: value });
+    this.scheduleLocalSave();
+  },
+
+  chooseMode(event: WechatMiniprogram.TouchEvent) {
+    const mode = String(event.currentTarget.dataset.mode || '');
+    if (!isCreationMode(mode)) return;
+    this.setData({ creationMode: mode });
+    this.scheduleLocalSave();
+  },
+
+  scheduleLocalSave() {
+    this.setData({ saveStatus: '正在保存…' });
+    if (saveTimer) clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => this.saveLocalDraft(), 500);
+  },
+
+  saveLocalDraft() {
+    saveTimer = null;
+    wx.setStorageSync(CREATE_DRAFT_KEY, {
+      title: this.data.title,
+      idea: this.data.idea,
+      ageRange: this.data.ageRange,
+      theme: this.data.theme,
+      style: this.data.style,
+      creationMode: this.data.creationMode,
+    });
+    this.setData({ saveStatus: '创作信息已自动保存' });
   },
 
   goLogin() {
@@ -61,7 +125,13 @@ Page({
         ageRange,
         theme,
         style,
+        creationMode: isCreationMode(this.data.creationMode)
+          ? this.data.creationMode
+          : 'OUTLINE_FIRST',
       });
+
+      wx.removeStorageSync(CREATE_DRAFT_KEY);
+      this.setData({ submitted: true });
 
       void wx.redirectTo({
         url: `/pages/story-work/story-work?id=${encodeURIComponent(work.id)}`,

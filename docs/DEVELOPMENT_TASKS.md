@@ -110,6 +110,11 @@ Load, concurrency, slow queries, queues, CDN, backup/restore, monitoring/alerts.
 ### M24 WeChat Experience Build / 体验版
 DevTools + real iOS/Android + weak network + login/pay/video/AI/map/privacy/share/order flows.
 
+M24.1 Story workflow upgrade keeps AI jobs and confirmed versions separate:
+`AI Job candidate → editable work_draft → explicit confirmation → immutable work_version`.
+The Mini Program supports local create-form recovery, direct-body or outline-first creation,
+optimistic draft autosave, and outline/body/history tabs.
+
 ---
 
 ## Phase 7 — Launch & Cutover / 上线与切换

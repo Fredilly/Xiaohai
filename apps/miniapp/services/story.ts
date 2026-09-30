@@ -1,6 +1,8 @@
 import { consumerToken, clearConsumerSession } from './consumer-session';
 import type {
   CreateStoryWorkRequest,
+  StoryContentKind,
+  StoryDraft,
   StoryGenerateRequest,
   StoryGenerationAccepted,
   StoryJobStatus,
@@ -18,7 +20,11 @@ export class StoryApiError extends Error {
   }
 }
 
-async function request<T>(path: string, method: 'GET' | 'POST' = 'GET', data?: object): Promise<T> {
+async function request<T>(
+  path: string,
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE' = 'GET',
+  data?: object,
+): Promise<T> {
   const sessionToken = token();
 
   const response = await new Promise<WechatMiniprogram.RequestSuccessCallbackResult>(
@@ -56,5 +62,37 @@ export const generateStory = (workId: string, input: StoryGenerateRequest) =>
 export const getStoryJob = (jobId: string) =>
   request<StoryJobStatus>(`/api/v1/ai/story/jobs/${jobId}`);
 
-export const saveStoryVersion = (workId: string, jobId: string) =>
-  request<StoryVersion>(`/api/v1/ai/story/works/${workId}/versions`, 'POST', { jobId });
+export const createStoryDraftFromJob = (workId: string, jobId: string) =>
+  request<StoryDraft>(`/api/v1/ai/story/works/${workId}/drafts/from-job`, 'POST', {
+    jobId,
+  });
+
+export const updateStoryDraft = (
+  workId: string,
+  contentKind: StoryContentKind,
+  content: string,
+  expectedRevision: number,
+) =>
+  request<StoryDraft>(`/api/v1/ai/story/works/${workId}/drafts/${contentKind}`, 'PUT', {
+    content,
+    expectedRevision,
+  });
+
+export const discardStoryDraft = (
+  workId: string,
+  contentKind: StoryContentKind,
+  expectedRevision: number,
+) =>
+  request<{ discarded: true }>(`/api/v1/ai/story/works/${workId}/drafts/${contentKind}`, 'DELETE', {
+    expectedRevision,
+  });
+
+export const confirmStoryDraft = (
+  workId: string,
+  contentKind: StoryContentKind,
+  expectedRevision: number,
+) =>
+  request<StoryVersion>(`/api/v1/ai/story/works/${workId}/versions`, 'POST', {
+    contentKind,
+    expectedRevision,
+  });
