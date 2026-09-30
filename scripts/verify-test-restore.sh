@@ -2,14 +2,15 @@
 set -euo pipefail
 
 # Only disposable test databases are accepted. Never run this against production.
-: "${DATABASE_URL:?Set DATABASE_URL to the disposable test database}"
-case "$DATABASE_URL" in
+: "${TEST_DATABASE_URL:?Set TEST_DATABASE_URL to the disposable test database}"
+case "$TEST_DATABASE_URL" in
   */xiaohai_test) ;;
   *) echo 'Refusing backup drill outside xiaohai_test' >&2; exit 2 ;;
 esac
 for tool in pg_dump pg_restore psql; do command -v "$tool" >/dev/null || { echo "$tool is required" >&2; exit 2; }; done
 
-base_url="${DATABASE_URL%/*}"
+DATABASE_URL="$TEST_DATABASE_URL"
+base_url="${TEST_DATABASE_URL%/*}"
 admin_url="$base_url/postgres"
 verification_name="xiaohai_restore_$(date +%s)_$$"
 restore_url="$base_url/$verification_name"

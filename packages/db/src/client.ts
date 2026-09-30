@@ -16,8 +16,33 @@ const schema = {
   ...contentSchema,
   ...aiSchema,
 };
+
+export function assertTestDatabaseUrl(value: string | undefined): string {
+  if (!value) throw new Error('TEST_DATABASE_URL is required for PostgreSQL integration tests');
+
+  let databaseName: string;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'postgresql:') throw new Error('unsupported protocol');
+    databaseName = decodeURIComponent(url.pathname.slice(1)).toLowerCase();
+  } catch {
+    throw new Error('TEST_DATABASE_URL must be a valid PostgreSQL URL');
+  }
+
+  if (!databaseName || databaseName === 'xiaohai_dev') {
+    throw new Error('TEST_DATABASE_URL must name a disposable test database');
+  }
+  if (!/(^|[_-])(test|tests|testing|ci|e2e|disposable)([_-]|$)/.test(databaseName)) {
+    throw new Error('TEST_DATABASE_URL must name a disposable test database');
+  }
+
+  return value;
+}
+
 export function createDatabase(env: NodeJS.ProcessEnv = process.env) {
   const config = loadDatabaseConfig(env);
-  const pool = new pg.Pool({ connectionString: config.DATABASE_URL });
+  const connectionString =
+    env.NODE_ENV === 'test' ? assertTestDatabaseUrl(env.TEST_DATABASE_URL) : config.DATABASE_URL;
+  const pool = new pg.Pool({ connectionString });
   return { db: drizzle(pool, { schema }), pool };
 }
