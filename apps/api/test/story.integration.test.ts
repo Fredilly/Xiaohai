@@ -1,7 +1,7 @@
 import Fastify from 'fastify';
 import { count, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { aiJobs, consumerUsers, createDatabase, workVersions } from '@xiaohai/db';
+import { aiJobs, consumerUsers, createDatabase, workDrafts, workVersions } from '@xiaohai/db';
 import { ConsumerSessionService } from '../src/auth/session.js';
 import { registerStoryRoutes } from '../src/story/story-routes.js';
 import { StoryService } from '../src/story/story-service.js';
@@ -28,6 +28,7 @@ suite('M9 Story AI PostgreSQL integration and ownership', () => {
     await database!.pool.query(`
       TRUNCATE TABLE
         work_versions,
+        work_drafts,
         works,
         ai_job_attempts,
         ai_jobs,
@@ -86,6 +87,7 @@ suite('M9 Story AI PostgreSQL integration and ownership', () => {
       ageRange: '6-8',
       theme: '勇气与互助',
       style: '温暖童话',
+      creationMode: 'OUTLINE_FIRST',
     });
   }
 
@@ -240,6 +242,7 @@ suite('M9 Story AI PostgreSQL integration and ownership', () => {
         workId: work.id,
         generatedText: null,
         savedVersionId: null,
+        draftId: null,
       });
 
       const bobJob = await app.inject({
@@ -268,17 +271,27 @@ suite('M9 Story AI PostgreSQL integration and ownership', () => {
 
     await succeed(outlineJob.jobId, '1. 开端\n2. 发展\n3. 转折\n4. 结尾');
 
-    const [firstSave, secondSave] = await Promise.all([
-      story.saveVersion(alice, aliceWork.id, outlineJob.jobId),
-      story.saveVersion(alice, aliceWork.id, outlineJob.jobId),
-    ]);
+    const outlineDraft = await story.createDraftFromJob(alice, aliceWork.id, outlineJob.jobId);
+    const editedOutline = await story.updateDraft(
+      alice,
+      aliceWork.id,
+      'OUTLINE',
+      '1. 开端（用户已编辑）\n2. 发展\n3. 转折\n4. 结尾',
+      outlineDraft.draftRevision,
+    );
+    const firstSave = await story.confirmDraft(
+      alice,
+      aliceWork.id,
+      'OUTLINE',
+      editedOutline.draftRevision,
+    );
 
-    expect(firstSave.id).toBe(secondSave.id);
     expect(firstSave).toMatchObject({
       versionNumber: 1,
       contentKind: 'OUTLINE',
       operation: 'OUTLINE',
       sourceVersionId: null,
+      content: '1. 开端（用户已编辑）\n2. 发展\n3. 转折\n4. 结尾',
     });
 
     const [versionCount] = await db
@@ -313,7 +326,13 @@ suite('M9 Story AI PostgreSQL integration and ownership', () => {
 
     await succeed(bodyJob.jobId, '这是根据大纲生成的完整故事正文。');
 
-    const bodyVersion = await story.saveVersion(alice, aliceWork.id, bodyJob.jobId);
+    const bodyDraft = await story.createDraftFromJob(alice, aliceWork.id, bodyJob.jobId);
+    const bodyVersion = await story.confirmDraft(
+      alice,
+      aliceWork.id,
+      'BODY',
+      bodyDraft.draftRevision,
+    );
 
     expect(bodyVersion).toMatchObject({
       versionNumber: 2,
@@ -329,7 +348,13 @@ suite('M9 Story AI PostgreSQL integration and ownership', () => {
 
     await succeed(continueJob.jobId, '然后他们在回家的路上遇见了一群萤火虫。');
 
-    const continueVersion = await story.saveVersion(alice, aliceWork.id, continueJob.jobId);
+    const continueDraft = await story.createDraftFromJob(alice, aliceWork.id, continueJob.jobId);
+    const continueVersion = await story.confirmDraft(
+      alice,
+      aliceWork.id,
+      'BODY',
+      continueDraft.draftRevision,
+    );
 
     expect(continueVersion).toMatchObject({
       versionNumber: 3,
@@ -344,7 +369,9 @@ suite('M9 Story AI PostgreSQL integration and ownership', () => {
 
     await expect(story.getWork(bob, aliceWork.id)).rejects.toMatchObject({ code: 'NOT_FOUND' });
 
-    await expect(story.saveVersion(bob, aliceWork.id, bodyJob.jobId)).rejects.toMatchObject({
+    await expect(
+      story.confirmDraft(bob, aliceWork.id, 'BODY', bodyDraft.draftRevision),
+    ).rejects.toMatchObject({
       code: 'NOT_FOUND',
     });
   });
@@ -411,7 +438,7 @@ suite('M9 Story AI PostgreSQL integration and ownership', () => {
       operation: 'OUTLINE',
     });
 
-    await expect(story.saveVersion(alice, work.id, accepted.jobId)).rejects.toMatchObject({
+    await expect(story.createDraftFromJob(alice, work.id, accepted.jobId)).rejects.toMatchObject({
       code: 'JOB_NOT_READY',
     });
 
@@ -424,10 +451,87 @@ suite('M9 Story AI PostgreSQL integration and ownership', () => {
       })
       .where(eq(aiJobs.id, accepted.jobId));
 
-    await expect(story.saveVersion(alice, work.id, accepted.jobId)).rejects.toMatchObject({
+    await expect(story.createDraftFromJob(alice, work.id, accepted.jobId)).rejects.toMatchObject({
       code: 'JOB_NOT_READY',
     });
 
     expect(await db.select().from(workVersions)).toHaveLength(0);
+    expect(await db.select().from(workDrafts)).toHaveLength(0);
+  });
+
+  it('supports direct BODY drafts and keeps unconfirmed content out of immutable versions', async () => {
+    const story = service();
+    const alice = await createUser();
+    const work = await story.createWork(alice, {
+      title: '直接正文',
+      idea: '一只小鹿寻找星星',
+      ageRange: '6-8',
+      theme: '探索',
+      style: '温暖童话',
+      creationMode: 'DIRECT_BODY',
+    });
+
+    await expect(story.generate(alice, work.id, { operation: 'OUTLINE' })).rejects.toMatchObject({
+      code: 'INVALID_SOURCE_VERSION',
+    });
+
+    const accepted = await story.generate(alice, work.id, { operation: 'BODY' });
+    await succeed(accepted.jobId, 'AI 候选正文');
+    const draft = await story.createDraftFromJob(alice, work.id, accepted.jobId);
+
+    expect(draft).toMatchObject({
+      contentKind: 'BODY',
+      content: 'AI 候选正文',
+      draftRevision: 1,
+    });
+    expect(await db.select().from(workVersions)).toHaveLength(0);
+
+    const edited = await story.updateDraft(
+      alice,
+      work.id,
+      'BODY',
+      '用户编辑后的正文',
+      draft.draftRevision,
+    );
+    const detail = await story.getWork(alice, work.id);
+    expect(detail.drafts).toEqual([expect.objectContaining({ content: '用户编辑后的正文' })]);
+
+    const version = await story.confirmDraft(alice, work.id, 'BODY', edited.draftRevision);
+    expect(version).toMatchObject({
+      contentKind: 'BODY',
+      operation: 'BODY',
+      sourceVersionId: null,
+      content: '用户编辑后的正文',
+    });
+    expect((await story.getWork(alice, work.id)).drafts).toEqual([]);
+  });
+
+  it('uses optimistic draft revisions and preserves confirmed history', async () => {
+    const story = service();
+    const alice = await createUser();
+    const work = await createWork(story, alice);
+    const accepted = await story.generate(alice, work.id, { operation: 'OUTLINE' });
+    await succeed(accepted.jobId, '初始大纲');
+    const draft = await story.createDraftFromJob(alice, work.id, accepted.jobId);
+    const updated = await story.updateDraft(
+      alice,
+      work.id,
+      'OUTLINE',
+      '编辑后的大纲',
+      draft.draftRevision,
+    );
+
+    await expect(
+      story.updateDraft(alice, work.id, 'OUTLINE', '过期客户端内容', draft.draftRevision),
+    ).rejects.toMatchObject({ code: 'REVISION_CONFLICT' });
+
+    const version = await story.confirmDraft(alice, work.id, 'OUTLINE', updated.draftRevision);
+    await expect(
+      story.confirmDraft(alice, work.id, 'OUTLINE', updated.draftRevision),
+    ).rejects.toMatchObject({ code: 'REVISION_CONFLICT' });
+
+    expect(version.content).toBe('编辑后的大纲');
+    const [stored] = await db.select().from(workVersions).where(eq(workVersions.id, version.id));
+    expect(stored?.content).toBe('编辑后的大纲');
   });
 });

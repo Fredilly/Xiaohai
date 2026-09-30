@@ -1,11 +1,13 @@
 import type { StoryWork } from '@xiaohai/contracts/story';
 import { listStoryWorks } from '../../services/story';
 
+type DisplayStoryWork = StoryWork & { stateLabel: string };
+
 Page({
   data: {
     loading: true,
     error: false,
-    works: [] as StoryWork[],
+    works: [] as DisplayStoryWork[],
   },
 
   onShow() {
@@ -17,7 +19,19 @@ Page({
 
     try {
       const result = await listStoryWorks();
-      this.setData({ works: result.works, loading: false });
+      this.setData({
+        works: result.works.map((work) => ({
+          ...work,
+          stateLabel: work.draftKinds.includes('BODY')
+            ? '正文草稿待确认'
+            : work.draftKinds.includes('OUTLINE')
+              ? '大纲草稿待确认'
+              : work.hasConfirmedBody
+                ? '已有确认正文'
+                : '创作信息草稿',
+        })),
+        loading: false,
+      });
     } catch {
       this.setData({ loading: false, error: true, works: [] });
     }

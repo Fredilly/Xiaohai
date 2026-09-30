@@ -30,6 +30,10 @@
     >
       <view class="list-main">
         <text class="list-title">{{item.title}}</text>
+        <text class="list-meta">
+          {{item.creationMode === 'DIRECT_BODY' ? '直接正文' : '先大纲再正文'}}
+        </text>
+        <text class="list-meta">{{item.stateLabel}}</text>
         <text class="list-meta">{{item.controls.theme}} · {{item.controls.ageRange}}</text>
         <text class="list-meta">{{item.controls.style}}</text>
       </view>

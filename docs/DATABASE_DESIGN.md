@@ -79,6 +79,8 @@ Provider transaction IDs are unique where applicable. Callbacks are idempotent.
 - `content_entitlements`, `playback_progress`
 - `ai_projects`, `ai_jobs`, `ai_job_attempts`
 - `works`, `work_versions`, `work_pages/scenes`
+- `work_drafts`: mutable per-work OUTLINE/BODY content with optimistic `draft_revision`;
+  AI output enters a draft before explicit confirmation creates an immutable `work_version`
 - `character_profiles`
 
 Large files live in object storage; DB stores metadata and references.

@@ -16,6 +16,7 @@ describe('M9 story contracts', () => {
     ).toMatchObject({
       theme: '勇气与互助',
       style: '温暖童话',
+      creationMode: 'OUTLINE_FIRST',
     });
   });
 
@@ -34,14 +35,15 @@ describe('M9 story contracts', () => {
     ).toBe(true);
   });
 
-  it('requires a source version for body editing operations', () => {
+  it('allows direct BODY while keeping editing operations source-version scoped', () => {
     expect(
       storyGenerateRequestSchema.safeParse({
         operation: 'BODY',
       }).success,
-    ).toBe(false);
+    ).toBe(true);
 
-    for (const operation of ['BODY', 'REWRITE', 'CONTINUE', 'POLISH'] as const) {
+    for (const operation of ['REWRITE', 'CONTINUE', 'POLISH'] as const) {
+      expect(storyGenerateRequestSchema.safeParse({ operation }).success).toBe(false);
       expect(
         storyGenerateRequestSchema.safeParse({
           operation,
@@ -62,5 +64,17 @@ describe('M9 story contracts', () => {
         model: 'anything',
       }).success,
     ).toBe(false);
+  });
+
+  it('accepts an explicit direct-body creation mode', () => {
+    expect(
+      createStoryWorkRequestSchema.parse({
+        idea: 'test',
+        ageRange: '6-8',
+        theme: 'friendship',
+        style: 'fairytale',
+        creationMode: 'DIRECT_BODY',
+      }).creationMode,
+    ).toBe('DIRECT_BODY');
   });
 });

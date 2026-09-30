@@ -11,6 +11,7 @@ import {
   pictureBooks,
   workPageIllustrations,
   workPages,
+  workDrafts,
   workVersions,
   works,
 } from '@xiaohai/db';
@@ -50,6 +51,7 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
         work_pages,
         character_profiles,
         picture_books,
+        work_drafts,
         work_versions,
         works,
         ai_job_attempts,
@@ -239,6 +241,30 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
       })
       .where(eq(aiJobs.id, jobId));
   }
+
+  it('rejects an unconfirmed BODY draft as a picture-book source', async () => {
+    const alice = await createUser();
+    const source = await createStorySource(alice);
+    const [draft] = await db
+      .insert(workDrafts)
+      .values({
+        workId: source.work.id,
+        contentKind: 'BODY',
+        content: '尚未确认的正文草稿',
+      })
+      .returning();
+
+    await expect(
+      service().createPictureBook(alice, {
+        storyWorkId: source.work.id,
+        sourceStoryVersionId: draft!.id,
+        title: '不应创建的绘本',
+        layoutPreset: 'AUTO',
+      }),
+    ).rejects.toMatchObject({ code: 'INVALID_SOURCE_VERSION' });
+
+    expect(await db.select().from(pictureBooks)).toHaveLength(0);
+  });
 
   async function applyCharacters(
     pictureBook: PictureBookService,

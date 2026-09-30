@@ -3,6 +3,7 @@ import { z } from 'zod';
 export const storyOperationSchema = z.enum(['OUTLINE', 'BODY', 'REWRITE', 'CONTINUE', 'POLISH']);
 
 export const storyContentKindSchema = z.enum(['OUTLINE', 'BODY']);
+export const storyCreationModeSchema = z.enum(['DIRECT_BODY', 'OUTLINE_FIRST']);
 
 export const storyControlsSchema = z
   .object({
@@ -16,6 +17,7 @@ export const storyControlsSchema = z
 export const createStoryWorkRequestSchema = storyControlsSchema
   .extend({
     title: z.string().trim().min(1).max(120).optional(),
+    creationMode: storyCreationModeSchema.default('OUTLINE_FIRST'),
   })
   .strict();
 
@@ -35,7 +37,10 @@ export const storyGenerateRequestSchema = z
       });
     }
 
-    if (value.operation !== 'OUTLINE' && value.sourceVersionId === undefined) {
+    if (
+      ['REWRITE', 'CONTINUE', 'POLISH'].includes(value.operation) &&
+      value.sourceVersionId === undefined
+    ) {
       ctx.addIssue({
         code: 'custom',
         path: ['sourceVersionId'],
@@ -48,6 +53,9 @@ export const storyWorkSchema = z.object({
   id: z.uuid(),
   title: z.string(),
   workType: z.literal('STORY'),
+  creationMode: storyCreationModeSchema,
+  draftKinds: z.array(storyContentKindSchema),
+  hasConfirmedBody: z.boolean(),
   controls: storyControlsSchema,
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
@@ -65,8 +73,19 @@ export const storyVersionSchema = z.object({
   createdAt: z.iso.datetime(),
 });
 
+export const storyDraftSchema = z.object({
+  id: z.uuid(),
+  workId: z.uuid(),
+  contentKind: storyContentKindSchema,
+  content: z.string().min(1).max(100_000),
+  sourceAiJobId: z.uuid().nullable(),
+  draftRevision: z.number().int().positive(),
+  updatedAt: z.iso.datetime(),
+});
+
 export const storyWorkDetailSchema = z.object({
   work: storyWorkSchema,
+  drafts: z.array(storyDraftSchema),
   versions: z.array(storyVersionSchema),
 });
 
@@ -83,7 +102,27 @@ export const storyGenerationAcceptedSchema = z.object({
 
 export const saveStoryVersionRequestSchema = z
   .object({
+    contentKind: storyContentKindSchema,
+    expectedRevision: z.number().int().positive(),
+  })
+  .strict();
+
+export const createStoryDraftFromJobRequestSchema = z
+  .object({
     jobId: z.uuid(),
+  })
+  .strict();
+
+export const updateStoryDraftRequestSchema = z
+  .object({
+    content: z.string().trim().min(1).max(100_000),
+    expectedRevision: z.number().int().positive(),
+  })
+  .strict();
+
+export const discardStoryDraftRequestSchema = z
+  .object({
+    expectedRevision: z.number().int().positive(),
   })
   .strict();
 
@@ -94,16 +133,19 @@ export const storyJobStatusSchema = z.object({
   status: z.enum(['QUEUED', 'RUNNING', 'SUCCEEDED', 'FAILED', 'CANCELLED']),
   generatedText: z.string().nullable(),
   savedVersionId: z.uuid().nullable(),
+  draftId: z.uuid().nullable(),
   lastErrorCode: z.string().nullable(),
 });
 
 export type StoryOperation = z.infer<typeof storyOperationSchema>;
 export type StoryContentKind = z.infer<typeof storyContentKindSchema>;
+export type StoryCreationMode = z.infer<typeof storyCreationModeSchema>;
 export type StoryControls = z.infer<typeof storyControlsSchema>;
 export type CreateStoryWorkRequest = z.infer<typeof createStoryWorkRequestSchema>;
 export type StoryGenerateRequest = z.infer<typeof storyGenerateRequestSchema>;
 export type StoryWork = z.infer<typeof storyWorkSchema>;
 export type StoryVersion = z.infer<typeof storyVersionSchema>;
+export type StoryDraft = z.infer<typeof storyDraftSchema>;
 export type StoryWorkDetail = z.infer<typeof storyWorkDetailSchema>;
 export type StoryGenerationAccepted = z.infer<typeof storyGenerationAcceptedSchema>;
 export type StoryJobStatus = z.infer<typeof storyJobStatusSchema>;

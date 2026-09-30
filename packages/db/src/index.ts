@@ -1,7 +1,7 @@
 export { assertTestDatabaseUrl, createDatabase } from './client.js';
 export { aiProjects, aiJobs, aiJobAttempts } from './ai-schema.js';
 export { resetAiJobAttemptBudget } from './ai-job-state.js';
-export { works, workVersions } from './works-schema.js';
+export { works, workDrafts, workVersions } from './works-schema.js';
 export {
   aiAnimations,
   animationCharacters,

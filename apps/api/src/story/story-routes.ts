@@ -1,8 +1,12 @@
 import { z } from 'zod';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import {
+  createStoryDraftFromJobRequestSchema,
   createStoryWorkRequestSchema,
+  discardStoryDraftRequestSchema,
   saveStoryVersionRequestSchema,
+  storyContentKindSchema,
+  storyDraftSchema,
   storyGenerateRequestSchema,
   storyGenerationAcceptedSchema,
   storyJobStatusSchema,
@@ -10,6 +14,7 @@ import {
   storyWorkDetailSchema,
   storyWorkListSchema,
   storyWorkSchema,
+  updateStoryDraftRequestSchema,
 } from '@xiaohai/contracts/story';
 import type { ConsumerSessionService } from '../auth/session.js';
 import { StoryError, type StoryService } from './story-service.js';
@@ -98,6 +103,69 @@ export function registerStoryRoutes(
     }
   });
 
+  app.post('/api/v1/ai/story/works/:id/drafts/from-job', async (request, reply) => {
+    const params = z.object({ id: z.uuid() }).safeParse(request.params);
+    const input = createStoryDraftFromJobRequestSchema.safeParse(request.body);
+    if (!params.success || !input.success) return invalid(reply, request.id);
+
+    try {
+      return reply
+        .status(201)
+        .send(
+          storyDraftSchema.parse(
+            await options.story.createDraftFromJob(
+              consumer(request),
+              params.data.id,
+              input.data.jobId,
+            ),
+          ),
+        );
+    } catch (error) {
+      return fail(request, reply, error);
+    }
+  });
+
+  app.put('/api/v1/ai/story/works/:id/drafts/:kind', async (request, reply) => {
+    const params = z
+      .object({ id: z.uuid(), kind: storyContentKindSchema })
+      .safeParse(request.params);
+    const input = updateStoryDraftRequestSchema.safeParse(request.body);
+    if (!params.success || !input.success) return invalid(reply, request.id);
+
+    try {
+      return storyDraftSchema.parse(
+        await options.story.updateDraft(
+          consumer(request),
+          params.data.id,
+          params.data.kind,
+          input.data.content,
+          input.data.expectedRevision,
+        ),
+      );
+    } catch (error) {
+      return fail(request, reply, error);
+    }
+  });
+
+  app.delete('/api/v1/ai/story/works/:id/drafts/:kind', async (request, reply) => {
+    const params = z
+      .object({ id: z.uuid(), kind: storyContentKindSchema })
+      .safeParse(request.params);
+    const input = discardStoryDraftRequestSchema.safeParse(request.body);
+    if (!params.success || !input.success) return invalid(reply, request.id);
+
+    try {
+      return await options.story.discardDraft(
+        consumer(request),
+        params.data.id,
+        params.data.kind,
+        input.data.expectedRevision,
+      );
+    } catch (error) {
+      return fail(request, reply, error);
+    }
+  });
+
   app.post('/api/v1/ai/story/works/:id/versions', async (request, reply) => {
     const params = z.object({ id: z.uuid() }).safeParse(request.params);
     const input = saveStoryVersionRequestSchema.safeParse(request.body);
@@ -105,7 +173,12 @@ export function registerStoryRoutes(
 
     try {
       return storyVersionSchema.parse(
-        await options.story.saveVersion(consumer(request), params.data.id, input.data.jobId),
+        await options.story.confirmDraft(
+          consumer(request),
+          params.data.id,
+          input.data.contentKind,
+          input.data.expectedRevision,
+        ),
       );
     } catch (error) {
       return fail(request, reply, error);

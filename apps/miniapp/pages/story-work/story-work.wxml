@@ -11,7 +11,9 @@
 
   <block wx:else>
     <view class="hero hero-soft">
-
+      <text class="eyebrow">
+        {{work.creationMode === 'DIRECT_BODY' ? '直接正文' : '先大纲再正文'}}
+      </text>
       <text class="hero-title">{{work.title}}</text>
       <text class="hero-subtitle">
         {{work.controls.theme}} · {{work.controls.ageRange}} · {{work.controls.style}}
@@ -23,22 +25,24 @@
       <text class="content-text">{{work.controls.idea}}</text>
     </view>
 
-    <view class="section">
-      <button class="primary-btn" disabled="{{!latestBodyId}}" bindtap="createPictureBook">
-        从最新正文创建绘本
+    <view class="section output-actions">
+      <button class="primary-btn" disabled="{{!latestBody}}" bindtap="createPictureBook">
+        从已确认正文创建绘本
       </button>
-      <button class="primary-btn" disabled="{{!latestBodyId}}" bindtap="createAnimation">
-        从最新正文创建 AI 动画
+      <button class="primary-btn" disabled="{{!latestBody}}" bindtap="createAnimation">
+        从已确认正文创建 AI 动画
       </button>
-      <text wx:if="{{!latestBodyId}}" class="section-note">请先生成并保存故事正文</text>
+      <text wx:if="{{!latestBody}}" class="section-note">未确认正文不能创建绘本或动画</text>
+      <text wx:elif="{{bodyDraft}}" class="section-note">
+        当前还有未确认正文草稿；下游将继续使用上一版已确认正文
+      </text>
     </view>
 
     <view class="section">
       <view class="section-head">
         <text class="section-title">AI 创作</text>
-        <text class="section-note">版本会自动保留</text>
+        <text class="section-note">生成结果先进入草稿</text>
       </view>
-
       <textarea
         class="instruction"
         placeholder="可选：告诉小海这次想怎么修改"
@@ -49,77 +53,154 @@
 
       <view class="action-grid">
         <button
+          wx:if="{{work.creationMode === 'OUTLINE_FIRST'}}"
           class="action-btn"
           data-operation="OUTLINE"
-          disabled="{{generating}}"
+          disabled="{{generating || outlineDraft}}"
           bindtap="generate"
-        >
-          生成大纲
-        </button>
-
+        >生成大纲</button>
         <button
           class="action-btn"
           data-operation="BODY"
-          disabled="{{generating || !latestOutlineId}}"
+          disabled="{{generating || bodyDraft || (work.creationMode === 'OUTLINE_FIRST' && !latestOutline)}}"
           bindtap="generate"
         >
-          生成正文
+          {{work.creationMode === 'DIRECT_BODY' ? '直接生成正文' : '根据大纲生成正文'}}
         </button>
-
         <button
           class="action-btn secondary"
           data-operation="REWRITE"
-          disabled="{{generating || !latestBodyId}}"
+          disabled="{{generating || bodyDraft || !latestBody}}"
           bindtap="generate"
-        >
-          改写
-        </button>
-
+        >改写正文</button>
         <button
           class="action-btn secondary"
           data-operation="CONTINUE"
-          disabled="{{generating || !latestBodyId}}"
+          disabled="{{generating || bodyDraft || !latestBody}}"
           bindtap="generate"
-        >
-          续写
-        </button>
-
+        >续写正文</button>
         <button
           class="action-btn secondary"
           data-operation="POLISH"
-          disabled="{{generating || !latestBodyId}}"
+          disabled="{{generating || bodyDraft || !latestBody}}"
           bindtap="generate"
-        >
-          润色
-        </button>
+        >润色正文</button>
       </view>
 
       <view wx:if="{{statusText}}" class="status-note">{{statusText}}</view>
       <view wx:if="{{errorMessage}}" class="error-note">{{errorMessage}}</view>
     </view>
 
-    <view class="section">
-      <view class="section-head">
-        <text class="section-title">版本历史</text>
-        <text class="section-note">{{versions.length}} 个版本</text>
+    <view class="section workspace">
+      <view class="story-tabs">
+        <button
+          wx:if="{{work.creationMode === 'OUTLINE_FIRST'}}"
+          class="story-tab {{activeTab === 'OUTLINE' ? 'active' : ''}}"
+          data-tab="OUTLINE"
+          bindtap="switchTab"
+        >大纲</button>
+        <button
+          class="story-tab {{activeTab === 'BODY' ? 'active' : ''}}"
+          data-tab="BODY"
+          bindtap="switchTab"
+        >正文</button>
+        <button
+          class="story-tab {{activeTab === 'HISTORY' ? 'active' : ''}}"
+          data-tab="HISTORY"
+          bindtap="switchTab"
+        >历史版本</button>
       </view>
 
-      <view wx:if="{{versions.length === 0}}" class="state-card">
-        <text class="state-title">还没有内容版本</text>
-        <text class="state-copy">先生成一个故事大纲。</text>
-      </view>
-
-      <view wx:else class="version-list">
-        <view wx:for="{{versions}}" wx:key="id" class="version-card">
-          <view class="version-head">
-            <text class="version-title">第 {{item.versionNumber}} 版</text>
-            <text class="badge">{{item.operation === 'OUTLINE' ? '大纲' : item.operation === 'BODY' ? '正文' : item.operation === 'REWRITE' ? '改写' : item.operation === 'CONTINUE' ? '续写' : '润色'}}</text>
-          </view>
-
-
-          <text class="content-text">{{item.content}}</text>
+      <view wx:if="{{activeTab === 'OUTLINE'}}" class="draft-panel">
+        <view class="section-head">
+          <text class="section-title">故事大纲</text>
+          <text class="draft-badge">{{outlineDraft ? '未确认草稿' : latestOutline ? '已确认' : '尚未生成'}}</text>
+        </view>
+        <textarea
+          wx:if="{{outlineDraft}}"
+          class="draft-editor"
+          value="{{outlineContent}}"
+          maxlength="100000"
+          data-kind="OUTLINE"
+          bindinput="inputDraft"
+        />
+        <text wx:elif="{{latestOutline}}" class="content-text">{{latestOutline.content}}</text>
+        <view wx:else class="empty-copy">生成大纲后，可以在这里编辑并确认。</view>
+        <view wx:if="{{outlineDraft}}" class="draft-actions">
+          <button
+            class="primary-btn compact"
+            data-kind="OUTLINE"
+            disabled="{{savingDraft || confirming || !outlineContent}}"
+            bindtap="confirmDraft"
+          >确认大纲</button>
+          <button
+            class="secondary-btn compact"
+            data-kind="OUTLINE"
+            disabled="{{savingDraft || confirming}}"
+            bindtap="discardDraft"
+          >放弃草稿</button>
         </view>
       </view>
+
+      <view wx:elif="{{activeTab === 'BODY'}}" class="draft-panel">
+        <view class="section-head">
+          <text class="section-title">故事正文</text>
+          <text class="draft-badge">{{bodyDraft ? '未确认草稿' : latestBody ? '已确认' : '尚未生成'}}</text>
+        </view>
+        <textarea
+          wx:if="{{bodyDraft}}"
+          class="draft-editor body-editor"
+          value="{{bodyContent}}"
+          maxlength="100000"
+          data-kind="BODY"
+          bindinput="inputDraft"
+        />
+        <text wx:elif="{{latestBody}}" class="content-text">{{latestBody.content}}</text>
+        <view wx:else class="empty-copy">
+          {{work.creationMode === 'DIRECT_BODY' ? '直接生成正文后，可以在这里编辑并确认。' : '请先确认大纲，再生成正文。'}}
+        </view>
+        <view wx:if="{{bodyDraft}}" class="draft-actions">
+          <button
+            class="primary-btn compact"
+            data-kind="BODY"
+            disabled="{{savingDraft || confirming || !bodyContent}}"
+            bindtap="confirmDraft"
+          >确认正文</button>
+          <button
+            class="secondary-btn compact"
+            data-kind="BODY"
+            disabled="{{savingDraft || confirming}}"
+            bindtap="discardDraft"
+          >放弃草稿</button>
+        </view>
+      </view>
+
+      <view wx:else class="history-panel">
+        <view class="section-head">
+          <text class="section-title">已确认历史版本</text>
+          <text class="section-note">{{versions.length}} 个版本</text>
+        </view>
+        <view wx:if="{{versions.length === 0}}" class="empty-copy">还没有已确认版本。</view>
+        <view wx:else class="version-list">
+          <view wx:for="{{versions}}" wx:key="id" class="version-card">
+            <view class="version-head">
+              <text class="version-title">第 {{item.versionNumber}} 版</text>
+              <text class="badge">
+                {{item.operation === 'OUTLINE' ? '大纲' : item.operation === 'BODY' ? '正文' : item.operation === 'REWRITE' ? '改写' : item.operation === 'CONTINUE' ? '续写' : '润色'}}
+              </text>
+            </view>
+            <text class="content-text">{{item.content}}</text>
+          </view>
+        </view>
+      </view>
+
+      <text wx:if="{{draftStatus}}" class="save-note">{{draftStatus}}</text>
+      <button
+        wx:if="{{draftSaveFailed}}"
+        class="secondary-btn compact retry-save-btn"
+        disabled="{{savingDraft}}"
+        bindtap="retrySaveDraft"
+      >重试保存</button>
     </view>
   </block>
 </view>
