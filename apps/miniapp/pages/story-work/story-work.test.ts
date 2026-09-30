@@ -25,10 +25,13 @@ type StoryWorkPage = {
     bodyContent: string;
     draftSaveFailed: boolean;
     draftStatus: string;
+    errorMessage: string;
+    confirming: boolean;
     [key: string]: unknown;
   };
   setData: (patch: Record<string, unknown>) => void;
   saveDraft: (kind: 'OUTLINE' | 'BODY') => Promise<unknown>;
+  confirmDraft: (event: { currentTarget: { dataset: { kind: string } } }) => Promise<void>;
 };
 
 const draft = {
@@ -47,6 +50,7 @@ describe('story work draft autosave failures', () => {
   let storyService: Awaited<ReturnType<typeof loadStoryService>>;
 
   beforeEach(async () => {
+    vi.clearAllMocks();
     vi.resetModules();
     vi.stubGlobal('Page', (definition: StoryWorkPage) => {
       page = definition;
@@ -101,5 +105,17 @@ describe('story work draft autosave failures', () => {
     expect(storyService.getStoryWork).toHaveBeenCalledWith(draft.workId);
     expect(page.data.bodyContent).toBe('其他设备的新内容');
     expect(page.data.draftSaveFailed).toBe(false);
+  });
+
+  it('returns null for whitespace-only content and never confirms it', async () => {
+    page.data.bodyContent = '  \n\t  ';
+
+    await expect(page.saveDraft('BODY')).resolves.toBeNull();
+    await page.confirmDraft({ currentTarget: { dataset: { kind: 'BODY' } } });
+
+    expect(storyService.updateStoryDraft).not.toHaveBeenCalled();
+    expect(storyService.confirmStoryDraft).not.toHaveBeenCalled();
+    expect(page.data.errorMessage).toBe('请输入正文内容后再确认');
+    expect(page.data.draftStatus).toBe('草稿内容不能为空');
   });
 });

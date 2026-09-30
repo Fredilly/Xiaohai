@@ -142,7 +142,16 @@ Page({
     draftSaveTimer = null;
     const draft = kind === 'OUTLINE' ? this.data.outlineDraft : this.data.bodyDraft;
     const content = (kind === 'OUTLINE' ? this.data.outlineContent : this.data.bodyContent).trim();
-    if (!draft || !content || content === lastSavedContent[kind]) return draft;
+    if (!draft) return null;
+    if (!content) {
+      this.setData({
+        draftStatus: '草稿内容不能为空',
+        draftSaveFailed: false,
+        errorMessage: kind === 'OUTLINE' ? '请输入大纲内容后再确认' : '请输入正文内容后再确认',
+      });
+      return null;
+    }
+    if (content === lastSavedContent[kind]) return draft;
 
     this.setData({ savingDraft: true, draftStatus: '正在自动保存…', draftSaveFailed: false });
     try {
@@ -256,6 +265,15 @@ Page({
   async confirmDraft(event: WechatMiniprogram.TouchEvent) {
     const kind = String(event.currentTarget.dataset.kind || '') as StoryContentKind;
     if (!['OUTLINE', 'BODY'].includes(kind) || this.data.confirming) return;
+    const content = (kind === 'OUTLINE' ? this.data.outlineContent : this.data.bodyContent).trim();
+    if (!content) {
+      this.setData({
+        draftStatus: '草稿内容不能为空',
+        draftSaveFailed: false,
+        errorMessage: kind === 'OUTLINE' ? '请输入大纲内容后再确认' : '请输入正文内容后再确认',
+      });
+      return;
+    }
     this.setData({ confirming: true, errorMessage: '' });
     try {
       const draft = await this.saveDraft(kind);
