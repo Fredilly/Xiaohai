@@ -101,6 +101,25 @@ suite('M9 Story AI PostgreSQL integration and ownership', () => {
       .where(eq(aiJobs.id, jobId));
   }
 
+  function structuredStory(pageCount: number) {
+    return JSON.stringify({
+      title: '森林里的小灯塔',
+      outline: '小狐狸帮助迷路的小鸟回家。',
+      characters: [
+        {
+          name: '小狐狸',
+          description: '勇敢温柔的主角',
+          visualDescription: '橙色短毛、棕色圆眼睛、绿色围巾和白色尾尖。',
+        },
+      ],
+      pages: Array.from({ length: pageCount }, (_, index) => ({
+        pageNumber: index + 1,
+        scene: `森林场景 ${index + 1}`,
+        text: `第 ${index + 1} 页的故事正文。`,
+      })),
+    });
+  }
+
   it('requires Consumer Session and isolates works between consumers', async () => {
     const app = await createApp();
 
@@ -301,6 +320,7 @@ suite('M9 Story AI PostgreSQL integration and ownership', () => {
       story.generate(bob, bobWork.id, {
         operation: 'BODY',
         sourceVersionId: firstSave.id,
+        requestedPageCount: 10,
       }),
     ).rejects.toMatchObject({
       code: 'INVALID_SOURCE_VERSION',
@@ -309,9 +329,11 @@ suite('M9 Story AI PostgreSQL integration and ownership', () => {
     const bodyJob = await story.generate(alice, aliceWork.id, {
       operation: 'BODY',
       sourceVersionId: firstSave.id,
+      requestedPageCount: 10,
     });
 
-    await succeed(bodyJob.jobId, '这是根据大纲生成的完整故事正文。');
+    const generatedStory = structuredStory(10);
+    await succeed(bodyJob.jobId, generatedStory);
 
     const bodyVersion = await story.saveVersion(alice, aliceWork.id, bodyJob.jobId);
 
@@ -321,6 +343,8 @@ suite('M9 Story AI PostgreSQL integration and ownership', () => {
       operation: 'BODY',
       sourceVersionId: firstSave.id,
     });
+    expect(bodyVersion.structuredStory?.title).toBe('森林里的小灯塔');
+    expect(bodyVersion.structuredStory?.pages).toHaveLength(10);
 
     const continueJob = await story.generate(alice, aliceWork.id, {
       operation: 'CONTINUE',
@@ -339,7 +363,7 @@ suite('M9 Story AI PostgreSQL integration and ownership', () => {
     });
 
     expect(continueVersion.content).toBe(
-      '这是根据大纲生成的完整故事正文。\n\n然后他们在回家的路上遇见了一群萤火虫。',
+      `${generatedStory}\n\n然后他们在回家的路上遇见了一群萤火虫。`,
     );
 
     await expect(story.getWork(bob, aliceWork.id)).rejects.toMatchObject({ code: 'NOT_FOUND' });

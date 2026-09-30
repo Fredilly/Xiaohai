@@ -3,6 +3,7 @@ import { aiJobAttempts, aiJobs, type createDatabase } from '@xiaohai/db';
 import type { AiProvider } from './ai-provider.js';
 import { ProviderError } from './ai-provider.js';
 import type { ModerationAdapter } from './moderation.js';
+import { expectsStructuredStory, validateAndNormalizeAiOutput } from './story-output.js';
 type Db = ReturnType<typeof createDatabase>['db'];
 type ModerationMetadata = { input: string; output?: string; reasonCodes: string[] };
 export class AiJobProcessor {
@@ -105,7 +106,12 @@ export class AiJobProcessor {
         model: claimed.job.model,
         prompt: claimed.job.input.prompt,
         signal: AbortSignal.timeout(claimed.job.timeoutMs),
+        responseFormat: expectsStructuredStory(claimed.job.input) ? 'json_object' : undefined,
       });
+      result = {
+        ...result,
+        text: validateAndNormalizeAiOutput(claimed.job.input, result.text),
+      };
     } catch (error) {
       const code = error instanceof ProviderError ? error.code : 'PROVIDER_UNAVAILABLE';
       await this.finishFailure(
@@ -113,7 +119,7 @@ export class AiJobProcessor {
         code,
         { input: inputModeration.status, reasonCodes: inputModeration.reasonCodes },
         true,
-        undefined,
+        result,
         error instanceof ProviderError ? error : undefined,
       );
       return claimed.job.id;

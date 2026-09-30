@@ -5,6 +5,7 @@ import type {
   StoryGenerateRequest,
   StoryOperation,
 } from '@xiaohai/contracts/story';
+import { parseStructuredStoryJson, structuredStorySchema } from '@xiaohai/contracts/story';
 import type { AiQueue } from '../ai/ai-queue.js';
 
 type Db = ReturnType<typeof createDatabase>['db'];
@@ -26,6 +27,8 @@ type StoryContext = {
   workId: string;
   operation: StoryOperation;
   sourceVersionId: string | null;
+  outputFormat?: 'STRUCTURED_STORY';
+  requestedPageCount?: number;
 };
 
 export class StoryError extends Error {
@@ -138,6 +141,16 @@ export class StoryService {
       workId: work.id,
       operation: input.operation,
       sourceVersionId: source?.id ?? null,
+      ...(input.operation === 'BODY'
+        ? {
+            outputFormat: 'STRUCTURED_STORY' as const,
+            requestedPageCount: input.requestedPageCount,
+          }
+        : {}),
+    };
+    const jobInput = {
+      prompt: this.buildPrompt(work, input, source),
+      context,
     };
 
     const [job] = await this.db
@@ -150,10 +163,7 @@ export class StoryService {
         // and worker claim semantics remain unchanged.
         provider: this.config.provider === 'QWEN' ? 'BAILIAN' : this.config.provider,
         model: this.config.model,
-        input: {
-          prompt: this.buildPrompt(work, input, source),
-          context,
-        },
+        input: jobInput,
         maxAttempts: this.config.maxAttempts,
         timeoutMs: this.config.timeoutMs,
       })
@@ -273,10 +283,23 @@ export class StoryService {
         .orderBy(desc(workVersions.versionNumber))
         .limit(1);
 
-      const versionContent =
-        context.operation === 'CONTINUE' && sourceContent
-          ? `${sourceContent}\n\n${job.result.text}`
-          : job.result.text;
+      let versionContent = job.result.text;
+
+      if (
+        context.operation === 'BODY' &&
+        context.outputFormat === 'STRUCTURED_STORY' &&
+        context.requestedPageCount
+      ) {
+        try {
+          versionContent = JSON.stringify(
+            parseStructuredStoryJson(job.result.text, context.requestedPageCount),
+          );
+        } catch {
+          throw new StoryError('INVALID_JOB_STATE');
+        }
+      } else if (context.operation === 'CONTINUE' && sourceContent) {
+        versionContent = `${sourceContent}\n\n${job.result.text}`;
+      }
 
       const [created] = await tx
         .insert(workVersions)
@@ -345,6 +368,19 @@ export class StoryService {
       throw new StoryError('INVALID_JOB_STATE');
     }
 
+    if (context.operation === 'BODY') {
+      if (
+        context.outputFormat !== 'STRUCTURED_STORY' ||
+        !Number.isInteger(context.requestedPageCount) ||
+        context.requestedPageCount! < 10 ||
+        context.requestedPageCount! > 15
+      ) {
+        throw new StoryError('INVALID_JOB_STATE');
+      }
+    } else if (context.outputFormat !== undefined || context.requestedPageCount !== undefined) {
+      throw new StoryError('INVALID_JOB_STATE');
+    }
+
     return context as StoryContext;
   }
 
@@ -372,7 +408,17 @@ export class StoryService {
 
     const task = {
       OUTLINE: '请生成结构清晰的故事大纲，包含开端、发展、转折和结尾。',
-      BODY: '请严格参考大纲写成完整儿童故事正文。',
+      BODY: [
+        'XIAOHAI_TASK=STRUCTURED_STORY',
+        `REQUESTED_PAGE_COUNT=${input.requestedPageCount}`,
+        '请严格参考大纲，一次生成完整的结构化儿童故事。',
+        `故事必须恰好包含 ${input.requestedPageCount} 页，页码从 1 开始连续递增，不得重复或缺失。`,
+        '只输出一个合法 JSON 对象，不要 Markdown、代码围栏、解释或额外文字。',
+        'JSON 必须严格使用以下结构：',
+        '{"title":"非空标题","outline":"简短完整大纲","characters":[{"name":"角色名","description":"角色性格与故事作用","visualDescription":"可供后续绘本保持一致的稳定外观特征，包括物种或年龄感、体型、颜色、发型或毛发、眼睛、服装与固定配饰"}],"pages":[{"pageNumber":1,"scene":"本页场景与动作信息","text":"本页非空故事正文"}]}',
+        'characters 至少一个，角色名不得重复；每个角色的 visualDescription 必须具体且在各页保持一致。',
+        '每页只推进一个清晰场景，正文语言和情节复杂度必须适合目标年龄，内容温和、安全，不包含成人、暴力、危险模仿或歧视内容。',
+      ].join('\n'),
       REWRITE: '请根据参考正文和本次要求进行改写，输出完整正文。',
       CONTINUE:
         '请在保持人物、情节和语言风格连续的前提下续写正文，只输出新增续写片段，不要重复参考正文。',
@@ -399,6 +445,15 @@ export class StoryService {
   }
 
   private viewVersion(version: typeof workVersions.$inferSelect) {
+    let structuredStory = null;
+    if (version.contentKind === 'BODY') {
+      try {
+        structuredStory = structuredStorySchema.parse(JSON.parse(version.content) as unknown);
+      } catch {
+        // Older plain-text BODY versions remain valid and are returned without structured data.
+      }
+    }
+
     return {
       id: version.id,
       workId: version.workId,
@@ -408,6 +463,7 @@ export class StoryService {
       sourceVersionId: version.sourceVersionId,
       sourceAiJobId: version.sourceAiJobId,
       content: version.content,
+      structuredStory,
       createdAt: version.createdAt.toISOString(),
     };
   }

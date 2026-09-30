@@ -3,6 +3,7 @@ export interface AiProviderInput {
   model: string;
   prompt: string;
   signal: AbortSignal;
+  responseFormat?: 'json_object';
 }
 export interface AiProviderResult {
   text: string;
@@ -108,6 +109,31 @@ export class MockAiProvider implements AiProvider {
           },
         ],
       });
+    } else if (input.prompt.includes('XIAOHAI_TASK=STRUCTURED_STORY')) {
+      const requestedPageCount = Number(
+        input.prompt.match(/REQUESTED_PAGE_COUNT=(1[0-5])/)?.[1] ?? 10,
+      );
+      text = JSON.stringify({
+        title: '森林里的小灯塔',
+        outline: '小狐狸帮助迷路的小鸟找到回家的路，并学会勇敢地承担责任。',
+        characters: [
+          {
+            name: '小狐狸',
+            description: '勇敢、温柔，愿意帮助朋友的主角。',
+            visualDescription: '橙色短毛、圆圆的棕色眼睛、绿色围巾和白色尾尖。',
+          },
+          {
+            name: '小鸟',
+            description: '有礼貌、会认真观察线索的伙伴。',
+            visualDescription: '蓝色羽毛、淡黄色胸口、背着小小的红色挎包。',
+          },
+        ],
+        pages: Array.from({ length: requestedPageCount }, (_, index) => ({
+          pageNumber: index + 1,
+          scene: `森林旅程的第 ${index + 1} 个场景`,
+          text: `这是森林旅程的第 ${index + 1} 页，小狐狸和小鸟继续寻找回家的方向。`,
+        })),
+      });
     }
 
     return Promise.resolve({
@@ -153,6 +179,7 @@ export class BailianAiProvider implements AiProvider {
           model: input.model,
           messages: [{ role: 'user', content: input.prompt }],
           stream: false,
+          ...(input.responseFormat ? { response_format: { type: input.responseFormat } } : {}),
         }),
       });
       const providerRequestId = response.headers.get('x-request-id') ?? undefined;
@@ -240,6 +267,7 @@ export class DeepSeekAiProvider implements AiProvider {
           model: input.model,
           messages: [{ role: 'user', content: input.prompt }],
           stream: false,
+          ...(input.responseFormat ? { response_format: { type: input.responseFormat } } : {}),
         }),
       });
       if (!response.ok) throw new ProviderError('PROVIDER_UNAVAILABLE');

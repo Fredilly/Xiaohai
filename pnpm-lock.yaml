@@ -224,6 +224,9 @@ importers:
       '@xiaohai/config':
         specifier: workspace:*
         version: link:../../packages/config
+      '@xiaohai/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
       '@xiaohai/db':
         specifier: workspace:*
         version: link:../../packages/db
