@@ -173,7 +173,10 @@ export class BailianImageProvider implements ImageProvider {
           throw new ImageProviderError('IMAGE_PROVIDER_UNAVAILABLE', { stage: 'VALIDATION' });
       } catch (error) {
         if (error instanceof ImageProviderError) throw error;
-        if (input.signal.aborted) throw new ImageProviderError('IMAGE_PROVIDER_TIMEOUT');
+        if (input.signal.aborted)
+          throw new ImageProviderError('IMAGE_PROVIDER_TIMEOUT', {
+            stage: 'TEMPORARY_IMAGE_DOWNLOAD',
+          });
         throw new ImageProviderError('IMAGE_PROVIDER_UNAVAILABLE', {
           stage: 'TEMPORARY_IMAGE_DOWNLOAD',
         });

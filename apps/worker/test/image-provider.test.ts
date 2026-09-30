@@ -201,6 +201,34 @@ describe('BailianImageProvider', () => {
     ).rejects.toMatchObject({ details: { stage: 'TEMPORARY_IMAGE_DOWNLOAD', httpStatus: 502 } });
   });
 
+  it('preserves temporary download stage on an abort timeout', async () => {
+    const controller = new AbortController();
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ data: [{ url: 'https://x.aliyuncs.com/a' }] })),
+      )
+      .mockImplementationOnce(() => {
+        controller.abort();
+        throw new DOMException('timeout', 'TimeoutError');
+      });
+    const storage = new BosStorage({
+      bucket: 'xiaohai-assets',
+      publicOrigin: 'https://assets.example.com',
+      client: { putObject: vi.fn().mockResolvedValue({}) },
+    });
+
+    await expect(
+      new BailianImageProvider('secret', 'https://api.example.com', storage, fetcher).generate({
+        ...input,
+        signal: controller.signal,
+      }),
+    ).rejects.toMatchObject({
+      code: 'IMAGE_PROVIDER_TIMEOUT',
+      details: { stage: 'TEMPORARY_IMAGE_DOWNLOAD' },
+    });
+  });
+
   it('marks MIME validation failures separately', async () => {
     const fetcher = vi
       .fn<typeof fetch>()
