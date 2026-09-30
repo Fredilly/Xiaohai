@@ -107,20 +107,30 @@ export class BailianImageProvider implements ImageProvider {
 
   async generate(input: ImageGenerationInput): Promise<ImageGenerationResult> {
     try {
-      const response = await this.fetcher(`${this.baseUrl.replace(/\/$/, '')}/images/generations`, {
-        method: 'POST',
-        headers: {
-          authorization: `Bearer ${this.apiKey}`,
-          'content-type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: input.model,
-          prompt: buildPrompt(input.prompt, input.consistency),
-          n: 1,
-          size: '1024x1024',
-        }),
-        signal: input.signal,
-      });
+      let response: Response;
+      try {
+        response = await this.fetcher(`${this.baseUrl.replace(/\/$/, '')}/images/generations`, {
+          method: 'POST',
+          headers: {
+            authorization: `Bearer ${this.apiKey}`,
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: input.model,
+            prompt: buildPrompt(input.prompt, input.consistency),
+            n: 1,
+            size: '1024x1024',
+          }),
+          signal: input.signal,
+        });
+      } catch {
+        if (input.signal.aborted)
+          throw new ImageProviderError('IMAGE_PROVIDER_TIMEOUT', { stage: 'BAILIAN_REQUEST' });
+        throw new ImageProviderError('IMAGE_PROVIDER_UNAVAILABLE', {
+          stage: 'BAILIAN_REQUEST',
+          safeMessage: undefined,
+        });
+      }
       if (!response.ok) {
         const requestId = response.headers.get('x-request-id') ?? undefined;
         const errorBody = await readJson(response);
@@ -129,7 +139,7 @@ export class BailianImageProvider implements ImageProvider {
           stage: 'BAILIAN_REQUEST',
           httpStatus: response.status,
           providerErrorCode: error.success ? error.data.error?.code : undefined,
-          safeMessage: error.success ? sanitizeMessage(error.data.error?.message) : undefined,
+          safeMessage: undefined,
           providerRequestId: requestId ?? (error.success ? error.data.request_id : undefined),
         });
       }
@@ -197,18 +207,6 @@ const readJson = async (response: Response): Promise<unknown> => {
   } catch {
     return undefined;
   }
-};
-
-const sanitizeMessage = (message: string | undefined): string | undefined => {
-  if (!message) return undefined;
-  return message
-    .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, 'Bearer [REDACTED]')
-    .replace(
-      /((?:api[_-]?key|access[_-]?key|secret|ak|sk|signature|token)["'=:\s]+)[^\s,;]+/gi,
-      '$1[REDACTED]',
-    )
-    .replace(/[\r\n]+/g, ' ')
-    .slice(0, 256);
 };
 
 const buildPrompt = (prompt: string, consistency: ImageConsistencyReference[]): string => {

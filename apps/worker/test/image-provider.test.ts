@@ -179,10 +179,7 @@ describe('BailianImageProvider', () => {
         providerRequestId: 'header-request-id',
       },
     });
-    expect(error.details.safeMessage).toHaveLength(256);
-    expect(error.details.safeMessage).not.toContain('secret-token');
-    expect(error.details.safeMessage).not.toContain('private-key');
-    expect(error.details.safeMessage).not.toContain('\n');
+    expect(error.details.safeMessage).toBeUndefined();
   });
 
   it('marks temporary image HTTP failures separately', async () => {
@@ -262,5 +259,26 @@ describe('BailianImageProvider', () => {
         signal: controller.signal,
       }),
     ).rejects.toMatchObject({ code: 'IMAGE_PROVIDER_TIMEOUT' });
+  });
+
+  it('marks initial Bailian request timeouts as BAILIAN_REQUEST', async () => {
+    const storage = new BosStorage({
+      bucket: 'xiaohai-assets',
+      publicOrigin: 'https://assets.example.com',
+      client: { putObject: vi.fn().mockResolvedValue({}) },
+    });
+    const controller = new AbortController();
+    controller.abort();
+    await expect(
+      new BailianImageProvider(
+        'secret',
+        'https://api.example.com',
+        storage,
+        vi.fn<typeof fetch>().mockRejectedValue(new DOMException('timeout', 'TimeoutError')),
+      ).generate({ ...input, signal: controller.signal }),
+    ).rejects.toMatchObject({
+      code: 'IMAGE_PROVIDER_TIMEOUT',
+      details: { stage: 'BAILIAN_REQUEST' },
+    });
   });
 });
