@@ -13,6 +13,7 @@ benchmarks/image/raw/*.json
 benchmarks/image/outputs/*
 !benchmarks/image/outputs/.gitkeep
 benchmarks/image/REPORT.md
+benchmarks/image/SCORECARD.md
 !.env.example
 !.env.*.example
 

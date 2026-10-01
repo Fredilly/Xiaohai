@@ -1,5 +1,4 @@
 import {
-  BailianImageProvider,
   ImageProviderError,
   MockImageProvider,
   type ImageGenerationResult,
@@ -7,6 +6,11 @@ import {
 } from '../../apps/worker/src/image-provider.js';
 import type { BosStorage } from '../../apps/worker/src/bos-storage.js';
 import { imagePrompts, type ImagePrompt } from './prompts.js';
+import {
+  BenchmarkImageProviderError,
+  QwenBenchmarkImageProvider,
+  ZImageTurboBenchmarkProvider,
+} from './providers.js';
 
 export const benchmarkModels = ['qwen-image-3.0', 'z-image-turbo'] as const;
 export type BenchmarkModel = (typeof benchmarkModels)[number];
@@ -54,6 +58,9 @@ const emptyRating = (): HumanRating => ({
 
 function safeError(error: unknown): { code: string; requestId: string | null } {
   if (error instanceof ImageProviderError) {
+    return { code: error.code, requestId: error.details.providerRequestId ?? null };
+  }
+  if (error instanceof BenchmarkImageProviderError) {
     return { code: error.code, requestId: error.details.providerRequestId ?? null };
   }
   return { code: 'IMAGE_BENCHMARK_FAILED', requestId: null };
@@ -130,12 +137,20 @@ export function summarize(model: BenchmarkModel, runs: ImageRun[]): ImageSummary
   };
 }
 
-export function createBailianImageProvider(
+export function createQwenBenchmarkProvider(
   apiKey: string,
   baseUrl: string,
   storage: BosStorage,
-): ImageProvider {
-  return new BailianImageProvider(apiKey, baseUrl, storage);
+): BenchmarkImageProvider {
+  return new QwenBenchmarkImageProvider(apiKey, baseUrl, storage);
+}
+
+export function createZImageBenchmarkProvider(
+  apiKey: string,
+  baseUrl: string,
+  storage: BosStorage,
+): BenchmarkImageProvider {
+  return new ZImageTurboBenchmarkProvider(apiKey, baseUrl, storage);
 }
 
 export function createMockImageProvider(): ImageProvider {
@@ -143,3 +158,9 @@ export function createMockImageProvider(): ImageProvider {
 }
 
 export type { ImageGenerationResult };
+
+export const selectImagePrompts = (promptId?: string): ImagePrompt[] => {
+  if (!promptId) return imagePrompts;
+  const normalized = promptId === 'character-portrait' ? 'portrait-child-friendly' : promptId;
+  return imagePrompts.filter((prompt) => prompt.promptId === normalized);
+};

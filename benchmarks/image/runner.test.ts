@@ -1,12 +1,19 @@
 import { describe, expect, it, vi } from 'vitest';
 import { ImageProviderError } from '../../apps/worker/src/image-provider.js';
+import { BosStorage } from '../../apps/worker/src/bos-storage.js';
 import { imagePrompts, recurringCharacterDescription } from './prompts.js';
 import {
   runImageBenchmark,
+  selectImagePrompts,
   summarize,
   type BenchmarkImageProvider,
   type BenchmarkModel,
 } from './runner.js';
+import {
+  deriveWorkspaceOrigin,
+  QwenBenchmarkImageProvider,
+  ZImageTurboBenchmarkProvider,
+} from './providers.js';
 
 const result = (id = 'request-id') => ({
   assetProvider: 'MOCK_IMAGE' as const,
@@ -83,5 +90,104 @@ describe('image benchmark', () => {
       providerRequestId: 'safe-id',
     });
     expect(JSON.stringify(run)).not.toContain('secret');
+  });
+  it('uses the Qwen compatible endpoint and fair settings', async () => {
+    const storage = new BosStorage({
+      bucket: 'b',
+      publicOrigin: 'https://bos.invalid',
+      client: { putObject: vi.fn(async () => undefined) },
+    });
+    let qwenCalls = 0;
+    const fetcher = vi.fn(async () =>
+      ++qwenCalls === 1
+        ? {
+            ok: true,
+            status: 200,
+            headers: new Headers(),
+            json: async () => ({
+              request_id: 'qwen-id',
+              data: [{ url: 'https://provider.invalid/q.png' }],
+            }),
+          }
+        : {
+            ok: true,
+            status: 200,
+            headers: new Headers({ 'content-type': 'image/png' }),
+            arrayBuffer: async () => Buffer.from('89504e470d0a1a0a', 'hex'),
+          },
+    );
+    const provider = new QwenBenchmarkImageProvider(
+      'key',
+      'https://workspace/compatible-mode/v1',
+      storage,
+      fetcher,
+    );
+    await provider.generate({
+      generationKey: 'q',
+      model: 'qwen-image-3.0',
+      prompt: 'p',
+      consistency: [],
+      signal: new AbortController().signal,
+    });
+    expect(fetcher.mock.calls[0]![0]).toBe(
+      'https://workspace/compatible-mode/v1/images/generations',
+    );
+    expect(JSON.parse(fetcher.mock.calls[0]![1].body)).toMatchObject({
+      model: 'qwen-image-3.0',
+      n: 1,
+      size: '1024x1024',
+      prompt_extend: false,
+    });
+  });
+  it('uses the Z-Image native endpoint and parses image/request id', async () => {
+    const storage = new BosStorage({
+      bucket: 'b',
+      publicOrigin: 'https://bos.invalid',
+      client: { putObject: vi.fn(async () => undefined) },
+    });
+    let zCalls = 0;
+    const fetcher = vi.fn(async () =>
+      ++zCalls === 1
+        ? {
+            ok: true,
+            status: 200,
+            headers: new Headers(),
+            json: async () => ({
+              request_id: 'z-id',
+              output: {
+                choices: [{ message: { content: [{ image: 'https://provider.invalid/z.png' }] } }],
+              },
+            }),
+          }
+        : {
+            ok: true,
+            status: 200,
+            headers: new Headers({ 'content-type': 'image/png' }),
+            arrayBuffer: async () => Buffer.from('89504e470d0a1a0a', 'hex'),
+          },
+    );
+    const provider = new ZImageTurboBenchmarkProvider('key', 'https://workspace', storage, fetcher);
+    const output = await provider.generate({
+      generationKey: 'z',
+      model: 'z-image-turbo',
+      prompt: 'p',
+      consistency: [],
+      signal: new AbortController().signal,
+    });
+    expect(fetcher.mock.calls[0]![0]).toBe(
+      'https://workspace/api/v1/services/aigc/multimodal-generation/generation',
+    );
+    expect(fetcher.mock.calls[0]![0]).not.toContain('/images/generations');
+    expect(JSON.parse(fetcher.mock.calls[0]![1].body)).toMatchObject({
+      model: 'z-image-turbo',
+      parameters: { size: '1024*1024', prompt_extend: false, n: 1 },
+    });
+    expect(output.providerRequestId).toBe('z-id');
+  });
+  it('derives workspace origin and filters a single smoke prompt', () => {
+    expect(deriveWorkspaceOrigin('https://workspace/compatible-mode/v1')).toBe('https://workspace');
+    expect(selectImagePrompts('character-portrait').map((prompt) => prompt.promptId)).toEqual([
+      'portrait-child-friendly',
+    ]);
   });
 });
