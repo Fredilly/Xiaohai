@@ -111,6 +111,7 @@ async function generate(
   model: string,
   prompt: string,
   timeoutMs: number,
+  responseFormat?: 'json_object',
 ): Promise<{
   result?: AiProviderResult;
   error?: string;
@@ -124,7 +125,7 @@ async function generate(
       model,
       prompt,
       signal: controller.signal,
-      responseFormat: 'json_object',
+      ...(responseFormat ? { responseFormat } : {}),
     });
     return { result, timeout: false, call: callRecord(result) };
   } catch (error) {
@@ -169,6 +170,7 @@ export async function runBenchmark(
       ? `${basePrompt(input)}\n${structuredInstruction(input)}`
       : `${basePrompt(input)}\n${outlineInstruction}`,
     timeoutMs,
+    strategy === 'ONE_SHOT' ? 'json_object' : undefined,
   );
   if (first.call) calls.push(first.call);
   if (!first.result) {
@@ -192,6 +194,7 @@ export async function runBenchmark(
       model,
       `${basePrompt(input)}\n参考大纲（仅用于本次生成）：${first.result.text}\n${structuredInstruction(input)}`,
       timeoutMs,
+      'json_object',
     );
     if (second.call) calls.push(second.call);
     if (!second.result) {

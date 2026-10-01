@@ -49,6 +49,12 @@ describe('story benchmark runner', () => {
     });
     expect(one.generate).toHaveBeenCalledTimes(1);
     expect(two.generate).toHaveBeenCalledTimes(2);
+    expect(one.generate).toHaveBeenCalledWith(
+      expect.objectContaining({ responseFormat: 'json_object' }),
+    );
+    const twoCalls = vi.mocked(two.generate).mock.calls;
+    expect(twoCalls[0]?.[0]).not.toHaveProperty('responseFormat');
+    expect(twoCalls[1]?.[0]).toHaveProperty('responseFormat', 'json_object');
   });
   it('aggregates p50 and tokens', () => {
     const runs = [1, 2, 3].map((runNumber) => ({

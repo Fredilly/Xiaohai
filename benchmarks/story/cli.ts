@@ -41,6 +41,12 @@ const runs = Number(args.get('runs') ?? 5);
 const requestedPageCount = Number(args.get('page-count') ?? 10);
 const model = process.env.STORY_AI_MODEL || 'qwen-flash';
 const dryRun = args.has('dry-run');
+const strategyArgument = args.get('strategy');
+const strategies: Strategy[] = strategyArgument
+  ? [strategyArgument as Strategy]
+  : ['ONE_SHOT', 'OUTLINE_FIRST'];
+if (strategies.some((strategy) => !['ONE_SHOT', 'OUTLINE_FIRST'].includes(strategy)))
+  throw new Error('--strategy must be ONE_SHOT or OUTLINE_FIRST');
 const apiKey = process.env.DASHSCOPE_API_KEY;
 const baseUrl = process.env.DASHSCOPE_BASE_URL || process.env.QWEN_BASE_URL;
 if (!dryRun && (!apiKey || !baseUrl))
@@ -57,12 +63,12 @@ const input: BenchmarkInput = {
 };
 const provider = dryRun ? new MockAiProvider() : createQwenProvider(apiKey!, baseUrl!);
 const allRuns: BenchmarkRun[] = [];
-for (const strategy of ['ONE_SHOT', 'OUTLINE_FIRST'] as Strategy[]) {
+for (const strategy of strategies) {
   for (let runNumber = 1; runNumber <= runs; runNumber += 1) {
     allRuns.push(await runBenchmark(provider, model, strategy, runNumber, input));
   }
 }
-const summaries = ['ONE_SHOT', 'OUTLINE_FIRST'].map((strategy) =>
+const summaries = strategies.map((strategy) =>
   summarize(
     strategy as Strategy,
     allRuns.filter((run) => run.strategy === strategy),
