@@ -9,6 +9,10 @@ test-results/
 .env
 .env.*
 benchmarks/story/raw/*.json
+benchmarks/image/raw/*.json
+benchmarks/image/outputs/*
+!benchmarks/image/outputs/.gitkeep
+benchmarks/image/REPORT.md
 !.env.example
 !.env.*.example
 
