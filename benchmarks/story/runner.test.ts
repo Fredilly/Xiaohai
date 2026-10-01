@@ -90,6 +90,96 @@ describe('story benchmark runner', () => {
       providerCallCount: 3,
     });
   });
+  it('averages tokens per successful run across both OUTLINE_FIRST calls', () => {
+    const runs = [1, 2].map((runNumber) => ({
+      strategy: 'OUTLINE_FIRST' as const,
+      runNumber,
+      requestedPageCount: 10,
+      actualPageCount: 10,
+      success: true,
+      totalLatencyMs: 100,
+      providerCalls: [
+        {
+          latencyMs: 5,
+          ttftMs: null,
+          inputTokens: 10,
+          outputTokens: 20,
+          totalTokens: 30,
+          providerRequestId: 'outline',
+        },
+        {
+          latencyMs: 5,
+          ttftMs: null,
+          inputTokens: 30,
+          outputTokens: 40,
+          totalTokens: 70,
+          providerRequestId: 'story',
+        },
+      ],
+      retries: 0,
+      timeout: false,
+      regenerationNeeded: false,
+      structuredValidation: 'PASSED' as const,
+      characterCount: 1,
+      qualityNotes: [],
+      errorCode: null,
+    }));
+    expect(summarize('OUTLINE_FIRST', runs)).toMatchObject({
+      averageInputTokens: 40,
+      averageOutputTokens: 60,
+      averageTotalTokens: 100,
+      providerCallCount: 4,
+    });
+  });
+  it('excludes failed runs from token averages', () => {
+    const successful = {
+      strategy: 'ONE_SHOT' as const,
+      runNumber: 1,
+      requestedPageCount: 10,
+      actualPageCount: 10,
+      success: true,
+      totalLatencyMs: 100,
+      providerCalls: [
+        {
+          latencyMs: 5,
+          ttftMs: null,
+          inputTokens: 10,
+          outputTokens: 20,
+          totalTokens: 30,
+          providerRequestId: 'ok',
+        },
+      ],
+      retries: 0,
+      timeout: false,
+      regenerationNeeded: false,
+      structuredValidation: 'PASSED' as const,
+      characterCount: 1,
+      qualityNotes: [],
+      errorCode: null,
+    };
+    const failed = {
+      ...successful,
+      runNumber: 2,
+      success: false,
+      actualPageCount: null,
+      providerCalls: [
+        {
+          latencyMs: 5,
+          ttftMs: null,
+          inputTokens: 999,
+          outputTokens: 999,
+          totalTokens: 1998,
+          providerRequestId: 'failed',
+        },
+      ],
+      structuredValidation: 'FAILED' as const,
+    };
+    expect(summarize('ONE_SHOT', [successful, failed])).toMatchObject({
+      averageInputTokens: 10,
+      averageOutputTokens: 20,
+      averageTotalTokens: 30,
+    });
+  });
   it('marks malformed output without retaining content', async () => {
     const result = await runBenchmark(
       provider('{"title":"secret story body"}'),

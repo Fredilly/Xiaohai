@@ -232,10 +232,15 @@ export async function runBenchmark(
 
 export function summarize(strategy: Strategy, runs: BenchmarkRun[]): BenchmarkSummary {
   const successful = runs.filter((run) => run.success);
-  const values = (field: keyof ProviderCallRecord) =>
-    runs
-      .flatMap((run) => run.providerCalls.map((call) => call[field]))
-      .filter((value): value is number => typeof value === 'number');
+  const perRunTokenTotals = (field: 'inputTokens' | 'outputTokens' | 'totalTokens') =>
+    successful
+      .map((run) =>
+        run.providerCalls.reduce(
+          (sum, call) => sum + (typeof call[field] === 'number' ? call[field]! : 0),
+          0,
+        ),
+      )
+      .filter((value) => value > 0);
   const average = (items: number[]) =>
     items.length ? items.reduce((sum, value) => sum + value, 0) / items.length : null;
   const sortedLatency = successful.map((run) => run.totalLatencyMs).sort((a, b) => a - b);
@@ -249,9 +254,9 @@ export function summarize(strategy: Strategy, runs: BenchmarkRun[]): BenchmarkSu
     successRate: runs.length ? successful.length / runs.length : 0,
     p50TotalLatencyMs: p50,
     slowestRunMs: runs.length ? Math.max(...runs.map((run) => run.totalLatencyMs)) : null,
-    averageInputTokens: average(values('inputTokens')),
-    averageOutputTokens: average(values('outputTokens')),
-    averageTotalTokens: average(values('totalTokens')),
+    averageInputTokens: average(perRunTokenTotals('inputTokens')),
+    averageOutputTokens: average(perRunTokenTotals('outputTokens')),
+    averageTotalTokens: average(perRunTokenTotals('totalTokens')),
     timeoutCount: runs.filter((run) => run.timeout).length,
     failureCount: runs.filter((run) => !run.success).length,
     regenerationCount: runs.filter((run) => run.regenerationNeeded).length,
