@@ -14,11 +14,20 @@ const zImageUrl = (body: any): string | null =>
     : null;
 const bodyRequestId = (body: any): string | undefined =>
   typeof body?.request_id === 'string' && body.request_id.length > 0 ? body.request_id : undefined;
+const bodyErrorCode = (body: any): string | undefined => {
+  const code = body?.error?.code ?? body?.code;
+  return typeof code === 'string' && code.length > 0 ? code : undefined;
+};
 
 export class BenchmarkImageProviderError extends Error {
   constructor(
     readonly code: 'IMAGE_PROVIDER_UNAVAILABLE' | 'IMAGE_PROVIDER_TIMEOUT',
-    readonly details: { stage?: string; httpStatus?: number; providerRequestId?: string } = {},
+    readonly details: {
+      stage?: string;
+      httpStatus?: number;
+      providerRequestId?: string;
+      providerErrorCode?: string;
+    } = {},
   ) {
     super(code);
   }
@@ -132,6 +141,7 @@ abstract class DashScopeBenchmarkProvider {
         stage: 'REQUEST',
         httpStatus: response.status,
         providerRequestId: requestId || undefined,
+        providerErrorCode: bodyErrorCode(responseBody),
       });
     return { body: responseBody, requestId };
   }

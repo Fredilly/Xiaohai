@@ -36,6 +36,7 @@ export type ImageRun = {
   errorCode: string | null;
   errorStage: string | null;
   httpStatus: number | null;
+  providerErrorCode: string | null;
   humanRating: HumanRating;
 };
 
@@ -63,6 +64,7 @@ function safeError(error: unknown): {
   requestId: string | null;
   stage: string | null;
   httpStatus: number | null;
+  providerErrorCode: string | null;
 } {
   if (error instanceof ImageProviderError) {
     return {
@@ -70,6 +72,7 @@ function safeError(error: unknown): {
       requestId: error.details.providerRequestId ?? null,
       stage: error.details.stage ?? null,
       httpStatus: error.details.httpStatus ?? null,
+      providerErrorCode: null,
     };
   }
   if (error instanceof BenchmarkImageProviderError) {
@@ -78,9 +81,16 @@ function safeError(error: unknown): {
       requestId: error.details.providerRequestId ?? null,
       stage: error.details.stage ?? null,
       httpStatus: error.details.httpStatus ?? null,
+      providerErrorCode: error.details.providerErrorCode ?? null,
     };
   }
-  return { code: 'IMAGE_BENCHMARK_FAILED', requestId: null, stage: null, httpStatus: null };
+  return {
+    code: 'IMAGE_BENCHMARK_FAILED',
+    requestId: null,
+    stage: null,
+    httpStatus: null,
+    providerErrorCode: null,
+  };
 }
 
 export async function runImageBenchmark(
@@ -115,6 +125,7 @@ export async function runImageBenchmark(
       errorCode: null,
       errorStage: null,
       httpStatus: null,
+      providerErrorCode: null,
       humanRating: emptyRating(),
     };
   } catch (error) {
@@ -133,6 +144,7 @@ export async function runImageBenchmark(
       errorCode: safe.code,
       errorStage: safe.stage,
       httpStatus: safe.httpStatus,
+      providerErrorCode: safe.providerErrorCode,
       humanRating: emptyRating(),
     };
   } finally {

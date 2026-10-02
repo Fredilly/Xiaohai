@@ -145,6 +145,40 @@ describe('image benchmark', () => {
       enable_thinking: false,
     });
   });
+  it.each([
+    [
+      { error: { code: 'AccessDenied.Unpurchased', message: 'must not be stored' } },
+      'AccessDenied.Unpurchased',
+    ],
+    [{ code: 'Model.AccessDenied', message: 'must not be stored' }, 'Model.AccessDenied'],
+  ])('records only safe provider error code for 403 responses', async (body, code) => {
+    const storage = new BosStorage({
+      bucket: 'b',
+      publicOrigin: 'https://bos.invalid',
+      client: { putObject: vi.fn(async () => undefined) },
+    });
+    const fetcher = vi.fn(async () => ({
+      ok: false,
+      status: 403,
+      headers: new Headers({ 'x-request-id': 'safe-request-id' }),
+      json: async () => body,
+    }));
+    const provider = new QwenBenchmarkImageProvider(
+      'key',
+      'https://workspace/compatible-mode/v1',
+      storage,
+      fetcher,
+    );
+    const run = await runImageBenchmark(provider, 'qwen-image-3.0', imagePrompts[0]!, 1);
+    expect(run).toMatchObject({
+      success: false,
+      httpStatus: 403,
+      providerRequestId: 'safe-request-id',
+      providerErrorCode: code,
+    });
+    expect(JSON.stringify(run)).not.toContain('must not be stored');
+    expect(JSON.stringify(run)).not.toContain('Authorization');
+  });
   it('uses the Z-Image native endpoint and parses image/request id', async () => {
     const storage = new BosStorage({
       bucket: 'b',
