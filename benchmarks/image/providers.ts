@@ -147,6 +147,7 @@ export class QwenBenchmarkImageProvider extends DashScopeBenchmarkProvider {
         n: 1,
         size: '1024x1024',
         prompt_extend: false,
+        enable_thinking: false,
       },
       input,
     );

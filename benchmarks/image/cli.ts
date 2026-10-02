@@ -123,7 +123,22 @@ const artifact = {
     recurringCharacterDescription: prompt.prompt.includes('Mimi')
       ? 'Mimi description is embedded verbatim in the prompt.'
       : null,
-    settings: { outputSize: '1024x1024', promptExtend: false, count: 1, seed: null },
+    settings: {
+      qwenImage30: {
+        outputSize: '1024x1024',
+        count: 1,
+        promptExtend: false,
+        enableThinking: false,
+        seed: null,
+      },
+      zImageTurbo: {
+        outputSize: '1024*1024',
+        count: 1,
+        promptExtend: false,
+        enableThinking: null,
+        seed: null,
+      },
+    },
   })),
   runs: allRuns,
   summaries,

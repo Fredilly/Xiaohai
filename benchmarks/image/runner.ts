@@ -34,6 +34,8 @@ export type ImageRun = {
   height: number | null;
   obviousTechnicalDefects: string[];
   errorCode: string | null;
+  errorStage: string | null;
+  httpStatus: number | null;
   humanRating: HumanRating;
 };
 
@@ -56,14 +58,29 @@ const emptyRating = (): HumanRating => ({
   notes: '',
 });
 
-function safeError(error: unknown): { code: string; requestId: string | null } {
+function safeError(error: unknown): {
+  code: string;
+  requestId: string | null;
+  stage: string | null;
+  httpStatus: number | null;
+} {
   if (error instanceof ImageProviderError) {
-    return { code: error.code, requestId: error.details.providerRequestId ?? null };
+    return {
+      code: error.code,
+      requestId: error.details.providerRequestId ?? null,
+      stage: error.details.stage ?? null,
+      httpStatus: error.details.httpStatus ?? null,
+    };
   }
   if (error instanceof BenchmarkImageProviderError) {
-    return { code: error.code, requestId: error.details.providerRequestId ?? null };
+    return {
+      code: error.code,
+      requestId: error.details.providerRequestId ?? null,
+      stage: error.details.stage ?? null,
+      httpStatus: error.details.httpStatus ?? null,
+    };
   }
-  return { code: 'IMAGE_BENCHMARK_FAILED', requestId: null };
+  return { code: 'IMAGE_BENCHMARK_FAILED', requestId: null, stage: null, httpStatus: null };
 }
 
 export async function runImageBenchmark(
@@ -96,6 +113,8 @@ export async function runImageBenchmark(
       height: null,
       obviousTechnicalDefects: [],
       errorCode: null,
+      errorStage: null,
+      httpStatus: null,
       humanRating: emptyRating(),
     };
   } catch (error) {
@@ -112,6 +131,8 @@ export async function runImageBenchmark(
       height: null,
       obviousTechnicalDefects: [],
       errorCode: safe.code,
+      errorStage: safe.stage,
+      httpStatus: safe.httpStatus,
       humanRating: emptyRating(),
     };
   } finally {

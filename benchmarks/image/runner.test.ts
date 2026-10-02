@@ -57,6 +57,8 @@ describe('image benchmark', () => {
       height: null,
       obviousTechnicalDefects: [],
       errorCode: success ? null : 'IMAGE_PROVIDER_UNAVAILABLE',
+      errorStage: success ? null : 'REQUEST',
+      httpStatus: success ? null : 403,
       humanRating: {
         characterConsistency: null,
         promptAdherence: null,
@@ -78,6 +80,7 @@ describe('image benchmark', () => {
     const provider: BenchmarkImageProvider = {
       generate: vi.fn(async () => {
         throw new ImageProviderError('IMAGE_PROVIDER_UNAVAILABLE', {
+          stage: 'BAILIAN_REQUEST',
           providerRequestId: 'safe-id',
           httpStatus: 403,
         });
@@ -88,6 +91,8 @@ describe('image benchmark', () => {
       success: false,
       errorCode: 'IMAGE_PROVIDER_UNAVAILABLE',
       providerRequestId: 'safe-id',
+      errorStage: 'BAILIAN_REQUEST',
+      httpStatus: 403,
     });
     expect(JSON.stringify(run)).not.toContain('secret');
   });
@@ -137,6 +142,7 @@ describe('image benchmark', () => {
       n: 1,
       size: '1024x1024',
       prompt_extend: false,
+      enable_thinking: false,
     });
   });
   it('uses the Z-Image native endpoint and parses image/request id', async () => {
