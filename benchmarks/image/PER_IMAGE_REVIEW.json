@@ -1,0 +1,362 @@
+[
+  {
+    "model": "qwen-image-3.0",
+    "promptId": "portrait-child-friendly",
+    "runNumber": 1,
+    "characterConsistency": null,
+    "promptAdherence": null,
+    "illustrationQuality": null,
+    "notes": "",
+    "obviousTechnicalDefects": []
+  },
+  {
+    "model": "qwen-image-3.0",
+    "promptId": "portrait-child-friendly",
+    "runNumber": 2,
+    "characterConsistency": null,
+    "promptAdherence": null,
+    "illustrationQuality": null,
+    "notes": "",
+    "obviousTechnicalDefects": []
+  },
+  {
+    "model": "qwen-image-3.0",
+    "promptId": "portrait-child-friendly",
+    "runNumber": 3,
+    "characterConsistency": null,
+    "promptAdherence": null,
+    "illustrationQuality": null,
+    "notes": "",
+    "obviousTechnicalDefects": []
+  },
+  {
+    "model": "qwen-image-3.0",
+    "promptId": "same-character-new-scene",
+    "runNumber": 1,
+    "characterConsistency": null,
+    "promptAdherence": null,
+    "illustrationQuality": null,
+    "notes": "",
+    "obviousTechnicalDefects": []
+  },
+  {
+    "model": "qwen-image-3.0",
+    "promptId": "same-character-new-scene",
+    "runNumber": 2,
+    "characterConsistency": null,
+    "promptAdherence": null,
+    "illustrationQuality": null,
+    "notes": "",
+    "obviousTechnicalDefects": []
+  },
+  {
+    "model": "qwen-image-3.0",
+    "promptId": "same-character-new-scene",
+    "runNumber": 3,
+    "characterConsistency": null,
+    "promptAdherence": null,
+    "illustrationQuality": null,
+    "notes": "",
+    "obviousTechnicalDefects": []
+  },
+  {
+    "model": "qwen-image-3.0",
+    "promptId": "two-recurring-characters",
+    "runNumber": 1,
+    "characterConsistency": null,
+    "promptAdherence": null,
+    "illustrationQuality": null,
+    "notes": "",
+    "obviousTechnicalDefects": []
+  },
+  {
+    "model": "qwen-image-3.0",
+    "promptId": "two-recurring-characters",
+    "runNumber": 2,
+    "characterConsistency": null,
+    "promptAdherence": null,
+    "illustrationQuality": null,
+    "notes": "",
+    "obviousTechnicalDefects": []
+  },
+  {
+    "model": "qwen-image-3.0",
+    "promptId": "two-recurring-characters",
+    "runNumber": 3,
+    "characterConsistency": null,
+    "promptAdherence": null,
+    "illustrationQuality": null,
+    "notes": "",
+    "obviousTechnicalDefects": []
+  },
+  {
+    "model": "qwen-image-3.0",
+    "promptId": "detailed-indoor-scene",
+    "runNumber": 1,
+    "characterConsistency": null,
+    "promptAdherence": null,
+    "illustrationQuality": null,
+    "notes": "",
+    "obviousTechnicalDefects": []
+  },
+  {
+    "model": "qwen-image-3.0",
+    "promptId": "detailed-indoor-scene",
+    "runNumber": 2,
+    "characterConsistency": null,
+    "promptAdherence": null,
+    "illustrationQuality": null,
+    "notes": "",
+    "obviousTechnicalDefects": []
+  },
+  {
+    "model": "qwen-image-3.0",
+    "promptId": "detailed-indoor-scene",
+    "runNumber": 3,
+    "characterConsistency": null,
+    "promptAdherence": null,
+    "illustrationQuality": null,
+    "notes": "",
+    "obviousTechnicalDefects": []
+  },
+  {
+    "model": "qwen-image-3.0",
+    "promptId": "outdoor-action-scene",
+    "runNumber": 1,
+    "characterConsistency": null,
+    "promptAdherence": null,
+    "illustrationQuality": null,
+    "notes": "",
+    "obviousTechnicalDefects": []
+  },
+  {
+    "model": "qwen-image-3.0",
+    "promptId": "outdoor-action-scene",
+    "runNumber": 2,
+    "characterConsistency": null,
+    "promptAdherence": null,
+    "illustrationQuality": null,
+    "notes": "",
+    "obviousTechnicalDefects": []
+  },
+  {
+    "model": "qwen-image-3.0",
+    "promptId": "outdoor-action-scene",
+    "runNumber": 3,
+    "characterConsistency": null,
+    "promptAdherence": null,
+    "illustrationQuality": null,
+    "notes": "",
+    "obviousTechnicalDefects": []
+  },
+  {
+    "model": "qwen-image-3.0",
+    "promptId": "chinese-book-visible-text",
+    "runNumber": 1,
+    "characterConsistency": null,
+    "promptAdherence": null,
+    "illustrationQuality": null,
+    "notes": "",
+    "obviousTechnicalDefects": []
+  },
+  {
+    "model": "qwen-image-3.0",
+    "promptId": "chinese-book-visible-text",
+    "runNumber": 2,
+    "characterConsistency": null,
+    "promptAdherence": null,
+    "illustrationQuality": null,
+    "notes": "",
+    "obviousTechnicalDefects": []
+  },
+  {
+    "model": "qwen-image-3.0",
+    "promptId": "chinese-book-visible-text",
+    "runNumber": 3,
+    "characterConsistency": null,
+    "promptAdherence": null,
+    "illustrationQuality": null,
+    "notes": "",
+    "obviousTechnicalDefects": []
+  },
+  {
+    "model": "z-image-turbo",
+    "promptId": "portrait-child-friendly",
+    "runNumber": 1,
+    "characterConsistency": null,
+    "promptAdherence": null,
+    "illustrationQuality": null,
+    "notes": "",
+    "obviousTechnicalDefects": []
+  },
+  {
+    "model": "z-image-turbo",
+    "promptId": "portrait-child-friendly",
+    "runNumber": 2,
+    "characterConsistency": null,
+    "promptAdherence": null,
+    "illustrationQuality": null,
+    "notes": "",
+    "obviousTechnicalDefects": []
+  },
+  {
+    "model": "z-image-turbo",
+    "promptId": "portrait-child-friendly",
+    "runNumber": 3,
+    "characterConsistency": null,
+    "promptAdherence": null,
+    "illustrationQuality": null,
+    "notes": "",
+    "obviousTechnicalDefects": []
+  },
+  {
+    "model": "z-image-turbo",
+    "promptId": "same-character-new-scene",
+    "runNumber": 1,
+    "characterConsistency": null,
+    "promptAdherence": null,
+    "illustrationQuality": null,
+    "notes": "",
+    "obviousTechnicalDefects": []
+  },
+  {
+    "model": "z-image-turbo",
+    "promptId": "same-character-new-scene",
+    "runNumber": 2,
+    "characterConsistency": null,
+    "promptAdherence": null,
+    "illustrationQuality": null,
+    "notes": "",
+    "obviousTechnicalDefects": []
+  },
+  {
+    "model": "z-image-turbo",
+    "promptId": "same-character-new-scene",
+    "runNumber": 3,
+    "characterConsistency": null,
+    "promptAdherence": null,
+    "illustrationQuality": null,
+    "notes": "",
+    "obviousTechnicalDefects": []
+  },
+  {
+    "model": "z-image-turbo",
+    "promptId": "two-recurring-characters",
+    "runNumber": 1,
+    "characterConsistency": null,
+    "promptAdherence": null,
+    "illustrationQuality": null,
+    "notes": "",
+    "obviousTechnicalDefects": []
+  },
+  {
+    "model": "z-image-turbo",
+    "promptId": "two-recurring-characters",
+    "runNumber": 2,
+    "characterConsistency": null,
+    "promptAdherence": null,
+    "illustrationQuality": null,
+    "notes": "",
+    "obviousTechnicalDefects": []
+  },
+  {
+    "model": "z-image-turbo",
+    "promptId": "two-recurring-characters",
+    "runNumber": 3,
+    "characterConsistency": null,
+    "promptAdherence": null,
+    "illustrationQuality": null,
+    "notes": "",
+    "obviousTechnicalDefects": []
+  },
+  {
+    "model": "z-image-turbo",
+    "promptId": "detailed-indoor-scene",
+    "runNumber": 1,
+    "characterConsistency": null,
+    "promptAdherence": null,
+    "illustrationQuality": null,
+    "notes": "",
+    "obviousTechnicalDefects": []
+  },
+  {
+    "model": "z-image-turbo",
+    "promptId": "detailed-indoor-scene",
+    "runNumber": 2,
+    "characterConsistency": null,
+    "promptAdherence": null,
+    "illustrationQuality": null,
+    "notes": "",
+    "obviousTechnicalDefects": []
+  },
+  {
+    "model": "z-image-turbo",
+    "promptId": "detailed-indoor-scene",
+    "runNumber": 3,
+    "characterConsistency": null,
+    "promptAdherence": null,
+    "illustrationQuality": null,
+    "notes": "",
+    "obviousTechnicalDefects": []
+  },
+  {
+    "model": "z-image-turbo",
+    "promptId": "outdoor-action-scene",
+    "runNumber": 1,
+    "characterConsistency": null,
+    "promptAdherence": null,
+    "illustrationQuality": null,
+    "notes": "",
+    "obviousTechnicalDefects": []
+  },
+  {
+    "model": "z-image-turbo",
+    "promptId": "outdoor-action-scene",
+    "runNumber": 2,
+    "characterConsistency": null,
+    "promptAdherence": null,
+    "illustrationQuality": null,
+    "notes": "",
+    "obviousTechnicalDefects": []
+  },
+  {
+    "model": "z-image-turbo",
+    "promptId": "outdoor-action-scene",
+    "runNumber": 3,
+    "characterConsistency": null,
+    "promptAdherence": null,
+    "illustrationQuality": null,
+    "notes": "",
+    "obviousTechnicalDefects": []
+  },
+  {
+    "model": "z-image-turbo",
+    "promptId": "chinese-book-visible-text",
+    "runNumber": 1,
+    "characterConsistency": null,
+    "promptAdherence": null,
+    "illustrationQuality": null,
+    "notes": "",
+    "obviousTechnicalDefects": []
+  },
+  {
+    "model": "z-image-turbo",
+    "promptId": "chinese-book-visible-text",
+    "runNumber": 2,
+    "characterConsistency": null,
+    "promptAdherence": null,
+    "illustrationQuality": null,
+    "notes": "",
+    "obviousTechnicalDefects": []
+  },
+  {
+    "model": "z-image-turbo",
+    "promptId": "chinese-book-visible-text",
+    "runNumber": 3,
+    "characterConsistency": null,
+    "promptAdherence": null,
+    "illustrationQuality": null,
+    "notes": "",
+    "obviousTechnicalDefects": []
+  }
+]

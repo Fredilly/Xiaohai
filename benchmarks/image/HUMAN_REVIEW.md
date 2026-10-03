@@ -1,6 +1,6 @@
 # Human Visual Review
 
-Review of the 36 images in `raw/raw-20261003T022843Z.json`, grouped by prompt. Scores are manual 1–5 ratings; N/A means the criterion does not apply to that prompt.
+Review of the 36 images represented by the committed `results/qwen-vs-zimage-20261003.json`, grouped by prompt. The ignored raw JSON was only the local source input. Scores below are group-level manual ratings; N/A means the criterion does not apply to that prompt. Per-image ratings and defects must be filled in `PER_IMAGE_REVIEW.json` or through `GALLERY.html` before finalization.
 
 | Prompt                    | Model          | Character consistency | Prompt adherence | Illustration quality | Observations                                                           |
 | ------------------------- | -------------- | --------------------: | ---------------: | -------------------: | ---------------------------------------------------------------------- |
