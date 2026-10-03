@@ -22,6 +22,7 @@ Page({
   data: {
     id: '',
     detail: null as PictureBookDetail | null,
+    characterBibleConfirmed: false,
     loading: true,
     busy: false,
     polling: false,
@@ -37,7 +38,14 @@ Page({
   },
   async load() {
     try {
-      this.setData({ detail: await getPictureBook(this.data.id), error: '' });
+      const detail = await getPictureBook(this.data.id);
+      this.setData({
+        detail,
+        characterBibleConfirmed:
+          detail.characters.length > 0 &&
+          detail.characters.every((character) => character.confirmed && character.locked),
+        error: '',
+      });
     } catch {
       this.setData({ error: '绘本加载失败' });
     } finally {
@@ -46,6 +54,15 @@ Page({
   },
   async generatePlan(event: WechatMiniprogram.TouchEvent) {
     if (this.data.busy) return;
+    const detail = this.data.detail;
+    if (
+      !detail ||
+      detail.characters.length === 0 ||
+      detail.characters.some((character) => !character.confirmed || !character.locked)
+    ) {
+      this.setData({ error: '请先保存并确认角色设定' });
+      return;
+    }
     const operation = String(event.currentTarget.dataset.operation) as PictureBookTextOperation;
     this.setData({ busy: true, error: '' });
     try {
@@ -111,7 +128,13 @@ Page({
     if (this.data.busy) return;
     this.setData({ busy: true, error: '' });
     try {
-      this.setData({ detail: await confirmPictureBookCharacters(this.data.id) });
+      const detail = await confirmPictureBookCharacters(this.data.id);
+      this.setData({
+        detail,
+        characterBibleConfirmed:
+          detail.characters.length > 0 &&
+          detail.characters.every((item) => item.confirmed && item.locked),
+      });
     } catch {
       this.setData({ error: '角色设定确认失败，请重试。' });
     } finally {
@@ -122,7 +145,8 @@ Page({
     if (this.data.busy) return;
     this.setData({ busy: true, error: '' });
     try {
-      this.setData({ detail: await reopenPictureBookCharacters(this.data.id) });
+      const detail = await reopenPictureBookCharacters(this.data.id);
+      this.setData({ detail, characterBibleConfirmed: false });
     } catch {
       this.setData({ error: '重新编辑角色设定失败，请重试。' });
     } finally {

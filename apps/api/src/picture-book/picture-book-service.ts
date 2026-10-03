@@ -389,7 +389,11 @@ export class PictureBookService {
         throw new PictureBookError('INVALID_STATE');
       }
     } else {
-      if (characters.length === 0 || existingPage) {
+      if (
+        characters.length === 0 ||
+        characters.some((character) => !character.confirmed || !character.locked) ||
+        existingPage
+      ) {
         throw new PictureBookError('INVALID_STATE');
       }
     }
