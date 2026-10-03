@@ -12,6 +12,8 @@
     "dev": "turbo run dev --parallel",
     "dev:local": "node scripts/dev-local.mjs",
     "benchmark:story": "pnpm --filter @xiaohai/worker exec tsx ../../benchmarks/story/cli.ts",
+    "benchmark:image": "pnpm --filter @xiaohai/worker exec tsx ../../benchmarks/image/cli.ts",
+    "benchmark:image:finalize": "node benchmarks/image/finalize.mjs",
     "secret:set": "node scripts/set-local-secret.mjs",
     "seed:local-staff": "pnpm --filter @xiaohai/api seed:local-staff",
     "format": "prettier --write .",

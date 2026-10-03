@@ -1,0 +1,1232 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Image Benchmark Gallery</title>
+    <style>
+      body {
+        font:
+          16px system-ui,
+          sans-serif;
+        margin: 2rem;
+        background: #f6f4ef;
+        color: #222;
+      }
+      .prompt {
+        background: #fff;
+        padding: 1rem;
+        margin: 1rem 0;
+        border-radius: 8px;
+      }
+      .prompt-text,
+      .recurring {
+        max-width: 80rem;
+      }
+      .models {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 1rem;
+      }
+      .model {
+        border: 1px solid #ddd;
+        padding: 0.75rem;
+      }
+      .run {
+        border-top: 1px solid #ddd;
+        padding: 0.75rem 0;
+      }
+      .run img {
+        display: block;
+        width: 100%;
+        max-width: 320px;
+        aspect-ratio: 1;
+        object-fit: contain;
+        background: #eee;
+      }
+      .run label {
+        display: block;
+        margin: 0.35rem 0;
+      }
+      .run input,
+      .run textarea {
+        display: block;
+        width: 100%;
+        box-sizing: border-box;
+      }
+      .run textarea {
+        min-height: 3rem;
+      }
+      .recurring {
+        background: #fff7d6;
+        padding: 0.6rem;
+      }
+      .toolbar {
+        position: sticky;
+        top: 0;
+        background: #fff;
+        padding: 1rem;
+        border: 1px solid #ddd;
+        z-index: 2;
+      }
+      @media (max-width: 800px) {
+        .models {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Qwen Image 3.0 vs Z-Image Turbo</h1>
+    <p>
+      Offline manual review gallery. Ratings are saved locally in this browser only. No automatic
+      visual scoring.
+    </p>
+    <div class="toolbar">
+      <button id="export">Export ratings JSON</button
+      ><button id="import">Import ratings JSON</button
+      ><input id="import-file" type="file" accept="application/json" hidden /><button id="clear">
+        Clear ratings</button
+      ><span id="status"></span>
+    </div>
+    <p>
+      Settings:
+      {&quot;qwenImage30&quot;:{&quot;outputSize&quot;:&quot;1024x1024&quot;,&quot;count&quot;:1,&quot;promptExtend&quot;:false,&quot;enableThinking&quot;:false,&quot;seed&quot;:null},&quot;zImageTurbo&quot;:{&quot;outputSize&quot;:&quot;1024*1024&quot;,&quot;count&quot;:1,&quot;promptExtend&quot;:false,&quot;enableThinking&quot;:null,&quot;seed&quot;:null}}
+    </p>
+    <section class="prompt">
+      <h2>portrait-child-friendly</h2>
+      <p class="prompt-text">
+        A simple child-friendly storybook portrait of Mimi, a gentle five-year-old red panda child
+        with rust-orange fur, round brown eyes, a yellow knit scarf, blue overalls, and a small red
+        satchel., centered, soft shapes, warm colors, clean background.
+      </p>
+      <p class="recurring">
+        <strong>Shared recurring character description:</strong> Mimi description is embedded
+        verbatim in the prompt.
+      </p>
+      <div class="models">
+        <section class="model">
+          <h3>qwen-image-3.0</h3>
+          <article
+            class="run"
+            data-model="qwen-image-3.0"
+            data-prompt-id="portrait-child-friendly"
+            data-run-number="1"
+          >
+            <h4>Run 1</h4>
+            <img
+              src="https://xiaohai-prod-assets.cd.bcebos.com/benchmarks/image/qwen-image-3.0/benchmark-qwen-image-3.0-portrait-child-friendly-1.png"
+              alt="qwen-image-3.0 portrait-child-friendly run 1"
+            />
+            <p>Latency: 8506 ms</p>
+            <label
+              >Character consistency 1–5
+              <input class="characterConsistency" type="number" min="1" max="5" /></label
+            ><label
+              >Prompt adherence 1–5
+              <input class="promptAdherence" type="number" min="1" max="5" /></label
+            ><label
+              >Illustration quality 1–5
+              <input class="illustrationQuality" type="number" min="1" max="5" /></label
+            ><label
+              >Technical defects (comma-separated tags)
+              <input class="obviousTechnicalDefects" type="text" placeholder="None" /></label
+            ><label>Notes <textarea class="notes"></textarea></label>
+          </article>
+          <article
+            class="run"
+            data-model="qwen-image-3.0"
+            data-prompt-id="portrait-child-friendly"
+            data-run-number="2"
+          >
+            <h4>Run 2</h4>
+            <img
+              src="https://xiaohai-prod-assets.cd.bcebos.com/benchmarks/image/qwen-image-3.0/benchmark-qwen-image-3.0-portrait-child-friendly-2.png"
+              alt="qwen-image-3.0 portrait-child-friendly run 2"
+            />
+            <p>Latency: 8527 ms</p>
+            <label
+              >Character consistency 1–5
+              <input class="characterConsistency" type="number" min="1" max="5" /></label
+            ><label
+              >Prompt adherence 1–5
+              <input class="promptAdherence" type="number" min="1" max="5" /></label
+            ><label
+              >Illustration quality 1–5
+              <input class="illustrationQuality" type="number" min="1" max="5" /></label
+            ><label
+              >Technical defects (comma-separated tags)
+              <input class="obviousTechnicalDefects" type="text" placeholder="None" /></label
+            ><label>Notes <textarea class="notes"></textarea></label>
+          </article>
+          <article
+            class="run"
+            data-model="qwen-image-3.0"
+            data-prompt-id="portrait-child-friendly"
+            data-run-number="3"
+          >
+            <h4>Run 3</h4>
+            <img
+              src="https://xiaohai-prod-assets.cd.bcebos.com/benchmarks/image/qwen-image-3.0/benchmark-qwen-image-3.0-portrait-child-friendly-3.png"
+              alt="qwen-image-3.0 portrait-child-friendly run 3"
+            />
+            <p>Latency: 4999 ms</p>
+            <label
+              >Character consistency 1–5
+              <input class="characterConsistency" type="number" min="1" max="5" /></label
+            ><label
+              >Prompt adherence 1–5
+              <input class="promptAdherence" type="number" min="1" max="5" /></label
+            ><label
+              >Illustration quality 1–5
+              <input class="illustrationQuality" type="number" min="1" max="5" /></label
+            ><label
+              >Technical defects (comma-separated tags)
+              <input class="obviousTechnicalDefects" type="text" placeholder="None" /></label
+            ><label>Notes <textarea class="notes"></textarea></label>
+          </article>
+        </section>
+        <section class="model">
+          <h3>z-image-turbo</h3>
+          <article
+            class="run"
+            data-model="z-image-turbo"
+            data-prompt-id="portrait-child-friendly"
+            data-run-number="1"
+          >
+            <h4>Run 1</h4>
+            <img
+              src="https://xiaohai-prod-assets.cd.bcebos.com/benchmarks/image/z-image-turbo/benchmark-z-image-turbo-portrait-child-friendly-1.png"
+              alt="z-image-turbo portrait-child-friendly run 1"
+            />
+            <p>Latency: 4452 ms</p>
+            <label
+              >Character consistency 1–5
+              <input class="characterConsistency" type="number" min="1" max="5" /></label
+            ><label
+              >Prompt adherence 1–5
+              <input class="promptAdherence" type="number" min="1" max="5" /></label
+            ><label
+              >Illustration quality 1–5
+              <input class="illustrationQuality" type="number" min="1" max="5" /></label
+            ><label
+              >Technical defects (comma-separated tags)
+              <input class="obviousTechnicalDefects" type="text" placeholder="None" /></label
+            ><label>Notes <textarea class="notes"></textarea></label>
+          </article>
+          <article
+            class="run"
+            data-model="z-image-turbo"
+            data-prompt-id="portrait-child-friendly"
+            data-run-number="2"
+          >
+            <h4>Run 2</h4>
+            <img
+              src="https://xiaohai-prod-assets.cd.bcebos.com/benchmarks/image/z-image-turbo/benchmark-z-image-turbo-portrait-child-friendly-2.png"
+              alt="z-image-turbo portrait-child-friendly run 2"
+            />
+            <p>Latency: 6761 ms</p>
+            <label
+              >Character consistency 1–5
+              <input class="characterConsistency" type="number" min="1" max="5" /></label
+            ><label
+              >Prompt adherence 1–5
+              <input class="promptAdherence" type="number" min="1" max="5" /></label
+            ><label
+              >Illustration quality 1–5
+              <input class="illustrationQuality" type="number" min="1" max="5" /></label
+            ><label
+              >Technical defects (comma-separated tags)
+              <input class="obviousTechnicalDefects" type="text" placeholder="None" /></label
+            ><label>Notes <textarea class="notes"></textarea></label>
+          </article>
+          <article
+            class="run"
+            data-model="z-image-turbo"
+            data-prompt-id="portrait-child-friendly"
+            data-run-number="3"
+          >
+            <h4>Run 3</h4>
+            <img
+              src="https://xiaohai-prod-assets.cd.bcebos.com/benchmarks/image/z-image-turbo/benchmark-z-image-turbo-portrait-child-friendly-3.png"
+              alt="z-image-turbo portrait-child-friendly run 3"
+            />
+            <p>Latency: 7468 ms</p>
+            <label
+              >Character consistency 1–5
+              <input class="characterConsistency" type="number" min="1" max="5" /></label
+            ><label
+              >Prompt adherence 1–5
+              <input class="promptAdherence" type="number" min="1" max="5" /></label
+            ><label
+              >Illustration quality 1–5
+              <input class="illustrationQuality" type="number" min="1" max="5" /></label
+            ><label
+              >Technical defects (comma-separated tags)
+              <input class="obviousTechnicalDefects" type="text" placeholder="None" /></label
+            ><label>Notes <textarea class="notes"></textarea></label>
+          </article>
+        </section>
+      </div>
+    </section>
+    <section class="prompt">
+      <h2>same-character-new-scene</h2>
+      <p class="prompt-text">
+        The same character, Mimi, a gentle five-year-old red panda child with rust-orange fur, round
+        brown eyes, a yellow knit scarf, blue overalls, and a small red satchel., standing beside a
+        forest stream at sunrise, child-friendly picture-book illustration, warm light.
+      </p>
+      <p class="recurring">
+        <strong>Shared recurring character description:</strong> Mimi description is embedded
+        verbatim in the prompt.
+      </p>
+      <div class="models">
+        <section class="model">
+          <h3>qwen-image-3.0</h3>
+          <article
+            class="run"
+            data-model="qwen-image-3.0"
+            data-prompt-id="same-character-new-scene"
+            data-run-number="1"
+          >
+            <h4>Run 1</h4>
+            <img
+              src="https://xiaohai-prod-assets.cd.bcebos.com/benchmarks/image/qwen-image-3.0/benchmark-qwen-image-3.0-same-character-new-scene-1.png"
+              alt="qwen-image-3.0 same-character-new-scene run 1"
+            />
+            <p>Latency: 9880 ms</p>
+            <label
+              >Character consistency 1–5
+              <input class="characterConsistency" type="number" min="1" max="5" /></label
+            ><label
+              >Prompt adherence 1–5
+              <input class="promptAdherence" type="number" min="1" max="5" /></label
+            ><label
+              >Illustration quality 1–5
+              <input class="illustrationQuality" type="number" min="1" max="5" /></label
+            ><label
+              >Technical defects (comma-separated tags)
+              <input class="obviousTechnicalDefects" type="text" placeholder="None" /></label
+            ><label>Notes <textarea class="notes"></textarea></label>
+          </article>
+          <article
+            class="run"
+            data-model="qwen-image-3.0"
+            data-prompt-id="same-character-new-scene"
+            data-run-number="2"
+          >
+            <h4>Run 2</h4>
+            <img
+              src="https://xiaohai-prod-assets.cd.bcebos.com/benchmarks/image/qwen-image-3.0/benchmark-qwen-image-3.0-same-character-new-scene-2.png"
+              alt="qwen-image-3.0 same-character-new-scene run 2"
+            />
+            <p>Latency: 9278 ms</p>
+            <label
+              >Character consistency 1–5
+              <input class="characterConsistency" type="number" min="1" max="5" /></label
+            ><label
+              >Prompt adherence 1–5
+              <input class="promptAdherence" type="number" min="1" max="5" /></label
+            ><label
+              >Illustration quality 1–5
+              <input class="illustrationQuality" type="number" min="1" max="5" /></label
+            ><label
+              >Technical defects (comma-separated tags)
+              <input class="obviousTechnicalDefects" type="text" placeholder="None" /></label
+            ><label>Notes <textarea class="notes"></textarea></label>
+          </article>
+          <article
+            class="run"
+            data-model="qwen-image-3.0"
+            data-prompt-id="same-character-new-scene"
+            data-run-number="3"
+          >
+            <h4>Run 3</h4>
+            <img
+              src="https://xiaohai-prod-assets.cd.bcebos.com/benchmarks/image/qwen-image-3.0/benchmark-qwen-image-3.0-same-character-new-scene-3.png"
+              alt="qwen-image-3.0 same-character-new-scene run 3"
+            />
+            <p>Latency: 5196 ms</p>
+            <label
+              >Character consistency 1–5
+              <input class="characterConsistency" type="number" min="1" max="5" /></label
+            ><label
+              >Prompt adherence 1–5
+              <input class="promptAdherence" type="number" min="1" max="5" /></label
+            ><label
+              >Illustration quality 1–5
+              <input class="illustrationQuality" type="number" min="1" max="5" /></label
+            ><label
+              >Technical defects (comma-separated tags)
+              <input class="obviousTechnicalDefects" type="text" placeholder="None" /></label
+            ><label>Notes <textarea class="notes"></textarea></label>
+          </article>
+        </section>
+        <section class="model">
+          <h3>z-image-turbo</h3>
+          <article
+            class="run"
+            data-model="z-image-turbo"
+            data-prompt-id="same-character-new-scene"
+            data-run-number="1"
+          >
+            <h4>Run 1</h4>
+            <img
+              src="https://xiaohai-prod-assets.cd.bcebos.com/benchmarks/image/z-image-turbo/benchmark-z-image-turbo-same-character-new-scene-1.png"
+              alt="z-image-turbo same-character-new-scene run 1"
+            />
+            <p>Latency: 7595 ms</p>
+            <label
+              >Character consistency 1–5
+              <input class="characterConsistency" type="number" min="1" max="5" /></label
+            ><label
+              >Prompt adherence 1–5
+              <input class="promptAdherence" type="number" min="1" max="5" /></label
+            ><label
+              >Illustration quality 1–5
+              <input class="illustrationQuality" type="number" min="1" max="5" /></label
+            ><label
+              >Technical defects (comma-separated tags)
+              <input class="obviousTechnicalDefects" type="text" placeholder="None" /></label
+            ><label>Notes <textarea class="notes"></textarea></label>
+          </article>
+          <article
+            class="run"
+            data-model="z-image-turbo"
+            data-prompt-id="same-character-new-scene"
+            data-run-number="2"
+          >
+            <h4>Run 2</h4>
+            <img
+              src="https://xiaohai-prod-assets.cd.bcebos.com/benchmarks/image/z-image-turbo/benchmark-z-image-turbo-same-character-new-scene-2.png"
+              alt="z-image-turbo same-character-new-scene run 2"
+            />
+            <p>Latency: 8453 ms</p>
+            <label
+              >Character consistency 1–5
+              <input class="characterConsistency" type="number" min="1" max="5" /></label
+            ><label
+              >Prompt adherence 1–5
+              <input class="promptAdherence" type="number" min="1" max="5" /></label
+            ><label
+              >Illustration quality 1–5
+              <input class="illustrationQuality" type="number" min="1" max="5" /></label
+            ><label
+              >Technical defects (comma-separated tags)
+              <input class="obviousTechnicalDefects" type="text" placeholder="None" /></label
+            ><label>Notes <textarea class="notes"></textarea></label>
+          </article>
+          <article
+            class="run"
+            data-model="z-image-turbo"
+            data-prompt-id="same-character-new-scene"
+            data-run-number="3"
+          >
+            <h4>Run 3</h4>
+            <img
+              src="https://xiaohai-prod-assets.cd.bcebos.com/benchmarks/image/z-image-turbo/benchmark-z-image-turbo-same-character-new-scene-3.png"
+              alt="z-image-turbo same-character-new-scene run 3"
+            />
+            <p>Latency: 4845 ms</p>
+            <label
+              >Character consistency 1–5
+              <input class="characterConsistency" type="number" min="1" max="5" /></label
+            ><label
+              >Prompt adherence 1–5
+              <input class="promptAdherence" type="number" min="1" max="5" /></label
+            ><label
+              >Illustration quality 1–5
+              <input class="illustrationQuality" type="number" min="1" max="5" /></label
+            ><label
+              >Technical defects (comma-separated tags)
+              <input class="obviousTechnicalDefects" type="text" placeholder="None" /></label
+            ><label>Notes <textarea class="notes"></textarea></label>
+          </article>
+        </section>
+      </div>
+    </section>
+    <section class="prompt">
+      <h2>two-recurring-characters</h2>
+      <p class="prompt-text">
+        Mimi is joined by Pip, a small sky-blue bird child with a pale yellow belly, a green cap,
+        and a tiny orange satchel. Keep Mimi exactly as described: Mimi, a gentle five-year-old red
+        panda child with rust-orange fur, round brown eyes, a yellow knit scarf, blue overalls, and
+        a small red satchel. Show both recurring characters sharing a map under a friendly tree,
+        children&#39;s storybook illustration.
+      </p>
+      <p class="recurring">
+        <strong>Shared recurring character description:</strong> Mimi description is embedded
+        verbatim in the prompt.
+      </p>
+      <div class="models">
+        <section class="model">
+          <h3>qwen-image-3.0</h3>
+          <article
+            class="run"
+            data-model="qwen-image-3.0"
+            data-prompt-id="two-recurring-characters"
+            data-run-number="1"
+          >
+            <h4>Run 1</h4>
+            <img
+              src="https://xiaohai-prod-assets.cd.bcebos.com/benchmarks/image/qwen-image-3.0/benchmark-qwen-image-3.0-two-recurring-characters-1.png"
+              alt="qwen-image-3.0 two-recurring-characters run 1"
+            />
+            <p>Latency: 9571 ms</p>
+            <label
+              >Character consistency 1–5
+              <input class="characterConsistency" type="number" min="1" max="5" /></label
+            ><label
+              >Prompt adherence 1–5
+              <input class="promptAdherence" type="number" min="1" max="5" /></label
+            ><label
+              >Illustration quality 1–5
+              <input class="illustrationQuality" type="number" min="1" max="5" /></label
+            ><label
+              >Technical defects (comma-separated tags)
+              <input class="obviousTechnicalDefects" type="text" placeholder="None" /></label
+            ><label>Notes <textarea class="notes"></textarea></label>
+          </article>
+          <article
+            class="run"
+            data-model="qwen-image-3.0"
+            data-prompt-id="two-recurring-characters"
+            data-run-number="2"
+          >
+            <h4>Run 2</h4>
+            <img
+              src="https://xiaohai-prod-assets.cd.bcebos.com/benchmarks/image/qwen-image-3.0/benchmark-qwen-image-3.0-two-recurring-characters-2.png"
+              alt="qwen-image-3.0 two-recurring-characters run 2"
+            />
+            <p>Latency: 9075 ms</p>
+            <label
+              >Character consistency 1–5
+              <input class="characterConsistency" type="number" min="1" max="5" /></label
+            ><label
+              >Prompt adherence 1–5
+              <input class="promptAdherence" type="number" min="1" max="5" /></label
+            ><label
+              >Illustration quality 1–5
+              <input class="illustrationQuality" type="number" min="1" max="5" /></label
+            ><label
+              >Technical defects (comma-separated tags)
+              <input class="obviousTechnicalDefects" type="text" placeholder="None" /></label
+            ><label>Notes <textarea class="notes"></textarea></label>
+          </article>
+          <article
+            class="run"
+            data-model="qwen-image-3.0"
+            data-prompt-id="two-recurring-characters"
+            data-run-number="3"
+          >
+            <h4>Run 3</h4>
+            <img
+              src="https://xiaohai-prod-assets.cd.bcebos.com/benchmarks/image/qwen-image-3.0/benchmark-qwen-image-3.0-two-recurring-characters-3.png"
+              alt="qwen-image-3.0 two-recurring-characters run 3"
+            />
+            <p>Latency: 9470 ms</p>
+            <label
+              >Character consistency 1–5
+              <input class="characterConsistency" type="number" min="1" max="5" /></label
+            ><label
+              >Prompt adherence 1–5
+              <input class="promptAdherence" type="number" min="1" max="5" /></label
+            ><label
+              >Illustration quality 1–5
+              <input class="illustrationQuality" type="number" min="1" max="5" /></label
+            ><label
+              >Technical defects (comma-separated tags)
+              <input class="obviousTechnicalDefects" type="text" placeholder="None" /></label
+            ><label>Notes <textarea class="notes"></textarea></label>
+          </article>
+        </section>
+        <section class="model">
+          <h3>z-image-turbo</h3>
+          <article
+            class="run"
+            data-model="z-image-turbo"
+            data-prompt-id="two-recurring-characters"
+            data-run-number="1"
+          >
+            <h4>Run 1</h4>
+            <img
+              src="https://xiaohai-prod-assets.cd.bcebos.com/benchmarks/image/z-image-turbo/benchmark-z-image-turbo-two-recurring-characters-1.png"
+              alt="z-image-turbo two-recurring-characters run 1"
+            />
+            <p>Latency: 8797 ms</p>
+            <label
+              >Character consistency 1–5
+              <input class="characterConsistency" type="number" min="1" max="5" /></label
+            ><label
+              >Prompt adherence 1–5
+              <input class="promptAdherence" type="number" min="1" max="5" /></label
+            ><label
+              >Illustration quality 1–5
+              <input class="illustrationQuality" type="number" min="1" max="5" /></label
+            ><label
+              >Technical defects (comma-separated tags)
+              <input class="obviousTechnicalDefects" type="text" placeholder="None" /></label
+            ><label>Notes <textarea class="notes"></textarea></label>
+          </article>
+          <article
+            class="run"
+            data-model="z-image-turbo"
+            data-prompt-id="two-recurring-characters"
+            data-run-number="2"
+          >
+            <h4>Run 2</h4>
+            <img
+              src="https://xiaohai-prod-assets.cd.bcebos.com/benchmarks/image/z-image-turbo/benchmark-z-image-turbo-two-recurring-characters-2.png"
+              alt="z-image-turbo two-recurring-characters run 2"
+            />
+            <p>Latency: 8060 ms</p>
+            <label
+              >Character consistency 1–5
+              <input class="characterConsistency" type="number" min="1" max="5" /></label
+            ><label
+              >Prompt adherence 1–5
+              <input class="promptAdherence" type="number" min="1" max="5" /></label
+            ><label
+              >Illustration quality 1–5
+              <input class="illustrationQuality" type="number" min="1" max="5" /></label
+            ><label
+              >Technical defects (comma-separated tags)
+              <input class="obviousTechnicalDefects" type="text" placeholder="None" /></label
+            ><label>Notes <textarea class="notes"></textarea></label>
+          </article>
+          <article
+            class="run"
+            data-model="z-image-turbo"
+            data-prompt-id="two-recurring-characters"
+            data-run-number="3"
+          >
+            <h4>Run 3</h4>
+            <img
+              src="https://xiaohai-prod-assets.cd.bcebos.com/benchmarks/image/z-image-turbo/benchmark-z-image-turbo-two-recurring-characters-3.png"
+              alt="z-image-turbo two-recurring-characters run 3"
+            />
+            <p>Latency: 4620 ms</p>
+            <label
+              >Character consistency 1–5
+              <input class="characterConsistency" type="number" min="1" max="5" /></label
+            ><label
+              >Prompt adherence 1–5
+              <input class="promptAdherence" type="number" min="1" max="5" /></label
+            ><label
+              >Illustration quality 1–5
+              <input class="illustrationQuality" type="number" min="1" max="5" /></label
+            ><label
+              >Technical defects (comma-separated tags)
+              <input class="obviousTechnicalDefects" type="text" placeholder="None" /></label
+            ><label>Notes <textarea class="notes"></textarea></label>
+          </article>
+        </section>
+      </div>
+    </section>
+    <section class="prompt">
+      <h2>detailed-indoor-scene</h2>
+      <p class="prompt-text">
+        A detailed cozy children&#39;s library inside a treehouse, picture books, wooden shelves,
+        round window, cushions, warm lamplight, safe storybook illustration, no people.
+      </p>
+      <div class="models">
+        <section class="model">
+          <h3>qwen-image-3.0</h3>
+          <article
+            class="run"
+            data-model="qwen-image-3.0"
+            data-prompt-id="detailed-indoor-scene"
+            data-run-number="1"
+          >
+            <h4>Run 1</h4>
+            <img
+              src="https://xiaohai-prod-assets.cd.bcebos.com/benchmarks/image/qwen-image-3.0/benchmark-qwen-image-3.0-detailed-indoor-scene-1.png"
+              alt="qwen-image-3.0 detailed-indoor-scene run 1"
+            />
+            <p>Latency: 8854 ms</p>
+            <label
+              >Character consistency 1–5
+              <input class="characterConsistency" type="number" min="1" max="5" /></label
+            ><label
+              >Prompt adherence 1–5
+              <input class="promptAdherence" type="number" min="1" max="5" /></label
+            ><label
+              >Illustration quality 1–5
+              <input class="illustrationQuality" type="number" min="1" max="5" /></label
+            ><label
+              >Technical defects (comma-separated tags)
+              <input class="obviousTechnicalDefects" type="text" placeholder="None" /></label
+            ><label>Notes <textarea class="notes"></textarea></label>
+          </article>
+          <article
+            class="run"
+            data-model="qwen-image-3.0"
+            data-prompt-id="detailed-indoor-scene"
+            data-run-number="2"
+          >
+            <h4>Run 2</h4>
+            <img
+              src="https://xiaohai-prod-assets.cd.bcebos.com/benchmarks/image/qwen-image-3.0/benchmark-qwen-image-3.0-detailed-indoor-scene-2.png"
+              alt="qwen-image-3.0 detailed-indoor-scene run 2"
+            />
+            <p>Latency: 10165 ms</p>
+            <label
+              >Character consistency 1–5
+              <input class="characterConsistency" type="number" min="1" max="5" /></label
+            ><label
+              >Prompt adherence 1–5
+              <input class="promptAdherence" type="number" min="1" max="5" /></label
+            ><label
+              >Illustration quality 1–5
+              <input class="illustrationQuality" type="number" min="1" max="5" /></label
+            ><label
+              >Technical defects (comma-separated tags)
+              <input class="obviousTechnicalDefects" type="text" placeholder="None" /></label
+            ><label>Notes <textarea class="notes"></textarea></label>
+          </article>
+          <article
+            class="run"
+            data-model="qwen-image-3.0"
+            data-prompt-id="detailed-indoor-scene"
+            data-run-number="3"
+          >
+            <h4>Run 3</h4>
+            <img
+              src="https://xiaohai-prod-assets.cd.bcebos.com/benchmarks/image/qwen-image-3.0/benchmark-qwen-image-3.0-detailed-indoor-scene-3.png"
+              alt="qwen-image-3.0 detailed-indoor-scene run 3"
+            />
+            <p>Latency: 6226 ms</p>
+            <label
+              >Character consistency 1–5
+              <input class="characterConsistency" type="number" min="1" max="5" /></label
+            ><label
+              >Prompt adherence 1–5
+              <input class="promptAdherence" type="number" min="1" max="5" /></label
+            ><label
+              >Illustration quality 1–5
+              <input class="illustrationQuality" type="number" min="1" max="5" /></label
+            ><label
+              >Technical defects (comma-separated tags)
+              <input class="obviousTechnicalDefects" type="text" placeholder="None" /></label
+            ><label>Notes <textarea class="notes"></textarea></label>
+          </article>
+        </section>
+        <section class="model">
+          <h3>z-image-turbo</h3>
+          <article
+            class="run"
+            data-model="z-image-turbo"
+            data-prompt-id="detailed-indoor-scene"
+            data-run-number="1"
+          >
+            <h4>Run 1</h4>
+            <img
+              src="https://xiaohai-prod-assets.cd.bcebos.com/benchmarks/image/z-image-turbo/benchmark-z-image-turbo-detailed-indoor-scene-1.png"
+              alt="z-image-turbo detailed-indoor-scene run 1"
+            />
+            <p>Latency: 5047 ms</p>
+            <label
+              >Character consistency 1–5
+              <input class="characterConsistency" type="number" min="1" max="5" /></label
+            ><label
+              >Prompt adherence 1–5
+              <input class="promptAdherence" type="number" min="1" max="5" /></label
+            ><label
+              >Illustration quality 1–5
+              <input class="illustrationQuality" type="number" min="1" max="5" /></label
+            ><label
+              >Technical defects (comma-separated tags)
+              <input class="obviousTechnicalDefects" type="text" placeholder="None" /></label
+            ><label>Notes <textarea class="notes"></textarea></label>
+          </article>
+          <article
+            class="run"
+            data-model="z-image-turbo"
+            data-prompt-id="detailed-indoor-scene"
+            data-run-number="2"
+          >
+            <h4>Run 2</h4>
+            <img
+              src="https://xiaohai-prod-assets.cd.bcebos.com/benchmarks/image/z-image-turbo/benchmark-z-image-turbo-detailed-indoor-scene-2.png"
+              alt="z-image-turbo detailed-indoor-scene run 2"
+            />
+            <p>Latency: 7701 ms</p>
+            <label
+              >Character consistency 1–5
+              <input class="characterConsistency" type="number" min="1" max="5" /></label
+            ><label
+              >Prompt adherence 1–5
+              <input class="promptAdherence" type="number" min="1" max="5" /></label
+            ><label
+              >Illustration quality 1–5
+              <input class="illustrationQuality" type="number" min="1" max="5" /></label
+            ><label
+              >Technical defects (comma-separated tags)
+              <input class="obviousTechnicalDefects" type="text" placeholder="None" /></label
+            ><label>Notes <textarea class="notes"></textarea></label>
+          </article>
+          <article
+            class="run"
+            data-model="z-image-turbo"
+            data-prompt-id="detailed-indoor-scene"
+            data-run-number="3"
+          >
+            <h4>Run 3</h4>
+            <img
+              src="https://xiaohai-prod-assets.cd.bcebos.com/benchmarks/image/z-image-turbo/benchmark-z-image-turbo-detailed-indoor-scene-3.png"
+              alt="z-image-turbo detailed-indoor-scene run 3"
+            />
+            <p>Latency: 7883 ms</p>
+            <label
+              >Character consistency 1–5
+              <input class="characterConsistency" type="number" min="1" max="5" /></label
+            ><label
+              >Prompt adherence 1–5
+              <input class="promptAdherence" type="number" min="1" max="5" /></label
+            ><label
+              >Illustration quality 1–5
+              <input class="illustrationQuality" type="number" min="1" max="5" /></label
+            ><label
+              >Technical defects (comma-separated tags)
+              <input class="obviousTechnicalDefects" type="text" placeholder="None" /></label
+            ><label>Notes <textarea class="notes"></textarea></label>
+          </article>
+        </section>
+      </div>
+    </section>
+    <section class="prompt">
+      <h2>outdoor-action-scene</h2>
+      <p class="prompt-text">
+        A child-friendly outdoor action scene of a small fox and bird crossing stepping stones over
+        a shallow sparkling stream, clear motion, joyful expressions, warm children&#39;s-book
+        illustration.
+      </p>
+      <div class="models">
+        <section class="model">
+          <h3>qwen-image-3.0</h3>
+          <article
+            class="run"
+            data-model="qwen-image-3.0"
+            data-prompt-id="outdoor-action-scene"
+            data-run-number="1"
+          >
+            <h4>Run 1</h4>
+            <img
+              src="https://xiaohai-prod-assets.cd.bcebos.com/benchmarks/image/qwen-image-3.0/benchmark-qwen-image-3.0-outdoor-action-scene-1.png"
+              alt="qwen-image-3.0 outdoor-action-scene run 1"
+            />
+            <p>Latency: 9415 ms</p>
+            <label
+              >Character consistency 1–5
+              <input class="characterConsistency" type="number" min="1" max="5" /></label
+            ><label
+              >Prompt adherence 1–5
+              <input class="promptAdherence" type="number" min="1" max="5" /></label
+            ><label
+              >Illustration quality 1–5
+              <input class="illustrationQuality" type="number" min="1" max="5" /></label
+            ><label
+              >Technical defects (comma-separated tags)
+              <input class="obviousTechnicalDefects" type="text" placeholder="None" /></label
+            ><label>Notes <textarea class="notes"></textarea></label>
+          </article>
+          <article
+            class="run"
+            data-model="qwen-image-3.0"
+            data-prompt-id="outdoor-action-scene"
+            data-run-number="2"
+          >
+            <h4>Run 2</h4>
+            <img
+              src="https://xiaohai-prod-assets.cd.bcebos.com/benchmarks/image/qwen-image-3.0/benchmark-qwen-image-3.0-outdoor-action-scene-2.png"
+              alt="qwen-image-3.0 outdoor-action-scene run 2"
+            />
+            <p>Latency: 10099 ms</p>
+            <label
+              >Character consistency 1–5
+              <input class="characterConsistency" type="number" min="1" max="5" /></label
+            ><label
+              >Prompt adherence 1–5
+              <input class="promptAdherence" type="number" min="1" max="5" /></label
+            ><label
+              >Illustration quality 1–5
+              <input class="illustrationQuality" type="number" min="1" max="5" /></label
+            ><label
+              >Technical defects (comma-separated tags)
+              <input class="obviousTechnicalDefects" type="text" placeholder="None" /></label
+            ><label>Notes <textarea class="notes"></textarea></label>
+          </article>
+          <article
+            class="run"
+            data-model="qwen-image-3.0"
+            data-prompt-id="outdoor-action-scene"
+            data-run-number="3"
+          >
+            <h4>Run 3</h4>
+            <img
+              src="https://xiaohai-prod-assets.cd.bcebos.com/benchmarks/image/qwen-image-3.0/benchmark-qwen-image-3.0-outdoor-action-scene-3.png"
+              alt="qwen-image-3.0 outdoor-action-scene run 3"
+            />
+            <p>Latency: 9450 ms</p>
+            <label
+              >Character consistency 1–5
+              <input class="characterConsistency" type="number" min="1" max="5" /></label
+            ><label
+              >Prompt adherence 1–5
+              <input class="promptAdherence" type="number" min="1" max="5" /></label
+            ><label
+              >Illustration quality 1–5
+              <input class="illustrationQuality" type="number" min="1" max="5" /></label
+            ><label
+              >Technical defects (comma-separated tags)
+              <input class="obviousTechnicalDefects" type="text" placeholder="None" /></label
+            ><label>Notes <textarea class="notes"></textarea></label>
+          </article>
+        </section>
+        <section class="model">
+          <h3>z-image-turbo</h3>
+          <article
+            class="run"
+            data-model="z-image-turbo"
+            data-prompt-id="outdoor-action-scene"
+            data-run-number="1"
+          >
+            <h4>Run 1</h4>
+            <img
+              src="https://xiaohai-prod-assets.cd.bcebos.com/benchmarks/image/z-image-turbo/benchmark-z-image-turbo-outdoor-action-scene-1.png"
+              alt="z-image-turbo outdoor-action-scene run 1"
+            />
+            <p>Latency: 8370 ms</p>
+            <label
+              >Character consistency 1–5
+              <input class="characterConsistency" type="number" min="1" max="5" /></label
+            ><label
+              >Prompt adherence 1–5
+              <input class="promptAdherence" type="number" min="1" max="5" /></label
+            ><label
+              >Illustration quality 1–5
+              <input class="illustrationQuality" type="number" min="1" max="5" /></label
+            ><label
+              >Technical defects (comma-separated tags)
+              <input class="obviousTechnicalDefects" type="text" placeholder="None" /></label
+            ><label>Notes <textarea class="notes"></textarea></label>
+          </article>
+          <article
+            class="run"
+            data-model="z-image-turbo"
+            data-prompt-id="outdoor-action-scene"
+            data-run-number="2"
+          >
+            <h4>Run 2</h4>
+            <img
+              src="https://xiaohai-prod-assets.cd.bcebos.com/benchmarks/image/z-image-turbo/benchmark-z-image-turbo-outdoor-action-scene-2.png"
+              alt="z-image-turbo outdoor-action-scene run 2"
+            />
+            <p>Latency: 4977 ms</p>
+            <label
+              >Character consistency 1–5
+              <input class="characterConsistency" type="number" min="1" max="5" /></label
+            ><label
+              >Prompt adherence 1–5
+              <input class="promptAdherence" type="number" min="1" max="5" /></label
+            ><label
+              >Illustration quality 1–5
+              <input class="illustrationQuality" type="number" min="1" max="5" /></label
+            ><label
+              >Technical defects (comma-separated tags)
+              <input class="obviousTechnicalDefects" type="text" placeholder="None" /></label
+            ><label>Notes <textarea class="notes"></textarea></label>
+          </article>
+          <article
+            class="run"
+            data-model="z-image-turbo"
+            data-prompt-id="outdoor-action-scene"
+            data-run-number="3"
+          >
+            <h4>Run 3</h4>
+            <img
+              src="https://xiaohai-prod-assets.cd.bcebos.com/benchmarks/image/z-image-turbo/benchmark-z-image-turbo-outdoor-action-scene-3.png"
+              alt="z-image-turbo outdoor-action-scene run 3"
+            />
+            <p>Latency: 4925 ms</p>
+            <label
+              >Character consistency 1–5
+              <input class="characterConsistency" type="number" min="1" max="5" /></label
+            ><label
+              >Prompt adherence 1–5
+              <input class="promptAdherence" type="number" min="1" max="5" /></label
+            ><label
+              >Illustration quality 1–5
+              <input class="illustrationQuality" type="number" min="1" max="5" /></label
+            ><label
+              >Technical defects (comma-separated tags)
+              <input class="obviousTechnicalDefects" type="text" placeholder="None" /></label
+            ><label>Notes <textarea class="notes"></textarea></label>
+          </article>
+        </section>
+      </div>
+    </section>
+    <section class="prompt">
+      <h2>chinese-book-visible-text</h2>
+      <p class="prompt-text">
+        A Chinese children&#39;s-book illustration of a smiling little fox and bird in a sunny
+        forest, with a clean readable sign that says exactly “勇敢回家”, harmonious layout, warm
+        watercolor style.
+      </p>
+      <div class="models">
+        <section class="model">
+          <h3>qwen-image-3.0</h3>
+          <article
+            class="run"
+            data-model="qwen-image-3.0"
+            data-prompt-id="chinese-book-visible-text"
+            data-run-number="1"
+          >
+            <h4>Run 1</h4>
+            <img
+              src="https://xiaohai-prod-assets.cd.bcebos.com/benchmarks/image/qwen-image-3.0/benchmark-qwen-image-3.0-chinese-book-visible-text-1.png"
+              alt="qwen-image-3.0 chinese-book-visible-text run 1"
+            />
+            <p>Latency: 9136 ms</p>
+            <label
+              >Character consistency 1–5
+              <input class="characterConsistency" type="number" min="1" max="5" /></label
+            ><label
+              >Prompt adherence 1–5
+              <input class="promptAdherence" type="number" min="1" max="5" /></label
+            ><label
+              >Illustration quality 1–5
+              <input class="illustrationQuality" type="number" min="1" max="5" /></label
+            ><label
+              >Technical defects (comma-separated tags)
+              <input class="obviousTechnicalDefects" type="text" placeholder="None" /></label
+            ><label>Notes <textarea class="notes"></textarea></label>
+          </article>
+          <article
+            class="run"
+            data-model="qwen-image-3.0"
+            data-prompt-id="chinese-book-visible-text"
+            data-run-number="2"
+          >
+            <h4>Run 2</h4>
+            <img
+              src="https://xiaohai-prod-assets.cd.bcebos.com/benchmarks/image/qwen-image-3.0/benchmark-qwen-image-3.0-chinese-book-visible-text-2.png"
+              alt="qwen-image-3.0 chinese-book-visible-text run 2"
+            />
+            <p>Latency: 10674 ms</p>
+            <label
+              >Character consistency 1–5
+              <input class="characterConsistency" type="number" min="1" max="5" /></label
+            ><label
+              >Prompt adherence 1–5
+              <input class="promptAdherence" type="number" min="1" max="5" /></label
+            ><label
+              >Illustration quality 1–5
+              <input class="illustrationQuality" type="number" min="1" max="5" /></label
+            ><label
+              >Technical defects (comma-separated tags)
+              <input class="obviousTechnicalDefects" type="text" placeholder="None" /></label
+            ><label>Notes <textarea class="notes"></textarea></label>
+          </article>
+          <article
+            class="run"
+            data-model="qwen-image-3.0"
+            data-prompt-id="chinese-book-visible-text"
+            data-run-number="3"
+          >
+            <h4>Run 3</h4>
+            <img
+              src="https://xiaohai-prod-assets.cd.bcebos.com/benchmarks/image/qwen-image-3.0/benchmark-qwen-image-3.0-chinese-book-visible-text-3.png"
+              alt="qwen-image-3.0 chinese-book-visible-text run 3"
+            />
+            <p>Latency: 8654 ms</p>
+            <label
+              >Character consistency 1–5
+              <input class="characterConsistency" type="number" min="1" max="5" /></label
+            ><label
+              >Prompt adherence 1–5
+              <input class="promptAdherence" type="number" min="1" max="5" /></label
+            ><label
+              >Illustration quality 1–5
+              <input class="illustrationQuality" type="number" min="1" max="5" /></label
+            ><label
+              >Technical defects (comma-separated tags)
+              <input class="obviousTechnicalDefects" type="text" placeholder="None" /></label
+            ><label>Notes <textarea class="notes"></textarea></label>
+          </article>
+        </section>
+        <section class="model">
+          <h3>z-image-turbo</h3>
+          <article
+            class="run"
+            data-model="z-image-turbo"
+            data-prompt-id="chinese-book-visible-text"
+            data-run-number="1"
+          >
+            <h4>Run 1</h4>
+            <img
+              src="https://xiaohai-prod-assets.cd.bcebos.com/benchmarks/image/z-image-turbo/benchmark-z-image-turbo-chinese-book-visible-text-1.png"
+              alt="z-image-turbo chinese-book-visible-text run 1"
+            />
+            <p>Latency: 9037 ms</p>
+            <label
+              >Character consistency 1–5
+              <input class="characterConsistency" type="number" min="1" max="5" /></label
+            ><label
+              >Prompt adherence 1–5
+              <input class="promptAdherence" type="number" min="1" max="5" /></label
+            ><label
+              >Illustration quality 1–5
+              <input class="illustrationQuality" type="number" min="1" max="5" /></label
+            ><label
+              >Technical defects (comma-separated tags)
+              <input class="obviousTechnicalDefects" type="text" placeholder="None" /></label
+            ><label>Notes <textarea class="notes"></textarea></label>
+          </article>
+          <article
+            class="run"
+            data-model="z-image-turbo"
+            data-prompt-id="chinese-book-visible-text"
+            data-run-number="2"
+          >
+            <h4>Run 2</h4>
+            <img
+              src="https://xiaohai-prod-assets.cd.bcebos.com/benchmarks/image/z-image-turbo/benchmark-z-image-turbo-chinese-book-visible-text-2.png"
+              alt="z-image-turbo chinese-book-visible-text run 2"
+            />
+            <p>Latency: 8455 ms</p>
+            <label
+              >Character consistency 1–5
+              <input class="characterConsistency" type="number" min="1" max="5" /></label
+            ><label
+              >Prompt adherence 1–5
+              <input class="promptAdherence" type="number" min="1" max="5" /></label
+            ><label
+              >Illustration quality 1–5
+              <input class="illustrationQuality" type="number" min="1" max="5" /></label
+            ><label
+              >Technical defects (comma-separated tags)
+              <input class="obviousTechnicalDefects" type="text" placeholder="None" /></label
+            ><label>Notes <textarea class="notes"></textarea></label>
+          </article>
+          <article
+            class="run"
+            data-model="z-image-turbo"
+            data-prompt-id="chinese-book-visible-text"
+            data-run-number="3"
+          >
+            <h4>Run 3</h4>
+            <img
+              src="https://xiaohai-prod-assets.cd.bcebos.com/benchmarks/image/z-image-turbo/benchmark-z-image-turbo-chinese-book-visible-text-3.png"
+              alt="z-image-turbo chinese-book-visible-text run 3"
+            />
+            <p>Latency: 9694 ms</p>
+            <label
+              >Character consistency 1–5
+              <input class="characterConsistency" type="number" min="1" max="5" /></label
+            ><label
+              >Prompt adherence 1–5
+              <input class="promptAdherence" type="number" min="1" max="5" /></label
+            ><label
+              >Illustration quality 1–5
+              <input class="illustrationQuality" type="number" min="1" max="5" /></label
+            ><label
+              >Technical defects (comma-separated tags)
+              <input class="obviousTechnicalDefects" type="text" placeholder="None" /></label
+            ><label>Notes <textarea class="notes"></textarea></label>
+          </article>
+        </section>
+      </div>
+    </section>
+    <script>
+      (function () {
+        const key = 'xiaohai-image-benchmark-ratings-v1';
+        const fields = ['characterConsistency', 'promptAdherence', 'illustrationQuality', 'notes'];
+        const status = document.getElementById('status');
+        const runs = () => Array.from(document.querySelectorAll('.run'));
+        const id = (run) => [run.model, run.promptId, run.runNumber].join(':');
+        const save = () => {
+          const ratings = runs().map((run) => {
+            const item = {
+              model: run.dataset.model,
+              promptId: run.dataset.promptId,
+              runNumber: Number(run.dataset.runNumber),
+            };
+            fields.forEach((field) => {
+              const value = run.querySelector('.' + field).value;
+              item[field] = field === 'notes' ? value : value ? Number(value) : null;
+            });
+            item.obviousTechnicalDefects = run
+              .querySelector('.obviousTechnicalDefects')
+              .value.split(',')
+              .map((value) => value.trim())
+              .filter(Boolean);
+            return item;
+          });
+          localStorage.setItem(key, JSON.stringify(ratings));
+          status.textContent = ' Saved locally';
+        };
+        const restore = () => {
+          let ratings = [];
+          try {
+            ratings = JSON.parse(localStorage.getItem(key) || '[]');
+          } catch {}
+          const byId = new Map(
+            ratings.map((item) => [[item.model, item.promptId, item.runNumber].join(':'), item]),
+          );
+          runs().forEach((run) => {
+            const item = byId.get(
+              id({
+                model: run.dataset.model,
+                promptId: run.dataset.promptId,
+                runNumber: run.dataset.runNumber,
+              }),
+            );
+            if (item) {
+              fields.forEach((field) => {
+                if (item[field] !== undefined && item[field] !== null)
+                  run.querySelector('.' + field).value = item[field];
+              });
+              run.querySelector('.obviousTechnicalDefects').value = (
+                item.obviousTechnicalDefects || []
+              ).join(', ');
+            }
+          });
+        };
+        document.addEventListener('input', save);
+        document.getElementById('clear').onclick = () => {
+          localStorage.removeItem(key);
+          runs().forEach((run) => {
+            fields.forEach((field) => {
+              run.querySelector('.' + field).value = '';
+            });
+            run.querySelector('.obviousTechnicalDefects').value = '';
+          });
+          status.textContent = ' Cleared';
+        };
+        document.getElementById('export').onclick = () => {
+          save();
+          const blob = new Blob([localStorage.getItem(key) || '[]'], { type: 'application/json' });
+          const link = document.createElement('a');
+          link.href = URL.createObjectURL(blob);
+          link.download = 'PER_IMAGE_REVIEW.json';
+          link.click();
+          URL.revokeObjectURL(link.href);
+        };
+        document.getElementById('import').onclick = () =>
+          document.getElementById('import-file').click();
+        document.getElementById('import-file').onchange = async (event) => {
+          try {
+            const imported = JSON.parse(await event.target.files[0].text());
+            if (!Array.isArray(imported)) throw new Error();
+            localStorage.setItem(key, JSON.stringify(imported));
+            location.reload();
+          } catch {
+            status.textContent = ' Invalid ratings JSON';
+          }
+        };
+        restore();
+      })();
+    </script>
+  </body>
+</html>
