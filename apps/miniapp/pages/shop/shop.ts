@@ -35,6 +35,11 @@ Page({
   open(e: WechatMiniprogram.TouchEvent) {
     void wx.navigateTo({ url: `/pages/product/product?id=${e.currentTarget.dataset.id}` });
   },
+  coverError(event: WechatMiniprogram.TouchEvent) {
+    const index = Number(event.currentTarget.dataset.index);
+    if (!Number.isInteger(index) || !this.data.products[index]) return;
+    this.setData({ [`products[${index}].displayCoverUrl`]: '' });
+  },
   cart() {
     void wx.navigateTo({ url: '/pages/cart/cart' });
   },
