@@ -201,7 +201,27 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
         operation: 'BODY',
         sourceVersionId: outline!.id,
         sourceAiJobId: bodyJob!.id,
-        content: '清晨，小狐狸在森林里遇见一只迷路的小鸟，并帮助它回到了家。',
+        content: JSON.stringify({
+          title: '森林里的小灯塔',
+          outline: '小狐狸帮助迷路的小鸟回家。',
+          characters: [
+            {
+              name: '小狐狸',
+              description: '勇敢温柔的朋友',
+              visualDescription: '橙色狐狸，绿色围巾，圆眼睛',
+            },
+            {
+              name: '小鸟',
+              description: '迷路的小鸟',
+              visualDescription: '蓝色小鸟，黄色肚子，小红书包',
+            },
+          ],
+          pages: Array.from({ length: 10 }, (_, index) => ({
+            pageNumber: index + 1,
+            scene: '森林',
+            text: '小狐狸帮助小鸟。',
+          })),
+        }),
       })
       .returning();
 
@@ -245,32 +265,8 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
     userId: string,
     pictureBookId: string,
   ) {
-    const accepted = await pictureBook.generate(userId, pictureBookId, { operation: 'CHARACTERS' });
-
-    await succeed(
-      accepted.jobId,
-      JSON.stringify({
-        characters: [
-          {
-            name: '小狐狸',
-            role: 'MAIN',
-            description: '勇敢、温柔，喜欢帮助朋友',
-            visualPrompt: 'orange fox, green scarf, round brown eyes, small white tail tip',
-          },
-          {
-            name: '小鸟',
-            role: 'SUPPORTING',
-            description: '一只迷路但很有礼貌的小鸟',
-            visualPrompt: 'small blue bird, pale yellow chest, tiny red satchel',
-          },
-        ],
-      }),
-    );
-
-    return {
-      accepted,
-      detail: await pictureBook.applyJob(userId, pictureBookId, accepted.jobId),
-    };
+    const detail = await pictureBook.confirmCharacters(userId, pictureBookId);
+    return { accepted: null, detail };
   }
 
   async function applyStoryboard(
@@ -411,30 +407,8 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
         },
       });
 
-      expect(response.statusCode).toBe(202);
-
-      const accepted = response.json<{
-        jobId: string;
-        pictureBookId: string;
-        operation: string;
-        status: string;
-      }>();
-
-      expect(accepted).toMatchObject({
-        pictureBookId: book.id,
-        operation: 'CHARACTERS',
-        status: 'QUEUED',
-      });
-
-      expect(notifications).toEqual([accepted.jobId]);
-
-      const [job] = await db.select().from(aiJobs).where(eq(aiJobs.id, accepted.jobId));
-
-      expect(job).toMatchObject({
-        jobType: 'PICTURE_BOOK_CHARACTERS',
-        provider: 'MOCK',
-        model: 'server-controlled-picture-book-model',
-      });
+      expect(response.statusCode).toBe(409);
+      expect(notifications).toEqual([]);
     } finally {
       await app.close();
     }
@@ -468,10 +442,6 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
       const [fox, bird] = charactersResult.detail.characters;
 
       expect(fox!.consistencyKey).not.toBe(bird!.consistencyKey);
-
-      const charactersJob = await pictureBook.getJob(alice, charactersResult.accepted.jobId);
-
-      expect(charactersJob.applied).toBe(true);
 
       const storyboard = await pictureBook.generate(alice, book.id, { operation: 'STORYBOARD' });
 
@@ -536,80 +506,178 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
     }
   });
 
-  it('normalizes AUXILIARY characters, rejects unknown roles, and keeps character apply idempotent', async () => {
+  it('initializes Character Bible from Story characters with stable IDs', async () => {
     const pictureBook = service();
     const alice = await createUser();
-    const { book } = await createBook(pictureBook, alice);
-    const accepted = await pictureBook.generate(alice, book.id, { operation: 'CHARACTERS' });
+    const { source, book } = await createBook(pictureBook, alice);
+    const detail = await pictureBook.getPictureBook(alice, book.id);
 
-    await succeed(
-      accepted.jobId,
-      JSON.stringify({
-        characters: [
-          {
-            name: '小狐狸',
-            role: 'MAIN',
-            description: '主要角色',
-            visualPrompt: 'orange fox with green scarf',
-          },
-          {
-            name: '小鸟',
-            role: 'SUPPORTING',
-            description: '配角',
-            visualPrompt: 'small blue bird with red satchel',
-          },
-          {
-            name: '萤火虫',
-            role: 'AUXILIARY',
-            description: '辅助角色',
-            visualPrompt: 'friendly glowing firefly',
-          },
-        ],
-      }),
+    expect(detail.characters).toHaveLength(2);
+    expect(new Set(detail.characters.map((character) => character.characterId)).size).toBe(2);
+    expect(detail.characters.every((character) => !character.confirmed && !character.locked)).toBe(
+      true,
     );
-
-    const first = await pictureBook.applyJob(alice, book.id, accepted.jobId);
-    expect(first.characters.map((character) => character.role)).toEqual([
-      'MAIN',
-      'SUPPORTING',
-      'SUPPORTING',
-    ]);
-
-    const second = await pictureBook.applyJob(alice, book.id, accepted.jobId);
-    expect(second.characters.map((character) => character.role)).toEqual([
-      'MAIN',
-      'SUPPORTING',
-      'SUPPORTING',
-    ]);
     expect(
-      await db.select().from(characterProfiles).where(eq(characterProfiles.pictureBookId, book.id)),
-    ).toHaveLength(3);
+      (await db.select().from(workVersions).where(eq(workVersions.id, source.body.id)))[0]!.content,
+    ).toContain('绿色围巾');
+  });
 
-    const { book: invalidBook } = await createBook(pictureBook, alice);
-    const invalid = await pictureBook.generate(alice, invalidBook.id, { operation: 'CHARACTERS' });
-    await succeed(
-      invalid.jobId,
-      JSON.stringify({
-        characters: [
-          {
-            name: '未知角色',
-            role: 'SECONDARY',
-            description: '非法角色枚举',
-            visualPrompt: 'unknown role',
-          },
-        ],
-      }),
-    );
+  it('supports Character Bible edit, confirm, reopen, ownership, and validation through HTTP', async () => {
+    const pictureBook = service();
+    const app = await createApp(pictureBook);
 
-    await expect(pictureBook.applyJob(alice, invalidBook.id, invalid.jobId)).rejects.toMatchObject({
-      code: 'INVALID_JOB_OUTPUT',
-    });
-    expect(
-      await db
-        .select()
-        .from(characterProfiles)
-        .where(eq(characterProfiles.pictureBookId, invalidBook.id)),
-    ).toHaveLength(0);
+    try {
+      const alice = await createUser();
+      const bob = await createUser();
+      const { source, book } = await createBook(pictureBook, alice);
+      const initialSourceContent = (
+        await db.select().from(workVersions).where(eq(workVersions.id, source.body.id))
+      )[0]!.content;
+      const initial = await app.inject({
+        method: 'GET',
+        url: `/api/v1/ai/picture-books/${book.id}`,
+        headers: { authorization: `Bearer ${token(alice)}` },
+      });
+      const initialCharacter = initial.json<{ characters: Array<{ characterId: string }> }>()
+        .characters[0]!;
+
+      const edited = await app.inject({
+        method: 'PATCH',
+        url: `/api/v1/ai/picture-books/${book.id}/characters/${initialCharacter.characterId}`,
+        headers: { authorization: `Bearer ${token(alice)}` },
+        payload: {
+          name: '改名小狐狸',
+          description: '编辑后的勇敢朋友',
+          canonicalVisualPrompt: 'orange fox with a green scarf and warm storybook light',
+        },
+      });
+      expect(edited.statusCode).toBe(200);
+
+      const reloaded = await app.inject({
+        method: 'GET',
+        url: `/api/v1/ai/picture-books/${book.id}`,
+        headers: { authorization: `Bearer ${token(alice)}` },
+      });
+      expect(reloaded.statusCode).toBe(200);
+      const reloadedBody = reloaded.json<{ characters: Array<Record<string, unknown>> }>();
+      expect(reloadedBody.characters[0]).toMatchObject({
+        characterId: initialCharacter.characterId,
+        name: '改名小狐狸',
+        description: '编辑后的勇敢朋友',
+        canonicalVisualPrompt: 'orange fox with a green scarf and warm storybook light',
+        confirmed: false,
+        locked: false,
+      });
+
+      for (const payload of [
+        { name: '', description: 'valid', canonicalVisualPrompt: 'valid' },
+        { name: 'valid', description: '', canonicalVisualPrompt: 'valid' },
+        { name: 'valid', description: 'valid', canonicalVisualPrompt: '' },
+        { name: '   ', description: 'valid', canonicalVisualPrompt: 'valid' },
+        { name: 'valid', description: '   ', canonicalVisualPrompt: 'valid' },
+        { name: 'valid', description: 'valid', canonicalVisualPrompt: '   ' },
+      ]) {
+        const invalid = await app.inject({
+          method: 'PATCH',
+          url: `/api/v1/ai/picture-books/${book.id}/characters/${initialCharacter.characterId}`,
+          headers: { authorization: `Bearer ${token(alice)}` },
+          payload,
+        });
+        expect(invalid.statusCode).toBe(400);
+        expect(invalid.json<{ error: { code: string } }>().error.code).toBe('INVALID_REQUEST');
+      }
+
+      const confirmed = await app.inject({
+        method: 'POST',
+        url: `/api/v1/ai/picture-books/${book.id}/characters/confirm`,
+        headers: { authorization: `Bearer ${token(alice)}` },
+        payload: {},
+      });
+      expect(confirmed.statusCode).toBe(200);
+      const confirmedBody = confirmed.json<{
+        characters: Array<{ confirmed: boolean; locked: boolean }>;
+      }>();
+      expect(
+        confirmedBody.characters.every((character) => character.confirmed && character.locked),
+      ).toBe(true);
+
+      const lockedUpdate = await app.inject({
+        method: 'PATCH',
+        url: `/api/v1/ai/picture-books/${book.id}/characters/${initialCharacter.characterId}`,
+        headers: { authorization: `Bearer ${token(alice)}` },
+        payload: {
+          name: '不应保存',
+          description: '不应保存',
+          canonicalVisualPrompt: '不应保存',
+        },
+      });
+      expect(lockedUpdate.statusCode).toBe(409);
+      expect(lockedUpdate.json<{ error: { code: string } }>().error.code).toBe('CHARACTER_LOCKED');
+
+      for (const path of ['confirm', 'reopen']) {
+        const otherUser = await app.inject({
+          method: 'POST',
+          url: `/api/v1/ai/picture-books/${book.id}/characters/${path}`,
+          headers: { authorization: `Bearer ${token(bob)}` },
+          payload: {},
+        });
+        expect(otherUser.statusCode).toBe(404);
+        expect(otherUser.json<{ error: { code: string } }>().error.code).toBe('NOT_FOUND');
+      }
+      const otherEdit = await app.inject({
+        method: 'PATCH',
+        url: `/api/v1/ai/picture-books/${book.id}/characters/${initialCharacter.characterId}`,
+        headers: { authorization: `Bearer ${token(bob)}` },
+        payload: {
+          name: '越权',
+          description: '越权',
+          canonicalVisualPrompt: '越权',
+        },
+      });
+      expect(otherEdit.statusCode).toBe(404);
+      expect(otherEdit.json<{ error: { code: string } }>().error.code).toBe('NOT_FOUND');
+
+      const reopened = await app.inject({
+        method: 'POST',
+        url: `/api/v1/ai/picture-books/${book.id}/characters/reopen`,
+        headers: { authorization: `Bearer ${token(alice)}` },
+        payload: {},
+      });
+      expect(reopened.statusCode).toBe(200);
+      const reopenedBody = reopened.json<{
+        characters: Array<{ confirmed: boolean; locked: boolean }>;
+      }>();
+      expect(
+        reopenedBody.characters.every((character) => !character.confirmed && !character.locked),
+      ).toBe(true);
+
+      const editedAgain = await app.inject({
+        method: 'PATCH',
+        url: `/api/v1/ai/picture-books/${book.id}/characters/${initialCharacter.characterId}`,
+        headers: { authorization: `Bearer ${token(alice)}` },
+        payload: {
+          name: '再次编辑的小狐狸',
+          description: '重新编辑后的描述',
+          canonicalVisualPrompt: 'orange fox, green scarf, revised canonical prompt',
+        },
+      });
+      expect(editedAgain.statusCode).toBe(200);
+
+      const finalSourceContent = (
+        await db.select().from(workVersions).where(eq(workVersions.id, source.body.id))
+      )[0]!.content;
+      expect(finalSourceContent).toBe(initialSourceContent);
+      expect(
+        (
+          await db
+            .select()
+            .from(characterProfiles)
+            .where(eq(characterProfiles.id, initialCharacter.characterId))
+        )[0],
+      ).toMatchObject({ name: '再次编辑的小狐狸', confirmed: false, locked: false });
+    } finally {
+      await app.close();
+    }
   });
 
   it('rejects invalid structured AI output without persisting partial storyboard data', async () => {

@@ -10,6 +10,9 @@ import {
   getPictureBook,
   getPictureBookJob,
   PictureBookApiError,
+  updatePictureBookCharacter,
+  confirmPictureBookCharacters,
+  reopenPictureBookCharacters,
 } from '../../services/picture-book';
 
 const sleep = (milliseconds: number) =>
@@ -19,6 +22,7 @@ Page({
   data: {
     id: '',
     detail: null as PictureBookDetail | null,
+    characterBibleConfirmed: false,
     loading: true,
     busy: false,
     polling: false,
@@ -34,7 +38,14 @@ Page({
   },
   async load() {
     try {
-      this.setData({ detail: await getPictureBook(this.data.id), error: '' });
+      const detail = await getPictureBook(this.data.id);
+      this.setData({
+        detail,
+        characterBibleConfirmed:
+          detail.characters.length > 0 &&
+          detail.characters.every((character) => character.confirmed && character.locked),
+        error: '',
+      });
     } catch {
       this.setData({ error: '绘本加载失败' });
     } finally {
@@ -43,6 +54,15 @@ Page({
   },
   async generatePlan(event: WechatMiniprogram.TouchEvent) {
     if (this.data.busy) return;
+    const detail = this.data.detail;
+    if (
+      !detail ||
+      detail.characters.length === 0 ||
+      detail.characters.some((character) => !character.confirmed || !character.locked)
+    ) {
+      this.setData({ error: '请先保存并确认角色设定' });
+      return;
+    }
     const operation = String(event.currentTarget.dataset.operation) as PictureBookTextOperation;
     this.setData({ busy: true, error: '' });
     try {
@@ -66,6 +86,69 @@ Page({
             ? 'AI 功能未开启（安全关闭）'
             : '生成失败，请稍后重试。',
       });
+    } finally {
+      this.setData({ busy: false });
+    }
+  },
+  editCharacterField(event: {
+    currentTarget: { dataset: Record<string, string> };
+    detail: { value?: string };
+  }) {
+    const index = Number(event.currentTarget.dataset.index);
+    const field = String(event.currentTarget.dataset.field) as
+      'name' | 'description' | 'canonicalVisualPrompt';
+    const value = String(event.detail.value || '');
+    const detail = this.data.detail;
+    if (!detail || detail.characters[index]?.locked) return;
+    const characters = detail.characters.map((character, characterIndex) =>
+      characterIndex === index ? { ...character, [field]: value } : character,
+    );
+    this.setData({ detail: { ...detail, characters } });
+  },
+  async saveCharacter(event: WechatMiniprogram.TouchEvent) {
+    const index = Number(event.currentTarget.dataset.index);
+    const character = this.data.detail?.characters[index];
+    if (this.data.busy || !character || character.locked) return;
+    this.setData({ busy: true, error: '' });
+    try {
+      this.setData({
+        detail: await updatePictureBookCharacter(this.data.id, character.characterId, {
+          name: character.name,
+          description: character.description,
+          canonicalVisualPrompt: character.canonicalVisualPrompt,
+        }),
+      });
+    } catch {
+      this.setData({ error: '角色设定保存失败，请重试。' });
+    } finally {
+      this.setData({ busy: false });
+    }
+  },
+  async confirmCharacters() {
+    if (this.data.busy) return;
+    this.setData({ busy: true, error: '' });
+    try {
+      const detail = await confirmPictureBookCharacters(this.data.id);
+      this.setData({
+        detail,
+        characterBibleConfirmed:
+          detail.characters.length > 0 &&
+          detail.characters.every((item) => item.confirmed && item.locked),
+      });
+    } catch {
+      this.setData({ error: '角色设定确认失败，请重试。' });
+    } finally {
+      this.setData({ busy: false });
+    }
+  },
+  async reopenCharacters() {
+    if (this.data.busy) return;
+    this.setData({ busy: true, error: '' });
+    try {
+      const detail = await reopenPictureBookCharacters(this.data.id);
+      this.setData({ detail, characterBibleConfirmed: false });
+    } catch {
+      this.setData({ error: '重新编辑角色设定失败，请重试。' });
     } finally {
       this.setData({ busy: false });
     }
