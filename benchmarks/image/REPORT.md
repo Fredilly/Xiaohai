@@ -10,7 +10,22 @@ Total provider calls: 36
 
 Formal benchmark artifact: `raw/raw-20261003T022843Z.json` (18 runs per model, 36 total). Earlier smoke-test and failed-test artifacts are excluded.
 
-These latency results are descriptive only; they do not select a default model. Quality ratings and any visual-quality conclusion remain pending human review in `GALLERY.html` / `SCORECARD.md`. TTFT is not available from the current non-streaming image provider.
+## Final performance result
+
+The formal benchmark completed 36 real images: 18 runs per model, with 18/18 success for both models.
+
+| Model | Success | p50 | p95 | Failures |
+|---|---:|---:|---:|---:|
+| qwen-image-3.0 | 18/18 | 9136 ms | 10674 ms | 0 |
+| z-image-turbo | 18/18 | 7595 ms | 9694 ms | 0 |
+
+Z-Image Turbo is faster in this benchmark. TTFT is unavailable from the non-streaming image provider.
+
+## Human visual review
+
+See [`HUMAN_REVIEW.md`](HUMAN_REVIEW.md) for all prompt-group scores and observations. Z-Image is more cartoon-like and has slightly better recurring-character consistency. Qwen is more semi-realistic, with richer detail, lighting, materials, and spatial depth; it is more stable on complex scenes and prompt adherence. Both models produced basically readable Chinese visible text. These are visual-direction differences, not an automatic quality ranking.
+
+The outdoor-action prompt showed a clear Z-Image prompt-adherence regression: one image added an unrequested human child. Therefore, although Z-Image is the faster candidate, this benchmark does not provide enough evidence to switch the production default solely on speed. Keep production routing unchanged. The final product default should be decided together with the desired Xiaohai visual direction: more cartoon/IP-like versus more detailed/semi-realistic storybook.
 
 ## Manual reviewer workflow
 
