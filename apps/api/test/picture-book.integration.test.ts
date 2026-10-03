@@ -559,7 +559,8 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
         headers: { authorization: `Bearer ${token(alice)}` },
       });
       expect(reloaded.statusCode).toBe(200);
-      expect(reloaded.json().characters[0]).toMatchObject({
+      const reloadedBody = reloaded.json<{ characters: Array<Record<string, unknown>> }>();
+      expect(reloadedBody.characters[0]).toMatchObject({
         characterId: initialCharacter.characterId,
         name: '改名小狐狸',
         description: '编辑后的勇敢朋友',
@@ -583,7 +584,7 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
           payload,
         });
         expect(invalid.statusCode).toBe(400);
-        expect(invalid.json().error.code).toBe('INVALID_REQUEST');
+        expect(invalid.json<{ error: { code: string } }>().error.code).toBe('INVALID_REQUEST');
       }
 
       const confirmed = await app.inject({
@@ -593,13 +594,11 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
         payload: {},
       });
       expect(confirmed.statusCode).toBe(200);
+      const confirmedBody = confirmed.json<{
+        characters: Array<{ confirmed: boolean; locked: boolean }>;
+      }>();
       expect(
-        confirmed
-          .json()
-          .characters.every(
-            (character: { confirmed: boolean; locked: boolean }) =>
-              character.confirmed && character.locked,
-          ),
+        confirmedBody.characters.every((character) => character.confirmed && character.locked),
       ).toBe(true);
 
       const lockedUpdate = await app.inject({
@@ -613,7 +612,7 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
         },
       });
       expect(lockedUpdate.statusCode).toBe(409);
-      expect(lockedUpdate.json().error.code).toBe('CHARACTER_LOCKED');
+      expect(lockedUpdate.json<{ error: { code: string } }>().error.code).toBe('CHARACTER_LOCKED');
 
       for (const path of ['confirm', 'reopen']) {
         const otherUser = await app.inject({
@@ -623,7 +622,7 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
           payload: {},
         });
         expect(otherUser.statusCode).toBe(404);
-        expect(otherUser.json().error.code).toBe('NOT_FOUND');
+        expect(otherUser.json<{ error: { code: string } }>().error.code).toBe('NOT_FOUND');
       }
       const otherEdit = await app.inject({
         method: 'PATCH',
@@ -636,7 +635,7 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
         },
       });
       expect(otherEdit.statusCode).toBe(404);
-      expect(otherEdit.json().error.code).toBe('NOT_FOUND');
+      expect(otherEdit.json<{ error: { code: string } }>().error.code).toBe('NOT_FOUND');
 
       const reopened = await app.inject({
         method: 'POST',
@@ -645,13 +644,11 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
         payload: {},
       });
       expect(reopened.statusCode).toBe(200);
+      const reopenedBody = reopened.json<{
+        characters: Array<{ confirmed: boolean; locked: boolean }>;
+      }>();
       expect(
-        reopened
-          .json()
-          .characters.every(
-            (character: { confirmed: boolean; locked: boolean }) =>
-              !character.confirmed && !character.locked,
-          ),
+        reopenedBody.characters.every((character) => !character.confirmed && !character.locked),
       ).toBe(true);
 
       const editedAgain = await app.inject({
