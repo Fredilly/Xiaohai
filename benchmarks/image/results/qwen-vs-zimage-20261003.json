@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "reviewStatus": "pending",
+  "reviewStatus": "complete",
   "sourceArtifact": "raw-20261003T022843Z.json",
-  "generatedAt": "2026-10-03T04:09:39.268Z",
+  "generatedAt": "2026-10-03T04:52:09.608Z",
   "models": ["qwen-image-3.0", "z-image-turbo"],
   "requestedRuns": 36,
   "runs": [
@@ -22,10 +22,10 @@
       "providerErrorCode": null,
       "obviousTechnicalDefects": [],
       "manualReview": {
-        "characterConsistency": null,
-        "promptAdherence": null,
-        "illustrationQuality": null,
-        "notes": ""
+        "characterConsistency": 4.5,
+        "promptAdherence": 5,
+        "illustrationQuality": 4.8,
+        "notes": "Requested red-panda traits and accessories are present; richer semi-realistic fur and lighting."
       }
     },
     {
@@ -44,10 +44,10 @@
       "providerErrorCode": null,
       "obviousTechnicalDefects": [],
       "manualReview": {
-        "characterConsistency": null,
-        "promptAdherence": null,
-        "illustrationQuality": null,
-        "notes": ""
+        "characterConsistency": 4.5,
+        "promptAdherence": 5,
+        "illustrationQuality": 4.8,
+        "notes": "Requested red-panda traits and accessories are present; clean centered portrait."
       }
     },
     {
@@ -66,10 +66,10 @@
       "providerErrorCode": null,
       "obviousTechnicalDefects": [],
       "manualReview": {
-        "characterConsistency": null,
-        "promptAdherence": null,
-        "illustrationQuality": null,
-        "notes": ""
+        "characterConsistency": 4.3,
+        "promptAdherence": 5,
+        "illustrationQuality": 4.6,
+        "notes": "Core Mimi traits remain recognizable; slight variation in facial proportions/style."
       }
     },
     {
@@ -88,10 +88,10 @@
       "providerErrorCode": null,
       "obviousTechnicalDefects": [],
       "manualReview": {
-        "characterConsistency": null,
-        "promptAdherence": null,
-        "illustrationQuality": null,
-        "notes": ""
+        "characterConsistency": 4.5,
+        "promptAdherence": 5,
+        "illustrationQuality": 4.8,
+        "notes": "Core Mimi traits, scarf, overalls and red satchel are preserved in the forest-stream scene."
       }
     },
     {
@@ -110,10 +110,10 @@
       "providerErrorCode": null,
       "obviousTechnicalDefects": [],
       "manualReview": {
-        "characterConsistency": null,
-        "promptAdherence": null,
-        "illustrationQuality": null,
-        "notes": ""
+        "characterConsistency": 4.4,
+        "promptAdherence": 5,
+        "illustrationQuality": 4.7,
+        "notes": "Strong preservation of Mimi's defining clothing and color traits; detailed warm forest scene."
       }
     },
     {
@@ -132,10 +132,10 @@
       "providerErrorCode": null,
       "obviousTechnicalDefects": [],
       "manualReview": {
-        "characterConsistency": null,
-        "promptAdherence": null,
-        "illustrationQuality": null,
-        "notes": ""
+        "characterConsistency": 4.3,
+        "promptAdherence": 5,
+        "illustrationQuality": 4.7,
+        "notes": "Mimi remains recognizable with requested accessories; slightly different face/body rendering."
       }
     },
     {
@@ -154,10 +154,10 @@
       "providerErrorCode": null,
       "obviousTechnicalDefects": [],
       "manualReview": {
-        "characterConsistency": null,
-        "promptAdherence": null,
-        "illustrationQuality": null,
-        "notes": ""
+        "characterConsistency": 4.4,
+        "promptAdherence": 5,
+        "illustrationQuality": 4.6,
+        "notes": "Mimi and Pip are both present with requested clothing/colors; map-sharing composition is clear."
       }
     },
     {
@@ -176,10 +176,10 @@
       "providerErrorCode": null,
       "obviousTechnicalDefects": [],
       "manualReview": {
-        "characterConsistency": null,
-        "promptAdherence": null,
-        "illustrationQuality": null,
-        "notes": ""
+        "characterConsistency": 4.3,
+        "promptAdherence": 5,
+        "illustrationQuality": 4.6,
+        "notes": "Both recurring characters and map are correctly shown; minor stylistic variation in Mimi/Pip."
       }
     },
     {
@@ -198,10 +198,10 @@
       "providerErrorCode": null,
       "obviousTechnicalDefects": [],
       "manualReview": {
-        "characterConsistency": null,
-        "promptAdherence": null,
-        "illustrationQuality": null,
-        "notes": ""
+        "characterConsistency": 4.2,
+        "promptAdherence": 5,
+        "illustrationQuality": 4.5,
+        "notes": "Both recurring characters are recognizable and prompt is followed; character proportions vary slightly."
       }
     },
     {
@@ -220,10 +220,10 @@
       "providerErrorCode": null,
       "obviousTechnicalDefects": [],
       "manualReview": {
-        "characterConsistency": null,
-        "promptAdherence": null,
-        "illustrationQuality": null,
-        "notes": ""
+        "characterConsistency": "N/A",
+        "promptAdherence": 5,
+        "illustrationQuality": 4.9,
+        "notes": "No people; round window, wooden shelves, books, cushions and warm lamplight are all clearly represented."
       }
     },
     {
@@ -242,10 +242,10 @@
       "providerErrorCode": null,
       "obviousTechnicalDefects": [],
       "manualReview": {
-        "characterConsistency": null,
-        "promptAdherence": null,
-        "illustrationQuality": null,
-        "notes": ""
+        "characterConsistency": "N/A",
+        "promptAdherence": 5,
+        "illustrationQuality": 4.8,
+        "notes": "Detailed treehouse-library composition with strong depth, materials and warm lighting; no people."
       }
     },
     {
@@ -264,10 +264,10 @@
       "providerErrorCode": null,
       "obviousTechnicalDefects": [],
       "manualReview": {
-        "characterConsistency": null,
-        "promptAdherence": null,
-        "illustrationQuality": null,
-        "notes": ""
+        "characterConsistency": "N/A",
+        "promptAdherence": 5,
+        "illustrationQuality": 4.7,
+        "notes": "Prompt elements are present with rich storybook detail and warm interior atmosphere; no people."
       }
     },
     {
@@ -286,10 +286,10 @@
       "providerErrorCode": null,
       "obviousTechnicalDefects": [],
       "manualReview": {
-        "characterConsistency": null,
-        "promptAdherence": null,
-        "illustrationQuality": null,
-        "notes": ""
+        "characterConsistency": "N/A",
+        "promptAdherence": 5,
+        "illustrationQuality": 4.7,
+        "notes": "Fox and one bird cross stepping stones with clear motion and joyful children's-book treatment."
       }
     },
     {
@@ -306,12 +306,12 @@
       "errorStage": null,
       "httpStatus": null,
       "providerErrorCode": null,
-      "obviousTechnicalDefects": [],
+      "obviousTechnicalDefects": ["EXTRA_BIRD_CHARACTER"],
       "manualReview": {
-        "characterConsistency": null,
-        "promptAdherence": null,
-        "illustrationQuality": null,
-        "notes": ""
+        "characterConsistency": "N/A",
+        "promptAdherence": 4,
+        "illustrationQuality": 4.6,
+        "notes": "Action and stream are clear, but the image includes two birds although the prompt asks for one bird."
       }
     },
     {
@@ -330,10 +330,10 @@
       "providerErrorCode": null,
       "obviousTechnicalDefects": [],
       "manualReview": {
-        "characterConsistency": null,
-        "promptAdherence": null,
-        "illustrationQuality": null,
-        "notes": ""
+        "characterConsistency": "N/A",
+        "promptAdherence": 5,
+        "illustrationQuality": 4.7,
+        "notes": "Fox and one bird are shown in a clear, dynamic stepping-stone scene."
       }
     },
     {
@@ -352,10 +352,10 @@
       "providerErrorCode": null,
       "obviousTechnicalDefects": [],
       "manualReview": {
-        "characterConsistency": null,
-        "promptAdherence": null,
-        "illustrationQuality": null,
-        "notes": ""
+        "characterConsistency": "N/A",
+        "promptAdherence": 5,
+        "illustrationQuality": 4.7,
+        "notes": "The requested text “勇敢回家” is clean and readable; one fox and one bird are shown."
       }
     },
     {
@@ -374,10 +374,10 @@
       "providerErrorCode": null,
       "obviousTechnicalDefects": [],
       "manualReview": {
-        "characterConsistency": null,
-        "promptAdherence": null,
-        "illustrationQuality": null,
-        "notes": ""
+        "characterConsistency": "N/A",
+        "promptAdherence": 5,
+        "illustrationQuality": 4.7,
+        "notes": "The requested text “勇敢回家” is clean and readable; composition follows the prompt closely."
       }
     },
     {
@@ -394,12 +394,12 @@
       "errorStage": null,
       "httpStatus": null,
       "providerErrorCode": null,
-      "obviousTechnicalDefects": [],
+      "obviousTechnicalDefects": ["EXTRA_BIRD_CHARACTER"],
       "manualReview": {
-        "characterConsistency": null,
-        "promptAdherence": null,
-        "illustrationQuality": null,
-        "notes": ""
+        "characterConsistency": "N/A",
+        "promptAdherence": 4,
+        "illustrationQuality": 4.7,
+        "notes": "The requested text is correct and readable, but an extra second bird is present."
       }
     },
     {
@@ -418,10 +418,10 @@
       "providerErrorCode": null,
       "obviousTechnicalDefects": [],
       "manualReview": {
-        "characterConsistency": null,
-        "promptAdherence": null,
-        "illustrationQuality": null,
-        "notes": ""
+        "characterConsistency": 4.8,
+        "promptAdherence": 5,
+        "illustrationQuality": 4.5,
+        "notes": "Requested traits and accessories are present; consistent simplified cartoon/IP styling."
       }
     },
     {
@@ -440,10 +440,10 @@
       "providerErrorCode": null,
       "obviousTechnicalDefects": [],
       "manualReview": {
-        "characterConsistency": null,
-        "promptAdherence": null,
-        "illustrationQuality": null,
-        "notes": ""
+        "characterConsistency": 4.8,
+        "promptAdherence": 5,
+        "illustrationQuality": 4.5,
+        "notes": "Very stable Mimi silhouette, colors and clothing; clean child-friendly cartoon rendering."
       }
     },
     {
@@ -462,10 +462,10 @@
       "providerErrorCode": null,
       "obviousTechnicalDefects": [],
       "manualReview": {
-        "characterConsistency": null,
-        "promptAdherence": null,
-        "illustrationQuality": null,
-        "notes": ""
+        "characterConsistency": 4.7,
+        "promptAdherence": 5,
+        "illustrationQuality": 4.5,
+        "notes": "Core Mimi appearance remains highly consistent with the other portrait runs."
       }
     },
     {
@@ -484,10 +484,10 @@
       "providerErrorCode": null,
       "obviousTechnicalDefects": [],
       "manualReview": {
-        "characterConsistency": null,
-        "promptAdherence": null,
-        "illustrationQuality": null,
-        "notes": ""
+        "characterConsistency": 4.8,
+        "promptAdherence": 5,
+        "illustrationQuality": 4.5,
+        "notes": "Mimi's face, scarf, overalls and red satchel remain highly consistent in the new scene."
       }
     },
     {
@@ -506,10 +506,10 @@
       "providerErrorCode": null,
       "obviousTechnicalDefects": [],
       "manualReview": {
-        "characterConsistency": null,
-        "promptAdherence": null,
-        "illustrationQuality": null,
-        "notes": ""
+        "characterConsistency": 4.7,
+        "promptAdherence": 5,
+        "illustrationQuality": 4.4,
+        "notes": "Strong recurring-character consistency; simplified cartoon forest-stream treatment."
       }
     },
     {
@@ -528,10 +528,10 @@
       "providerErrorCode": null,
       "obviousTechnicalDefects": [],
       "manualReview": {
-        "characterConsistency": null,
-        "promptAdherence": null,
-        "illustrationQuality": null,
-        "notes": ""
+        "characterConsistency": 4.6,
+        "promptAdherence": 5,
+        "illustrationQuality": 4.4,
+        "notes": "Mimi remains visually consistent, with only minor proportion/style variation."
       }
     },
     {
@@ -550,10 +550,10 @@
       "providerErrorCode": null,
       "obviousTechnicalDefects": [],
       "manualReview": {
-        "characterConsistency": null,
-        "promptAdherence": null,
-        "illustrationQuality": null,
-        "notes": ""
+        "characterConsistency": 4.7,
+        "promptAdherence": 5,
+        "illustrationQuality": 4.4,
+        "notes": "Mimi and Pip are both present with stable colors/accessories; map-sharing relation is clear."
       }
     },
     {
@@ -572,10 +572,10 @@
       "providerErrorCode": null,
       "obviousTechnicalDefects": [],
       "manualReview": {
-        "characterConsistency": null,
-        "promptAdherence": null,
-        "illustrationQuality": null,
-        "notes": ""
+        "characterConsistency": 4.6,
+        "promptAdherence": 5,
+        "illustrationQuality": 4.4,
+        "notes": "Recurring-character shapes and accessories remain consistent; prompt composition is clear."
       }
     },
     {
@@ -594,10 +594,10 @@
       "providerErrorCode": null,
       "obviousTechnicalDefects": [],
       "manualReview": {
-        "characterConsistency": null,
-        "promptAdherence": null,
-        "illustrationQuality": null,
-        "notes": ""
+        "characterConsistency": 4.5,
+        "promptAdherence": 5,
+        "illustrationQuality": 4.4,
+        "notes": "Both characters remain recognizable and consistent; simplified cartoon rendering."
       }
     },
     {
@@ -616,10 +616,10 @@
       "providerErrorCode": null,
       "obviousTechnicalDefects": [],
       "manualReview": {
-        "characterConsistency": null,
-        "promptAdherence": null,
-        "illustrationQuality": null,
-        "notes": ""
+        "characterConsistency": "N/A",
+        "promptAdherence": 5,
+        "illustrationQuality": 4.5,
+        "notes": "No people; shelves, books, round window and cushions are present in a clean cartoon-like treehouse library."
       }
     },
     {
@@ -638,10 +638,10 @@
       "providerErrorCode": null,
       "obviousTechnicalDefects": [],
       "manualReview": {
-        "characterConsistency": null,
-        "promptAdherence": null,
-        "illustrationQuality": null,
-        "notes": ""
+        "characterConsistency": "N/A",
+        "promptAdherence": 5,
+        "illustrationQuality": 4.5,
+        "notes": "Prompt elements are all present; composition is clean but visually simpler than Qwen."
       }
     },
     {
@@ -660,10 +660,10 @@
       "providerErrorCode": null,
       "obviousTechnicalDefects": [],
       "manualReview": {
-        "characterConsistency": null,
-        "promptAdherence": null,
-        "illustrationQuality": null,
-        "notes": ""
+        "characterConsistency": "N/A",
+        "promptAdherence": 5,
+        "illustrationQuality": 4.5,
+        "notes": "Correct no-people treehouse-library scene with readable spatial layout and warm atmosphere."
       }
     },
     {
@@ -680,12 +680,12 @@
       "errorStage": null,
       "httpStatus": null,
       "providerErrorCode": null,
-      "obviousTechnicalDefects": [],
+      "obviousTechnicalDefects": ["UNREQUESTED_HUMAN_CHARACTER"],
       "manualReview": {
-        "characterConsistency": null,
-        "promptAdherence": null,
-        "illustrationQuality": null,
-        "notes": ""
+        "characterConsistency": "N/A",
+        "promptAdherence": 3,
+        "illustrationQuality": 4.2,
+        "notes": "Fox and bird are present, but an unrequested human child is added to the central action."
       }
     },
     {
@@ -702,12 +702,12 @@
       "errorStage": null,
       "httpStatus": null,
       "providerErrorCode": null,
-      "obviousTechnicalDefects": [],
+      "obviousTechnicalDefects": ["UNREQUESTED_HUMAN_CHARACTER"],
       "manualReview": {
-        "characterConsistency": null,
-        "promptAdherence": null,
-        "illustrationQuality": null,
-        "notes": ""
+        "characterConsistency": "N/A",
+        "promptAdherence": 3,
+        "illustrationQuality": 4.1,
+        "notes": "The image again adds an unrequested human child, materially reducing prompt adherence."
       }
     },
     {
@@ -724,12 +724,12 @@
       "errorStage": null,
       "httpStatus": null,
       "providerErrorCode": null,
-      "obviousTechnicalDefects": [],
+      "obviousTechnicalDefects": ["UNREQUESTED_HUMAN_CHARACTER"],
       "manualReview": {
-        "characterConsistency": null,
-        "promptAdherence": null,
-        "illustrationQuality": null,
-        "notes": ""
+        "characterConsistency": "N/A",
+        "promptAdherence": 3,
+        "illustrationQuality": 4.2,
+        "notes": "The third run also includes an unrequested human child between the fox and bird."
       }
     },
     {
@@ -746,12 +746,12 @@
       "errorStage": null,
       "httpStatus": null,
       "providerErrorCode": null,
-      "obviousTechnicalDefects": [],
+      "obviousTechnicalDefects": ["EXTRA_BIRD_CHARACTER"],
       "manualReview": {
-        "characterConsistency": null,
-        "promptAdherence": null,
-        "illustrationQuality": null,
-        "notes": ""
+        "characterConsistency": "N/A",
+        "promptAdherence": 4,
+        "illustrationQuality": 4.4,
+        "notes": "The requested text “勇敢回家” is clean and readable, but an extra second bird is present."
       }
     },
     {
@@ -768,12 +768,12 @@
       "errorStage": null,
       "httpStatus": null,
       "providerErrorCode": null,
-      "obviousTechnicalDefects": [],
+      "obviousTechnicalDefects": ["EXTRA_BIRD_CHARACTER"],
       "manualReview": {
-        "characterConsistency": null,
-        "promptAdherence": null,
-        "illustrationQuality": null,
-        "notes": ""
+        "characterConsistency": "N/A",
+        "promptAdherence": 4,
+        "illustrationQuality": 4.4,
+        "notes": "The requested Chinese text is correct and readable; an extra second bird appears."
       }
     },
     {
@@ -790,12 +790,12 @@
       "errorStage": null,
       "httpStatus": null,
       "providerErrorCode": null,
-      "obviousTechnicalDefects": [],
+      "obviousTechnicalDefects": ["EXTRA_BIRD_CHARACTER"],
       "manualReview": {
-        "characterConsistency": null,
-        "promptAdherence": null,
-        "illustrationQuality": null,
-        "notes": ""
+        "characterConsistency": "N/A",
+        "promptAdherence": 4,
+        "illustrationQuality": 4.4,
+        "notes": "The requested Chinese text is correct and readable; an extra second bird appears."
       }
     }
   ]
