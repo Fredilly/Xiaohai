@@ -201,7 +201,27 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
         operation: 'BODY',
         sourceVersionId: outline!.id,
         sourceAiJobId: bodyJob!.id,
-        content: '清晨，小狐狸在森林里遇见一只迷路的小鸟，并帮助它回到了家。',
+        content: JSON.stringify({
+          title: '森林里的小灯塔',
+          outline: '小狐狸帮助迷路的小鸟回家。',
+          characters: [
+            {
+              name: '小狐狸',
+              description: '勇敢温柔的朋友',
+              visualDescription: '橙色狐狸，绿色围巾，圆眼睛',
+            },
+            {
+              name: '小鸟',
+              description: '迷路的小鸟',
+              visualDescription: '蓝色小鸟，黄色肚子，小红书包',
+            },
+          ],
+          pages: Array.from({ length: 10 }, (_, index) => ({
+            pageNumber: index + 1,
+            scene: '森林',
+            text: '小狐狸帮助小鸟。',
+          })),
+        }),
       })
       .returning();
 

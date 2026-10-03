@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   createPictureBookRequestSchema,
+  updatePictureBookCharacterSchema,
   pictureBookIllustrationSchema,
   pictureBookPageSchema,
 } from './picture-book.js';
@@ -9,6 +10,19 @@ const id = '11111111-1111-4111-8111-111111111111';
 const id2 = '22222222-2222-4222-8222-222222222222';
 
 describe('picture-book contracts', () => {
+  it('requires non-empty editable Character Bible fields', () => {
+    const valid = {
+      name: '小狐狸',
+      description: '勇敢的朋友',
+      canonicalVisualPrompt: '橙色狐狸，绿色围巾，圆眼睛',
+    };
+    expect(updatePictureBookCharacterSchema.parse(valid)).toEqual(valid);
+    for (const field of ['name', 'description', 'canonicalVisualPrompt'] as const) {
+      expect(updatePictureBookCharacterSchema.safeParse({ ...valid, [field]: ' ' }).success).toBe(
+        false,
+      );
+    }
+  });
   it('accepts a strict source Story reference', () => {
     expect(
       createPictureBookRequestSchema.parse({

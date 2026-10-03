@@ -6,8 +6,9 @@
     <view wx:if="{{error}}" class="error-note">{{error}}</view>
     <view class="section">
       <view class="section-head"><text class="section-title">角色设定</text><text class="section-note">{{detail.characters.length}} 个角色</text></view>
-      <button wx:if="{{detail.characters.length === 0}}" class="primary-btn" data-operation="CHARACTERS" loading="{{busy}}" disabled="{{busy}}" bindtap="generatePlan">生成角色设定</button>
-      <view wx:for="{{detail.characters}}" wx:key="id" class="state-card character-card"><text class="card-title">{{item.name}}</text><text>{{item.description}}</text></view>
+      <view wx:for="{{detail.characters}}" wx:key="characterId" class="state-card character-card"><text>角色名</text><input value="{{item.name}}" data-index="{{index}}" data-field="name" disabled="{{item.locked}}" bindinput="editCharacterField" /><text>角色描述</text><textarea value="{{item.description}}" data-index="{{index}}" data-field="description" disabled="{{item.locked}}" bindinput="editCharacterField" /><text>固定视觉描述</text><textarea value="{{item.canonicalVisualPrompt}}" data-index="{{index}}" data-field="canonicalVisualPrompt" disabled="{{item.locked}}" bindinput="editCharacterField" /><text wx:if="{{item.locked}}" class="section-note">已确认并锁定</text><button wx:if="{{!item.locked}}" size="mini" data-index="{{index}}" loading="{{busy}}" disabled="{{busy}}" bindtap="saveCharacter">保存角色设定</button></view>
+      <button wx:if="{{detail.characters.length > 0 && !detail.characters[0].locked}}" class="primary-btn" loading="{{busy}}" disabled="{{busy}}" bindtap="confirmCharacters">确认角色设定</button>
+      <button wx:if="{{detail.characters.length > 0 && detail.characters[0].locked}}" class="primary-btn" loading="{{busy}}" disabled="{{busy}}" bindtap="reopenCharacters">重新编辑角色设定</button>
     </view>
     <view class="section">
       <view class="section-head"><text class="section-title">分页与整书预览</text><text class="section-note">{{detail.pages.length}} 页</text></view>

@@ -10,6 +10,9 @@ import {
   getPictureBook,
   getPictureBookJob,
   PictureBookApiError,
+  updatePictureBookCharacter,
+  confirmPictureBookCharacters,
+  reopenPictureBookCharacters,
 } from '../../services/picture-book';
 
 const sleep = (milliseconds: number) =>
@@ -66,6 +69,62 @@ Page({
             ? 'AI 功能未开启（安全关闭）'
             : '生成失败，请稍后重试。',
       });
+    } finally {
+      this.setData({ busy: false });
+    }
+  },
+  editCharacterField(event: {
+    currentTarget: { dataset: Record<string, string> };
+    detail: { value?: string };
+  }) {
+    const index = Number(event.currentTarget.dataset.index);
+    const field = String(event.currentTarget.dataset.field) as
+      'name' | 'description' | 'canonicalVisualPrompt';
+    const value = String(event.detail.value || '');
+    const detail = this.data.detail;
+    if (!detail || detail.characters[index]?.locked) return;
+    const characters = detail.characters.map((character, characterIndex) =>
+      characterIndex === index ? { ...character, [field]: value } : character,
+    );
+    this.setData({ detail: { ...detail, characters } });
+  },
+  async saveCharacter(event: WechatMiniprogram.TouchEvent) {
+    const index = Number(event.currentTarget.dataset.index);
+    const character = this.data.detail?.characters[index];
+    if (this.data.busy || !character || character.locked) return;
+    this.setData({ busy: true, error: '' });
+    try {
+      this.setData({
+        detail: await updatePictureBookCharacter(this.data.id, character.characterId, {
+          name: character.name,
+          description: character.description,
+          canonicalVisualPrompt: character.canonicalVisualPrompt,
+        }),
+      });
+    } catch {
+      this.setData({ error: '角色设定保存失败，请重试。' });
+    } finally {
+      this.setData({ busy: false });
+    }
+  },
+  async confirmCharacters() {
+    if (this.data.busy) return;
+    this.setData({ busy: true, error: '' });
+    try {
+      this.setData({ detail: await confirmPictureBookCharacters(this.data.id) });
+    } catch {
+      this.setData({ error: '角色设定确认失败，请重试。' });
+    } finally {
+      this.setData({ busy: false });
+    }
+  },
+  async reopenCharacters() {
+    if (this.data.busy) return;
+    this.setData({ busy: true, error: '' });
+    try {
+      this.setData({ detail: await reopenPictureBookCharacters(this.data.id) });
+    } catch {
+      this.setData({ error: '重新编辑角色设定失败，请重试。' });
     } finally {
       this.setData({ busy: false });
     }

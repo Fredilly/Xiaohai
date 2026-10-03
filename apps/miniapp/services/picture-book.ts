@@ -7,6 +7,7 @@ import type {
   PictureBookIllustrationAccepted,
   PictureBookJobStatus,
   PictureBookTextOperation,
+  UpdatePictureBookCharacterRequest,
 } from '@xiaohai/contracts/picture-book';
 import { getApiBaseUrl } from '../config';
 
@@ -18,14 +19,18 @@ export class PictureBookApiError extends Error {
   }
 }
 
-async function request<T>(path: string, method: 'GET' | 'POST' = 'GET', data?: object): Promise<T> {
+async function request<T>(
+  path: string,
+  method: 'GET' | 'POST' | 'PATCH' = 'GET',
+  data?: object,
+): Promise<T> {
   const sessionToken = token();
   const response = await new Promise<WechatMiniprogram.RequestSuccessCallbackResult>(
     (resolve, reject) =>
       wx.request({
         timeout: 10000,
         url: `${getApiBaseUrl()}${path}`,
-        method,
+        method: method as WechatMiniprogram.RequestOption['method'],
         data,
         header: sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {},
         success: resolve,
@@ -53,6 +58,20 @@ export const getPictureBookJob = (id: string) =>
   request<PictureBookJobStatus>(`/api/v1/ai/picture-books/jobs/${id}`);
 export const applyPictureBookJob = (bookId: string, jobId: string) =>
   request<PictureBookDetail>(`/api/v1/ai/picture-books/${bookId}/apply`, 'POST', { jobId });
+export const updatePictureBookCharacter = (
+  bookId: string,
+  characterId: string,
+  input: UpdatePictureBookCharacterRequest,
+) =>
+  request<PictureBookDetail>(
+    `/api/v1/ai/picture-books/${bookId}/characters/${characterId}`,
+    'PATCH',
+    input,
+  );
+export const confirmPictureBookCharacters = (bookId: string) =>
+  request<PictureBookDetail>(`/api/v1/ai/picture-books/${bookId}/characters/confirm`, 'POST', {});
+export const reopenPictureBookCharacters = (bookId: string) =>
+  request<PictureBookDetail>(`/api/v1/ai/picture-books/${bookId}/characters/reopen`, 'POST', {});
 export const generateIllustration = (bookId: string, pageId: string, regenerate = false) =>
   request<PictureBookIllustrationAccepted>(
     `/api/v1/ai/picture-books/${bookId}/pages/${pageId}/illustrations${regenerate ? '/regenerate' : ''}`,

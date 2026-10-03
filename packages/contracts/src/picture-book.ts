@@ -33,11 +33,15 @@ export const pictureBookSchema = z
 export const characterProfileSchema = z
   .object({
     id: z.uuid(),
+    characterId: z.uuid(),
     pictureBookId: z.uuid(),
     name: z.string().min(1),
     role: pictureBookCharacterRoleSchema,
     description: z.string().min(1),
     visualPrompt: z.string().min(1),
+    canonicalVisualPrompt: z.string().min(1),
+    confirmed: z.boolean(),
+    locked: z.boolean(),
     consistencyKey: z.uuid(),
     referenceMediaAssetId: z.uuid().nullable(),
     sourceAiJobId: z.uuid().nullable(),
@@ -137,6 +141,17 @@ export type PictureBookIllustrationStatus = z.infer<typeof pictureBookIllustrati
 export type CreatePictureBookRequest = z.infer<typeof createPictureBookRequestSchema>;
 export type PictureBook = z.infer<typeof pictureBookSchema>;
 export type CharacterProfile = z.infer<typeof characterProfileSchema>;
+
+export const updatePictureBookCharacterSchema = z
+  .object({
+    name: z.string().trim().min(1).max(80),
+    description: z.string().trim().min(1).max(1000),
+    canonicalVisualPrompt: z.string().trim().min(1).max(2000),
+  })
+  .strict();
+
+export const pictureBookCharacterConfirmSchema = z.object({}).strict();
+export type UpdatePictureBookCharacterRequest = z.infer<typeof updatePictureBookCharacterSchema>;
 export type PictureBookIllustration = z.infer<typeof pictureBookIllustrationSchema>;
 export type PictureBookPage = z.infer<typeof pictureBookPageSchema>;
 export type PictureBookDetail = z.infer<typeof pictureBookDetailSchema>;
