@@ -522,6 +522,167 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
     ).toContain('绿色围巾');
   });
 
+  it('supports Character Bible edit, confirm, reopen, ownership, and validation through HTTP', async () => {
+    const pictureBook = service();
+    const app = await createApp(pictureBook);
+
+    try {
+      const alice = await createUser();
+      const bob = await createUser();
+      const { source, book } = await createBook(pictureBook, alice);
+      const initialSourceContent = (
+        await db.select().from(workVersions).where(eq(workVersions.id, source.body.id))
+      )[0]!.content;
+      const initial = await app.inject({
+        method: 'GET',
+        url: `/api/v1/ai/picture-books/${book.id}`,
+        headers: { authorization: `Bearer ${token(alice)}` },
+      });
+      const initialCharacter = initial.json<{ characters: Array<{ characterId: string }> }>()
+        .characters[0]!;
+
+      const edited = await app.inject({
+        method: 'PATCH',
+        url: `/api/v1/ai/picture-books/${book.id}/characters/${initialCharacter.characterId}`,
+        headers: { authorization: `Bearer ${token(alice)}` },
+        payload: {
+          name: '改名小狐狸',
+          description: '编辑后的勇敢朋友',
+          canonicalVisualPrompt: 'orange fox with a green scarf and warm storybook light',
+        },
+      });
+      expect(edited.statusCode).toBe(200);
+
+      const reloaded = await app.inject({
+        method: 'GET',
+        url: `/api/v1/ai/picture-books/${book.id}`,
+        headers: { authorization: `Bearer ${token(alice)}` },
+      });
+      expect(reloaded.statusCode).toBe(200);
+      expect(reloaded.json().characters[0]).toMatchObject({
+        characterId: initialCharacter.characterId,
+        name: '改名小狐狸',
+        description: '编辑后的勇敢朋友',
+        canonicalVisualPrompt: 'orange fox with a green scarf and warm storybook light',
+        confirmed: false,
+        locked: false,
+      });
+
+      for (const payload of [
+        { name: '', description: 'valid', canonicalVisualPrompt: 'valid' },
+        { name: 'valid', description: '', canonicalVisualPrompt: 'valid' },
+        { name: 'valid', description: 'valid', canonicalVisualPrompt: '' },
+        { name: '   ', description: 'valid', canonicalVisualPrompt: 'valid' },
+        { name: 'valid', description: '   ', canonicalVisualPrompt: 'valid' },
+        { name: 'valid', description: 'valid', canonicalVisualPrompt: '   ' },
+      ]) {
+        const invalid = await app.inject({
+          method: 'PATCH',
+          url: `/api/v1/ai/picture-books/${book.id}/characters/${initialCharacter.characterId}`,
+          headers: { authorization: `Bearer ${token(alice)}` },
+          payload,
+        });
+        expect(invalid.statusCode).toBe(400);
+        expect(invalid.json().error.code).toBe('INVALID_REQUEST');
+      }
+
+      const confirmed = await app.inject({
+        method: 'POST',
+        url: `/api/v1/ai/picture-books/${book.id}/characters/confirm`,
+        headers: { authorization: `Bearer ${token(alice)}` },
+        payload: {},
+      });
+      expect(confirmed.statusCode).toBe(200);
+      expect(
+        confirmed
+          .json()
+          .characters.every(
+            (character: { confirmed: boolean; locked: boolean }) =>
+              character.confirmed && character.locked,
+          ),
+      ).toBe(true);
+
+      const lockedUpdate = await app.inject({
+        method: 'PATCH',
+        url: `/api/v1/ai/picture-books/${book.id}/characters/${initialCharacter.characterId}`,
+        headers: { authorization: `Bearer ${token(alice)}` },
+        payload: {
+          name: '不应保存',
+          description: '不应保存',
+          canonicalVisualPrompt: '不应保存',
+        },
+      });
+      expect(lockedUpdate.statusCode).toBe(409);
+      expect(lockedUpdate.json().error.code).toBe('CHARACTER_LOCKED');
+
+      for (const path of ['confirm', 'reopen']) {
+        const otherUser = await app.inject({
+          method: 'POST',
+          url: `/api/v1/ai/picture-books/${book.id}/characters/${path}`,
+          headers: { authorization: `Bearer ${token(bob)}` },
+          payload: {},
+        });
+        expect(otherUser.statusCode).toBe(404);
+        expect(otherUser.json().error.code).toBe('NOT_FOUND');
+      }
+      const otherEdit = await app.inject({
+        method: 'PATCH',
+        url: `/api/v1/ai/picture-books/${book.id}/characters/${initialCharacter.characterId}`,
+        headers: { authorization: `Bearer ${token(bob)}` },
+        payload: {
+          name: '越权',
+          description: '越权',
+          canonicalVisualPrompt: '越权',
+        },
+      });
+      expect(otherEdit.statusCode).toBe(404);
+      expect(otherEdit.json().error.code).toBe('NOT_FOUND');
+
+      const reopened = await app.inject({
+        method: 'POST',
+        url: `/api/v1/ai/picture-books/${book.id}/characters/reopen`,
+        headers: { authorization: `Bearer ${token(alice)}` },
+        payload: {},
+      });
+      expect(reopened.statusCode).toBe(200);
+      expect(
+        reopened
+          .json()
+          .characters.every(
+            (character: { confirmed: boolean; locked: boolean }) =>
+              !character.confirmed && !character.locked,
+          ),
+      ).toBe(true);
+
+      const editedAgain = await app.inject({
+        method: 'PATCH',
+        url: `/api/v1/ai/picture-books/${book.id}/characters/${initialCharacter.characterId}`,
+        headers: { authorization: `Bearer ${token(alice)}` },
+        payload: {
+          name: '再次编辑的小狐狸',
+          description: '重新编辑后的描述',
+          canonicalVisualPrompt: 'orange fox, green scarf, revised canonical prompt',
+        },
+      });
+      expect(editedAgain.statusCode).toBe(200);
+
+      const finalSourceContent = (
+        await db.select().from(workVersions).where(eq(workVersions.id, source.body.id))
+      )[0]!.content;
+      expect(finalSourceContent).toBe(initialSourceContent);
+      expect(
+        (
+          await db
+            .select()
+            .from(characterProfiles)
+            .where(eq(characterProfiles.id, initialCharacter.characterId))
+        )[0],
+      ).toMatchObject({ name: '再次编辑的小狐狸', confirmed: false, locked: false });
+    } finally {
+      await app.close();
+    }
+  });
+
   it('rejects invalid structured AI output without persisting partial storyboard data', async () => {
     const pictureBook = service();
 
