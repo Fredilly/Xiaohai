@@ -3,10 +3,7 @@
   "reviewStatus": "pending",
   "sourceArtifact": "raw-20261003T022843Z.json",
   "generatedAt": "2026-10-03T04:09:39.268Z",
-  "models": [
-    "qwen-image-3.0",
-    "z-image-turbo"
-  ],
+  "models": ["qwen-image-3.0", "z-image-turbo"],
   "requestedRuns": 36,
   "runs": [
     {
