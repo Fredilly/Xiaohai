@@ -218,7 +218,8 @@ export class ImageJobProcessor {
     const ids = consistency
       .map((item) => item.referenceMediaAssetId)
       .filter((id): id is string => Boolean(id));
-    if (ids.length === 0 || ids.length > 3)
+    if (ids.length === 0) return [];
+    if (ids.length > 3)
       throw new ImageProviderError('IMAGE_PROVIDER_UNAVAILABLE', { stage: 'VALIDATION' });
     const rows = await this.db
       .select({ id: mediaAssets.id, url: mediaAssets.playbackUrl, status: mediaAssets.status })
