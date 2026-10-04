@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import {
   check,
+  boolean,
   index,
   integer,
   jsonb,
@@ -63,6 +64,8 @@ export const characterProfiles = pgTable(
     role: text('role').notNull().default('MAIN'),
     description: text('description').notNull(),
     visualPrompt: text('visual_prompt').notNull(),
+    confirmed: boolean('confirmed').notNull().default(false),
+    locked: boolean('locked').notNull().default(false),
     consistencyKey: uuid('consistency_key').notNull().defaultRandom(),
     referenceMediaAssetId: uuid('reference_media_asset_id').references(() => mediaAssets.id, {
       onDelete: 'restrict',
@@ -80,6 +83,7 @@ export const characterProfiles = pgTable(
     index('character_profiles_book_idx').on(t.pictureBookId),
     check('character_profiles_role_check', sql`${t.role} in ('MAIN','SUPPORTING')`),
     check('character_profiles_sort_check', sql`${t.sortOrder} >= 0`),
+    check('character_profiles_locked_check', sql`${t.locked} = false or ${t.confirmed} = true`),
   ],
 );
 

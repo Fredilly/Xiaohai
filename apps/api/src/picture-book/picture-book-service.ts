@@ -1,4 +1,5 @@
 import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
+import { randomUUID } from 'node:crypto';
 import {
   aiJobs,
   aiProjects,
@@ -17,7 +18,9 @@ import {
   type CreatePictureBookRequest,
   type PictureBookGenerateRequest,
   type PictureBookTextOperation,
+  updatePictureBookCharacterSchema,
 } from '@xiaohai/contracts/picture-book';
+import { structuredStorySchema } from '@xiaohai/contracts/story';
 import type { AiQueue } from '../ai/ai-queue.js';
 import type { ImageQueue } from './image-queue.js';
 
@@ -53,7 +56,8 @@ export class PictureBookError extends Error {
       | 'INVALID_STATE'
       | 'JOB_NOT_READY'
       | 'INVALID_JOB_STATE'
-      | 'INVALID_JOB_OUTPUT',
+      | 'INVALID_JOB_OUTPUT'
+      | 'CHARACTER_LOCKED',
   ) {
     super(code);
   }
@@ -190,6 +194,14 @@ export class PictureBookService {
       throw new PictureBookError('INVALID_SOURCE_VERSION');
     }
 
+    let story: typeof structuredStorySchema._output;
+    try {
+      story = structuredStorySchema.parse(JSON.parse(source.version.content));
+    } catch {
+      throw new PictureBookError('INVALID_SOURCE_VERSION');
+    }
+    if (story.characters.length === 0) throw new PictureBookError('INVALID_SOURCE_VERSION');
+
     const title = input.title ?? source.work.title;
 
     const created = await this.db.transaction(async (tx) => {
@@ -214,10 +226,79 @@ export class PictureBookService {
         })
         .returning();
 
+      await tx.insert(characterProfiles).values(
+        story.characters.map((character, index) => {
+          const characterId = randomUUID();
+          return {
+            id: characterId,
+            pictureBookId: book!.id,
+            name: character.name,
+            description: character.description,
+            visualPrompt: character.visualDescription,
+            confirmed: false,
+            locked: false,
+            consistencyKey: characterId,
+            sortOrder: index,
+          };
+        }),
+      );
+
       return book!;
     });
 
     return this.viewPictureBook(created);
+  }
+
+  async updateCharacter(
+    consumerUserId: string,
+    pictureBookId: string,
+    characterId: string,
+    input: unknown,
+  ) {
+    const parsed = updatePictureBookCharacterSchema.safeParse(input);
+    if (!parsed.success) throw new PictureBookError('INVALID_STATE');
+    const book = await this.requireOwnedBook(consumerUserId, pictureBookId);
+    const [character] = await this.db
+      .select()
+      .from(characterProfiles)
+      .where(
+        and(eq(characterProfiles.id, characterId), eq(characterProfiles.pictureBookId, book.id)),
+      );
+    if (!character) throw new PictureBookError('NOT_FOUND');
+    if (character.locked) throw new PictureBookError('CHARACTER_LOCKED');
+    await this.db
+      .update(characterProfiles)
+      .set({
+        name: parsed.data.name,
+        description: parsed.data.description,
+        visualPrompt: parsed.data.canonicalVisualPrompt,
+        updatedAt: new Date(),
+      })
+      .where(eq(characterProfiles.id, character.id));
+    return this.getPictureBook(consumerUserId, pictureBookId);
+  }
+
+  async confirmCharacters(consumerUserId: string, pictureBookId: string) {
+    const book = await this.requireOwnedBook(consumerUserId, pictureBookId);
+    const characters = await this.db
+      .select()
+      .from(characterProfiles)
+      .where(eq(characterProfiles.pictureBookId, book.id));
+    if (characters.length === 0) throw new PictureBookError('INVALID_STATE');
+    await this.db
+      .update(characterProfiles)
+      .set({ confirmed: true, locked: true, updatedAt: new Date() })
+      .where(eq(characterProfiles.pictureBookId, book.id));
+    return this.getPictureBook(consumerUserId, pictureBookId);
+  }
+
+  async reopenCharacters(consumerUserId: string, pictureBookId: string) {
+    const book = await this.requireOwnedBook(consumerUserId, pictureBookId);
+    await this.db
+      .update(characterProfiles)
+      .set({ confirmed: false, locked: false, updatedAt: new Date() })
+      .where(eq(characterProfiles.pictureBookId, book.id));
+    return this.getPictureBook(consumerUserId, pictureBookId);
   }
 
   async listPictureBooks(consumerUserId: string) {
@@ -308,7 +389,11 @@ export class PictureBookService {
         throw new PictureBookError('INVALID_STATE');
       }
     } else {
-      if (characters.length === 0 || existingPage) {
+      if (
+        characters.length === 0 ||
+        characters.some((character) => !character.confirmed || !character.locked) ||
+        existingPage
+      ) {
         throw new PictureBookError('INVALID_STATE');
       }
     }
@@ -714,9 +799,13 @@ export class PictureBookService {
       role: character.role as 'MAIN' | 'SUPPORTING',
       description: character.description,
       visualPrompt: character.visualPrompt,
+      canonicalVisualPrompt: character.visualPrompt,
       consistencyKey: character.consistencyKey,
       referenceMediaAssetId: character.referenceMediaAssetId,
       sourceAiJobId: character.sourceAiJobId,
+      characterId: character.id,
+      confirmed: character.confirmed,
+      locked: character.locked,
       sortOrder: character.sortOrder,
       createdAt: character.createdAt.toISOString(),
       updatedAt: character.updatedAt.toISOString(),

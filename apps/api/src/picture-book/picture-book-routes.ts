@@ -11,6 +11,7 @@ import {
   pictureBookJobStatusSchema,
   pictureBookListSchema,
   pictureBookSchema,
+  updatePictureBookCharacterSchema,
 } from '@xiaohai/contracts/picture-book';
 import type { ConsumerSessionService } from '../auth/session.js';
 import { PictureBookError, type PictureBookService } from './picture-book-service.js';
@@ -68,6 +69,48 @@ export function registerPictureBookRoutes(
     try {
       return pictureBookDetailSchema.parse(
         await options.pictureBook.getPictureBook(consumer(request), params.data.id),
+      );
+    } catch (error) {
+      return fail(request, reply, error);
+    }
+  });
+
+  app.patch('/api/v1/ai/picture-books/:bookId/characters/:characterId', async (request, reply) => {
+    const params = z.object({ bookId: z.uuid(), characterId: z.uuid() }).safeParse(request.params);
+    const input = updatePictureBookCharacterSchema.safeParse(request.body);
+    if (!params.success || !input.success) return invalid(reply, request.id);
+    try {
+      return pictureBookDetailSchema.parse(
+        await options.pictureBook.updateCharacter(
+          consumer(request),
+          params.data.bookId,
+          params.data.characterId,
+          input.data,
+        ),
+      );
+    } catch (error) {
+      return fail(request, reply, error);
+    }
+  });
+
+  app.post('/api/v1/ai/picture-books/:bookId/characters/confirm', async (request, reply) => {
+    const params = z.object({ bookId: z.uuid() }).safeParse(request.params);
+    if (!params.success) return invalid(reply, request.id);
+    try {
+      return pictureBookDetailSchema.parse(
+        await options.pictureBook.confirmCharacters(consumer(request), params.data.bookId),
+      );
+    } catch (error) {
+      return fail(request, reply, error);
+    }
+  });
+
+  app.post('/api/v1/ai/picture-books/:bookId/characters/reopen', async (request, reply) => {
+    const params = z.object({ bookId: z.uuid() }).safeParse(request.params);
+    if (!params.success) return invalid(reply, request.id);
+    try {
+      return pictureBookDetailSchema.parse(
+        await options.pictureBook.reopenCharacters(consumer(request), params.data.bookId),
       );
     } catch (error) {
       return fail(request, reply, error);
@@ -199,6 +242,9 @@ function fail(request: FastifyRequest, reply: FastifyReply, error: unknown) {
     } else if (error.code === 'FEATURE_DISABLED') {
       status = 503;
       message = 'Picture Book AI is not enabled';
+    } else if (error.code === 'CHARACTER_LOCKED') {
+      status = 409;
+      message = 'Character settings are locked; explicitly reopen them to edit';
     } else {
       status = 409;
       message = 'Picture Book workflow state conflict';
