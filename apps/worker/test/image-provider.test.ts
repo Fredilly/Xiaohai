@@ -186,7 +186,9 @@ describe('BailianImageProvider', () => {
     const fetcher = vi
       .fn<typeof fetch>()
       .mockResolvedValueOnce(
-        new Response(JSON.stringify({ data: [{ url: 'https://x.aliyuncs.com/a' }] })),
+        new Response(JSON.stringify({ data: [{ url: 'https://x.aliyuncs.com/a' }] }), {
+          headers: { 'x-request-id': 'bailian-request-1' },
+        }),
       )
       .mockResolvedValueOnce(new Response('bad', { status: 502 }));
     const storage = new BosStorage({
@@ -206,7 +208,9 @@ describe('BailianImageProvider', () => {
     const fetcher = vi
       .fn<typeof fetch>()
       .mockResolvedValueOnce(
-        new Response(JSON.stringify({ data: [{ url: 'https://x.aliyuncs.com/a' }] })),
+        new Response(JSON.stringify({ data: [{ url: 'https://x.aliyuncs.com/a' }] }), {
+          headers: { 'x-request-id': 'bailian-request-1' },
+        }),
       )
       .mockImplementationOnce(() => {
         controller.abort();
@@ -251,7 +255,7 @@ describe('BailianImageProvider', () => {
   });
 
   it('marks BOS failures separately and preserves provider timeout semantics', async () => {
-    const putObject = vi.fn().mockRejectedValue(new Error('BOS failed with sk=secret'));
+    const putObject = vi.fn().mockRejectedValue({ code: 'AccountOverdue', statusCode: 403 });
     const storage = new BosStorage({
       bucket: 'xiaohai-assets',
       publicOrigin: 'https://assets.example.com',
@@ -260,7 +264,9 @@ describe('BailianImageProvider', () => {
     const fetcher = vi
       .fn<typeof fetch>()
       .mockResolvedValueOnce(
-        new Response(JSON.stringify({ data: [{ url: 'https://x.aliyuncs.com/a' }] })),
+        new Response(JSON.stringify({ data: [{ url: 'https://x.aliyuncs.com/a' }] }), {
+          headers: { 'x-request-id': 'bailian-request-1' },
+        }),
       )
       .mockResolvedValueOnce(
         new Response('png', { status: 200, headers: { 'content-type': 'image/png' } }),
@@ -269,7 +275,14 @@ describe('BailianImageProvider', () => {
       new BailianImageProvider('secret', 'https://api.example.com', storage, fetcher).generate(
         input,
       ),
-    ).rejects.toMatchObject({ details: { stage: 'BOS_UPLOAD' } });
+    ).rejects.toMatchObject({
+      details: {
+        stage: 'BOS_UPLOAD',
+        httpStatus: 403,
+        providerErrorCode: 'AccountOverdue',
+        providerRequestId: 'bailian-request-1',
+      },
+    });
 
     const timeoutFetcher = vi
       .fn<typeof fetch>()

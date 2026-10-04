@@ -224,8 +224,14 @@ export class BailianImageProvider implements ImageProvider {
       let stored: Awaited<ReturnType<BosStorage['putImage']>>;
       try {
         stored = await this.storage.putImage({ objectKey, body, mimeType });
-      } catch {
-        throw new ImageProviderError('IMAGE_PROVIDER_UNAVAILABLE', { stage: 'BOS_UPLOAD' });
+      } catch (error) {
+        const bos = safeBosError(error);
+        throw new ImageProviderError('IMAGE_PROVIDER_UNAVAILABLE', {
+          stage: 'BOS_UPLOAD',
+          providerRequestId:
+            response.headers.get('x-request-id') ?? parsed.data.request_id ?? undefined,
+          ...bos,
+        });
       }
       return {
         assetProvider: 'BAIDU_BOS',
@@ -241,6 +247,22 @@ export class BailianImageProvider implements ImageProvider {
     }
   }
 }
+
+const safeBosError = (
+  error: unknown,
+): Pick<ImageProviderError['details'], 'httpStatus' | 'providerErrorCode'> => {
+  if (!error || typeof error !== 'object') return {};
+  const candidate = error as { statusCode?: unknown; status?: unknown; code?: unknown };
+  return {
+    httpStatus:
+      typeof candidate.statusCode === 'number'
+        ? candidate.statusCode
+        : typeof candidate.status === 'number'
+          ? candidate.status
+          : undefined,
+    providerErrorCode: typeof candidate.code === 'string' ? candidate.code : undefined,
+  };
+};
 
 const readJson = async (response: Response): Promise<unknown> => {
   try {
