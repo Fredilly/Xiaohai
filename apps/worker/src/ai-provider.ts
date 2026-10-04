@@ -87,6 +87,7 @@ export class MockAiProvider implements AiProvider {
     } else if (input.prompt.includes('XIAOHAI_TASK=PICTURE_BOOK_STORYBOARD')) {
       text = JSON.stringify({
         cover: {
+          characterKeys: ['小狐狸', '小鸟'],
           sceneDescription: '晨光森林里的小狐狸与小鸟',
           illustrationPrompt:
             'storybook cover, orange fox with green scarf and small blue bird with red satchel, forest sunrise',
@@ -94,6 +95,7 @@ export class MockAiProvider implements AiProvider {
         },
         pages: [
           {
+            characterKeys: ['小狐狸'],
             storyText: '清晨，小狐狸沿着森林小路出发。',
             sceneDescription: '森林入口，晨光穿过树叶。',
             illustrationPrompt:
@@ -101,6 +103,7 @@ export class MockAiProvider implements AiProvider {
             layoutPreset: 'AUTO',
           },
           {
+            characterKeys: ['小狐狸', '小鸟'],
             storyText: '它遇见了迷路的小鸟，并决定帮助它回家。',
             sceneDescription: '小狐狸蹲下来安慰背着红色小包的小鸟。',
             illustrationPrompt:

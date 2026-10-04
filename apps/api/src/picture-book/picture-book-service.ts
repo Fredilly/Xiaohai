@@ -4,6 +4,7 @@ import {
   aiJobs,
   aiProjects,
   characterProfiles,
+  characterReferenceImages,
   mediaAssets,
   pictureBooks,
   workPageIllustrations,
@@ -97,6 +98,18 @@ export class PictureBookService {
         .from(characterProfiles)
         .where(eq(characterProfiles.pictureBookId, pictureBookId))
         .orderBy(asc(characterProfiles.sortOrder));
+      if (
+        characters.some(
+          (character) =>
+            !character.confirmed || !character.locked || !character.referenceMediaAssetId,
+        )
+      ) {
+        throw new PictureBookError('INVALID_STATE');
+      }
+      const pageCharacterIds =
+        page.page.characterIds.length > 0 ? page.page.characterIds : characters.map((c) => c.id);
+      const relevant = characters.filter((character) => pageCharacterIds.includes(character.id));
+      if (relevant.length === 0 || relevant.length > 3) throw new PictureBookError('INVALID_STATE');
 
       const [revision] = await tx
         .select({
@@ -113,7 +126,7 @@ export class PictureBookService {
           prompt: page.page.illustrationPrompt,
           provider: this.config.imageProvider,
           model: this.config.imageModel,
-          consistency: characters.map((character) => ({
+          consistency: relevant.map((character) => ({
             consistencyKey: character.consistencyKey,
             visualPrompt: character.visualPrompt,
             referenceMediaAssetId: character.referenceMediaAssetId,
@@ -284,7 +297,12 @@ export class PictureBookService {
       .select()
       .from(characterProfiles)
       .where(eq(characterProfiles.pictureBookId, book.id));
-    if (characters.length === 0) throw new PictureBookError('INVALID_STATE');
+    if (
+      characters.length === 0 ||
+      characters.some((character) => !character.referenceMediaAssetId)
+    ) {
+      throw new PictureBookError('INVALID_STATE');
+    }
     await this.db
       .update(characterProfiles)
       .set({ confirmed: true, locked: true, updatedAt: new Date() })
@@ -299,6 +317,123 @@ export class PictureBookService {
       .set({ confirmed: false, locked: false, updatedAt: new Date() })
       .where(eq(characterProfiles.pictureBookId, book.id));
     return this.getPictureBook(consumerUserId, pictureBookId);
+  }
+
+  async generateCharacterReference(
+    consumerUserId: string,
+    pictureBookId: string,
+    characterId: string,
+  ) {
+    if (!this.config.imageEnabled) throw new PictureBookError('FEATURE_DISABLED');
+    const character = await this.requireOwnedCharacter(consumerUserId, pictureBookId, characterId);
+    const [latest] = await this.db
+      .select({
+        value: sql<number>`coalesce(max(${characterReferenceImages.revisionNumber}), 0) + 1`,
+      })
+      .from(characterReferenceImages)
+      .where(eq(characterReferenceImages.characterProfileId, character.id));
+    const [revision] = await this.db
+      .insert(characterReferenceImages)
+      .values({
+        characterProfileId: character.id,
+        revisionNumber: Number(latest!.value),
+        provider: this.config.imageProvider,
+        model: this.config.imageModel,
+      })
+      .returning();
+    try {
+      await this.imageQueue.notify(revision!.id);
+    } catch {
+      this.logger?.warn(
+        {
+          event: 'PICTURE_BOOK_REFERENCE_QUEUE_NOTIFY_FAILED',
+          pictureBookId,
+          characterId,
+          characterReferenceRevisionId: revision!.id,
+        },
+        'Reference image queue notification failed',
+      );
+    }
+    return {
+      pictureBookId,
+      characterId,
+      referenceRevisionId: revision!.id,
+      revisionNumber: revision!.revisionNumber,
+      status: 'QUEUED' as const,
+    };
+  }
+
+  async listCharacterReferences(
+    consumerUserId: string,
+    pictureBookId: string,
+    characterId: string,
+  ) {
+    await this.requireOwnedCharacter(consumerUserId, pictureBookId, characterId);
+    const rows = await this.db
+      .select({ revision: characterReferenceImages, media: mediaAssets })
+      .from(characterReferenceImages)
+      .leftJoin(mediaAssets, eq(characterReferenceImages.mediaAssetId, mediaAssets.id))
+      .where(eq(characterReferenceImages.characterProfileId, characterId))
+      .orderBy(asc(characterReferenceImages.revisionNumber));
+    return {
+      references: rows.map(({ revision, media }) => ({
+        ...revision,
+        createdAt: revision.createdAt.toISOString(),
+        updatedAt: revision.updatedAt.toISOString(),
+        playbackUrl:
+          revision.status === 'READY' && media?.status === 'READY' ? media.playbackUrl : null,
+      })),
+    };
+  }
+
+  async selectCharacterReference(
+    consumerUserId: string,
+    pictureBookId: string,
+    characterId: string,
+    revisionId: string,
+  ) {
+    const character = await this.requireOwnedCharacter(consumerUserId, pictureBookId, characterId);
+    const [revision] = await this.db
+      .select()
+      .from(characterReferenceImages)
+      .where(
+        and(
+          eq(characterReferenceImages.id, revisionId),
+          eq(characterReferenceImages.characterProfileId, character.id),
+        ),
+      );
+    if (!revision || revision.status !== 'READY' || !revision.mediaAssetId)
+      throw new PictureBookError('INVALID_STATE');
+    await this.db
+      .update(characterProfiles)
+      .set({
+        referenceMediaAssetId: revision.mediaAssetId,
+        confirmed: false,
+        locked: false,
+        updatedAt: new Date(),
+      })
+      .where(eq(characterProfiles.id, character.id));
+    return this.getPictureBook(consumerUserId, pictureBookId);
+  }
+
+  private async requireOwnedCharacter(
+    consumerUserId: string,
+    pictureBookId: string,
+    characterId: string,
+  ) {
+    const [row] = await this.db
+      .select({ character: characterProfiles })
+      .from(characterProfiles)
+      .innerJoin(pictureBooks, eq(pictureBooks.id, characterProfiles.pictureBookId))
+      .where(
+        and(
+          eq(characterProfiles.id, characterId),
+          eq(characterProfiles.pictureBookId, pictureBookId),
+          eq(pictureBooks.consumerUserId, consumerUserId),
+        ),
+      );
+    if (!row) throw new PictureBookError('NOT_FOUND');
+    return row.character;
   }
 
   async listPictureBooks(consumerUserId: string) {
@@ -595,6 +730,7 @@ export class PictureBookService {
           sceneDescription: parsed.data.cover.sceneDescription,
           illustrationPrompt: parsed.data.cover.illustrationPrompt,
           layoutPreset: parsed.data.cover.layoutPreset ?? book.layoutPreset,
+          characterIds: this.mapCharacterKeys(parsed.data.cover.characterKeys, characters),
           sourceAiJobId: job.id,
         },
         ...parsed.data.pages.map((page, index) => ({
@@ -605,6 +741,7 @@ export class PictureBookService {
           sceneDescription: page.sceneDescription,
           illustrationPrompt: page.illustrationPrompt,
           layoutPreset: page.layoutPreset ?? book.layoutPreset,
+          characterIds: this.mapCharacterKeys(page.characterKeys, characters),
           sourceAiJobId: job.id,
         })),
       ]);
@@ -773,8 +910,9 @@ export class PictureBookService {
       '请把完整故事拆成适合儿童绘本阅读的连续页面，并设计封面。',
       'pages 数组不要提供 pageNumber，页码由服务器按数组顺序生成。',
       'illustrationPrompt 要描述该页场景，并明确沿用相关角色的固定视觉特征。',
+      '每个 cover/page 必须输出 characterKeys，使用上面角色的精确 name；只填写本页实际出现的角色，最多 3 个。',
       '输出格式：',
-      '{"cover":{"sceneDescription":"封面场景","illustrationPrompt":"封面插画提示","layoutPreset":"AUTO"},"pages":[{"storyText":"本页文字","sceneDescription":"场景说明","illustrationPrompt":"插画提示","layoutPreset":"AUTO"}]}',
+      '{"cover":{"characterKeys":["角色名"],"sceneDescription":"封面场景","illustrationPrompt":"封面插画提示","layoutPreset":"AUTO"},"pages":[{"characterKeys":["角色名"],"storyText":"本页文字","sceneDescription":"场景说明","illustrationPrompt":"插画提示","layoutPreset":"AUTO"}]}',
     ].join('\n\n');
   }
 
@@ -832,6 +970,17 @@ export class PictureBookService {
       createdAt: illustration.createdAt.toISOString(),
       updatedAt: illustration.updatedAt.toISOString(),
     };
+  }
+
+  private mapCharacterKeys(
+    keys: string[],
+    characters: Array<typeof characterProfiles.$inferSelect>,
+  ) {
+    if (keys.length === 0) return characters.map((character) => character.id);
+    const mapped = keys.map((key) => characters.find((character) => character.name === key)?.id);
+    if (mapped.some((id) => !id) || new Set(mapped).size !== mapped.length)
+      throw new PictureBookError('INVALID_JOB_OUTPUT');
+    return mapped as string[];
   }
 
   private viewPage(

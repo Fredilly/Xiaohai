@@ -1,0 +1,1 @@
+ALTER TABLE "work_pages" ADD COLUMN "character_ids" uuid[] DEFAULT '{}' NOT NULL;

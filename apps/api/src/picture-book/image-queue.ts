@@ -1,7 +1,7 @@
 import { createClient, type RedisClientType } from 'redis';
 
 export interface ImageQueue {
-  notify(illustrationId: string): Promise<void>;
+  notify(imageJobId: string): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -14,14 +14,14 @@ export class RedisImageQueue implements ImageQueue {
     this.client.on('error', onError);
   }
 
-  async notify(illustrationId: string) {
+  async notify(imageJobId: string) {
     if (!this.client.isOpen) {
       this.connecting ??= this.client.connect().finally(() => {
         this.connecting = null;
       });
       await this.connecting;
     }
-    await this.client.lPush('xiaohai:image:jobs', illustrationId);
+    await this.client.lPush('xiaohai:image:jobs', imageJobId);
   }
 
   async close() {

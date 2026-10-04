@@ -13,6 +13,9 @@ import {
   updatePictureBookCharacter,
   confirmPictureBookCharacters,
   reopenPictureBookCharacters,
+  generateCharacterReference,
+  listCharacterReferences,
+  selectCharacterReference,
 } from '../../services/picture-book';
 
 const sleep = (milliseconds: number) =>
@@ -22,6 +25,7 @@ Page({
   data: {
     id: '',
     detail: null as PictureBookDetail | null,
+    references: {},
     characterBibleConfirmed: false,
     loading: true,
     busy: false,
@@ -39,8 +43,18 @@ Page({
   async load() {
     try {
       const detail = await getPictureBook(this.data.id);
+      const references = await Promise.all(
+        detail.characters.map(
+          async (character) =>
+            [
+              character.characterId,
+              (await listCharacterReferences(this.data.id, character.characterId)).references,
+            ] as const,
+        ),
+      );
       this.setData({
         detail,
+        references: Object.fromEntries(references),
         characterBibleConfirmed:
           detail.characters.length > 0 &&
           detail.characters.every((character) => character.confirmed && character.locked),
@@ -50,6 +64,35 @@ Page({
       this.setData({ error: '绘本加载失败' });
     } finally {
       this.setData({ loading: false });
+    }
+  },
+  async reference(event: WechatMiniprogram.TouchEvent) {
+    if (this.data.busy) return;
+    const characterId = String(event.currentTarget.dataset.characterId || '');
+    this.setData({ busy: true, error: '' });
+    try {
+      await generateCharacterReference(this.data.id, characterId);
+      await this.load();
+    } catch {
+      this.setData({ error: '参考图生成失败，请重试。' });
+    } finally {
+      this.setData({ busy: false });
+    }
+  },
+  async selectReference(event: WechatMiniprogram.TouchEvent) {
+    if (this.data.busy) return;
+    const characterId = String(event.currentTarget.dataset.characterId || '');
+    const revisionId = String(event.currentTarget.dataset.revisionId || '');
+    this.setData({ busy: true, error: '' });
+    try {
+      this.setData({
+        detail: await selectCharacterReference(this.data.id, characterId, revisionId),
+      });
+      await this.load();
+    } catch {
+      this.setData({ error: '参考图选择失败，请重试。' });
+    } finally {
+      this.setData({ busy: false });
     }
   },
   async generatePlan(event: WechatMiniprogram.TouchEvent) {

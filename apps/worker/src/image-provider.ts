@@ -13,6 +13,7 @@ export type ImageGenerationInput = {
   model: string;
   prompt: string;
   consistency: ImageConsistencyReference[];
+  referenceImages?: string[];
   signal: AbortSignal;
 };
 
@@ -64,6 +65,7 @@ export class MockImageProvider implements ImageProvider {
           model: input.model,
           prompt: input.prompt,
           consistency: input.consistency,
+          referenceImages: input.referenceImages,
         }),
       )
       .digest('hex');
@@ -81,7 +83,20 @@ export class MockImageProvider implements ImageProvider {
 
 const bailianImageResponseSchema = z.object({
   request_id: z.string().min(1).optional(),
-  data: z.array(z.object({ url: z.url().startsWith('https://') })).min(1),
+  output: z
+    .object({
+      choices: z
+        .array(
+          z.object({
+            message: z.object({
+              content: z.array(z.object({ image: z.url().startsWith('https://') }).passthrough()),
+            }),
+          }),
+        )
+        .min(1),
+    })
+    .optional(),
+  data: z.array(z.object({ url: z.url().startsWith('https://') })).optional(),
 });
 
 const bailianErrorResponseSchema = z.object({
@@ -109,18 +124,38 @@ export class BailianImageProvider implements ImageProvider {
     try {
       let response: Response;
       try {
-        response = await this.fetcher(`${this.baseUrl.replace(/\/$/, '')}/images/generations`, {
+        const endpoint = input.referenceImages?.length
+          ? `${this.baseUrl.replace(/\/$/, '')}/api/v1/services/aigc/multimodal-generation/generation`
+          : `${this.baseUrl.replace(/\/$/, '')}/images/generations`;
+        const body = input.referenceImages?.length
+          ? {
+              model: input.model,
+              input: {
+                messages: [
+                  {
+                    role: 'user',
+                    content: [
+                      ...input.referenceImages.map((image) => ({ image })),
+                      { text: buildPrompt(input.prompt, input.consistency) },
+                    ],
+                  },
+                ],
+              },
+              parameters: { n: 1, size: '1024x1024' },
+            }
+          : {
+              model: input.model,
+              prompt: buildPrompt(input.prompt, input.consistency),
+              n: 1,
+              size: '1024x1024',
+            };
+        response = await this.fetcher(endpoint, {
           method: 'POST',
           headers: {
             authorization: `Bearer ${this.apiKey}`,
             'content-type': 'application/json',
           },
-          body: JSON.stringify({
-            model: input.model,
-            prompt: buildPrompt(input.prompt, input.consistency),
-            n: 1,
-            size: '1024x1024',
-          }),
+          body: JSON.stringify(body),
           signal: input.signal,
         });
       } catch {
@@ -148,7 +183,10 @@ export class BailianImageProvider implements ImageProvider {
       if (!parsed.success)
         throw new ImageProviderError('IMAGE_PROVIDER_UNAVAILABLE', { stage: 'VALIDATION' });
 
-      const temporaryUrl = parsed.data.data[0]!.url;
+      const temporaryUrl =
+        parsed.data.output?.choices[0]?.message.content[0]?.image ?? parsed.data.data?.[0]?.url;
+      if (!temporaryUrl)
+        throw new ImageProviderError('IMAGE_PROVIDER_UNAVAILABLE', { stage: 'VALIDATION' });
       let body: Buffer;
       let mimeType: string;
       try {

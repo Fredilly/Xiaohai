@@ -12,6 +12,9 @@ import {
   pictureBookListSchema,
   pictureBookSchema,
   updatePictureBookCharacterSchema,
+  pictureBookReferenceAcceptedSchema,
+  pictureBookReferenceListSchema,
+  selectPictureBookReferenceSchema,
 } from '@xiaohai/contracts/picture-book';
 import type { ConsumerSessionService } from '../auth/session.js';
 import { PictureBookError, type PictureBookService } from './picture-book-service.js';
@@ -116,6 +119,76 @@ export function registerPictureBookRoutes(
       return fail(request, reply, error);
     }
   });
+
+  app.post(
+    '/api/v1/ai/picture-books/:bookId/characters/:characterId/reference-images',
+    async (request, reply) => {
+      const params = z
+        .object({ bookId: z.uuid(), characterId: z.uuid() })
+        .safeParse(request.params);
+      if (!params.success) return invalid(reply, request.id);
+      try {
+        return reply
+          .status(202)
+          .send(
+            pictureBookReferenceAcceptedSchema.parse(
+              await options.pictureBook.generateCharacterReference(
+                consumer(request),
+                params.data.bookId,
+                params.data.characterId,
+              ),
+            ),
+          );
+      } catch (error) {
+        return fail(request, reply, error);
+      }
+    },
+  );
+  app.get(
+    '/api/v1/ai/picture-books/:bookId/characters/:characterId/reference-images',
+    async (request, reply) => {
+      const params = z
+        .object({ bookId: z.uuid(), characterId: z.uuid() })
+        .safeParse(request.params);
+      if (!params.success) return invalid(reply, request.id);
+      try {
+        return pictureBookReferenceListSchema.parse(
+          await options.pictureBook.listCharacterReferences(
+            consumer(request),
+            params.data.bookId,
+            params.data.characterId,
+          ),
+        );
+      } catch (error) {
+        return fail(request, reply, error);
+      }
+    },
+  );
+  app.post(
+    '/api/v1/ai/picture-books/:bookId/characters/:characterId/reference-images/:revisionId/select',
+    async (request, reply) => {
+      const params = z
+        .object({ bookId: z.uuid(), characterId: z.uuid(), revisionId: z.uuid() })
+        .safeParse(request.params);
+      const body = selectPictureBookReferenceSchema.safeParse(
+        request.body ?? { revisionId: (request.params as { revisionId?: string }).revisionId },
+      );
+      if (!params.success || !body.success || body.data.revisionId !== params.data.revisionId)
+        return invalid(reply, request.id);
+      try {
+        return pictureBookDetailSchema.parse(
+          await options.pictureBook.selectCharacterReference(
+            consumer(request),
+            params.data.bookId,
+            params.data.characterId,
+            params.data.revisionId,
+          ),
+        );
+      } catch (error) {
+        return fail(request, reply, error);
+      }
+    },
+  );
 
   app.post('/api/v1/ai/picture-books/:id/generate', async (request, reply) => {
     const params = z.object({ id: z.uuid() }).safeParse(request.params);

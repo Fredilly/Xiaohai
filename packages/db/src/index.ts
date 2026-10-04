@@ -15,6 +15,7 @@ export {
   characterProfiles,
   workPages,
   workPageIllustrations,
+  characterReferenceImages,
 } from './picture-book-schema.js';
 export {
   payments,
