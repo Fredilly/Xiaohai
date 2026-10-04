@@ -190,6 +190,7 @@ export class ImageJobProcessor {
       this.logger?.error(
         {
           imageJobId: row.id,
+          illustrationId: isReference ? undefined : row.id,
           provider: row.provider,
           model: row.model,
           stage: details.stage ?? 'BAILIAN_REQUEST',
