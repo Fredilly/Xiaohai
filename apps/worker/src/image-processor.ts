@@ -1,4 +1,4 @@
-import { and, asc, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import {
   characterProfiles,
   characterReferenceImages,
@@ -54,7 +54,12 @@ export class ImageJobProcessor {
             characterProfiles,
             eq(characterProfiles.id, characterReferenceImages.characterProfileId),
           )
-          .where(eq(characterReferenceImages.status, 'QUEUED'))
+          .where(
+            and(
+              eq(characterReferenceImages.status, 'QUEUED'),
+              eq(characterReferenceImages.provider, this.provider.name),
+            ),
+          )
           .orderBy(asc(characterReferenceImages.createdAt))
           .limit(1)
           .for('update', { skipLocked: true });
@@ -218,7 +223,7 @@ export class ImageJobProcessor {
     const rows = await this.db
       .select({ id: mediaAssets.id, url: mediaAssets.playbackUrl, status: mediaAssets.status })
       .from(mediaAssets)
-      .where(sql`${mediaAssets.id} in ${ids}`);
+      .where(inArray(mediaAssets.id, ids));
     if (
       rows.length !== ids.length ||
       rows.some((row) => row.status !== 'READY' || !row.url || !row.url.startsWith('https://'))

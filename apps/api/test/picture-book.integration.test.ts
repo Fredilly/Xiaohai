@@ -5,6 +5,7 @@ import {
   aiJobs,
   aiProjects,
   characterProfiles,
+  characterReferenceImages,
   consumerUsers,
   createDatabase,
   mediaAssets,
@@ -47,6 +48,7 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
     await database!.pool.query(`
       TRUNCATE TABLE
         work_page_illustrations,
+        character_reference_images,
         work_pages,
         character_profiles,
         picture_books,
@@ -245,6 +247,45 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
     return { source, book };
   }
 
+  async function prepareReadyCharacterReferences(
+    pictureBook: PictureBookService,
+    userId: string,
+    pictureBookId: string,
+  ) {
+    const detail = await pictureBook.getPictureBook(userId, pictureBookId);
+    for (const character of detail.characters) {
+      const [asset] = await db
+        .insert(mediaAssets)
+        .values({
+          provider: 'BAIDU_BOS',
+          objectKey: `picture-book-test/reference/${character.characterId}.png`,
+          playbackUrl: `https://bos.example.test/reference/${character.characterId}.png`,
+          mimeType: 'image/png',
+          byteSize: 1,
+          status: 'READY',
+        })
+        .returning();
+      const [revision] = await db
+        .insert(characterReferenceImages)
+        .values({
+          characterProfileId: character.characterId,
+          revisionNumber: 1,
+          status: 'READY',
+          provider: 'MOCK',
+          model: 'fixture-reference-model',
+          mediaAssetId: asset!.id,
+          providerRequestId: `fixture-${character.characterId}`,
+        })
+        .returning();
+      await pictureBook.selectCharacterReference(
+        userId,
+        pictureBookId,
+        character.characterId,
+        revision!.id,
+      );
+    }
+  }
+
   async function succeed(jobId: string, text: string) {
     await db
       .update(aiJobs)
@@ -265,6 +306,7 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
     userId: string,
     pictureBookId: string,
   ) {
+    await prepareReadyCharacterReferences(pictureBook, userId, pictureBookId);
     const detail = await pictureBook.confirmCharacters(userId, pictureBookId);
     return { accepted: null, detail };
   }
@@ -280,11 +322,13 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
       accepted.jobId,
       JSON.stringify({
         cover: {
+          characterKeys: ['小狐狸', '小鸟'],
           sceneDescription: '森林封面',
           illustrationPrompt: 'orange fox and blue bird in a forest',
         },
         pages: [
           {
+            characterKeys: ['小狐狸'],
             storyText: '小狐狸遇见了小鸟。',
             sceneDescription: '森林小路',
             illustrationPrompt: 'orange fox meets a small blue bird',
@@ -458,16 +502,19 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
         storyboard.jobId,
         JSON.stringify({
           cover: {
+            characterKeys: ['小狐狸', '小鸟'],
             sceneDescription: '晨光森林里的小狐狸与小鸟',
             illustrationPrompt: 'storybook cover, orange fox with green scarf and small blue bird',
           },
           pages: [
             {
+              characterKeys: ['小狐狸'],
               storyText: '清晨，小狐狸沿着森林小路出发。',
               sceneDescription: '森林入口，晨光穿过树叶。',
               illustrationPrompt: 'orange fox with green scarf walking on a forest path',
             },
             {
+              characterKeys: ['小狐狸', '小鸟'],
               storyText: '它遇见了迷路的小鸟。',
               sceneDescription: '小狐狸蹲下来安慰小鸟。',
               illustrationPrompt:
@@ -587,6 +634,7 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
         expect(invalid.json<{ error: { code: string } }>().error.code).toBe('INVALID_REQUEST');
       }
 
+      await prepareReadyCharacterReferences(pictureBook, alice, book.id);
       const confirmed = await app.inject({
         method: 'POST',
         url: `/api/v1/ai/picture-books/${book.id}/characters/confirm`,
@@ -694,11 +742,13 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
       storyboard.jobId,
       JSON.stringify({
         cover: {
+          characterKeys: ['小狐狸', '小鸟'],
           sceneDescription: '有效封面',
           illustrationPrompt: 'valid cover prompt',
         },
         pages: [
           {
+            characterKeys: ['小狐狸', '小鸟'],
             storyText: '第一页有效。',
             sceneDescription: '第一页场景',
             illustrationPrompt: 'page one',
@@ -788,8 +838,9 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
     expect(stored!.consistency[0]).toMatchObject({
       consistencyKey: character!.consistencyKey,
       visualPrompt: character!.visualPrompt,
-      referenceMediaAssetId: null,
     });
+    expect(stored!.consistency[0]!.referenceMediaAssetId).toBe(character!.referenceMediaAssetId);
+    expect(stored!.consistency[0]!.referenceMediaAssetId).toEqual(expect.any(String));
   });
 
   it('exposes only a READY media asset playback URL for illustration previews', async () => {

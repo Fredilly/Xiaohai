@@ -326,6 +326,7 @@ export class PictureBookService {
   ) {
     if (!this.config.imageEnabled) throw new PictureBookError('FEATURE_DISABLED');
     const character = await this.requireOwnedCharacter(consumerUserId, pictureBookId, characterId);
+    if (character.locked || character.confirmed) throw new PictureBookError('CHARACTER_LOCKED');
     const [latest] = await this.db
       .select({
         value: sql<number>`coalesce(max(${characterReferenceImages.revisionNumber}), 0) + 1`,
@@ -976,7 +977,6 @@ export class PictureBookService {
     keys: string[],
     characters: Array<typeof characterProfiles.$inferSelect>,
   ) {
-    if (keys.length === 0) return characters.map((character) => character.id);
     const mapped = keys.map((key) => characters.find((character) => character.name === key)?.id);
     if (mapped.some((id) => !id) || new Set(mapped).size !== mapped.length)
       throw new PictureBookError('INVALID_JOB_OUTPUT');
