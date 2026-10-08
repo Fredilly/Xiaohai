@@ -174,7 +174,9 @@ export class BailianImageProvider implements ImageProvider {
           stage: 'BAILIAN_REQUEST',
           httpStatus: response.status,
           providerErrorCode: error.success ? error.data.error?.code : undefined,
-          safeMessage: error.success ? sanitizeProviderMessage(error.data.error?.message) : undefined,
+          safeMessage: error.success
+            ? sanitizeProviderMessage(error.data.error?.message)
+            : undefined,
           providerRequestId: requestId ?? (error.success ? error.data.request_id : undefined),
         });
       }
