@@ -144,9 +144,13 @@ export const loadWorkerConfig = (env: NodeJS.ProcessEnv) => {
   if (config.PICTURE_BOOK_IMAGE_ENABLED && config.PICTURE_BOOK_IMAGE_PROVIDER === 'BAILIAN') {
     if (!config.DASHSCOPE_API_KEY) throw new Error('Bailian API key is required for image jobs');
     if (config.PICTURE_BOOK_IMAGE_MODEL.startsWith('qwen-image-3.0')) {
-      if (!config.PICTURE_BOOK_IMAGE_BASE_URL ||
-          !new URL(config.PICTURE_BOOK_IMAGE_BASE_URL).pathname.endsWith('/compatible-mode/v1'))
-        throw new Error('Qwen Image 3.0 requires PICTURE_BOOK_IMAGE_BASE_URL with a region-matched workspace endpoint ending in /compatible-mode/v1');
+      if (
+        !config.PICTURE_BOOK_IMAGE_BASE_URL ||
+        !new URL(config.PICTURE_BOOK_IMAGE_BASE_URL).pathname.endsWith('/compatible-mode/v1')
+      )
+        throw new Error(
+          'Qwen Image 3.0 requires PICTURE_BOOK_IMAGE_BASE_URL with a region-matched workspace endpoint ending in /compatible-mode/v1',
+        );
     } else if (!config.PICTURE_BOOK_IMAGE_BASE_URL && !config.DASHSCOPE_BASE_URL) {
       throw new Error('Bailian image base URL is required');
     }
