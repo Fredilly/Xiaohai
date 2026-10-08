@@ -19,7 +19,7 @@ export async function recoverStaleMedia(
 ) {
   const recoveredAt = new Date(now);
   const cutoff = (timeoutMs: number) => new Date(now - timeoutMs - 60_000);
-  const imageCutoff = cutoff(Math.max(timeouts.imageMs, 180_000));
+  const imageCutoff = cutoff(Math.max(timeouts.imageMs, 600_000));
   const images = await db
     .update(workPageIllustrations)
     .set({
