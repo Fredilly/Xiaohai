@@ -84,6 +84,7 @@ export const listCharacterReferences = (bookId: string, characterId: string) =>
       id: string;
       status: string;
       errorCode: string | null;
+      provider: string;
       revisionNumber: number;
       playbackUrl: string | null;
       mediaAssetId: string | null;

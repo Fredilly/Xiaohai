@@ -97,11 +97,14 @@ export class ImageJobProcessor {
     const row = claimed.row;
     const isReference = claimed.kind === 'REFERENCE';
     const illustrationRow = isReference ? null : (row as IllustrationInputRow);
-    const referenceUrls = illustrationRow
-      ? await this.referenceUrls(illustrationRow.consistency)
-      : [];
 
     try {
+      // MOCK uses consistency metadata only. Never pass its local display URL
+      // to an image provider as an I2I input. BAILIAN keeps strict HTTPS checks.
+      const referenceUrls =
+        illustrationRow && this.provider.name === 'BAILIAN'
+          ? await this.referenceUrls(illustrationRow.consistency)
+          : [];
       const result = await this.provider.generate({
         generationKey: row.id,
         model: row.model,

@@ -177,6 +177,69 @@ suite('M10 image worker PostgreSQL integration', () => {
     expect(asset!.playbackUrl).not.toMatch(/base64|data:/i);
   });
 
+  it('does not pass a MOCK local display URL as an I2I reference and reaches READY', async () => {
+    const fixture = await queued();
+    const [referenceAsset] = await db
+      .insert(mediaAssets)
+      .values({
+        provider: 'MOCK_IMAGE',
+        objectKey: 'picture-books/mock/reference.jpg',
+        playbackUrl: 'http://127.0.0.1:3000/api/v1/dev/mock-images/reference.jpg',
+        mimeType: 'image/jpeg',
+        status: 'READY',
+      })
+      .returning();
+    await db
+      .update(workPageIllustrations)
+      .set({
+        consistency: [{ ...fixture.consistency[0]!, referenceMediaAssetId: referenceAsset!.id }],
+      })
+      .where(eq(workPageIllustrations.id, fixture.illustration.id));
+    const generate = vi.fn<ImageProvider['generate']>(async (input) => {
+      expect(input.referenceImages).toEqual([]);
+      return new MockImageProvider().generate(input);
+    });
+
+    await new ImageJobProcessor(db, { name: 'MOCK', generate }, 5_000).processOne();
+
+    const [saved] = await db
+      .select()
+      .from(workPageIllustrations)
+      .where(eq(workPageIllustrations.id, fixture.illustration.id));
+    expect(saved).toMatchObject({ status: 'READY' });
+    expect(saved!.mediaAssetId).toBeTruthy();
+  });
+
+  it('fails invalid BAILIAN reference URLs without leaving the illustration RUNNING', async () => {
+    const fixture = await queued('BAILIAN');
+    const [referenceAsset] = await db
+      .insert(mediaAssets)
+      .values({
+        provider: 'MOCK_IMAGE',
+        objectKey: 'picture-books/mock/reference-http.jpg',
+        playbackUrl: 'http://127.0.0.1:3000/api/v1/dev/mock-images/reference.jpg',
+        mimeType: 'image/jpeg',
+        status: 'READY',
+      })
+      .returning();
+    await db
+      .update(workPageIllustrations)
+      .set({
+        consistency: [{ ...fixture.consistency[0]!, referenceMediaAssetId: referenceAsset!.id }],
+      })
+      .where(eq(workPageIllustrations.id, fixture.illustration.id));
+    const generate = vi.fn<ImageProvider['generate']>();
+
+    await new ImageJobProcessor(db, { name: 'BAILIAN', generate }, 5_000).processOne();
+
+    const [saved] = await db
+      .select()
+      .from(workPageIllustrations)
+      .where(eq(workPageIllustrations.id, fixture.illustration.id));
+    expect(generate).not.toHaveBeenCalled();
+    expect(saved).toMatchObject({ status: 'FAILED', errorCode: 'IMAGE_PROVIDER_UNAVAILABLE' });
+  });
+
   it('records provider failure without creating a false READY asset', async () => {
     const fixture = await queued();
     const provider: ImageProvider = {
