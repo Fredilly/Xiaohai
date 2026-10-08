@@ -112,12 +112,37 @@ describe('BailianImageProvider', () => {
 
   it('preserves HTTP 404 and request ID for a misconfigured image endpoint without uploading', async () => {
     const putObject = vi.fn().mockResolvedValue({});
-    const storage = new BosStorage({ bucket: 'xiaohai-assets', publicOrigin: 'https://assets.example.com', client: { putObject } });
-    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({ error: { code: 'ModelNotFound' }, request_id: 'req-404' }), { status: 404 }));
-    await expect(new BailianImageProvider('secret', 'https://workspace.cn-beijing.maas.aliyuncs.com/compatible-mode/v1', storage, fetcher).generate(input)).rejects.toMatchObject({
-      code: 'IMAGE_PROVIDER_UNAVAILABLE', details: { stage: 'BAILIAN_REQUEST', httpStatus: 404, providerErrorCode: 'ModelNotFound', providerRequestId: 'req-404' },
+    const storage = new BosStorage({
+      bucket: 'xiaohai-assets',
+      publicOrigin: 'https://assets.example.com',
+      client: { putObject },
     });
-    expect(fetcher).toHaveBeenCalledWith('https://workspace.cn-beijing.maas.aliyuncs.com/compatible-mode/v1/images/generations', expect.anything());
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(
+        JSON.stringify({ error: { code: 'ModelNotFound' }, request_id: 'req-404' }),
+        { status: 404 },
+      ),
+    );
+    await expect(
+      new BailianImageProvider(
+        'secret',
+        'https://workspace.cn-beijing.maas.aliyuncs.com/compatible-mode/v1',
+        storage,
+        fetcher,
+      ).generate(input),
+    ).rejects.toMatchObject({
+      code: 'IMAGE_PROVIDER_UNAVAILABLE',
+      details: {
+        stage: 'BAILIAN_REQUEST',
+        httpStatus: 404,
+        providerErrorCode: 'ModelNotFound',
+        providerRequestId: 'req-404',
+      },
+    });
+    expect(fetcher).toHaveBeenCalledWith(
+      'https://workspace.cn-beijing.maas.aliyuncs.com/compatible-mode/v1/images/generations',
+      expect.anything(),
+    );
     expect(putObject).not.toHaveBeenCalled();
   });
 
