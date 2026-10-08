@@ -76,7 +76,7 @@ export class PictureBookService {
   async generateIllustration(consumerUserId: string, pictureBookId: string, pageId: string) {
     if (!this.config.imageEnabled) throw new PictureBookError('FEATURE_DISABLED');
 
-    const illustration = await this.db.transaction(async (tx) => {
+    const { illustration, shouldNotify } = await this.db.transaction(async (tx) => {
       const [page] = await tx
         .select({ page: workPages, book: pictureBooks })
         .from(workPages)
@@ -111,6 +111,22 @@ export class PictureBookService {
       const relevant = characters.filter((character) => pageCharacterIds.includes(character.id));
       if (relevant.length === 0 || relevant.length > 3) throw new PictureBookError('INVALID_STATE');
 
+      const [active] = await tx
+        .select()
+        .from(workPageIllustrations)
+        .where(
+          and(
+            eq(workPageIllustrations.pageId, pageId),
+            inArray(workPageIllustrations.status, ['QUEUED', 'RUNNING']),
+          ),
+        )
+        .orderBy(desc(workPageIllustrations.createdAt))
+        .limit(1)
+        .for('update');
+      if (active) {
+        return { illustration: active, shouldNotify: active.status === 'QUEUED' };
+      }
+
       const [revision] = await tx
         .select({
           value: sql<number>`coalesce(max(${workPageIllustrations.revisionNumber}), 0) + 1`,
@@ -138,11 +154,11 @@ export class PictureBookService {
         .update(pictureBooks)
         .set({ status: 'ILLUSTRATING', updatedAt: new Date() })
         .where(eq(pictureBooks.id, pictureBookId));
-      return created!;
+      return { illustration: created!, shouldNotify: true };
     });
 
     try {
-      await this.imageQueue.notify(illustration.id);
+      if (shouldNotify) await this.imageQueue.notify(illustration.id);
     } catch {
       this.logger?.warn(
         { event: 'PICTURE_BOOK_IMAGE_QUEUE_NOTIFY_FAILED', illustrationId: illustration.id },
@@ -327,9 +343,24 @@ export class PictureBookService {
     if (!this.config.imageEnabled) throw new PictureBookError('FEATURE_DISABLED');
     const character = await this.requireOwnedCharacter(consumerUserId, pictureBookId, characterId);
     if (character.locked || character.confirmed) throw new PictureBookError('CHARACTER_LOCKED');
-    const revision = await this.db.transaction(async (tx) => {
-      // Serialize revision allocation per character while retaining the database unique constraint.
+    const { revision, shouldNotify } = await this.db.transaction(async (tx) => {
+      // Serialize revision allocation and active-job deduplication per character.
       await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${character.id}, 0))`);
+      const [active] = await tx
+        .select()
+        .from(characterReferenceImages)
+        .where(
+          and(
+            eq(characterReferenceImages.characterProfileId, character.id),
+            inArray(characterReferenceImages.status, ['QUEUED', 'RUNNING']),
+          ),
+        )
+        .orderBy(desc(characterReferenceImages.createdAt))
+        .limit(1)
+        .for('update');
+      if (active) {
+        return { revision: active, shouldNotify: active.status === 'QUEUED' };
+      }
       const [latest] = await tx
         .select({
           value: sql<number>`coalesce(max(${characterReferenceImages.revisionNumber}), 0) + 1`,
@@ -345,10 +376,10 @@ export class PictureBookService {
           model: this.config.imageModel,
         })
         .returning();
-      return created!;
+      return { revision: created!, shouldNotify: true };
     });
     try {
-      await this.imageQueue.notify(revision.id);
+      if (shouldNotify) await this.imageQueue.notify(revision.id);
     } catch {
       this.logger?.warn(
         {
