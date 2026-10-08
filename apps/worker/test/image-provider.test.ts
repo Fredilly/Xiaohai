@@ -118,10 +118,9 @@ describe('BailianImageProvider', () => {
       client: { putObject },
     });
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
-      new Response(
-        JSON.stringify({ error: { code: 'ModelNotFound' }, request_id: 'req-404' }),
-        { status: 404 },
-      ),
+      new Response(JSON.stringify({ error: { code: 'ModelNotFound' }, request_id: 'req-404' }), {
+        status: 404,
+      }),
     );
     await expect(
       new BailianImageProvider(
