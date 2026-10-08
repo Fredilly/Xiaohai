@@ -41,7 +41,7 @@ const imageProvider =
   config.PICTURE_BOOK_IMAGE_ENABLED && config.PICTURE_BOOK_IMAGE_PROVIDER === 'BAILIAN'
     ? new BailianImageProvider(
         config.DASHSCOPE_API_KEY!,
-        config.DASHSCOPE_BASE_URL!,
+        (config.PICTURE_BOOK_IMAGE_BASE_URL ?? config.DASHSCOPE_BASE_URL)!,
         createBaiduBosStorage({
           endpoint: config.BAIDU_BOS_ENDPOINT!,
           bucket: config.BAIDU_BOS_BUCKET!,
