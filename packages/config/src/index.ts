@@ -106,6 +106,7 @@ const workerSchema = baseSchema.extend({
   PICTURE_BOOK_IMAGE_PROVIDER: z.enum(['MOCK', 'BAILIAN']).default('MOCK'),
   PICTURE_BOOK_IMAGE_MODEL: z.string().trim().min(1).max(128).default('mock-image-v1'),
   PICTURE_BOOK_IMAGE_TIMEOUT_MS: z.coerce.number().int().min(1000).max(300000).default(30000),
+  PICTURE_BOOK_IMAGE_BASE_URL: optionalHttpsUrl,
   BAIDU_BOS_ENDPOINT: optionalHttpsUrl,
   BAIDU_BOS_BUCKET: z.preprocess(
     (value) => (value === '' ? undefined : value),
@@ -142,7 +143,13 @@ export const loadWorkerConfig = (env: NodeJS.ProcessEnv) => {
     throw new Error('Qwen API key is required');
   if (config.PICTURE_BOOK_IMAGE_ENABLED && config.PICTURE_BOOK_IMAGE_PROVIDER === 'BAILIAN') {
     if (!config.DASHSCOPE_API_KEY) throw new Error('Bailian API key is required for image jobs');
-    if (!config.DASHSCOPE_BASE_URL) throw new Error('Bailian base URL is required for image jobs');
+    if (config.PICTURE_BOOK_IMAGE_MODEL.startsWith('qwen-image-3.0')) {
+      if (!config.PICTURE_BOOK_IMAGE_BASE_URL ||
+          !new URL(config.PICTURE_BOOK_IMAGE_BASE_URL).pathname.replace(/\\/$/, '').endsWith('/compatible-mode/v1'))
+        throw new Error('Qwen Image 3.0 requires PICTURE_BOOK_IMAGE_BASE_URL with a region-matched workspace endpoint ending in /compatible-mode/v1');
+    } else if (!config.PICTURE_BOOK_IMAGE_BASE_URL && !config.DASHSCOPE_BASE_URL) {
+      throw new Error('Bailian image base URL is required');
+    }
     if (!config.BAIDU_BOS_ENDPOINT) throw new Error('Baidu BOS endpoint is required');
     if (!config.BAIDU_BOS_BUCKET) throw new Error('Baidu BOS bucket is required');
     if (!config.BAIDU_BOS_PUBLIC_ORIGIN) throw new Error('Baidu BOS public origin is required');
