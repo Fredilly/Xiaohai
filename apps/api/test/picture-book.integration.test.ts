@@ -569,7 +569,7 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
     ).toContain('绿色围巾');
   });
 
-  it('allocates character reference revisions safely under concurrent requests', async () => {
+  it('deduplicates concurrent character reference requests while allowing an explicit retry after failure', async () => {
     const pictureBook = service();
     const alice = await createUser();
     const { book } = await createBook(pictureBook, alice);
@@ -581,15 +581,38 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
     ]);
 
     expect([first.status, second.status]).toEqual(['QUEUED', 'QUEUED']);
-    expect([first.revisionNumber, second.revisionNumber].sort()).toEqual([1, 2]);
-    expect(first.referenceRevisionId).not.toBe(second.referenceRevisionId);
-    const rows = await db
+    expect(first.referenceRevisionId).toBe(second.referenceRevisionId);
+    expect(first.revisionNumber).toBe(1);
+    expect(second.revisionNumber).toBe(1);
+
+    let rows = await db
+      .select()
+      .from(characterReferenceImages)
+      .where(eq(characterReferenceImages.characterProfileId, character.characterId));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      revisionNumber: 1,
+      provider: 'MOCK',
+      model: 'server-controlled-image-model',
+    });
+
+    await db
+      .update(characterReferenceImages)
+      .set({ status: 'FAILED', errorCode: 'IMAGE_PROVIDER_UNAVAILABLE', updatedAt: new Date() })
+      .where(eq(characterReferenceImages.id, first.referenceRevisionId));
+
+    const retry = await pictureBook.generateCharacterReference(
+      alice,
+      book.id,
+      character.characterId,
+    );
+    expect(retry.revisionNumber).toBe(2);
+    expect(retry.referenceRevisionId).not.toBe(first.referenceRevisionId);
+    rows = await db
       .select()
       .from(characterReferenceImages)
       .where(eq(characterReferenceImages.characterProfileId, character.characterId));
     expect(rows.map((row) => row.revisionNumber).sort()).toEqual([1, 2]);
-    expect(rows.every((row) => row.provider === 'MOCK')).toBe(true);
-    expect(rows.every((row) => row.model === 'server-controlled-image-model')).toBe(true);
   });
 
   it('rejects selecting a different reference while locked and permits it after reopen', async () => {
