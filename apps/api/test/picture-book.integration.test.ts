@@ -1005,7 +1005,9 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
       provider: 'MOCK',
       model: 'server-controlled-image-model',
     });
-    expect(notifications.filter((id) => id === first.illustrationId).length).toBeGreaterThanOrEqual(1);
+    expect(
+      notifications.filter((id) => id === first.illustrationId).length,
+    ).toBeGreaterThanOrEqual(1);
 
     const [character] = await db
       .select()
