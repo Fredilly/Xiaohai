@@ -13,4 +13,16 @@ describe('foundation health endpoint', () => {
     expect(response.json()).toEqual({ status: 'ok', service: 'api' });
     expect(response.headers['x-request-id']).toBeTypeOf('string');
   });
+
+  it('serves the deterministic local MOCK image without external storage', async () => {
+    const app = buildApp({ logger: false });
+    apps.push(app);
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/v1/dev/mock-images/fixture.jpg',
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['content-type']).toContain('image/jpeg');
+    expect(Buffer.from(response.rawPayload).subarray(0, 2)).toEqual(Buffer.from([0xff, 0xd8]));
+  });
 });

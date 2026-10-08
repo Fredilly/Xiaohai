@@ -56,6 +56,12 @@ export class ImageProviderError extends Error {
 export class MockImageProvider implements ImageProvider {
   readonly name = 'MOCK' as const;
 
+  // The API exposes this deterministic dev-only image endpoint. It keeps MOCK
+  // assets renderable in WeChat DevTools without contacting object storage or a
+  // paid provider.
+  private readonly playbackOrigin =
+    process.env.MOCK_IMAGE_PLAYBACK_ORIGIN ?? 'http://127.0.0.1:3000/api/v1/dev/mock-images';
+
   generate(input: ImageGenerationInput): Promise<ImageGenerationResult> {
     if (input.signal.aborted) throw new ImageProviderError('IMAGE_PROVIDER_TIMEOUT');
     const digest = createHash('sha256')
@@ -73,7 +79,7 @@ export class MockImageProvider implements ImageProvider {
     return Promise.resolve({
       assetProvider: 'MOCK_IMAGE',
       objectKey,
-      playbackUrl: `https://mock.invalid/${objectKey}`,
+      playbackUrl: `${this.playbackOrigin}/${digest}.jpg`,
       mimeType: 'image/png',
       byteSize: null,
       providerRequestId: `mock-image-${digest.slice(0, 24)}`,

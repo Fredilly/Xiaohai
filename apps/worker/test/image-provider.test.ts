@@ -8,7 +8,7 @@ import {
 } from '../src/image-provider.js';
 
 describe('MockImageProvider', () => {
-  it('returns a deterministic storage reference and never image binary', async () => {
+  it('returns a deterministic DevTools-loadable local image URL and never image binary', async () => {
     const provider = new MockImageProvider();
     const input = {
       generationKey: 'illustration-revision-id',
@@ -27,6 +27,10 @@ describe('MockImageProvider', () => {
     const second = await provider.generate(input);
     expect(first).toEqual(second);
     expect(first.objectKey).toMatch(/^picture-books\/mock\/[a-f0-9]{64}\.png$/);
+    expect(first.playbackUrl).toMatch(
+      /^http:\/\/127\.0\.0\.1:3000\/api\/v1\/dev\/mock-images\/[a-f0-9]{64}\.jpg$/,
+    );
+    expect(first.playbackUrl).not.toMatch(/mock\.invalid|qwen|bailian/i);
     expect(JSON.stringify(first)).not.toMatch(/base64|data:image/i);
 
     const nextRevision = await provider.generate({ ...input, generationKey: 'next-revision-id' });

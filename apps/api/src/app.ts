@@ -5,6 +5,7 @@ import Fastify, {
   type FastifyRequest,
 } from 'fastify';
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { z } from 'zod';
 import { safeLoggerOptions } from './security/logging.js';
 import { registerAbuseControls, type RateLimitStore } from './security/rate-limit.js';
@@ -105,6 +106,14 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     done();
   });
   app.get('/health', () => healthResponseSchema.parse({ status: 'ok', service: 'api' }));
+  // Deterministic local image used only by MockImageProvider. It intentionally
+  // does not read storage or call an external provider.
+  app.get('/api/v1/dev/mock-images/:imageId.jpg', async (_request, reply) => {
+    const mockImage = readFileSync(
+      new URL('../../miniapp/assets/brand/home-parent-reading.jpg', import.meta.url),
+    );
+    return reply.type('image/jpeg').send(mockImage);
+  });
   if (options.readiness) {
     app.get('/ready', async (_request, reply) => {
       try {
