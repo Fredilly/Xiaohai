@@ -569,7 +569,7 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
     ).toContain('绿色围巾');
   });
 
-  it('deduplicates concurrent character reference requests while allowing an explicit retry after failure', async () => {
+  it('deduplicates concurrent reference requests and allows explicit retry after failure', async () => {
     const pictureBook = service();
     const alice = await createUser();
     const { book } = await createBook(pictureBook, alice);
@@ -984,7 +984,7 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
     expect(jobs).toHaveLength(0);
   });
 
-  it('deduplicates concurrent illustration requests and retries only after terminal failure', async () => {
+  it('deduplicates concurrent illustrations and allows retries after failure', async () => {
     const pictureBook = service();
     const alice = await createUser();
     const { book } = await createBook(pictureBook, alice);
