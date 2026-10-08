@@ -101,6 +101,8 @@ export class ImageJobProcessor {
       ? await this.referenceUrls(illustrationRow.consistency)
       : [];
 
+    const generationStartedAt = Date.now();
+    const effectiveTimeoutMs = Math.max(this.timeoutMs, 600_000);
     try {
       const result = await this.provider.generate({
         generationKey: row.id,
@@ -108,7 +110,7 @@ export class ImageJobProcessor {
         prompt: illustrationRow ? illustrationRow.prompt : (row as { prompt: string }).prompt,
         consistency: illustrationRow ? illustrationRow.consistency : [],
         referenceImages: referenceUrls,
-        signal: AbortSignal.timeout(Math.max(this.timeoutMs, 180_000)),
+        signal: AbortSignal.timeout(effectiveTimeoutMs),
       });
       try {
         await this.db.transaction(async (tx) => {
@@ -190,6 +192,9 @@ export class ImageJobProcessor {
       this.logger?.error(
         {
           imageJobId: row.id,
+          elapsedMs: Date.now() - generationStartedAt,
+          configuredTimeoutMs: this.timeoutMs,
+          effectiveTimeoutMs,
           illustrationId: isReference ? undefined : row.id,
           provider: row.provider,
           model: row.model,
