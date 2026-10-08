@@ -83,17 +83,20 @@ export const listCharacterReferences = (bookId: string, characterId: string) =>
     references: Array<{
       id: string;
       status: string;
+      errorCode: string | null;
       revisionNumber: number;
       playbackUrl: string | null;
       mediaAssetId: string | null;
     }>;
   }>(`/api/v1/ai/picture-books/${bookId}/characters/${characterId}/reference-images`);
 export const generateCharacterReference = (bookId: string, characterId: string) =>
-  request(
-    `/api/v1/ai/picture-books/${bookId}/characters/${characterId}/reference-images`,
-    'POST',
-    {},
-  );
+  request<{
+    pictureBookId: string;
+    characterId: string;
+    referenceRevisionId: string;
+    revisionNumber: number;
+    status: 'QUEUED' | 'RUNNING' | 'READY' | 'FAILED';
+  }>(`/api/v1/ai/picture-books/${bookId}/characters/${characterId}/reference-images`, 'POST', {});
 export const selectCharacterReference = (bookId: string, characterId: string, revisionId: string) =>
   request<PictureBookDetail>(
     `/api/v1/ai/picture-books/${bookId}/characters/${characterId}/reference-images/${revisionId}/select`,
