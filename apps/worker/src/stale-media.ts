@@ -2,6 +2,7 @@ import { and, desc, eq, lt } from 'drizzle-orm';
 import {
   aiAnimations,
   animationCompositions,
+  characterReferenceImages,
   animationSceneGenerations,
   workPageIllustrations,
   type createDatabase,
@@ -18,6 +19,7 @@ export async function recoverStaleMedia(
 ) {
   const recoveredAt = new Date(now);
   const cutoff = (timeoutMs: number) => new Date(now - timeoutMs - 60_000);
+  const imageCutoff = cutoff(Math.max(timeouts.imageMs, 180_000));
   const images = await db
     .update(workPageIllustrations)
     .set({
@@ -28,10 +30,24 @@ export async function recoverStaleMedia(
     .where(
       and(
         eq(workPageIllustrations.status, 'RUNNING'),
-        lt(workPageIllustrations.updatedAt, cutoff(timeouts.imageMs)),
+        lt(workPageIllustrations.updatedAt, imageCutoff),
       ),
     )
     .returning({ id: workPageIllustrations.id });
+  const references = await db
+    .update(characterReferenceImages)
+    .set({
+      status: 'FAILED',
+      errorCode: 'IMAGE_WORKER_TIMEOUT',
+      updatedAt: recoveredAt,
+    })
+    .where(
+      and(
+        eq(characterReferenceImages.status, 'RUNNING'),
+        lt(characterReferenceImages.updatedAt, imageCutoff),
+      ),
+    )
+    .returning({ id: characterReferenceImages.id });
   const videos = await db
     .update(animationSceneGenerations)
     .set({
@@ -107,5 +123,5 @@ export async function recoverStaleMedia(
     return recovered;
   });
 
-  return { images: images.length, videos: videos.length, compositions };
+  return { images: images.length + references.length, videos: videos.length, compositions };
 }
