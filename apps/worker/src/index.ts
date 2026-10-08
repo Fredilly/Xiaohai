@@ -111,9 +111,7 @@ while (!stopping) {
   } catch (error) {
     // Log only bounded, non-sensitive error metadata; provider responses may contain secrets.
     const failure =
-      error && typeof error === 'object'
-        ? (error as { name?: unknown; code?: unknown })
-        : {};
+      error && typeof error === 'object' ? (error as { name?: unknown; code?: unknown }) : {};
     logger.error(
       {
         errorCode: 'AI_WORKER_ITERATION_FAILED',
