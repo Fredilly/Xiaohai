@@ -247,6 +247,18 @@ app.addHook('onClose', async () => {
 try {
   await app.listen({ host: config.HOST, port: config.PORT });
 } catch (error) {
-  app.log.error({ err: error }, 'API startup failed');
+  // Only log standardized, non-sensitive failure categories. Never serialize error messages:
+  // database connection strings and provider SDK errors may contain credentials.
+  const rawCode =
+    error && typeof error === 'object' && 'code' in error ? error.code : undefined;
+  const code =
+    typeof rawCode === 'string' &&
+    ['EADDRINUSE', 'EACCES', 'EADDRNOTAVAIL', 'ECONNREFUSED', 'ENOTFOUND', 'ETIMEDOUT', 'ECONNRESET'].includes(rawCode)
+      ? rawCode
+      : 'STARTUP_FAILED';
+  app.log.error(
+    { event: 'API_STARTUP_FAILED', errorCode: code, host: config.HOST, port: config.PORT },
+    'API startup failed',
+  );
   process.exitCode = 1;
 }
