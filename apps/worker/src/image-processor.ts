@@ -1,10 +1,28 @@
-import { and, asc, eq, sql } from 'drizzle-orm';
-import { mediaAssets, workPageIllustrations, type createDatabase } from '@xiaohai/db';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
+import {
+  characterProfiles,
+  characterReferenceImages,
+  mediaAssets,
+  workPageIllustrations,
+  type createDatabase,
+} from '@xiaohai/db';
 import type { ImageProvider } from './image-provider.js';
 import { ImageProviderError } from './image-provider.js';
 
 type Db = ReturnType<typeof createDatabase>['db'];
 type ImageLogger = { error: (fields: Record<string, unknown>, message: string) => void };
+type IllustrationInputRow = {
+  id: string;
+  model: string;
+  provider: string;
+  prompt: string;
+  pageId: string;
+  consistency: Array<{
+    referenceMediaAssetId: string | null;
+    consistencyKey: string;
+    visualPrompt: string;
+  }>;
+};
 
 export class ImageJobProcessor {
   constructor(
@@ -28,7 +46,41 @@ export class ImageJobProcessor {
         .orderBy(asc(workPageIllustrations.createdAt))
         .limit(1)
         .for('update', { skipLocked: true });
-      if (!illustration) return null;
+      if (!illustration) {
+        const [reference] = await tx
+          .select({ reference: characterReferenceImages, character: characterProfiles })
+          .from(characterReferenceImages)
+          .innerJoin(
+            characterProfiles,
+            eq(characterProfiles.id, characterReferenceImages.characterProfileId),
+          )
+          .where(
+            and(
+              eq(characterReferenceImages.status, 'QUEUED'),
+              eq(characterReferenceImages.provider, this.provider.name),
+            ),
+          )
+          .orderBy(asc(characterReferenceImages.createdAt))
+          .limit(1)
+          .for('update', { skipLocked: true });
+        if (!reference) return null;
+        const [updated] = await tx
+          .update(characterReferenceImages)
+          .set({ status: 'RUNNING', errorCode: null, updatedAt: new Date() })
+          .where(
+            and(
+              eq(characterReferenceImages.id, reference.reference.id),
+              eq(characterReferenceImages.status, 'QUEUED'),
+            ),
+          )
+          .returning();
+        return updated
+          ? {
+              kind: 'REFERENCE' as const,
+              row: { ...updated, prompt: reference.character.visualPrompt },
+            }
+          : null;
+      }
       const [updated] = await tx
         .update(workPageIllustrations)
         .set({ status: 'RUNNING', errorCode: null, updatedAt: new Date() })
@@ -39,25 +91,38 @@ export class ImageJobProcessor {
           ),
         )
         .returning();
-      return updated ?? null;
+      return updated ? { kind: 'ILLUSTRATION' as const, row: updated } : null;
     });
     if (!claimed) return null;
+    const row = claimed.row;
+    const isReference = claimed.kind === 'REFERENCE';
+    const illustrationRow = isReference ? null : (row as IllustrationInputRow);
+    const referenceUrls = illustrationRow
+      ? await this.referenceUrls(illustrationRow.consistency)
+      : [];
 
     try {
       const result = await this.provider.generate({
-        generationKey: claimed.id,
-        model: claimed.model,
-        prompt: claimed.prompt,
-        consistency: claimed.consistency,
-        signal: AbortSignal.timeout(this.timeoutMs),
+        generationKey: row.id,
+        model: row.model,
+        prompt: illustrationRow ? illustrationRow.prompt : (row as { prompt: string }).prompt,
+        consistency: illustrationRow ? illustrationRow.consistency : [],
+        referenceImages: referenceUrls,
+        signal: AbortSignal.timeout(Math.max(this.timeoutMs, 180_000)),
       });
       try {
         await this.db.transaction(async (tx) => {
-          const [current] = await tx
-            .select({ status: workPageIllustrations.status })
-            .from(workPageIllustrations)
-            .where(eq(workPageIllustrations.id, claimed.id))
-            .for('update');
+          const [current] = isReference
+            ? await tx
+                .select({ status: characterReferenceImages.status })
+                .from(characterReferenceImages)
+                .where(eq(characterReferenceImages.id, row.id))
+                .for('update')
+            : await tx
+                .select({ status: workPageIllustrations.status })
+                .from(workPageIllustrations)
+                .where(eq(workPageIllustrations.id, row.id))
+                .for('update');
           if (current?.status !== 'RUNNING') return;
           const [asset] = await tx
             .insert(mediaAssets)
@@ -80,25 +145,23 @@ export class ImageJobProcessor {
               },
             })
             .returning({ id: mediaAssets.id });
+          const table = isReference ? characterReferenceImages : workPageIllustrations;
           await tx
-            .update(workPageIllustrations)
+            .update(table)
             .set({
               status: 'READY',
               mediaAssetId: asset!.id,
+              ...(isReference ? { providerRequestId: result.providerRequestId } : {}),
               errorCode: null,
               updatedAt: new Date(),
             })
-            .where(
-              and(
-                eq(workPageIllustrations.id, claimed.id),
-                eq(workPageIllustrations.status, 'RUNNING'),
-              ),
-            );
-          await tx.execute(sql`
+            .where(and(eq(table.id, row.id), eq(table.status, 'RUNNING')));
+          if (!isReference)
+            await tx.execute(sql`
           update picture_books pb
           set status = 'READY', updated_at = now()
           where pb.id = (
-            select wp.picture_book_id from work_pages wp where wp.id = ${claimed.pageId}
+            select wp.picture_book_id from work_pages wp where wp.id = ${illustrationRow?.pageId}
           )
           and not exists (
             select 1 from work_pages page
@@ -126,10 +189,10 @@ export class ImageJobProcessor {
       const details = error instanceof ImageProviderError ? error.details : {};
       this.logger?.error(
         {
-          illustrationId: claimed.id,
-          pageId: claimed.pageId,
-          provider: claimed.provider,
-          model: claimed.model,
+          imageJobId: row.id,
+          illustrationId: isReference ? undefined : row.id,
+          provider: row.provider,
+          model: row.model,
           stage: details.stage ?? 'BAILIAN_REQUEST',
           errorCode: code,
           httpStatus: details.httpStatus,
@@ -140,16 +203,35 @@ export class ImageJobProcessor {
         'Picture book image generation failed',
       );
       await this.db
-        .update(workPageIllustrations)
+        .update(isReference ? characterReferenceImages : workPageIllustrations)
         .set({ status: 'FAILED', errorCode: code, updatedAt: new Date() })
         .where(
           and(
-            eq(workPageIllustrations.id, claimed.id),
-            eq(workPageIllustrations.status, 'RUNNING'),
+            eq((isReference ? characterReferenceImages : workPageIllustrations).id, row.id),
+            eq((isReference ? characterReferenceImages : workPageIllustrations).status, 'RUNNING'),
           ),
         );
     }
-    return claimed.id;
+    return row.id;
+  }
+
+  private async referenceUrls(consistency: Array<{ referenceMediaAssetId: string | null }>) {
+    const ids = consistency
+      .map((item) => item.referenceMediaAssetId)
+      .filter((id): id is string => Boolean(id));
+    if (ids.length === 0) return [];
+    if (ids.length > 3)
+      throw new ImageProviderError('IMAGE_PROVIDER_UNAVAILABLE', { stage: 'VALIDATION' });
+    const rows = await this.db
+      .select({ id: mediaAssets.id, url: mediaAssets.playbackUrl, status: mediaAssets.status })
+      .from(mediaAssets)
+      .where(inArray(mediaAssets.id, ids));
+    if (
+      rows.length !== ids.length ||
+      rows.some((row) => row.status !== 'READY' || !row.url || !row.url.startsWith('https://'))
+    )
+      throw new ImageProviderError('IMAGE_PROVIDER_UNAVAILABLE', { stage: 'VALIDATION' });
+    return ids.map((id) => rows.find((row) => row.id === id)!.url!);
   }
 }
 

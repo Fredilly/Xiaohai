@@ -87,6 +87,7 @@ export const pictureBookPageSchema = z
     storyText: z.string().min(1).nullable(),
     sceneDescription: z.string().min(1).nullable(),
     illustrationPrompt: z.string().min(1).nullable(),
+    characterIds: z.array(z.uuid()).default([]),
     layoutPreset: z.string().min(1).max(64),
     sourceAiJobId: z.uuid().nullable(),
     illustrations: z.array(pictureBookIllustrationSchema),
@@ -206,6 +207,7 @@ export const pictureBookCharacterPlanSchema = z
 
 export const pictureBookStoryboardPageDraftSchema = z
   .object({
+    characterKeys: z.array(z.string().trim().min(1).max(80)).max(3).default([]),
     storyText: z.string().trim().min(1).max(3000),
     sceneDescription: z.string().trim().min(1).max(2000),
     illustrationPrompt: z.string().trim().min(1).max(3000),
@@ -217,6 +219,7 @@ export const pictureBookStoryboardPlanSchema = z
   .object({
     cover: z
       .object({
+        characterKeys: z.array(z.string().trim().min(1).max(80)).max(3).default([]),
         sceneDescription: z.string().trim().min(1).max(2000),
         illustrationPrompt: z.string().trim().min(1).max(3000),
         layoutPreset: z.string().trim().min(1).max(64).optional(),
@@ -262,3 +265,33 @@ export const pictureBookIllustrationListSchema = z
   .strict();
 
 export type PictureBookIllustrationAccepted = z.infer<typeof pictureBookIllustrationAcceptedSchema>;
+
+export const pictureBookReferenceRevisionSchema = z
+  .object({
+    id: z.uuid(),
+    characterProfileId: z.uuid(),
+    revisionNumber: z.number().int().positive(),
+    status: pictureBookIllustrationStatusSchema,
+    provider: z.string().min(1),
+    model: z.string().min(1),
+    mediaAssetId: z.uuid().nullable(),
+    providerRequestId: z.string().nullable(),
+    errorCode: z.string().nullable(),
+    playbackUrl: z.url().nullable(),
+    createdAt: z.iso.datetime(),
+    updatedAt: z.iso.datetime(),
+  })
+  .strict();
+export const pictureBookReferenceListSchema = z
+  .object({ references: z.array(pictureBookReferenceRevisionSchema) })
+  .strict();
+export const pictureBookReferenceAcceptedSchema = z
+  .object({
+    pictureBookId: z.uuid(),
+    characterId: z.uuid(),
+    referenceRevisionId: z.uuid(),
+    revisionNumber: z.number().int().positive(),
+    status: z.literal('QUEUED'),
+  })
+  .strict();
+export const selectPictureBookReferenceSchema = z.object({ revisionId: z.uuid() }).strict();

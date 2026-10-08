@@ -5,6 +5,7 @@ import {
   aiJobs,
   aiProjects,
   characterProfiles,
+  characterReferenceImages,
   consumerUsers,
   createDatabase,
   mediaAssets,
@@ -47,6 +48,7 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
     await database!.pool.query(`
       TRUNCATE TABLE
         work_page_illustrations,
+        character_reference_images,
         work_pages,
         character_profiles,
         picture_books,
@@ -245,6 +247,45 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
     return { source, book };
   }
 
+  async function prepareReadyCharacterReferences(
+    pictureBook: PictureBookService,
+    userId: string,
+    pictureBookId: string,
+  ) {
+    const detail = await pictureBook.getPictureBook(userId, pictureBookId);
+    for (const character of detail.characters) {
+      const [asset] = await db
+        .insert(mediaAssets)
+        .values({
+          provider: 'BAIDU_BOS',
+          objectKey: `picture-book-test/reference/${character.characterId}.png`,
+          playbackUrl: `https://bos.example.test/reference/${character.characterId}.png`,
+          mimeType: 'image/png',
+          byteSize: 1,
+          status: 'READY',
+        })
+        .returning();
+      const [revision] = await db
+        .insert(characterReferenceImages)
+        .values({
+          characterProfileId: character.characterId,
+          revisionNumber: 1,
+          status: 'READY',
+          provider: 'MOCK',
+          model: 'fixture-reference-model',
+          mediaAssetId: asset!.id,
+          providerRequestId: `fixture-${character.characterId}`,
+        })
+        .returning();
+      await pictureBook.selectCharacterReference(
+        userId,
+        pictureBookId,
+        character.characterId,
+        revision!.id,
+      );
+    }
+  }
+
   async function succeed(jobId: string, text: string) {
     await db
       .update(aiJobs)
@@ -265,6 +306,7 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
     userId: string,
     pictureBookId: string,
   ) {
+    await prepareReadyCharacterReferences(pictureBook, userId, pictureBookId);
     const detail = await pictureBook.confirmCharacters(userId, pictureBookId);
     return { accepted: null, detail };
   }
@@ -280,11 +322,13 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
       accepted.jobId,
       JSON.stringify({
         cover: {
+          characterKeys: ['小狐狸', '小鸟'],
           sceneDescription: '森林封面',
           illustrationPrompt: 'orange fox and blue bird in a forest',
         },
         pages: [
           {
+            characterKeys: ['小狐狸'],
             storyText: '小狐狸遇见了小鸟。',
             sceneDescription: '森林小路',
             illustrationPrompt: 'orange fox meets a small blue bird',
@@ -458,16 +502,19 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
         storyboard.jobId,
         JSON.stringify({
           cover: {
+            characterKeys: ['小狐狸', '小鸟'],
             sceneDescription: '晨光森林里的小狐狸与小鸟',
             illustrationPrompt: 'storybook cover, orange fox with green scarf and small blue bird',
           },
           pages: [
             {
+              characterKeys: ['小狐狸'],
               storyText: '清晨，小狐狸沿着森林小路出发。',
               sceneDescription: '森林入口，晨光穿过树叶。',
               illustrationPrompt: 'orange fox with green scarf walking on a forest path',
             },
             {
+              characterKeys: ['小狐狸', '小鸟'],
               storyText: '它遇见了迷路的小鸟。',
               sceneDescription: '小狐狸蹲下来安慰小鸟。',
               illustrationPrompt:
@@ -520,6 +567,186 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
     expect(
       (await db.select().from(workVersions).where(eq(workVersions.id, source.body.id)))[0]!.content,
     ).toContain('绿色围巾');
+  });
+
+  it('deduplicates active reference jobs', async () => {
+    const pictureBook = service();
+    const alice = await createUser();
+    const { book } = await createBook(pictureBook, alice);
+    const character = (await pictureBook.getPictureBook(alice, book.id)).characters[0]!;
+
+    const [first, second] = await Promise.all([
+      pictureBook.generateCharacterReference(alice, book.id, character.characterId),
+      pictureBook.generateCharacterReference(alice, book.id, character.characterId),
+    ]);
+
+    expect([first.status, second.status]).toEqual(['QUEUED', 'QUEUED']);
+    expect(first.referenceRevisionId).toBe(second.referenceRevisionId);
+    expect(first.revisionNumber).toBe(1);
+    expect(second.revisionNumber).toBe(1);
+
+    let rows = await db
+      .select()
+      .from(characterReferenceImages)
+      .where(eq(characterReferenceImages.characterProfileId, character.characterId));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      revisionNumber: 1,
+      provider: 'MOCK',
+      model: 'server-controlled-image-model',
+    });
+
+    await db
+      .update(characterReferenceImages)
+      .set({ status: 'FAILED', errorCode: 'IMAGE_PROVIDER_UNAVAILABLE', updatedAt: new Date() })
+      .where(eq(characterReferenceImages.id, first.referenceRevisionId));
+
+    const retry = await pictureBook.generateCharacterReference(
+      alice,
+      book.id,
+      character.characterId,
+    );
+    expect(retry.revisionNumber).toBe(2);
+    expect(retry.referenceRevisionId).not.toBe(first.referenceRevisionId);
+    rows = await db
+      .select()
+      .from(characterReferenceImages)
+      .where(eq(characterReferenceImages.characterProfileId, character.characterId));
+    expect(rows.map((row) => row.revisionNumber).sort()).toEqual([1, 2]);
+  });
+
+  it('rejects selecting a different reference while locked and permits it after reopen', async () => {
+    const pictureBook = service();
+    const alice = await createUser();
+    const { book } = await createBook(pictureBook, alice);
+    const [character] = (await pictureBook.getPictureBook(alice, book.id)).characters;
+    const [firstAsset, secondAsset] = await db
+      .insert(mediaAssets)
+      .values([
+        {
+          provider: 'BAIDU_BOS',
+          objectKey: `picture-book-test/reference/${character!.characterId}-1.png`,
+          playbackUrl: 'https://bos.example.test/reference/one.png',
+          mimeType: 'image/png',
+          byteSize: 1,
+          status: 'READY',
+        },
+        {
+          provider: 'BAIDU_BOS',
+          objectKey: `picture-book-test/reference/${character!.characterId}-2.png`,
+          playbackUrl: 'https://bos.example.test/reference/two.png',
+          mimeType: 'image/png',
+          byteSize: 1,
+          status: 'READY',
+        },
+      ])
+      .returning();
+    const [firstRevision, secondRevision] = await db
+      .insert(characterReferenceImages)
+      .values([
+        {
+          characterProfileId: character!.characterId,
+          revisionNumber: 1,
+          status: 'READY',
+          provider: 'MOCK',
+          model: 'server-controlled-image-model',
+          mediaAssetId: firstAsset!.id,
+          providerRequestId: 'fixture-reference-one',
+        },
+        {
+          characterProfileId: character!.characterId,
+          revisionNumber: 2,
+          status: 'READY',
+          provider: 'MOCK',
+          model: 'server-controlled-image-model',
+          mediaAssetId: secondAsset!.id,
+          providerRequestId: 'fixture-reference-two',
+        },
+      ])
+      .returning();
+
+    await pictureBook.selectCharacterReference(
+      alice,
+      book.id,
+      character!.characterId,
+      firstRevision!.id,
+    );
+    const otherCharacter = (await pictureBook.getPictureBook(alice, book.id)).characters.find(
+      (row) => row.characterId !== character!.characterId,
+    )!;
+    const [otherAsset] = await db
+      .insert(mediaAssets)
+      .values({
+        provider: 'BAIDU_BOS',
+        objectKey: `picture-book-test/reference/${otherCharacter.characterId}.png`,
+        playbackUrl: 'https://bos.example.test/reference/other.png',
+        mimeType: 'image/png',
+        byteSize: 1,
+        status: 'READY',
+      })
+      .returning();
+    await db.insert(characterReferenceImages).values({
+      characterProfileId: otherCharacter.characterId,
+      revisionNumber: 1,
+      status: 'READY',
+      provider: 'MOCK',
+      model: 'server-controlled-image-model',
+      mediaAssetId: otherAsset!.id,
+      providerRequestId: 'fixture-reference-other',
+    });
+    await pictureBook.selectCharacterReference(
+      alice,
+      book.id,
+      otherCharacter.characterId,
+      (
+        await db
+          .select({ id: characterReferenceImages.id })
+          .from(characterReferenceImages)
+          .where(eq(characterReferenceImages.characterProfileId, otherCharacter.characterId))
+      )[0]!.id,
+    );
+    await pictureBook.confirmCharacters(alice, book.id);
+    const lockedBefore = (await pictureBook.getPictureBook(alice, book.id)).characters.find(
+      (row) => row.characterId === character!.characterId,
+    )!;
+    await expect(
+      pictureBook.selectCharacterReference(
+        alice,
+        book.id,
+        character!.characterId,
+        secondRevision!.id,
+      ),
+    ).rejects.toMatchObject({ code: 'CHARACTER_LOCKED' });
+    const lockedAfter = (await pictureBook.getPictureBook(alice, book.id)).characters.find(
+      (row) => row.characterId === character!.characterId,
+    )!;
+    expect(lockedAfter).toMatchObject({
+      referenceMediaAssetId: lockedBefore.referenceMediaAssetId,
+      confirmed: true,
+      locked: true,
+    });
+
+    await pictureBook.reopenCharacters(alice, book.id);
+    await pictureBook.selectCharacterReference(
+      alice,
+      book.id,
+      character!.characterId,
+      secondRevision!.id,
+    );
+    const selected = (await pictureBook.getPictureBook(alice, book.id)).characters.find(
+      (row) => row.characterId === character!.characterId,
+    )!;
+    expect(selected).toMatchObject({
+      referenceMediaAssetId: secondAsset!.id,
+      confirmed: false,
+      locked: false,
+    });
+    await pictureBook.confirmCharacters(alice, book.id);
+    expect(
+      (await pictureBook.getPictureBook(alice, book.id)).characters.every(
+        (row) => row.confirmed && row.locked,
+      ),
+    ).toBe(true);
   });
 
   it('supports Character Bible edit, confirm, reopen, ownership, and validation through HTTP', async () => {
@@ -587,6 +814,7 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
         expect(invalid.json<{ error: { code: string } }>().error.code).toBe('INVALID_REQUEST');
       }
 
+      await prepareReadyCharacterReferences(pictureBook, alice, book.id);
       const confirmed = await app.inject({
         method: 'POST',
         url: `/api/v1/ai/picture-books/${book.id}/characters/confirm`,
@@ -694,11 +922,13 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
       storyboard.jobId,
       JSON.stringify({
         cover: {
+          characterKeys: ['小狐狸', '小鸟'],
           sceneDescription: '有效封面',
           illustrationPrompt: 'valid cover prompt',
         },
         pages: [
           {
+            characterKeys: ['小狐狸', '小鸟'],
             storyText: '第一页有效。',
             sceneDescription: '第一页场景',
             illustrationPrompt: 'page one',
@@ -754,7 +984,7 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
     expect(jobs).toHaveLength(0);
   });
 
-  it('allocates immutable illustration revisions concurrently with server-controlled configuration', async () => {
+  it('deduplicates active illustration jobs', async () => {
     const pictureBook = service();
     const alice = await createUser();
     const { book } = await createBook(pictureBook, alice);
@@ -766,16 +996,17 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
       pictureBook.generateIllustration(alice, book.id, page.id),
     ]);
 
-    expect([first.revisionNumber, second.revisionNumber].sort()).toEqual([1, 2]);
-    const revisions = await pictureBook.listIllustrations(alice, book.id, page.id);
-    expect(revisions.illustrations.map((row) => row.revisionNumber)).toEqual([1, 2]);
-    expect(revisions.illustrations.every((row) => row.provider === 'MOCK')).toBe(true);
-    expect(
-      revisions.illustrations.every((row) => row.model === 'server-controlled-image-model'),
-    ).toBe(true);
-    expect(notifications).toEqual(
-      expect.arrayContaining([first.illustrationId, second.illustrationId]),
-    );
+    expect(first.illustrationId).toBe(second.illustrationId);
+    expect(first.revisionNumber).toBe(1);
+    expect(second.revisionNumber).toBe(1);
+    let revisions = await pictureBook.listIllustrations(alice, book.id, page.id);
+    expect(revisions.illustrations.map((row) => row.revisionNumber)).toEqual([1]);
+    expect(revisions.illustrations[0]).toMatchObject({
+      provider: 'MOCK',
+      model: 'server-controlled-image-model',
+    });
+    const duplicateNotifications = notifications.filter((id) => id === first.illustrationId);
+    expect(duplicateNotifications.length).toBeGreaterThanOrEqual(1);
 
     const [character] = await db
       .select()
@@ -788,8 +1019,19 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
     expect(stored!.consistency[0]).toMatchObject({
       consistencyKey: character!.consistencyKey,
       visualPrompt: character!.visualPrompt,
-      referenceMediaAssetId: null,
     });
+    expect(stored!.consistency[0]!.referenceMediaAssetId).toBe(character!.referenceMediaAssetId);
+    expect(stored!.consistency[0]!.referenceMediaAssetId).toEqual(expect.any(String));
+
+    await db
+      .update(workPageIllustrations)
+      .set({ status: 'FAILED', errorCode: 'IMAGE_PROVIDER_UNAVAILABLE', updatedAt: new Date() })
+      .where(eq(workPageIllustrations.id, first.illustrationId));
+    const retry = await pictureBook.generateIllustration(alice, book.id, page.id);
+    expect(retry.revisionNumber).toBe(2);
+    expect(retry.illustrationId).not.toBe(first.illustrationId);
+    revisions = await pictureBook.listIllustrations(alice, book.id, page.id);
+    expect(revisions.illustrations.map((row) => row.revisionNumber)).toEqual([1, 2]);
   });
 
   it('exposes only a READY media asset playback URL for illustration previews', async () => {

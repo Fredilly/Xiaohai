@@ -197,6 +197,20 @@
       "when": 1791000000000,
       "tag": "0027_character_bible_lock",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1791085911618,
+      "tag": "0028_character_reference_images",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1791085956079,
+      "tag": "0029_picture_book_page_character_ids",
+      "breakpoints": true
     }
   ]
 }

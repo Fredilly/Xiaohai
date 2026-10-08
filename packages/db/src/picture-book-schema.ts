@@ -87,6 +87,42 @@ export const characterProfiles = pgTable(
   ],
 );
 
+export const characterReferenceImages = pgTable(
+  'character_reference_images',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    characterProfileId: uuid('character_profile_id')
+      .notNull()
+      .references(() => characterProfiles.id, { onDelete: 'cascade' }),
+    revisionNumber: integer('revision_number').notNull(),
+    status: text('status').notNull().default('QUEUED'),
+    provider: text('provider').notNull(),
+    model: text('model').notNull(),
+    mediaAssetId: uuid('media_asset_id').references(() => mediaAssets.id, { onDelete: 'restrict' }),
+    providerRequestId: text('provider_request_id'),
+    errorCode: text('error_code'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('character_reference_images_revision_unique').on(
+      t.characterProfileId,
+      t.revisionNumber,
+    ),
+    index('character_reference_images_character_status_idx').on(t.characterProfileId, t.status),
+    check('character_reference_images_revision_check', sql`${t.revisionNumber} > 0`),
+    check(
+      'character_reference_images_status_check',
+      sql`${t.status} in ('QUEUED','RUNNING','READY','FAILED')`,
+    ),
+    check('character_reference_images_provider_check', sql`${t.provider} in ('MOCK','BAILIAN')`),
+    check(
+      'character_reference_images_ready_asset_check',
+      sql`${t.status} <> 'READY' or ${t.mediaAssetId} is not null`,
+    ),
+  ],
+);
+
 export const workPages = pgTable(
   'work_pages',
   {
@@ -99,6 +135,7 @@ export const workPages = pgTable(
     storyText: text('story_text'),
     sceneDescription: text('scene_description'),
     illustrationPrompt: text('illustration_prompt'),
+    characterIds: uuid('character_ids').array().notNull().default([]),
     layoutPreset: text('layout_preset').notNull().default('AUTO'),
     sourceAiJobId: uuid('source_ai_job_id').references(() => aiJobs.id, {
       onDelete: 'restrict',
