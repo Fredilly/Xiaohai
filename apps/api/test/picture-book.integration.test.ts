@@ -984,6 +984,47 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
     expect(jobs).toHaveLength(0);
   });
 
+  it('regenerates legacy failed illustrations without reference images', async () => {
+    const pictureBook = service();
+    const alice = await createUser();
+    const { book } = await createBook(pictureBook, alice);
+    const detail = await applyStoryboard(pictureBook, alice, book.id);
+    const [page, newPage] = detail.pages;
+
+    await db
+      .update(characterProfiles)
+      .set({ referenceMediaAssetId: null })
+      .where(eq(characterProfiles.pictureBookId, book.id));
+
+    await expect(
+      pictureBook.generateIllustration(alice, book.id, newPage!.id),
+    ).rejects.toMatchObject({ code: 'INVALID_STATE' });
+
+    const [old] = await db
+      .insert(workPageIllustrations)
+      .values({
+        pageId: page!.id,
+        revisionNumber: 1,
+        prompt: 'legacy illustration prompt',
+        provider: 'MOCK',
+        model: 'legacy-model',
+        consistency: [],
+        status: 'FAILED',
+        errorCode: 'IMAGE_PROVIDER_TIMEOUT',
+      })
+      .returning();
+
+    const retry = await pictureBook.generateIllustration(alice, book.id, page!.id);
+    expect(retry.revisionNumber).toBe(2);
+    expect(retry.illustrationId).not.toBe(old!.id);
+
+    const [stored] = await db
+      .select()
+      .from(workPageIllustrations)
+      .where(eq(workPageIllustrations.id, retry.illustrationId));
+    expect(stored!.consistency.every((item) => item.referenceMediaAssetId === null)).toBe(true);
+  });
+
   it('deduplicates active illustration jobs', async () => {
     const pictureBook = service();
     const alice = await createUser();

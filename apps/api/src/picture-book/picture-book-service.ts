@@ -98,13 +98,19 @@ export class PictureBookService {
         .from(characterProfiles)
         .where(eq(characterProfiles.pictureBookId, pictureBookId))
         .orderBy(asc(characterProfiles.sortOrder));
-      if (
-        characters.some(
-          (character) =>
-            !character.confirmed || !character.locked || !character.referenceMediaAssetId,
-        )
-      ) {
+      if (characters.some((character) => !character.confirmed || !character.locked)) {
         throw new PictureBookError('INVALID_STATE');
+      }
+      // Existing books could be illustrated before character-reference images became mandatory.
+      // Allow explicit regeneration of a page with prior revisions, but keep the reference
+      // requirement for its first illustration and all newly created pages.
+      if (characters.some((character) => !character.referenceMediaAssetId)) {
+        const [priorIllustration] = await tx
+          .select({ id: workPageIllustrations.id })
+          .from(workPageIllustrations)
+          .where(eq(workPageIllustrations.pageId, pageId))
+          .limit(1);
+        if (!priorIllustration) throw new PictureBookError('INVALID_STATE');
       }
       const pageCharacterIds =
         page.page.characterIds.length > 0 ? page.page.characterIds : characters.map((c) => c.id);
