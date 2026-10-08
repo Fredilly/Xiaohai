@@ -108,8 +108,22 @@ while (!stopping) {
         { compositionId, provider: compositionProvider.name },
         'Animation composition processed',
       );
-  } catch {
-    logger.error({ errorCode: 'AI_WORKER_ITERATION_FAILED' }, 'AI worker iteration failed');
+  } catch (error) {
+    // Log only bounded, non-sensitive error metadata; provider responses may contain secrets.
+    const failure =
+      error && typeof error === 'object'
+        ? (error as { name?: unknown; code?: unknown })
+        : {};
+    logger.error(
+      {
+        errorCode: 'AI_WORKER_ITERATION_FAILED',
+        exceptionName: typeof failure.name === 'string' ? failure.name.slice(0, 80) : undefined,
+        exceptionCode: typeof failure.code === 'string' ? failure.code.slice(0, 80) : undefined,
+      },
+      'AI worker iteration failed',
+    );
+    // Avoid an unbounded error loop when Redis or the database is unavailable.
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
   }
 }
 await redis.quit();
