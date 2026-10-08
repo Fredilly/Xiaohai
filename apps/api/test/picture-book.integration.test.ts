@@ -569,6 +569,163 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
     ).toContain('绿色围巾');
   });
 
+  it('allocates character reference revisions safely under concurrent requests', async () => {
+    const pictureBook = service();
+    const alice = await createUser();
+    const { book } = await createBook(pictureBook, alice);
+    const character = (await pictureBook.getPictureBook(alice, book.id)).characters[0]!;
+
+    const [first, second] = await Promise.all([
+      pictureBook.generateCharacterReference(alice, book.id, character.characterId),
+      pictureBook.generateCharacterReference(alice, book.id, character.characterId),
+    ]);
+
+    expect([first.status, second.status]).toEqual(['QUEUED', 'QUEUED']);
+    expect([first.revisionNumber, second.revisionNumber].sort()).toEqual([1, 2]);
+    expect(first.referenceRevisionId).not.toBe(second.referenceRevisionId);
+    const rows = await db
+      .select()
+      .from(characterReferenceImages)
+      .where(eq(characterReferenceImages.characterProfileId, character.characterId));
+    expect(rows.map((row) => row.revisionNumber).sort()).toEqual([1, 2]);
+    expect(rows.every((row) => row.provider === 'MOCK')).toBe(true);
+    expect(rows.every((row) => row.model === 'server-controlled-image-model')).toBe(true);
+  });
+
+  it('rejects selecting a different reference while locked and permits it after reopen', async () => {
+    const pictureBook = service();
+    const alice = await createUser();
+    const { book } = await createBook(pictureBook, alice);
+    const [character] = (await pictureBook.getPictureBook(alice, book.id)).characters;
+    const [firstAsset, secondAsset] = await db
+      .insert(mediaAssets)
+      .values([
+        {
+          provider: 'BAIDU_BOS',
+          objectKey: `picture-book-test/reference/${character!.characterId}-1.png`,
+          playbackUrl: 'https://bos.example.test/reference/one.png',
+          mimeType: 'image/png',
+          byteSize: 1,
+          status: 'READY',
+        },
+        {
+          provider: 'BAIDU_BOS',
+          objectKey: `picture-book-test/reference/${character!.characterId}-2.png`,
+          playbackUrl: 'https://bos.example.test/reference/two.png',
+          mimeType: 'image/png',
+          byteSize: 1,
+          status: 'READY',
+        },
+      ])
+      .returning();
+    const [firstRevision, secondRevision] = await db
+      .insert(characterReferenceImages)
+      .values([
+        {
+          characterProfileId: character!.characterId,
+          revisionNumber: 1,
+          status: 'READY',
+          provider: 'MOCK',
+          model: 'server-controlled-image-model',
+          mediaAssetId: firstAsset!.id,
+          providerRequestId: 'fixture-reference-one',
+        },
+        {
+          characterProfileId: character!.characterId,
+          revisionNumber: 2,
+          status: 'READY',
+          provider: 'MOCK',
+          model: 'server-controlled-image-model',
+          mediaAssetId: secondAsset!.id,
+          providerRequestId: 'fixture-reference-two',
+        },
+      ])
+      .returning();
+
+    await pictureBook.selectCharacterReference(
+      alice,
+      book.id,
+      character!.characterId,
+      firstRevision!.id,
+    );
+    const otherCharacter = (await pictureBook.getPictureBook(alice, book.id)).characters.find(
+      (row) => row.characterId !== character!.characterId,
+    )!;
+    const [otherAsset] = await db
+      .insert(mediaAssets)
+      .values({
+        provider: 'BAIDU_BOS',
+        objectKey: `picture-book-test/reference/${otherCharacter.characterId}.png`,
+        playbackUrl: 'https://bos.example.test/reference/other.png',
+        mimeType: 'image/png',
+        byteSize: 1,
+        status: 'READY',
+      })
+      .returning();
+    await db.insert(characterReferenceImages).values({
+      characterProfileId: otherCharacter.characterId,
+      revisionNumber: 1,
+      status: 'READY',
+      provider: 'MOCK',
+      model: 'server-controlled-image-model',
+      mediaAssetId: otherAsset!.id,
+      providerRequestId: 'fixture-reference-other',
+    });
+    await pictureBook.selectCharacterReference(
+      alice,
+      book.id,
+      otherCharacter.characterId,
+      (
+        await db
+          .select({ id: characterReferenceImages.id })
+          .from(characterReferenceImages)
+          .where(eq(characterReferenceImages.characterProfileId, otherCharacter.characterId))
+      )[0]!.id,
+    );
+    await pictureBook.confirmCharacters(alice, book.id);
+    const lockedBefore = (await pictureBook.getPictureBook(alice, book.id)).characters.find(
+      (row) => row.characterId === character!.characterId,
+    )!;
+    await expect(
+      pictureBook.selectCharacterReference(
+        alice,
+        book.id,
+        character!.characterId,
+        secondRevision!.id,
+      ),
+    ).rejects.toMatchObject({ code: 'CHARACTER_LOCKED' });
+    const lockedAfter = (await pictureBook.getPictureBook(alice, book.id)).characters.find(
+      (row) => row.characterId === character!.characterId,
+    )!;
+    expect(lockedAfter).toMatchObject({
+      referenceMediaAssetId: lockedBefore.referenceMediaAssetId,
+      confirmed: true,
+      locked: true,
+    });
+
+    await pictureBook.reopenCharacters(alice, book.id);
+    await pictureBook.selectCharacterReference(
+      alice,
+      book.id,
+      character!.characterId,
+      secondRevision!.id,
+    );
+    const selected = (await pictureBook.getPictureBook(alice, book.id)).characters.find(
+      (row) => row.characterId === character!.characterId,
+    )!;
+    expect(selected).toMatchObject({
+      referenceMediaAssetId: secondAsset!.id,
+      confirmed: false,
+      locked: false,
+    });
+    await pictureBook.confirmCharacters(alice, book.id);
+    expect(
+      (await pictureBook.getPictureBook(alice, book.id)).characters.every(
+        (row) => row.confirmed && row.locked,
+      ),
+    ).toBe(true);
+  });
+
   it('supports Character Bible edit, confirm, reopen, ownership, and validation through HTTP', async () => {
     const pictureBook = service();
     const app = await createApp(pictureBook);

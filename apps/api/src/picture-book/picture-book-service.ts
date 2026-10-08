@@ -327,30 +327,35 @@ export class PictureBookService {
     if (!this.config.imageEnabled) throw new PictureBookError('FEATURE_DISABLED');
     const character = await this.requireOwnedCharacter(consumerUserId, pictureBookId, characterId);
     if (character.locked || character.confirmed) throw new PictureBookError('CHARACTER_LOCKED');
-    const [latest] = await this.db
-      .select({
-        value: sql<number>`coalesce(max(${characterReferenceImages.revisionNumber}), 0) + 1`,
-      })
-      .from(characterReferenceImages)
-      .where(eq(characterReferenceImages.characterProfileId, character.id));
-    const [revision] = await this.db
-      .insert(characterReferenceImages)
-      .values({
-        characterProfileId: character.id,
-        revisionNumber: Number(latest!.value),
-        provider: this.config.imageProvider,
-        model: this.config.imageModel,
-      })
-      .returning();
+    const revision = await this.db.transaction(async (tx) => {
+      // Serialize revision allocation per character while retaining the database unique constraint.
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${character.id}, 0))`);
+      const [latest] = await tx
+        .select({
+          value: sql<number>`coalesce(max(${characterReferenceImages.revisionNumber}), 0) + 1`,
+        })
+        .from(characterReferenceImages)
+        .where(eq(characterReferenceImages.characterProfileId, character.id));
+      const [created] = await tx
+        .insert(characterReferenceImages)
+        .values({
+          characterProfileId: character.id,
+          revisionNumber: Number(latest!.value),
+          provider: this.config.imageProvider,
+          model: this.config.imageModel,
+        })
+        .returning();
+      return created!;
+    });
     try {
-      await this.imageQueue.notify(revision!.id);
+      await this.imageQueue.notify(revision.id);
     } catch {
       this.logger?.warn(
         {
           event: 'PICTURE_BOOK_REFERENCE_QUEUE_NOTIFY_FAILED',
           pictureBookId,
           characterId,
-          characterReferenceRevisionId: revision!.id,
+          characterReferenceRevisionId: revision.id,
         },
         'Reference image queue notification failed',
       );
@@ -358,8 +363,8 @@ export class PictureBookService {
     return {
       pictureBookId,
       characterId,
-      referenceRevisionId: revision!.id,
-      revisionNumber: revision!.revisionNumber,
+      referenceRevisionId: revision.id,
+      revisionNumber: revision.revisionNumber,
       status: 'QUEUED' as const,
     };
   }
@@ -403,6 +408,7 @@ export class PictureBookService {
           eq(characterReferenceImages.characterProfileId, character.id),
         ),
       );
+    if (character.confirmed || character.locked) throw new PictureBookError('CHARACTER_LOCKED');
     if (!revision || revision.status !== 'READY' || !revision.mediaAssetId)
       throw new PictureBookError('INVALID_STATE');
     await this.db
