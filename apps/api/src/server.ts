@@ -251,11 +251,19 @@ try {
   // database connection strings and provider SDK errors may contain credentials.
   const rawCode =
     error && typeof error === 'object' && 'code' in error ? error.code : undefined;
-  const code =
-    typeof rawCode === 'string' &&
-    ['EADDRINUSE', 'EACCES', 'EADDRNOTAVAIL', 'ECONNREFUSED', 'ENOTFOUND', 'ETIMEDOUT', 'ECONNRESET'].includes(rawCode)
-      ? rawCode
-      : 'STARTUP_FAILED';
+  const safeErrorCodes = new Set([
+    'EADDRINUSE',
+    'EACCES',
+    'EADDRNOTAVAIL',
+    'ECONNREFUSED',
+    'ENOTFOUND',
+    'ETIMEDOUT',
+    'ECONNRESET',
+  ]);
+  let code = 'STARTUP_FAILED';
+  if (typeof rawCode === 'string' && safeErrorCodes.has(rawCode)) {
+    code = rawCode;
+  }
   app.log.error(
     { event: 'API_STARTUP_FAILED', errorCode: code, host: config.HOST, port: config.PORT },
     'API startup failed',
