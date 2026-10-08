@@ -984,7 +984,7 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
     expect(jobs).toHaveLength(0);
   });
 
-  it('allocates immutable illustration revisions concurrently with server-controlled configuration', async () => {
+  it('deduplicates concurrent illustration requests and retries only after terminal failure', async () => {
     const pictureBook = service();
     const alice = await createUser();
     const { book } = await createBook(pictureBook, alice);
@@ -996,16 +996,16 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
       pictureBook.generateIllustration(alice, book.id, page.id),
     ]);
 
-    expect([first.revisionNumber, second.revisionNumber].sort()).toEqual([1, 2]);
-    const revisions = await pictureBook.listIllustrations(alice, book.id, page.id);
-    expect(revisions.illustrations.map((row) => row.revisionNumber)).toEqual([1, 2]);
-    expect(revisions.illustrations.every((row) => row.provider === 'MOCK')).toBe(true);
-    expect(
-      revisions.illustrations.every((row) => row.model === 'server-controlled-image-model'),
-    ).toBe(true);
-    expect(notifications).toEqual(
-      expect.arrayContaining([first.illustrationId, second.illustrationId]),
-    );
+    expect(first.illustrationId).toBe(second.illustrationId);
+    expect(first.revisionNumber).toBe(1);
+    expect(second.revisionNumber).toBe(1);
+    let revisions = await pictureBook.listIllustrations(alice, book.id, page.id);
+    expect(revisions.illustrations.map((row) => row.revisionNumber)).toEqual([1]);
+    expect(revisions.illustrations[0]).toMatchObject({
+      provider: 'MOCK',
+      model: 'server-controlled-image-model',
+    });
+    expect(notifications.filter((id) => id === first.illustrationId).length).toBeGreaterThanOrEqual(1);
 
     const [character] = await db
       .select()
@@ -1021,6 +1021,16 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
     });
     expect(stored!.consistency[0]!.referenceMediaAssetId).toBe(character!.referenceMediaAssetId);
     expect(stored!.consistency[0]!.referenceMediaAssetId).toEqual(expect.any(String));
+
+    await db
+      .update(workPageIllustrations)
+      .set({ status: 'FAILED', errorCode: 'IMAGE_PROVIDER_UNAVAILABLE', updatedAt: new Date() })
+      .where(eq(workPageIllustrations.id, first.illustrationId));
+    const retry = await pictureBook.generateIllustration(alice, book.id, page.id);
+    expect(retry.revisionNumber).toBe(2);
+    expect(retry.illustrationId).not.toBe(first.illustrationId);
+    revisions = await pictureBook.listIllustrations(alice, book.id, page.id);
+    expect(revisions.illustrations.map((row) => row.revisionNumber)).toEqual([1, 2]);
   });
 
   it('exposes only a READY media asset playback URL for illustration previews', async () => {
