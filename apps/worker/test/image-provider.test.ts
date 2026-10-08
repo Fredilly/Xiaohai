@@ -179,7 +179,11 @@ describe('BailianImageProvider', () => {
         providerRequestId: 'header-request-id',
       },
     });
-    expect(error.details.safeMessage).toBeUndefined();
+    expect(error.details.safeMessage).toContain('Bearer [REDACTED]');
+    expect(error.details.safeMessage).toContain('api_key=[REDACTED]');
+    expect(error.details.safeMessage).not.toContain('secret-token');
+    expect(error.details.safeMessage).not.toContain('private-key');
+    expect(error.details.safeMessage?.length).toBeLessThanOrEqual(256);
   });
 
   it('marks temporary image HTTP failures separately', async () => {
