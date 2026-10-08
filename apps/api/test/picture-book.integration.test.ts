@@ -996,9 +996,9 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
       .set({ referenceMediaAssetId: null })
       .where(eq(characterProfiles.pictureBookId, book.id));
 
-    await expect(pictureBook.generateIllustration(alice, book.id, newPage!.id)).rejects.toMatchObject({
-      code: 'INVALID_STATE',
-    });
+    await expect(
+      pictureBook.generateIllustration(alice, book.id, newPage!.id),
+    ).rejects.toMatchObject({ code: 'INVALID_STATE' });
 
     const [old] = await db
       .insert(workPageIllustrations)
