@@ -174,7 +174,7 @@ export class BailianImageProvider implements ImageProvider {
           stage: 'BAILIAN_REQUEST',
           httpStatus: response.status,
           providerErrorCode: error.success ? error.data.error?.code : undefined,
-          safeMessage: undefined,
+          safeMessage: error.success ? sanitizeProviderMessage(error.data.error?.message) : undefined,
           providerRequestId: requestId ?? (error.success ? error.data.request_id : undefined),
         });
       }
@@ -247,6 +247,18 @@ export class BailianImageProvider implements ImageProvider {
     }
   }
 }
+
+const sanitizeProviderMessage = (value: string | undefined): string | undefined => {
+  if (!value) return undefined;
+  return value
+    .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, 'Bearer [REDACTED]')
+    .replace(
+      /((?:api[_-]?key|access[_-]?key|secret|ak|sk|signature|token)["'=:\s]+)[^\s,;]+/gi,
+      '$1[REDACTED]',
+    )
+    .replace(/[\r\n]+/g, ' ')
+    .slice(0, 256);
+};
 
 const safeBosError = (
   error: unknown,
