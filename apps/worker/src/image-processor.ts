@@ -108,7 +108,7 @@ export class ImageJobProcessor {
         prompt: illustrationRow ? illustrationRow.prompt : (row as { prompt: string }).prompt,
         consistency: illustrationRow ? illustrationRow.consistency : [],
         referenceImages: referenceUrls,
-        signal: AbortSignal.timeout(this.timeoutMs),
+        signal: AbortSignal.timeout(Math.max(this.timeoutMs, 180_000)),
       });
       try {
         await this.db.transaction(async (tx) => {
