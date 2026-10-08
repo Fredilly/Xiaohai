@@ -85,29 +85,37 @@ export class MockAiProvider implements AiProvider {
         ],
       });
     } else if (input.prompt.includes('XIAOHAI_TASK=PICTURE_BOOK_STORYBOARD')) {
+      const characterNames = Array.from(
+        input.prompt.matchAll(/^(.+?)\s+\[(?:MAIN|SUPPORTING)\]\s+consistencyKey=/gm),
+        (match) => match[1]!.trim(),
+      )
+        .filter((name, index, names) => name.length > 0 && names.indexOf(name) === index)
+        .slice(0, 3);
+      if (characterNames.length === 0) {
+        throw new ProviderError('PROVIDER_RESPONSE_INVALID');
+      }
+      const primary = characterNames[0]!;
+      const secondary = characterNames[1] ?? primary;
       text = JSON.stringify({
         cover: {
-          characterKeys: ['小狐狸', '小鸟'],
-          sceneDescription: '晨光森林里的小狐狸与小鸟',
-          illustrationPrompt:
-            'storybook cover, orange fox with green scarf and small blue bird with red satchel, forest sunrise',
+          characterKeys: characterNames,
+          sceneDescription: `故事角色 ${characterNames.join(' 与 ')} 的温暖场景`,
+          illustrationPrompt: `storybook cover featuring ${characterNames.join(' and ')}, forest sunrise`,
           layoutPreset: 'AUTO',
         },
         pages: [
           {
-            characterKeys: ['小狐狸'],
-            storyText: '清晨，小狐狸沿着森林小路出发。',
+            characterKeys: [primary],
+            storyText: `${primary} 踏上了一段新的旅程。`,
             sceneDescription: '森林入口，晨光穿过树叶。',
-            illustrationPrompt:
-              'orange fox with green scarf and round brown eyes walking on a forest path, morning light',
+            illustrationPrompt: `${primary} walking on a forest path in morning light`,
             layoutPreset: 'AUTO',
           },
           {
-            characterKeys: ['小狐狸', '小鸟'],
-            storyText: '它遇见了迷路的小鸟，并决定帮助它回家。',
-            sceneDescription: '小狐狸蹲下来安慰背着红色小包的小鸟。',
-            illustrationPrompt:
-              'orange fox with green scarf beside small blue bird with pale yellow chest and tiny red satchel',
+            characterKeys: characterNames.length > 1 ? [primary, secondary] : [primary],
+            storyText: `${primary} 与 ${secondary} 一起解决了旅途中的难题。`,
+            sceneDescription: `森林小路上，${primary} 与 ${secondary} 互相帮助。`,
+            illustrationPrompt: `${primary} beside ${secondary} in a child-safe forest scene`,
             layoutPreset: 'AUTO',
           },
         ],
