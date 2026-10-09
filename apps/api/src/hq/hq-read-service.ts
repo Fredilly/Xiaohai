@@ -48,7 +48,17 @@ export class HqReadService {
         reservedMinor: sql<number>`coalesce(sum(${aiCostReservations.reservedMinor}), 0)::int`,
       })
       .from(aiCostReservations)
-      .where(eq(aiCostReservations.status, 'RESERVED'));
+      .where(
+        and(
+          eq(aiCostReservations.status, 'RESERVED'),
+          input.from
+            ? sql`${aiCostReservations.createdAt} >= (${input.from}::date at time zone 'Asia/Shanghai')`
+            : undefined,
+          input.to
+            ? sql`${aiCostReservations.createdAt} < ((${input.to}::date + 1) at time zone 'Asia/Shanghai')`
+            : undefined,
+        ),
+      );
     return {
       windowTimeZone: 'Asia/Shanghai',
       settledMinor: Number(ledger?.settledMinor ?? 0),
