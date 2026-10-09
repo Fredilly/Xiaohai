@@ -76,7 +76,7 @@ const serviceSchema = baseSchema.extend({
     .transform((value) => value === 'true'),
   PICTURE_BOOK_IMAGE_PROVIDER: z.enum(['MOCK', 'BAILIAN']).default('MOCK'),
   PICTURE_BOOK_IMAGE_MODEL: z.string().trim().min(1).max(128).default('mock-image-v1'),
-  PICTURE_BOOK_IMAGE_TIMEOUT_MS: z.coerce.number().int().min(1000).max(300000).default(30000),
+  PICTURE_BOOK_IMAGE_TIMEOUT_MS: z.coerce.number().int().min(1000).max(900000).default(600000),
 });
 const databaseSchema = baseSchema.extend({ DATABASE_URL: z.url().startsWith('postgresql://') });
 
@@ -105,7 +105,7 @@ const workerSchema = baseSchema.extend({
     .transform((value) => value === 'true'),
   PICTURE_BOOK_IMAGE_PROVIDER: z.enum(['MOCK', 'BAILIAN']).default('MOCK'),
   PICTURE_BOOK_IMAGE_MODEL: z.string().trim().min(1).max(128).default('mock-image-v1'),
-  PICTURE_BOOK_IMAGE_TIMEOUT_MS: z.coerce.number().int().min(1000).max(300000).default(30000),
+  PICTURE_BOOK_IMAGE_TIMEOUT_MS: z.coerce.number().int().min(1000).max(900000).default(600000),
   PICTURE_BOOK_IMAGE_BASE_URL: optionalHttpsUrl,
   BAIDU_BOS_ENDPOINT: optionalHttpsUrl,
   BAIDU_BOS_BUCKET: z.preprocess(

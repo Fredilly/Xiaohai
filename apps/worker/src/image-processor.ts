@@ -98,6 +98,8 @@ export class ImageJobProcessor {
     const isReference = claimed.kind === 'REFERENCE';
     const illustrationRow = isReference ? null : (row as IllustrationInputRow);
 
+    const generationStartedAt = Date.now();
+    const effectiveTimeoutMs = Math.max(this.timeoutMs, 600_000);
     try {
       // MOCK uses consistency metadata only. Never pass its local display URL
       // to an image provider as an I2I input. BAILIAN keeps strict HTTPS checks.
@@ -111,7 +113,7 @@ export class ImageJobProcessor {
         prompt: illustrationRow ? illustrationRow.prompt : (row as { prompt: string }).prompt,
         consistency: illustrationRow ? illustrationRow.consistency : [],
         referenceImages: referenceUrls,
-        signal: AbortSignal.timeout(Math.max(this.timeoutMs, 180_000)),
+        signal: AbortSignal.timeout(effectiveTimeoutMs),
       });
       try {
         await this.db.transaction(async (tx) => {
@@ -193,6 +195,9 @@ export class ImageJobProcessor {
       this.logger?.error(
         {
           imageJobId: row.id,
+          elapsedMs: Date.now() - generationStartedAt,
+          configuredTimeoutMs: this.timeoutMs,
+          effectiveTimeoutMs,
           illustrationId: isReference ? undefined : row.id,
           provider: row.provider,
           model: row.model,
