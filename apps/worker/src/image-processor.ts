@@ -105,6 +105,32 @@ export class ImageJobProcessor {
     const effectiveTimeoutMs = Math.max(this.timeoutMs, 600_000);
     let providerInvoked = false;
     try {
+      if (this.provider.name === 'BAILIAN') {
+        const [reservation] = await this.db
+          .select({
+            status: aiCostReservations.status,
+            uncertainty: aiCostReservations.uncertainty,
+          })
+          .from(aiCostReservations)
+          .where(
+            and(
+              eq(aiCostReservations.resourceId, row.id),
+              eq(aiCostReservations.resourceType, 'PICTURE_BOOK_IMAGE'),
+            ),
+          )
+          .orderBy(sql`${aiCostReservations.createdAt} desc`)
+          .limit(1);
+        if (
+          !reservation ||
+          reservation.status !== 'RESERVED' ||
+          reservation.uncertainty !== 'NONE'
+        ) {
+          throw new ImageProviderError('IMAGE_PROVIDER_UNAVAILABLE', {
+            stage: 'BUDGET_VALIDATION',
+            validationCode: 'AI_BUDGET_RESERVATION_REQUIRED',
+          });
+        }
+      }
       // MOCK uses consistency metadata only. Never pass its local display URL
       // to an image provider as an I2I input. BAILIAN keeps strict HTTPS checks.
       const referenceUrls =

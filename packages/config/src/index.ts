@@ -77,6 +77,15 @@ const serviceSchema = baseSchema.extend({
   PICTURE_BOOK_IMAGE_PROVIDER: z.enum(['MOCK', 'BAILIAN']).default('MOCK'),
   PICTURE_BOOK_IMAGE_MODEL: z.string().trim().min(1).max(128).default('mock-image-v1'),
   PICTURE_BOOK_IMAGE_TIMEOUT_MS: z.coerce.number().int().min(1000).max(900000).default(600000),
+  PICTURE_BOOK_IMAGE_BUDGET_ENABLED: z
+    .string()
+    .default('false')
+    .transform((value) => value === 'true'),
+  PICTURE_BOOK_IMAGE_BUDGET_KEY: optionalNonEmptyString,
+  PICTURE_BOOK_IMAGE_BUDGET_RESERVATION_MINOR: z.coerce.number().int().positive().optional(),
+  PICTURE_BOOK_IMAGE_BUDGET_GLOBAL_LIMIT_MINOR: z.coerce.number().int().positive().optional(),
+  PICTURE_BOOK_IMAGE_BUDGET_CONSUMER_LIMIT_MINOR: z.coerce.number().int().positive().optional(),
+  PICTURE_BOOK_IMAGE_BUDGET_WINDOW_KEY: optionalNonEmptyString,
 });
 const databaseSchema = baseSchema.extend({ DATABASE_URL: z.url().startsWith('postgresql://') });
 

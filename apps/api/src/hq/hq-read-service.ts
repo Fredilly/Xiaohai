@@ -2,6 +2,8 @@ import { and, count, desc, eq, gte, ilike, lte, max, sql } from 'drizzle-orm';
 import type { HqOrderListQuery, HqUserListQuery } from '@xiaohai/contracts/hq';
 import {
   consumerUsers,
+  aiCostLedger,
+  aiCostReservations,
   deliveries,
   orderItems,
   orders,
@@ -21,6 +23,41 @@ export class HqReadError extends Error {
 
 export class HqReadService {
   constructor(private readonly db: Database) {}
+
+  async getAiCostSummary(input: { from?: string; to?: string }) {
+    const [ledger] = await this.db
+      .select({
+        settledMinor: sql<number>`coalesce(sum(${aiCostLedger.amountMinor}) filter (where ${aiCostLedger.outcome} = 'SUCCEEDED'), 0)::int`,
+        failedMinor: sql<number>`coalesce(sum(${aiCostLedger.amountMinor}) filter (where ${aiCostLedger.outcome} in ('FAILED','TIMED_OUT','CANCELLED')), 0)::int`,
+        atRiskMinor: sql<number>`coalesce(sum(${aiCostLedger.amountMinor}) filter (where ${aiCostLedger.outcome} = 'AT_RISK'), 0)::int`,
+        ledgerCount: count(aiCostLedger.id),
+      })
+      .from(aiCostLedger)
+      .where(
+        and(
+          input.from
+            ? sql`${aiCostLedger.createdAt} >= (${input.from}::date at time zone 'Asia/Shanghai')`
+            : undefined,
+          input.to
+            ? sql`${aiCostLedger.createdAt} < ((${input.to}::date + 1) at time zone 'Asia/Shanghai')`
+            : undefined,
+        ),
+      );
+    const [reserved] = await this.db
+      .select({
+        reservedMinor: sql<number>`coalesce(sum(${aiCostReservations.reservedMinor}), 0)::int`,
+      })
+      .from(aiCostReservations)
+      .where(eq(aiCostReservations.status, 'RESERVED'));
+    return {
+      windowTimeZone: 'Asia/Shanghai',
+      settledMinor: Number(ledger?.settledMinor ?? 0),
+      failedMinor: Number(ledger?.failedMinor ?? 0),
+      atRiskMinor: Number(ledger?.atRiskMinor ?? 0),
+      reservedMinor: Number(reserved?.reservedMinor ?? 0),
+      ledgerCount: Number(ledger?.ledgerCount ?? 0),
+    };
+  }
 
   async listOrders(input: HqOrderListQuery) {
     const rows = await this.db
