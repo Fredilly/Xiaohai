@@ -230,7 +230,13 @@ suite('M10 image worker PostgreSQL integration', () => {
       .where(eq(workPageIllustrations.id, fixture.illustration.id));
     const generate = vi.fn<ImageProvider['generate']>((input) => {
       expect(input.referenceImages).toEqual([]);
-      expect(input.consistency).toEqual(fixture.consistency);
+      expect(input.consistency).toEqual([
+        expect.objectContaining({
+          consistencyKey: fixture.consistency[0]!.consistencyKey,
+          visualPrompt: fixture.consistency[0]!.visualPrompt,
+          referenceMediaAssetId: referenceAsset!.id,
+        }),
+      ]);
       return Promise.resolve({
         assetProvider: 'BAIDU_BOS',
         objectKey: `picture-books/bailian/${fixture.illustration.id}.png`,
