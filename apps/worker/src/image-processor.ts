@@ -232,15 +232,26 @@ export class ImageJobProcessor {
     if (ids.length > 3)
       throw new ImageProviderError('IMAGE_PROVIDER_UNAVAILABLE', { stage: 'VALIDATION' });
     const rows = await this.db
-      .select({ id: mediaAssets.id, url: mediaAssets.playbackUrl, status: mediaAssets.status })
+      .select({
+        id: mediaAssets.id,
+        provider: mediaAssets.provider,
+        url: mediaAssets.playbackUrl,
+        status: mediaAssets.status,
+      })
       .from(mediaAssets)
       .where(inArray(mediaAssets.id, ids));
+    const realReferenceRows = rows.filter((row) => row.provider === 'BAIDU_BOS');
     if (
       rows.length !== ids.length ||
-      rows.some((row) => row.status !== 'READY' || !row.url || !row.url.startsWith('https://'))
+      rows.some((row) => row.provider !== 'MOCK_IMAGE' && row.provider !== 'BAIDU_BOS') ||
+      realReferenceRows.some(
+        (row) => row.status !== 'READY' || !row.url || !row.url.startsWith('https://'),
+      )
     )
       throw new ImageProviderError('IMAGE_PROVIDER_UNAVAILABLE', { stage: 'VALIDATION' });
-    return ids.map((id) => rows.find((row) => row.id === id)!.url!);
+    return ids
+      .map((id) => realReferenceRows.find((row) => row.id === id)?.url)
+      .filter((url): url is string => Boolean(url));
   }
 }
 
