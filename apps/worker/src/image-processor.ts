@@ -97,13 +97,15 @@ export class ImageJobProcessor {
     const row = claimed.row;
     const isReference = claimed.kind === 'REFERENCE';
     const illustrationRow = isReference ? null : (row as IllustrationInputRow);
-    const referenceUrls = illustrationRow
-      ? await this.referenceUrls(illustrationRow.consistency)
-      : [];
-
     const generationStartedAt = Date.now();
     const effectiveTimeoutMs = Math.max(this.timeoutMs, 600_000);
     try {
+      // MOCK reference images are local display placeholders, not I2I inputs.
+      // Keep visualPrompt consistency and use text-to-image if no genuine BOS refs exist.
+      const referenceUrls =
+        illustrationRow && this.provider.name === 'BAILIAN'
+          ? await this.referenceUrls(illustrationRow.consistency)
+          : [];
       const result = await this.provider.generate({
         generationKey: row.id,
         model: row.model,
@@ -229,15 +231,34 @@ export class ImageJobProcessor {
     if (ids.length > 3)
       throw new ImageProviderError('IMAGE_PROVIDER_UNAVAILABLE', { stage: 'VALIDATION' });
     const rows = await this.db
-      .select({ id: mediaAssets.id, url: mediaAssets.playbackUrl, status: mediaAssets.status })
+      .select({
+        id: mediaAssets.id,
+        url: mediaAssets.playbackUrl,
+        status: mediaAssets.status,
+        provider: mediaAssets.provider,
+      })
       .from(mediaAssets)
       .where(inArray(mediaAssets.id, ids));
     if (
       rows.length !== ids.length ||
-      rows.some((row) => row.status !== 'READY' || !row.url || !row.url.startsWith('https://'))
+      rows.some(
+        (row) =>
+          row.status !== 'READY' ||
+          (row.provider !== 'MOCK_IMAGE' &&
+            (row.provider !== 'BAIDU_BOS' || !row.url || !row.url.startsWith('https://'))),
+      )
     )
-      throw new ImageProviderError('IMAGE_PROVIDER_UNAVAILABLE', { stage: 'VALIDATION' });
-    return ids.map((id) => rows.find((row) => row.id === id)!.url!);
+      throw new ImageProviderError('IMAGE_PROVIDER_UNAVAILABLE', {
+        stage: 'VALIDATION',
+        validationCode: 'INVALID_REFERENCE_ASSET',
+      });
+
+    // Never forward a MOCK display URL to the real provider. A genuine BOS asset
+    // must still be READY and HTTPS; missing/corrupt real assets fail closed.
+    return ids
+      .map((id) => rows.find((row) => row.id === id)!)
+      .filter((row) => row.provider === 'BAIDU_BOS')
+      .map((row) => row.url!);
   }
 }
 
