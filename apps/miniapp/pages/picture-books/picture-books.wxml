@@ -5,7 +5,8 @@
   <view wx:elif="{{books.length === 0}}" class="state-card"><text>还没有绘本，请从故事正文创建。</text></view>
   <view wx:else class="book-list reader-list">
     <view wx:for="{{books}}" wx:key="id" class="list-card" data-id="{{item.id}}" bindtap="open">
-      <view class="book-cover book-cover-placeholder">绘本</view><view class="list-main"><text class="list-title">{{item.title}}</text><text class="state-pill">{{item.status === 'READY' ? '已完成' : item.status === 'ILLUSTRATING' ? '插画制作中' : item.status === 'PLANNED' ? '等待插画' : '创作中'}}</text></view><text>›</text>
+      <image wx:if="{{item.coverPlaybackUrl && !imageErrors[item.id]}}" class="book-cover book-cover-image" mode="aspectFill" src="{{item.coverPlaybackUrl}}" data-id="{{item.id}}" binderror="onCoverError" />
+      <view wx:else class="book-cover book-cover-placeholder">绘本</view><view class="list-main"><text class="list-title">{{item.title}}</text><text class="state-pill">{{item.status === 'READY' ? '已完成' : item.status === 'ILLUSTRATING' ? '插画制作中' : item.status === 'PLANNED' ? '等待插画' : '创作中'}}</text></view><text>›</text>
     </view>
   </view>
 </view>

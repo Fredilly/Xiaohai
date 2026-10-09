@@ -131,7 +131,11 @@ export const pictureBookDetailSchema = z
 
 export const pictureBookListSchema = z
   .object({
-    pictureBooks: z.array(pictureBookSchema),
+    pictureBooks: z.array(
+      pictureBookSchema.extend({
+        coverPlaybackUrl: z.url().nullable(),
+      }),
+    ),
   })
   .strict();
 
@@ -141,6 +145,7 @@ export type PictureBookCharacterRole = z.infer<typeof pictureBookCharacterRoleSc
 export type PictureBookIllustrationStatus = z.infer<typeof pictureBookIllustrationStatusSchema>;
 export type CreatePictureBookRequest = z.infer<typeof createPictureBookRequestSchema>;
 export type PictureBook = z.infer<typeof pictureBookSchema>;
+export type PictureBookListItem = z.infer<typeof pictureBookListSchema>['pictureBooks'][number];
 export type CharacterProfile = z.infer<typeof characterProfileSchema>;
 
 export const updatePictureBookCharacterSchema = z

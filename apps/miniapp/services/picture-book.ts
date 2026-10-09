@@ -47,7 +47,9 @@ async function request<T>(
 export const createPictureBook = (input: CreatePictureBookRequest) =>
   request<PictureBook>('/api/v1/ai/picture-books', 'POST', input);
 export const listPictureBooks = () =>
-  request<{ pictureBooks: PictureBook[] }>('/api/v1/ai/picture-books');
+  request<{ pictureBooks: (PictureBook & { coverPlaybackUrl: string | null })[] }>(
+    '/api/v1/ai/picture-books',
+  );
 export const getPictureBook = (id: string) =>
   request<PictureBookDetail>(`/api/v1/ai/picture-books/${id}`);
 export const generatePictureBookPlan = (id: string, operation: PictureBookTextOperation) =>
