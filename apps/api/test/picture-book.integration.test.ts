@@ -1168,6 +1168,7 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
       prompt: contentPage.illustrationPrompt!,
       provider: 'MOCK',
       model: 'mock-image-model',
+      consistency: [],
       status: 'READY',
       mediaAssetId: mockAsset!.id,
     });
@@ -1182,9 +1183,8 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
       status: 'ILLUSTRATING',
       coverPlaybackUrl: 'https://bos.example.test/picture-books/cover.png',
     });
-    expect((await pictureBook.getPictureBook(alice, aliceBook.id)).pictureBook.status).toBe(
-      'ILLUSTRATING',
-    );
+    const incompleteDetail = await pictureBook.getPictureBook(alice, aliceBook.id);
+    expect(incompleteDetail.pictureBook.status).toBe('ILLUSTRATING');
     expect((await pictureBook.listPictureBooks(bob)).pictureBooks[0]?.id).toBe(bobBook.id);
 
     // A genuine READY revision on the missing content page completes both read models.
@@ -1204,13 +1204,14 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
       prompt: contentPage.illustrationPrompt!,
       provider: 'BAILIAN',
       model: 'qwen-image-3.0',
+      consistency: [],
       status: 'READY',
       mediaAssetId: contentAsset!.id,
     });
-    expect((await pictureBook.listPictureBooks(alice)).pictureBooks[0]?.status).toBe('READY');
-    expect((await pictureBook.getPictureBook(alice, aliceBook.id)).pictureBook.status).toBe(
-      'READY',
-    );
+    const completedList = await pictureBook.listPictureBooks(alice);
+    const completedDetail = await pictureBook.getPictureBook(alice, aliceBook.id);
+    expect(completedList.pictureBooks[0]?.status).toBe('READY');
+    expect(completedDetail.pictureBook.status).toBe('READY');
   });
 
   it('returns null for MOCK-only or missing covers', async () => {
