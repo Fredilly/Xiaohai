@@ -205,6 +205,7 @@ export class ImageJobProcessor {
           errorCode: code,
           httpStatus: details.httpStatus,
           providerErrorCode: details.providerErrorCode,
+          validationCode: details.validationCode,
           safeMessage: details.safeMessage,
           providerRequestId: details.providerRequestId,
         },
