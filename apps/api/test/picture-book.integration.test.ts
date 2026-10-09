@@ -1149,6 +1149,66 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
       id: aliceBook.id,
       coverPlaybackUrl: 'https://bos.example.test/picture-books/cover.png',
     });
+
+    // A legacy READY row with a real cover but MOCK-only content is still incomplete.
+    const contentPage = aliceDetail.pages.find((page) => page.pageKind === 'CONTENT')!;
+    const [mockAsset] = await db
+      .insert(mediaAssets)
+      .values({
+        provider: 'MOCK_IMAGE',
+        objectKey: `picture-books/mock/${contentPage.id}.png`,
+        playbackUrl: 'http://127.0.0.1:3000/api/v1/dev/mock-images/page.png',
+        mimeType: 'image/png',
+        status: 'READY',
+      })
+      .returning();
+    await db.insert(workPageIllustrations).values({
+      pageId: contentPage.id,
+      revisionNumber: 1,
+      prompt: contentPage.illustrationPrompt!,
+      provider: 'MOCK',
+      model: 'mock-image-model',
+      status: 'READY',
+      mediaAssetId: mockAsset!.id,
+    });
+    await db
+      .update(pictureBooks)
+      .set({ status: 'READY' })
+      .where(eq(pictureBooks.id, aliceBook.id));
+
+    const incompleteList = await pictureBook.listPictureBooks(alice);
+    expect(incompleteList.pictureBooks[0]).toMatchObject({
+      id: aliceBook.id,
+      status: 'ILLUSTRATING',
+      coverPlaybackUrl: 'https://bos.example.test/picture-books/cover.png',
+    });
+    expect((await pictureBook.getPictureBook(alice, aliceBook.id)).pictureBook.status).toBe(
+      'ILLUSTRATING',
+    );
+    expect((await pictureBook.listPictureBooks(bob)).pictureBooks[0]?.id).toBe(bobBook.id);
+
+    // A genuine READY revision on the missing content page completes both read models.
+    const [contentAsset] = await db
+      .insert(mediaAssets)
+      .values({
+        provider: 'BAIDU_BOS',
+        objectKey: `picture-books/bailian/${contentPage.id}.png`,
+        playbackUrl: 'https://bos.example.test/picture-books/content.png',
+        mimeType: 'image/png',
+        status: 'READY',
+      })
+      .returning();
+    await db.insert(workPageIllustrations).values({
+      pageId: contentPage.id,
+      revisionNumber: 2,
+      prompt: contentPage.illustrationPrompt!,
+      provider: 'BAILIAN',
+      model: 'qwen-image-3.0',
+      status: 'READY',
+      mediaAssetId: contentAsset!.id,
+    });
+    expect((await pictureBook.listPictureBooks(alice)).pictureBooks[0]?.status).toBe('READY');
+    expect((await pictureBook.getPictureBook(alice, aliceBook.id)).pictureBook.status).toBe('READY');
   });
 
   it('returns null for MOCK-only or missing covers', async () => {
