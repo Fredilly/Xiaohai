@@ -195,7 +195,7 @@ suite('M10 image worker PostgreSQL integration', () => {
         consistency: [{ ...fixture.consistency[0]!, referenceMediaAssetId: referenceAsset!.id }],
       })
       .where(eq(workPageIllustrations.id, fixture.illustration.id));
-    const generate = vi.fn<ImageProvider['generate']>(async (input) => {
+    const generate = vi.fn<ImageProvider['generate']>((input) => {
       expect(input.referenceImages).toEqual([]);
       return new MockImageProvider().generate(input);
     });
@@ -228,10 +228,17 @@ suite('M10 image worker PostgreSQL integration', () => {
         consistency: [{ ...fixture.consistency[0]!, referenceMediaAssetId: referenceAsset!.id }],
       })
       .where(eq(workPageIllustrations.id, fixture.illustration.id));
-    const generate = vi.fn<ImageProvider['generate']>(async (input) => {
+    const generate = vi.fn<ImageProvider['generate']>((input) => {
       expect(input.referenceImages).toEqual([]);
       expect(input.consistency).toEqual(fixture.consistency);
-      return new MockImageProvider().generate(input);
+      return Promise.resolve({
+        assetProvider: 'BAIDU_BOS',
+        objectKey: `picture-books/bailian/${input.generationKey}.png`,
+        playbackUrl: `https://assets.example.test/picture-books/bailian/${input.generationKey}.png`,
+        mimeType: 'image/png',
+        byteSize: 9,
+        providerRequestId: 'test-bailian-request',
+      });
     });
 
     await new ImageJobProcessor(db, { name: 'BAILIAN', generate }, 5_000).processOne();
