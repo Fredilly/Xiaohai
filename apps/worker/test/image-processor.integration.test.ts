@@ -233,8 +233,8 @@ suite('M10 image worker PostgreSQL integration', () => {
       expect(input.consistency).toEqual(fixture.consistency);
       return Promise.resolve({
         assetProvider: 'BAIDU_BOS',
-        objectKey: `picture-books/bailian/${input.generationKey}.png`,
-        playbackUrl: `https://assets.example.test/picture-books/bailian/${input.generationKey}.png`,
+        objectKey: `picture-books/bailian/${fixture.illustration.id}.png`,
+        playbackUrl: `https://assets.example.test/picture-books/bailian/${fixture.illustration.id}.png`,
         mimeType: 'image/png',
         byteSize: 9,
         providerRequestId: 'test-bailian-request',
