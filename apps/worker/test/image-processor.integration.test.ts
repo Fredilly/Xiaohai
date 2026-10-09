@@ -2,6 +2,8 @@ import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 import { eq } from 'drizzle-orm';
 import {
   aiJobs,
+  aiBudgetWindows,
+  aiCostReservations,
   aiProjects,
   characterProfiles,
   consumerUsers,
@@ -27,7 +29,42 @@ const suite = database ? describe : describe.skip;
 suite('M10 image worker PostgreSQL integration', () => {
   const db = database!.db;
 
-  async function queued(provider: 'MOCK' | 'BAILIAN' = 'MOCK') {
+  async function reserveBudget(resourceId: string, consumerUserId: string, amountMinor = 100) {
+    await db
+      .insert(aiBudgetWindows)
+      .values([
+        {
+          budgetKey: 'TEST_CUMULATIVE_500',
+          scopeType: 'GLOBAL',
+          consumerUserId: null,
+          windowKey: 'TEST_TOTAL',
+          limitMinor: 500,
+          reservedMinor: amountMinor,
+        },
+        {
+          budgetKey: 'TEST_CUMULATIVE_500',
+          scopeType: 'CONSUMER',
+          consumerUserId,
+          windowKey: 'TEST_TOTAL',
+          limitMinor: 500,
+          reservedMinor: amountMinor,
+        },
+      ])
+      .onConflictDoNothing();
+    await db.insert(aiCostReservations).values({
+      idempotencyKey: `worker-fixture:${resourceId}`,
+      budgetKey: 'TEST_CUMULATIVE_500',
+      windowKey: 'TEST_TOTAL',
+      consumerUserId,
+      resourceType: 'PICTURE_BOOK_IMAGE',
+      resourceId,
+      provider: 'BAILIAN',
+      model: 'server-image-model',
+      reservedMinor: amountMinor,
+    });
+  }
+
+  async function queued(provider: 'MOCK' | 'BAILIAN' = 'MOCK', reserve = true) {
     const [user] = await db.insert(consumerUsers).values({}).returning();
     const [project] = await db
       .insert(aiProjects)
@@ -144,7 +181,8 @@ suite('M10 image worker PostgreSQL integration', () => {
         consistency,
       })
       .returning();
-    return { illustration: illustration!, consistency };
+    if (provider === 'BAILIAN' && reserve) await reserveBudget(illustration!.id, user!.id);
+    return { illustration: illustration!, consistency, userId: user!.id };
   }
 
   afterEach(async () => {
@@ -257,6 +295,24 @@ suite('M10 image worker PostgreSQL integration', () => {
     expect(saved).toMatchObject({ status: 'READY', errorCode: null });
   });
 
+  it('rejects a legacy BAILIAN task without a reservation before Provider.generate', async () => {
+    const fixture = await queued('BAILIAN', false);
+    const generate = vi.fn<ImageProvider['generate']>();
+    const errorLogger = vi.fn();
+    await new ImageJobProcessor(db, { name: 'BAILIAN', generate }, 5_000, {
+      error: errorLogger,
+    }).processOne();
+    expect(generate).not.toHaveBeenCalled();
+    expect(errorLogger).toHaveBeenCalledWith(
+      expect.objectContaining({
+        illustrationId: fixture.illustration.id,
+        stage: 'BUDGET_VALIDATION',
+        validationCode: 'AI_BUDGET_RESERVATION_REQUIRED',
+      }),
+      expect.any(String),
+    );
+  });
+
   it('never marks the whole book READY from MOCK page media', async () => {
     const fixture = await queued('MOCK');
     await new ImageJobProcessor(db, new MockImageProvider(), 5_000).processOne();
@@ -292,14 +348,18 @@ suite('M10 image worker PostgreSQL integration', () => {
         illustrationPrompt: 'storybook forest cover',
       })
       .returning();
-    await db.insert(workPageIllustrations).values({
-      pageId: cover!.id,
-      revisionNumber: 1,
-      prompt: 'storybook forest cover',
-      provider: 'BAILIAN',
-      model: 'server-image-model',
-      consistency: fixture.consistency,
-    });
+    const [coverIllustration] = await db
+      .insert(workPageIllustrations)
+      .values({
+        pageId: cover!.id,
+        revisionNumber: 1,
+        prompt: 'storybook forest cover',
+        provider: 'BAILIAN',
+        model: 'server-image-model',
+        consistency: fixture.consistency,
+      })
+      .returning();
+    await reserveBudget(coverIllustration!.id, fixture.userId);
     const generate = vi.fn<ImageProvider['generate']>((input) =>
       Promise.resolve({
         assetProvider: 'BAIDU_BOS',

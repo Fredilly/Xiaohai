@@ -8,6 +8,8 @@ import {
   hqUserListResponseSchema,
 } from '@xiaohai/contracts/hq';
 import {
+  aiCostLedger,
+  aiCostReservations,
   bookEditions,
   books,
   consumerUsers,
@@ -418,6 +420,64 @@ suite('M20 HQ orders and users PostgreSQL integration', () => {
     });
     expect(missingUser.statusCode).toBe(404);
     expect(fixture.orderId).toBeTruthy();
+    await app.close();
+  });
+
+  it('protects AI cost statistics with finance permission and GLOBAL scope', async () => {
+    const [user] = await database!.db
+      .insert(consumerUsers)
+      .values({})
+      .returning({ id: consumerUsers.id });
+    const [reservation] = await database!.db
+      .insert(aiCostReservations)
+      .values({
+        idempotencyKey: `m20-cost-${randomUUID()}`,
+        budgetKey: 'TEST_CUMULATIVE_500',
+        windowKey: 'TEST_TOTAL',
+        consumerUserId: user!.id,
+        resourceType: 'PICTURE_BOOK_IMAGE',
+        resourceId: randomUUID(),
+        provider: 'MOCK',
+        model: 'mock-image',
+        reservedMinor: 100,
+        status: 'SETTLED',
+        actualMinor: 80,
+      })
+      .returning({ id: aiCostReservations.id });
+    await database!.db.insert(aiCostLedger).values({
+      reservationId: reservation!.id,
+      consumerUserId: user!.id,
+      resourceType: 'PICTURE_BOOK_IMAGE',
+      resourceId: randomUUID(),
+      provider: 'MOCK',
+      model: 'mock-image',
+      amountMinor: 80,
+      outcome: 'SUCCEEDED',
+      createdAt: new Date(),
+    });
+
+    const globalStaff = await createStaff(['finance.read'], 'GLOBAL');
+    const app = makeApp();
+    const allowed = await app.inject({
+      method: 'GET',
+      url: `/api/v1/staff/ai-costs/summary?from=2026-01-01&to=2026-12-31`,
+      headers: { authorization: `Bearer ${globalStaff.token}` },
+    });
+    expect(allowed.statusCode).toBe(200);
+    expect(allowed.json()).toMatchObject({
+      windowTimeZone: 'Asia/Shanghai',
+      settledMinor: 80,
+      atRiskMinor: 0,
+      reservedMinor: 0,
+    });
+
+    const scopedStaff = await createStaff(['finance.read'], 'STORE');
+    const denied = await app.inject({
+      method: 'GET',
+      url: '/api/v1/staff/ai-costs/summary',
+      headers: { authorization: `Bearer ${scopedStaff.token}` },
+    });
+    expect(denied.statusCode).toBe(403);
     await app.close();
   });
 });
