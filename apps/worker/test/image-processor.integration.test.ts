@@ -257,6 +257,77 @@ suite('M10 image worker PostgreSQL integration', () => {
     expect(saved).toMatchObject({ status: 'READY', errorCode: null });
   });
 
+  it('never marks the whole book READY from MOCK page media', async () => {
+    const fixture = await queued('MOCK');
+    await new ImageJobProcessor(db, new MockImageProvider(), 5_000).processOne();
+
+    const [illustration] = await db
+      .select({ status: workPageIllustrations.status })
+      .from(workPageIllustrations)
+      .where(eq(workPageIllustrations.id, fixture.illustration.id));
+    const [book] = await db
+      .select({ status: pictureBooks.status })
+      .from(pictureBooks)
+      .innerJoin(workPages, eq(workPages.pictureBookId, pictureBooks.id))
+      .where(eq(workPages.id, fixture.illustration.pageId));
+
+    expect(illustration?.status).toBe('READY');
+    expect(book?.status).toBe('PLANNED');
+  });
+
+  it('requires real BOS media on every page before marking the book READY', async () => {
+    const fixture = await queued('BAILIAN');
+    const [book] = await db
+      .select({ id: pictureBooks.id, status: pictureBooks.status })
+      .from(pictureBooks)
+      .innerJoin(workPages, eq(workPages.pictureBookId, pictureBooks.id))
+      .where(eq(workPages.id, fixture.illustration.pageId));
+    const [cover] = await db
+      .insert(workPages)
+      .values({
+        pictureBookId: book!.id,
+        pageNumber: 0,
+        pageKind: 'COVER',
+        sceneDescription: 'forest cover',
+        illustrationPrompt: 'storybook forest cover',
+      })
+      .returning();
+    await db.insert(workPageIllustrations).values({
+      pageId: cover!.id,
+      revisionNumber: 1,
+      prompt: 'storybook forest cover',
+      provider: 'BAILIAN',
+      model: 'server-image-model',
+      consistency: fixture.consistency,
+    });
+    const generate = vi.fn<ImageProvider['generate']>((input) =>
+      Promise.resolve({
+        assetProvider: 'BAIDU_BOS',
+        objectKey: `picture-books/bailian/${input.generationKey}.png`,
+        playbackUrl: `https://assets.example.test/picture-books/bailian/${input.generationKey}.png`,
+        mimeType: 'image/png',
+        byteSize: 9,
+        providerRequestId: 'test-bailian-request',
+      }),
+    );
+    const processor = new ImageJobProcessor(db, { name: 'BAILIAN', generate }, 5_000);
+    await processor.processOne();
+
+    const [partiallyReady] = await db
+      .select({ status: pictureBooks.status })
+      .from(pictureBooks)
+      .where(eq(pictureBooks.id, book!.id));
+    expect(partiallyReady?.status).toBe('PLANNED');
+
+    await processor.processOne();
+    const [completed] = await db
+      .select({ status: pictureBooks.status })
+      .from(pictureBooks)
+      .where(eq(pictureBooks.id, book!.id));
+    expect(completed?.status).toBe('READY');
+    expect(generate).toHaveBeenCalledTimes(2);
+  });
+
   it('rejects non-HTTPS real BOS references before provider generation', async () => {
     const fixture = await queued('BAILIAN');
     const [referenceAsset] = await db
