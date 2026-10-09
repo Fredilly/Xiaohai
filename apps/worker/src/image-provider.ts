@@ -43,6 +43,13 @@ export class ImageProviderError extends Error {
     readonly code: 'IMAGE_PROVIDER_UNAVAILABLE' | 'IMAGE_PROVIDER_TIMEOUT',
     readonly details: {
       stage?: ImageProviderStage;
+      validationCode?:
+        | 'RESPONSE_SCHEMA_INVALID'
+        | 'IMAGE_URL_MISSING'
+        | 'UNTRUSTED_TEMPORARY_URL'
+        | 'TEMPORARY_MIME_INVALID'
+        | 'TEMPORARY_SIZE_INVALID'
+        | 'TEMPORARY_IMAGE_EMPTY';
       httpStatus?: number;
       providerErrorCode?: string;
       safeMessage?: string;
@@ -124,30 +131,37 @@ export class BailianImageProvider implements ImageProvider {
     try {
       let response: Response;
       try {
-        const endpoint = input.referenceImages?.length
-          ? `${this.baseUrl.replace(/\/$/, '')}/api/v1/services/aigc/multimodal-generation/generation`
-          : `${this.baseUrl.replace(/\/$/, '')}/images/generations`;
-        const body = input.referenceImages?.length
+        // Qwen Image 3.0 uses the compatible Images endpoint for T2I and I2I.
+        // I2I reference images are a top-level "image" field, not DashScope messages.
+        const compatibleMode =
+          !input.referenceImages?.length ||
+          input.model === 'qwen-image-3.0' ||
+          input.model === 'qwen-image-3.0-pro';
+        const endpoint = compatibleMode
+          ? `${this.baseUrl.replace(/\/$/, '')}/images/generations`
+          : `${this.baseUrl.replace(/\/$/, '')}/api/v1/services/aigc/multimodal-generation/generation`;
+        const body = compatibleMode
           ? {
+              model: input.model,
+              prompt: buildPrompt(input.prompt, input.consistency),
+              ...(input.referenceImages?.length ? { image: input.referenceImages } : {}),
+              n: 1,
+              size: '1024x1024',
+            }
+          : {
               model: input.model,
               input: {
                 messages: [
                   {
                     role: 'user',
                     content: [
-                      ...input.referenceImages.map((image) => ({ image })),
+                      ...(input.referenceImages?.map((image) => ({ image })) ?? []),
                       { text: buildPrompt(input.prompt, input.consistency) },
                     ],
                   },
                 ],
               },
               parameters: { n: 1, size: '1024x1024' },
-            }
-          : {
-              model: input.model,
-              prompt: buildPrompt(input.prompt, input.consistency),
-              n: 1,
-              size: '1024x1024',
             };
         response = await this.fetcher(endpoint, {
           method: 'POST',
@@ -180,15 +194,24 @@ export class BailianImageProvider implements ImageProvider {
           providerRequestId: requestId ?? (error.success ? error.data.request_id : undefined),
         });
       }
+      const responseRequestId = response.headers.get('x-request-id') ?? undefined;
       const parsedBody = await readJson(response);
       const parsed = bailianImageResponseSchema.safeParse(parsedBody);
       if (!parsed.success)
-        throw new ImageProviderError('IMAGE_PROVIDER_UNAVAILABLE', { stage: 'VALIDATION' });
+        throw new ImageProviderError('IMAGE_PROVIDER_UNAVAILABLE', {
+          stage: 'VALIDATION',
+          validationCode: 'RESPONSE_SCHEMA_INVALID',
+          providerRequestId: responseRequestId,
+        });
 
       const temporaryUrl =
         parsed.data.output?.choices[0]?.message.content[0]?.image ?? parsed.data.data?.[0]?.url;
       if (!temporaryUrl)
-        throw new ImageProviderError('IMAGE_PROVIDER_UNAVAILABLE', { stage: 'VALIDATION' });
+        throw new ImageProviderError('IMAGE_PROVIDER_UNAVAILABLE', {
+          stage: 'VALIDATION',
+          validationCode: 'IMAGE_URL_MISSING',
+          providerRequestId: responseRequestId,
+        });
       let body: Buffer;
       let mimeType: string;
       try {
@@ -204,13 +227,25 @@ export class BailianImageProvider implements ImageProvider {
           });
         mimeType = imageResponse.headers.get('content-type')?.split(';')[0]?.trim() ?? '';
         if (mimeType !== 'image/png')
-          throw new ImageProviderError('IMAGE_PROVIDER_UNAVAILABLE', { stage: 'VALIDATION' });
+          throw new ImageProviderError('IMAGE_PROVIDER_UNAVAILABLE', {
+            stage: 'VALIDATION',
+            validationCode: 'TEMPORARY_MIME_INVALID',
+            providerRequestId: responseRequestId,
+          });
         const contentLength = Number(imageResponse.headers.get('content-length'));
         if (Number.isFinite(contentLength) && contentLength > this.maxDownloadBytes)
-          throw new ImageProviderError('IMAGE_PROVIDER_UNAVAILABLE', { stage: 'VALIDATION' });
+          throw new ImageProviderError('IMAGE_PROVIDER_UNAVAILABLE', {
+            stage: 'VALIDATION',
+            validationCode: 'TEMPORARY_SIZE_INVALID',
+            providerRequestId: responseRequestId,
+          });
         body = await readBoundedBody(imageResponse, this.maxDownloadBytes);
         if (body.byteLength === 0)
-          throw new ImageProviderError('IMAGE_PROVIDER_UNAVAILABLE', { stage: 'VALIDATION' });
+          throw new ImageProviderError('IMAGE_PROVIDER_UNAVAILABLE', {
+            stage: 'VALIDATION',
+            validationCode: 'TEMPORARY_IMAGE_EMPTY',
+            providerRequestId: responseRequestId,
+          });
       } catch (error) {
         if (error instanceof ImageProviderError) throw error;
         if (input.signal.aborted)
@@ -296,7 +331,10 @@ const buildPrompt = (prompt: string, consistency: ImageConsistencyReference[]): 
 
 const readBoundedBody = async (response: Response, maxBytes: number): Promise<Buffer> => {
   if (!response.body)
-    throw new ImageProviderError('IMAGE_PROVIDER_UNAVAILABLE', { stage: 'VALIDATION' });
+    throw new ImageProviderError('IMAGE_PROVIDER_UNAVAILABLE', {
+      stage: 'VALIDATION',
+      validationCode: 'TEMPORARY_IMAGE_EMPTY',
+    });
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
   let byteSize = 0;
@@ -306,7 +344,10 @@ const readBoundedBody = async (response: Response, maxBytes: number): Promise<Bu
     byteSize += value.byteLength;
     if (byteSize > maxBytes) {
       await reader.cancel();
-      throw new ImageProviderError('IMAGE_PROVIDER_UNAVAILABLE', { stage: 'VALIDATION' });
+      throw new ImageProviderError('IMAGE_PROVIDER_UNAVAILABLE', {
+        stage: 'VALIDATION',
+        validationCode: 'TEMPORARY_SIZE_INVALID',
+      });
     }
     chunks.push(value);
   }
@@ -321,6 +362,9 @@ const assertTrustedTemporaryUrl = (value: string): void => {
     url.password !== '' ||
     (url.hostname !== 'aliyuncs.com' && !url.hostname.endsWith('.aliyuncs.com'))
   ) {
-    throw new ImageProviderError('IMAGE_PROVIDER_UNAVAILABLE', { stage: 'VALIDATION' });
+    throw new ImageProviderError('IMAGE_PROVIDER_UNAVAILABLE', {
+      stage: 'VALIDATION',
+      validationCode: 'UNTRUSTED_TEMPORARY_URL',
+    });
   }
 };
