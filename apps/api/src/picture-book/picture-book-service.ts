@@ -545,8 +545,7 @@ export class PictureBookService {
     return {
       pictureBooks: rows.map((row) => {
         const pages = pagesByBook.get(row.id) ?? [];
-        const allPagesReal =
-          pages.length > 0 && pages.every((pageId) => readyPageIds.has(pageId));
+        const allPagesReal = pages.length > 0 && pages.every((pageId) => readyPageIds.has(pageId));
         return {
           ...this.viewPictureBook(row),
           status: row.status === 'READY' && !allPagesReal ? 'ILLUSTRATING' : row.status,
@@ -609,8 +608,7 @@ export class PictureBookService {
         )
         .map(({ illustration }) => illustration.pageId),
     );
-    const allPagesReal =
-      pages.length > 0 && pages.every((page) => readyPageIds.has(page.id));
+    const allPagesReal = pages.length > 0 && pages.every((page) => readyPageIds.has(page.id));
 
     return {
       pictureBook: {
