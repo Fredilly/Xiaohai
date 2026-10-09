@@ -156,14 +156,17 @@ describe('BailianImageProvider', () => {
         'https://workspace.example.com/compatible-mode/v1/images/generations',
         expect.objectContaining({ method: 'POST', signal: input.signal }),
       );
-      const requestBody = JSON.parse(String(fetcher.mock.calls[0]![1]?.body));
+      const requestBodyValue = fetcher.mock.calls[0]![1]?.body;
+      if (typeof requestBodyValue !== 'string') throw new Error('Expected JSON image request');
+      const requestBody = JSON.parse(requestBodyValue) as Record<string, unknown>;
       expect(requestBody).toMatchObject({
         model,
-        prompt: expect.stringContaining('orange fox with green scarf'),
         image: referenceImages,
         n: 1,
         size: '1024x1024',
       });
+      expect(typeof requestBody.prompt).toBe('string');
+      expect(requestBody.prompt).toContain('orange fox with green scarf');
       expect(requestBody).not.toHaveProperty('input');
       expect(requestBody).not.toHaveProperty('parameters');
       expect(fetcher).toHaveBeenCalledTimes(2);
