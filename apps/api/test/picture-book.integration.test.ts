@@ -1208,7 +1208,9 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
       mediaAssetId: contentAsset!.id,
     });
     expect((await pictureBook.listPictureBooks(alice)).pictureBooks[0]?.status).toBe('READY');
-    expect((await pictureBook.getPictureBook(alice, aliceBook.id)).pictureBook.status).toBe('READY');
+    expect((await pictureBook.getPictureBook(alice, aliceBook.id)).pictureBook.status).toBe(
+      'READY',
+    );
   });
 
   it('returns null for MOCK-only or missing covers', async () => {
