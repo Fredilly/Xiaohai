@@ -127,7 +127,9 @@ describe('BailianImageProvider', () => {
         .fn<typeof fetch>()
         .mockResolvedValueOnce(
           new Response(
-            JSON.stringify({ data: [{ url: 'https://result.oss-cn-beijing.aliyuncs.com/edited.png' }] }),
+            JSON.stringify({
+              data: [{ url: 'https://result.oss-cn-beijing.aliyuncs.com/edited.png' }],
+            }),
             { status: 200, headers: { 'x-request-id': 'req-i2i-1' } },
           ),
         )
