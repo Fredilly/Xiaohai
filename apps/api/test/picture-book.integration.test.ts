@@ -1014,7 +1014,7 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
       })
       .returning();
 
-    const retry = await pictureBook.generateIllustration(alice, book.id, page!.id);
+    const retry = await pictureBook.generateIllustration(alice, book.id, page!.id, true);
     expect(retry.revisionNumber).toBe(2);
     expect(retry.illustrationId).not.toBe(old!.id);
 
@@ -1068,11 +1068,123 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
       .update(workPageIllustrations)
       .set({ status: 'FAILED', errorCode: 'IMAGE_PROVIDER_UNAVAILABLE', updatedAt: new Date() })
       .where(eq(workPageIllustrations.id, first.illustrationId));
-    const retry = await pictureBook.generateIllustration(alice, book.id, page.id);
+    await expect(pictureBook.generateIllustration(alice, book.id, page.id)).rejects.toMatchObject({
+      code: 'INVALID_STATE',
+    });
+    const retry = await pictureBook.generateIllustration(alice, book.id, page.id, true);
     expect(retry.revisionNumber).toBe(2);
     expect(retry.illustrationId).not.toBe(first.illustrationId);
     revisions = await pictureBook.listIllustrations(alice, book.id, page.id);
     expect(revisions.illustrations.map((row) => row.revisionNumber)).toEqual([1, 2]);
+  });
+
+  it('returns request-level state conflicts and accepts only explicit regeneration', async () => {
+    const pictureBook = service();
+    const app = await createApp(pictureBook);
+    try {
+      const alice = await createUser();
+      const { book } = await createBook(pictureBook, alice);
+      const detail = await applyStoryboard(pictureBook, alice, book.id);
+      const page = detail.pages[0]!;
+      const headers = { authorization: `Bearer ${token(alice)}` };
+
+      const first = await app.inject({
+        method: 'POST',
+        url: `/api/v1/ai/picture-books/${book.id}/pages/${page.id}/illustrations`,
+        headers,
+        payload: {},
+      });
+      expect(first.statusCode).toBe(202);
+      const firstBody = first.json<{ illustrationId: string }>();
+
+      const duplicate = await app.inject({
+        method: 'POST',
+        url: `/api/v1/ai/picture-books/${book.id}/pages/${page.id}/illustrations/regenerate`,
+        headers,
+        payload: {},
+      });
+      expect(duplicate.statusCode).toBe(202);
+      expect(duplicate.json<{ illustrationId: string }>().illustrationId).toBe(
+        firstBody.illustrationId,
+      );
+
+      await db
+        .update(workPageIllustrations)
+        .set({ status: 'RUNNING', updatedAt: new Date() })
+        .where(eq(workPageIllustrations.id, firstBody.illustrationId));
+      const running = await app.inject({
+        method: 'POST',
+        url: `/api/v1/ai/picture-books/${book.id}/pages/${page.id}/illustrations`,
+        headers,
+        payload: {},
+      });
+      expect(running.statusCode).toBe(202);
+      expect(running.json<{ illustrationId: string }>().illustrationId).toBe(
+        firstBody.illustrationId,
+      );
+
+      await db
+        .update(workPageIllustrations)
+        .set({ status: 'FAILED', errorCode: 'IMAGE_PROVIDER_TIMEOUT', updatedAt: new Date() })
+        .where(eq(workPageIllustrations.id, firstBody.illustrationId));
+      const ordinaryRetry = await app.inject({
+        method: 'POST',
+        url: `/api/v1/ai/picture-books/${book.id}/pages/${page.id}/illustrations`,
+        headers,
+        payload: {},
+      });
+      expect(ordinaryRetry.statusCode).toBe(409);
+      expect(ordinaryRetry.json<{ error: { code: string } }>().error.code).toBe('INVALID_STATE');
+
+      const explicitRetry = await app.inject({
+        method: 'POST',
+        url: `/api/v1/ai/picture-books/${book.id}/pages/${page.id}/illustrations/regenerate`,
+        headers,
+        payload: {},
+      });
+      expect(explicitRetry.statusCode).toBe(202);
+      const secondBody = explicitRetry.json<{ illustrationId: string }>();
+      expect(secondBody.illustrationId).not.toBe(firstBody.illustrationId);
+
+      const [readyAsset] = await db
+        .insert(mediaAssets)
+        .values({
+          provider: 'MOCK_IMAGE',
+          objectKey: `picture-books/mock/${secondBody.illustrationId}.png`,
+          playbackUrl: 'http://127.0.0.1:3000/api/v1/dev/mock-images/state-test.png',
+          mimeType: 'image/png',
+          byteSize: 1,
+          status: 'READY',
+        })
+        .returning({ id: mediaAssets.id });
+      await db
+        .update(workPageIllustrations)
+        .set({
+          status: 'READY',
+          errorCode: null,
+          mediaAssetId: readyAsset!.id,
+          updatedAt: new Date(),
+        })
+        .where(eq(workPageIllustrations.id, secondBody.illustrationId));
+      const ordinaryAfterReady = await app.inject({
+        method: 'POST',
+        url: `/api/v1/ai/picture-books/${book.id}/pages/${page.id}/illustrations`,
+        headers,
+        payload: {},
+      });
+      expect(ordinaryAfterReady.statusCode).toBe(409);
+
+      const explicitAfterReady = await app.inject({
+        method: 'POST',
+        url: `/api/v1/ai/picture-books/${book.id}/pages/${page.id}/illustrations/regenerate`,
+        headers,
+        payload: {},
+      });
+      expect(explicitAfterReady.statusCode).toBe(202);
+      expect(explicitAfterReady.json<{ revisionNumber: number }>().revisionNumber).toBe(3);
+    } finally {
+      await app.close();
+    }
   });
 
   it('exposes only a READY media asset playback URL for illustration previews', async () => {
@@ -1134,7 +1246,7 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
       .update(workPageIllustrations)
       .set({ status: 'READY', mediaAssetId: asset!.id })
       .where(eq(workPageIllustrations.id, first.illustrationId));
-    const failed = await pictureBook.generateIllustration(alice, aliceBook.id, cover.id);
+    const failed = await pictureBook.generateIllustration(alice, aliceBook.id, cover.id, true);
     await db
       .update(workPageIllustrations)
       .set({ status: 'FAILED', errorCode: 'IMAGE_PROVIDER_UNAVAILABLE' })
