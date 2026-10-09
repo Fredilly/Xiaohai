@@ -1172,10 +1172,7 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
       status: 'READY',
       mediaAssetId: mockAsset!.id,
     });
-    await db
-      .update(pictureBooks)
-      .set({ status: 'READY' })
-      .where(eq(pictureBooks.id, aliceBook.id));
+    await db.update(pictureBooks).set({ status: 'READY' }).where(eq(pictureBooks.id, aliceBook.id));
 
     const incompleteList = await pictureBook.listPictureBooks(alice);
     expect(incompleteList.pictureBooks[0]).toMatchObject({
