@@ -114,6 +114,127 @@ describe('BailianImageProvider', () => {
     });
   });
 
+  it.each(['qwen-image-3.0', 'qwen-image-3.0-pro'])(
+    'uses the compatible images endpoint with top-level references for %s',
+    async (model) => {
+      const putObject = vi.fn<BosStorageOptions['client']['putObject']>().mockResolvedValue({});
+      const storage = new BosStorage({
+        bucket: 'xiaohai-assets',
+        publicOrigin: 'https://assets.example.com',
+        client: { putObject },
+      });
+      const referenceImages = [
+        'https://assets.example.com/character-a.png',
+        'https://assets.example.com/character-b.png',
+      ];
+      const fetcher = vi
+        .fn<typeof fetch>()
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({ data: [{ url: 'https://result.oss-cn-beijing.aliyuncs.com/edited.png' }] }),
+            { status: 200, headers: { 'x-request-id': 'req-i2i-1' } },
+          ),
+        )
+        .mockResolvedValueOnce(
+          new Response(Buffer.from('png-bytes'), {
+            status: 200,
+            headers: { 'content-type': 'image/png' },
+          }),
+        );
+
+      const result = await new BailianImageProvider(
+        'not-a-real-key',
+        'https://workspace.example.com/compatible-mode/v1',
+        storage,
+        fetcher,
+      ).generate({ ...input, model, referenceImages });
+
+      expect(fetcher).toHaveBeenNthCalledWith(
+        1,
+        'https://workspace.example.com/compatible-mode/v1/images/generations',
+        expect.objectContaining({ method: 'POST', signal: input.signal }),
+      );
+      const requestBody = JSON.parse(String(fetcher.mock.calls[0]![1]?.body));
+      expect(requestBody).toMatchObject({
+        model,
+        prompt: expect.stringContaining('orange fox with green scarf'),
+        image: referenceImages,
+        n: 1,
+        size: '1024x1024',
+      });
+      expect(requestBody).not.toHaveProperty('input');
+      expect(requestBody).not.toHaveProperty('parameters');
+      expect(fetcher).toHaveBeenCalledTimes(2);
+      expect(putObject).toHaveBeenCalledOnce();
+      expect(result.providerRequestId).toBe('req-i2i-1');
+      expect(result.assetProvider).toBe('BAIDU_BOS');
+    },
+  );
+
+  it('identifies an invalid provider response schema without logging its body', async () => {
+    const putObject = vi.fn().mockResolvedValue({});
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      new Response(JSON.stringify({ data: [{ url: 'not-a-url' }] }), {
+        status: 200,
+        headers: { 'x-request-id': 'req-invalid-schema' },
+      }),
+    );
+    const storage = new BosStorage({
+      bucket: 'xiaohai-assets',
+      publicOrigin: 'https://assets.example.com',
+      client: { putObject },
+    });
+    await expect(
+      new BailianImageProvider(
+        'not-a-real-key',
+        'https://workspace.example.com/compatible-mode/v1',
+        storage,
+        fetcher,
+      ).generate({ ...input, referenceImages: ['https://assets.example.com/character.png'] }),
+    ).rejects.toMatchObject({
+      code: 'IMAGE_PROVIDER_UNAVAILABLE',
+      details: {
+        stage: 'VALIDATION',
+        validationCode: 'RESPONSE_SCHEMA_INVALID',
+        providerRequestId: 'req-invalid-schema',
+      },
+    });
+    expect(fetcher).toHaveBeenCalledOnce();
+    expect(putObject).not.toHaveBeenCalled();
+  });
+
+  it('identifies a missing image URL with an allowlisted validation code', async () => {
+    const putObject = vi.fn().mockResolvedValue({});
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      new Response(JSON.stringify({ data: [] }), {
+        status: 200,
+        headers: { 'x-request-id': 'req-no-image' },
+      }),
+    );
+    const storage = new BosStorage({
+      bucket: 'xiaohai-assets',
+      publicOrigin: 'https://assets.example.com',
+      client: { putObject },
+    });
+    await expect(
+      new BailianImageProvider(
+        'not-a-real-key',
+        'https://workspace.example.com/compatible-mode/v1',
+        storage,
+        fetcher,
+      ).generate(input),
+    ).rejects.toMatchObject({
+      code: 'IMAGE_PROVIDER_UNAVAILABLE',
+      details: {
+        stage: 'VALIDATION',
+        validationCode: 'IMAGE_URL_MISSING',
+        providerRequestId: 'req-no-image',
+      },
+    });
+    expect(fetcher).toHaveBeenCalledOnce();
+    expect(putObject).not.toHaveBeenCalled();
+  });
+
   it('preserves HTTP 404 and request ID for a misconfigured image endpoint without uploading', async () => {
     const putObject = vi.fn().mockResolvedValue({});
     const storage = new BosStorage({
