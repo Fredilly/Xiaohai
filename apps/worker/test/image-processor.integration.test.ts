@@ -177,6 +177,121 @@ suite('M10 image worker PostgreSQL integration', () => {
     expect(asset!.playbackUrl).not.toMatch(/base64|data:/i);
   });
 
+  it('uses text-only BAILIAN with preserved character constraints when reference assets are MOCK', async () => {
+    const fixture = await queued('BAILIAN');
+    const [referenceAsset] = await db
+      .insert(mediaAssets)
+      .values({
+        provider: 'MOCK_IMAGE',
+        objectKey: 'picture-books/mock/reference.jpg',
+        playbackUrl: 'http://127.0.0.1:3000/api/v1/dev/mock-images/reference.jpg',
+        mimeType: 'image/jpeg',
+        status: 'READY',
+      })
+      .returning();
+    await db
+      .update(workPageIllustrations)
+      .set({
+        consistency: [{ ...fixture.consistency[0]!, referenceMediaAssetId: referenceAsset!.id }],
+      })
+      .where(eq(workPageIllustrations.id, fixture.illustration.id));
+    const generate = vi.fn<ImageProvider['generate']>().mockResolvedValue({
+      assetProvider: 'BAIDU_BOS',
+      objectKey: 'picture-books/bailian/test-output.png',
+      playbackUrl: 'https://assets.example.com/picture-books/bailian/test-output.png',
+      mimeType: 'image/png',
+      byteSize: 9,
+      providerRequestId: 'mock-provider-request',
+    });
+
+    await new ImageJobProcessor(db, { name: 'BAILIAN', generate }, 5_000).processOne();
+
+    expect(generate).toHaveBeenCalledOnce();
+    const input = generate.mock.calls[0]![0];
+    expect(input.referenceImages).toEqual([]);
+    expect(input.consistency).toEqual([
+      expect.objectContaining({ visualPrompt: 'orange fox with green scarf' }),
+    ]);
+    const [saved] = await db
+      .select()
+      .from(workPageIllustrations)
+      .where(eq(workPageIllustrations.id, fixture.illustration.id));
+    expect(saved).toMatchObject({ status: 'READY', errorCode: null });
+    expect(saved!.mediaAssetId).toBeTruthy();
+  });
+
+  it('passes genuine READY HTTPS BOS reference URLs to BAILIAN', async () => {
+    const fixture = await queued('BAILIAN');
+    const referenceUrl = 'https://assets.example.com/character-reference.png';
+    const [referenceAsset] = await db
+      .insert(mediaAssets)
+      .values({
+        provider: 'BAIDU_BOS',
+        objectKey: 'picture-books/bailian/character-reference.png',
+        playbackUrl: referenceUrl,
+        mimeType: 'image/png',
+        status: 'READY',
+      })
+      .returning();
+    await db
+      .update(workPageIllustrations)
+      .set({
+        consistency: [{ ...fixture.consistency[0]!, referenceMediaAssetId: referenceAsset!.id }],
+      })
+      .where(eq(workPageIllustrations.id, fixture.illustration.id));
+    const generate = vi.fn<ImageProvider['generate']>().mockResolvedValue({
+      assetProvider: 'BAIDU_BOS',
+      objectKey: 'picture-books/bailian/result.png',
+      playbackUrl: 'https://assets.example.com/result.png',
+      mimeType: 'image/png',
+      byteSize: 9,
+      providerRequestId: 'mock-provider-request',
+    });
+    await new ImageJobProcessor(db, { name: 'BAILIAN', generate }, 5_000).processOne();
+    expect(generate).toHaveBeenCalledOnce();
+    expect(generate.mock.calls[0]![0].referenceImages).toEqual([referenceUrl]);
+  });
+
+  it('still rejects invalid real BOS reference URLs before contacting BAILIAN', async () => {
+    const fixture = await queued('BAILIAN');
+    const [referenceAsset] = await db
+      .insert(mediaAssets)
+      .values({
+        provider: 'BAIDU_BOS',
+        objectKey: 'picture-books/bailian/reference-http.png',
+        playbackUrl: 'http://127.0.0.1:3000/reference.png',
+        mimeType: 'image/png',
+        status: 'READY',
+      })
+      .returning();
+    await db
+      .update(workPageIllustrations)
+      .set({
+        consistency: [{ ...fixture.consistency[0]!, referenceMediaAssetId: referenceAsset!.id }],
+      })
+      .where(eq(workPageIllustrations.id, fixture.illustration.id));
+    const generate = vi.fn<ImageProvider['generate']>();
+    const errorLogger = vi.fn();
+
+    await new ImageJobProcessor(db, { name: 'BAILIAN', generate }, 5_000, {
+      error: errorLogger,
+    }).processOne();
+
+    expect(generate).not.toHaveBeenCalled();
+    const [saved] = await db
+      .select()
+      .from(workPageIllustrations)
+      .where(eq(workPageIllustrations.id, fixture.illustration.id));
+    expect(saved).toMatchObject({ status: 'FAILED', errorCode: 'IMAGE_PROVIDER_UNAVAILABLE' });
+    expect(errorLogger).toHaveBeenCalledWith(
+      expect.objectContaining({
+        stage: 'VALIDATION',
+        validationCode: 'INVALID_REFERENCE_ASSET',
+      }),
+      expect.any(String),
+    );
+  });
+
   it('records provider failure without creating a false READY asset', async () => {
     const fixture = await queued();
     const provider: ImageProvider = {
