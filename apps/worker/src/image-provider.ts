@@ -49,7 +49,8 @@ export class ImageProviderError extends Error {
         | 'UNTRUSTED_TEMPORARY_URL'
         | 'TEMPORARY_MIME_INVALID'
         | 'TEMPORARY_SIZE_INVALID'
-        | 'TEMPORARY_IMAGE_EMPTY';
+        | 'TEMPORARY_IMAGE_EMPTY'
+        | 'INVALID_REFERENCE_ASSET';
       httpStatus?: number;
       providerErrorCode?: string;
       safeMessage?: string;
