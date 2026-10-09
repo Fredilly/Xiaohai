@@ -408,6 +408,22 @@ export class PictureBookService {
           model: this.config.imageModel,
         })
         .returning();
+      if (this.config.imageProvider === 'BAILIAN') {
+        if (!this.config.imageBudget) throw new PictureBookError('AI_COST_UNKNOWN');
+        try {
+          await reserveImageBudget(tx, {
+            ...this.config.imageBudget,
+            idempotencyKey: `picture-book-reference:${created!.id}`,
+            consumerUserId,
+            resourceId: created!.id,
+            provider: this.config.imageProvider,
+            model: this.config.imageModel,
+          });
+        } catch (error) {
+          if (error instanceof AiBudgetError) throw new PictureBookError(error.code);
+          throw error;
+        }
+      }
       return { revision: created!, shouldNotify: true };
     });
     try {

@@ -28,12 +28,12 @@ export const aiBudgetWindows = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
-    uniqueIndex('ai_budget_windows_key_scope_window_unique').on(
-      t.budgetKey,
-      t.scopeType,
-      t.consumerUserId,
-      t.windowKey,
-    ),
+    uniqueIndex('ai_budget_windows_consumer_key_unique')
+      .on(t.budgetKey, t.scopeType, t.consumerUserId, t.windowKey)
+      .where(sql`${t.scopeType} = 'CONSUMER'`),
+    uniqueIndex('ai_budget_windows_global_key_unique')
+      .on(t.budgetKey, t.scopeType, t.windowKey)
+      .where(sql`${t.scopeType} = 'GLOBAL' and ${t.consumerUserId} is null`),
     index('ai_budget_windows_scope_idx').on(t.scopeType, t.consumerUserId, t.windowKey),
     check('ai_budget_windows_scope_check', sql`${t.scopeType} in ('GLOBAL','CONSUMER')`),
     check('ai_budget_windows_limit_check', sql`${t.limitMinor} > 0`),

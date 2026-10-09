@@ -193,8 +193,7 @@ export class ImageJobProcessor {
           )
         `);
         });
-        if (!isReference)
-          await this.recordBudgetOutcome(row.id, 'AT_RISK', null, result.providerRequestId);
+        await this.recordBudgetOutcome(row.id, 'AT_RISK', null, result.providerRequestId);
       } catch (error) {
         throw new ImageProviderError('IMAGE_PROVIDER_UNAVAILABLE', {
           stage: 'DB_READY_WRITEBACK',
@@ -228,19 +227,13 @@ export class ImageJobProcessor {
         },
         'Picture book image generation failed',
       );
-      if (!isReference) {
-        await this.recordBudgetOutcome(
-          row.id,
-          providerInvoked
-            ? code === 'IMAGE_PROVIDER_TIMEOUT'
-              ? 'TIMED_OUT'
-              : 'AT_RISK'
-            : 'FAILED',
-          providerInvoked ? null : 0,
-          details.providerRequestId,
-          code,
-        );
-      }
+      await this.recordBudgetOutcome(
+        row.id,
+        providerInvoked ? (code === 'IMAGE_PROVIDER_TIMEOUT' ? 'TIMED_OUT' : 'AT_RISK') : 'FAILED',
+        providerInvoked ? null : 0,
+        details.providerRequestId,
+        code,
+      );
       await this.db
         .update(isReference ? characterReferenceImages : workPageIllustrations)
         .set({ status: 'FAILED', errorCode: code, updatedAt: new Date() })
@@ -272,7 +265,12 @@ export class ImageJobProcessor {
           ),
         )
         .for('update');
-      if (!reservation || reservation.status !== 'RESERVED') return;
+      if (
+        !reservation ||
+        reservation.status !== 'RESERVED' ||
+        reservation.uncertainty === 'AT_RISK'
+      )
+        return;
       const uncertain = outcome === 'AT_RISK' || actualMinor === null;
       await tx.insert(aiCostLedger).values({
         reservationId: reservation.id,

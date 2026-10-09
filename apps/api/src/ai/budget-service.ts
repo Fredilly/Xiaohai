@@ -119,7 +119,8 @@ export async function recordImageBudgetOutcome(
       .from(aiCostReservations)
       .where(eq(aiCostReservations.id, reservationId))
       .for('update');
-    if (!reservation || reservation.status !== 'RESERVED') return false;
+    if (!reservation || reservation.status !== 'RESERVED' || reservation.uncertainty === 'AT_RISK')
+      return false;
     const uncertain = outcome === 'AT_RISK' || actualMinor === null;
     await tx.insert(aiCostLedger).values({
       reservationId,

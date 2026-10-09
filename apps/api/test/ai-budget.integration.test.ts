@@ -13,7 +13,8 @@ const database = process.env.DATABASE_URL ? createDatabase(process.env) : null;
 const suite = database ? describe : describe.skip;
 
 suite('AI budget protection', () => {
-  const db = database?.db!;
+  if (!database) return;
+  const { db, pool } = database;
   const budget = {
     budgetKey: 'TEST_CUMULATIVE_500',
     amountMinor: 250,
@@ -24,11 +25,12 @@ suite('AI budget protection', () => {
 
   async function user() {
     const [row] = await db.insert(consumerUsers).values({}).returning({ id: consumerUsers.id });
-    return row!.id;
+    if (!row) throw new Error('test user was not created');
+    return row.id;
   }
 
   afterEach(async () => {
-    await database!.pool.query(
+    await pool.query(
       'TRUNCATE TABLE ai_cost_ledger, ai_cost_reservations, ai_budget_windows, consumer_users CASCADE',
     );
   });
@@ -84,6 +86,27 @@ suite('AI budget protection', () => {
         }),
       ),
     ).rejects.toMatchObject({ code: 'AI_BUDGET_EXCEEDED' });
+  });
+
+  it('allows only one of two concurrent users to reserve the remaining global budget', async () => {
+    const users = await Promise.all([user(), user()]);
+    const results = await Promise.allSettled(
+      users.map((consumerUserId, index) =>
+        db.transaction((tx) =>
+          reserveImageBudget(tx, {
+            ...budget,
+            amountMinor: 300,
+            idempotencyKey: `concurrent-${index}`,
+            resourceId: randomUUID(),
+            consumerUserId,
+            provider: 'BAILIAN',
+            model: 'qwen-image-3.0',
+          }),
+        ),
+      ),
+    );
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    expect(results.filter((result) => result.status === 'rejected')).toHaveLength(1);
   });
 
   it('holds an uncertain provider charge and blocks another reservation', async () => {
