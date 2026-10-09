@@ -10,6 +10,13 @@ describe('picture book image display source', () => {
     );
   });
 
+  it('uses a bundled PNG already referenced by the Mini Program', () => {
+    const asset = resolve(process.cwd(), MOCK_IMAGE_DISPLAY_SOURCE.slice(1));
+    expect(MOCK_IMAGE_DISPLAY_SOURCE).toBe('/assets/brand/xiaohai-logo.png');
+    expect(existsSync(asset)).toBe(true);
+    expect(statSync(asset).size).toBeGreaterThan(0);
+  });
+
   it('ships the bundled display asset in the Mini Program project', () => {
     const asset = resolve(process.cwd(), MOCK_IMAGE_DISPLAY_SOURCE.slice(1));
     expect(existsSync(asset)).toBe(true);

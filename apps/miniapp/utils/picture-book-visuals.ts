@@ -1,4 +1,4 @@
-export const MOCK_IMAGE_DISPLAY_SOURCE = '/assets/brand/home-parent-reading.jpg';
+export const MOCK_IMAGE_DISPLAY_SOURCE = '/assets/brand/xiaohai-logo.png';
 
 export function resolvePictureBookImageSource(
   provider: string,

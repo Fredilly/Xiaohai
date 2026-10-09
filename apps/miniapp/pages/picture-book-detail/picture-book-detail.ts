@@ -17,7 +17,6 @@ import {
   listCharacterReferences,
   selectCharacterReference,
 } from '../../services/picture-book';
-import { MOCK_IMAGE_DISPLAY_SOURCE } from '../../utils/picture-book-visuals';
 
 const sleep = (milliseconds: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
@@ -36,7 +35,6 @@ Page({
     polling: false,
     error: '',
     imageError: false,
-    mockImageDisplaySource: MOCK_IMAGE_DISPLAY_SOURCE,
   },
   onLoad(query: Record<string, string | undefined>) {
     this.setData({ id: String(query.id || '') });
@@ -47,8 +45,9 @@ Page({
     this.pollingToken += 1;
     this.setData({ polling: false });
   },
-  onImageError() {
-    console.warn('[picture-book] local image display failed');
+  onImageError(event: WechatMiniprogram.CustomEvent<{ errMsg?: string }>) {
+    const errMsg = String(event.detail?.errMsg || 'unknown image load error');
+    console.warn(`[picture-book] local image display failed: ${errMsg}`);
     this.setData({ imageError: true });
   },
   pollingToken: 0,
