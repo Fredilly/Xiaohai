@@ -5,7 +5,7 @@ import type { StaffStore } from '@xiaohai/contracts/stores';
 import './styles.css';
 import { getStaffMe, loginStaff } from './staff-auth';
 import { loadStaffStores } from './stores-api';
-import { storeModules } from './mock-data';
+import { storeModules, visibleStoreModules } from './mock-data';
 import { BookSearchPanel } from './book-search-panel';
 import { InventoryPanel } from './inventory-panel';
 import { RentalPanel } from './rental-panel';
@@ -114,14 +114,12 @@ function Shell({
     };
   }, [token]);
 
-  const visibleModules = useMemo(
-    () => storeModules.filter((item) => item.key !== 'manager' || canManageStore),
-    [canManageStore],
-  );
+  const visibleModules = useMemo(() => visibleStoreModules(me.permissions), [me.permissions]);
   const module = useMemo(
-    () => storeModules.find((item) => item.key === active) ?? storeModules[0],
-    [active],
+    () => visibleModules.find((item) => item.key === active) ?? visibleModules[0]!,
+    [active, visibleModules],
   );
+  const current = visibleModules.some((item) => item.key === active) ? active : module.key;
   const currentStore = stores.find((store) => store.id === storeId) ?? null;
 
   const chooseStore = (nextStoreId: string) => {
@@ -140,7 +138,7 @@ function Shell({
           {visibleModules.map((item) => (
             <button
               key={item.key}
-              className={item.key === active ? 'active' : ''}
+              className={item.key === current ? 'active' : ''}
               onClick={() => {
                 window.location.hash = `#/${item.key}`;
               }}
@@ -179,33 +177,33 @@ function Shell({
           </div>
         </header>
         {storeStatus && <p className="store-status">{storeStatus}</p>}
-        {active === 'dashboard' ? (
+        {current === 'dashboard' ? (
           <DashboardPanel token={token} me={me} currentStore={currentStore} />
-        ) : active === 'books' ? (
+        ) : current === 'books' ? (
           currentStore ? (
             <BookSearchPanel storeId={currentStore.id} storeName={currentStore.name} />
           ) : (
             <StoreRequired />
           )
-        ) : active === 'inventory' ? (
+        ) : current === 'inventory' ? (
           currentStore ? (
             <InventoryPanel token={token} storeId={currentStore.id} />
           ) : (
             <StoreRequired />
           )
-        ) : active === 'rental' ? (
+        ) : current === 'rental' ? (
           currentStore ? (
             <RentalPanel token={token} storeId={currentStore.id} />
           ) : (
             <StoreRequired />
           )
-        ) : active === 'orders' ? (
+        ) : current === 'orders' ? (
           currentStore ? (
             <FulfillmentPanel token={token} storeId={currentStore.id} />
           ) : (
             <StoreRequired />
           )
-        ) : active === 'manager' ? (
+        ) : current === 'manager' ? (
           currentStore && canManageStore ? (
             <ManagerPanel token={token} me={me} currentStore={currentStore} stores={stores} />
           ) : currentStore ? (

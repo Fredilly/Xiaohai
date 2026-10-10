@@ -16,7 +16,7 @@ import { HqSupportManager } from './hq-support-manager';
 import { StaffAdminManager } from './staff-admin-manager';
 import { SystemManager } from './system-manager';
 import { getStaffMe, loginStaff } from './staff-auth';
-import { adminModules } from './mock-data';
+import { adminModules, visibleAdminModules } from './mock-data';
 import { NavIcon } from './nav-icon';
 
 const tokenKey = 'staff_session_token';
@@ -84,13 +84,7 @@ function Shell({
     window.addEventListener('hashchange', sync);
     return () => window.removeEventListener('hashchange', sync);
   }, []);
-  const visibleModules = useMemo(
-    () =>
-      adminModules.filter(
-        (item) => !item.requiredPermission || me.permissions.includes(item.requiredPermission),
-      ),
-    [me.permissions],
-  );
+  const visibleModules = useMemo(() => visibleAdminModules(me.permissions), [me.permissions]);
   const module = useMemo(
     () => visibleModules.find((item) => item.key === active) ?? visibleModules[0]!,
     [active, visibleModules],
