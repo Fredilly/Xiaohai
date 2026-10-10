@@ -336,7 +336,9 @@ suite('M10 image worker PostgreSQL integration', () => {
       .update(workPageIllustrations)
       .set({
         createdAt: new Date('2020-01-01T00:00:00Z'),
-        consistency: [{ ...consumerA.consistency[0]!, referenceMediaAssetId: invalidReference!.id }],
+        consistency: [
+          { ...consumerA.consistency[0]!, referenceMediaAssetId: invalidReference!.id },
+        ],
       })
       .where(eq(workPageIllustrations.id, consumerA.illustration.id));
 
