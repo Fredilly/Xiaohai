@@ -24,6 +24,7 @@ import {
 import { structuredStorySchema } from '@xiaohai/contracts/story';
 import type { AiQueue } from '../ai/ai-queue.js';
 import type { ImageQueue } from './image-queue.js';
+import { AiBudgetError, reserveImageBudget } from '../ai/budget-service.js';
 
 type Db = ReturnType<typeof createDatabase>['db'];
 
@@ -36,6 +37,13 @@ export type PictureBookAiConfig = {
   imageEnabled: boolean;
   imageProvider: 'MOCK' | 'BAILIAN';
   imageModel: string;
+  imageBudget?: {
+    budgetKey: string;
+    amountMinor: number;
+    globalLimitMinor: number;
+    consumerLimitMinor: number;
+    windowKey: string;
+  };
 };
 
 type PictureBookLogger = {
@@ -58,7 +66,9 @@ export class PictureBookError extends Error {
       | 'JOB_NOT_READY'
       | 'INVALID_JOB_STATE'
       | 'INVALID_JOB_OUTPUT'
-      | 'CHARACTER_LOCKED',
+      | 'CHARACTER_LOCKED'
+      | 'AI_COST_UNKNOWN'
+      | 'AI_BUDGET_EXCEEDED',
   ) {
     super(code);
   }
@@ -160,6 +170,22 @@ export class PictureBookService {
         .update(pictureBooks)
         .set({ status: 'ILLUSTRATING', updatedAt: new Date() })
         .where(eq(pictureBooks.id, pictureBookId));
+      if (this.config.imageProvider === 'BAILIAN') {
+        if (!this.config.imageBudget) throw new PictureBookError('AI_COST_UNKNOWN');
+        try {
+          await reserveImageBudget(tx, {
+            ...this.config.imageBudget,
+            idempotencyKey: `picture-book-image:${created!.id}`,
+            consumerUserId,
+            resourceId: created!.id,
+            provider: this.config.imageProvider,
+            model: this.config.imageModel,
+          });
+        } catch (error) {
+          if (error instanceof AiBudgetError) throw new PictureBookError(error.code);
+          throw error;
+        }
+      }
       return { illustration: created!, shouldNotify: true };
     });
 
@@ -382,6 +408,22 @@ export class PictureBookService {
           model: this.config.imageModel,
         })
         .returning();
+      if (this.config.imageProvider === 'BAILIAN') {
+        if (!this.config.imageBudget) throw new PictureBookError('AI_COST_UNKNOWN');
+        try {
+          await reserveImageBudget(tx, {
+            ...this.config.imageBudget,
+            idempotencyKey: `picture-book-reference:${created!.id}`,
+            consumerUserId,
+            resourceId: created!.id,
+            provider: this.config.imageProvider,
+            model: this.config.imageModel,
+          });
+        } catch (error) {
+          if (error instanceof AiBudgetError) throw new PictureBookError(error.code);
+          throw error;
+        }
+      }
       return { revision: created!, shouldNotify: true };
     });
     try {

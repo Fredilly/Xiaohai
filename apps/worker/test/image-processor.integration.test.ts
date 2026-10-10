@@ -2,6 +2,9 @@ import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 import { eq } from 'drizzle-orm';
 import {
   aiJobs,
+  aiBudgetWindows,
+  aiCostLedger,
+  aiCostReservations,
   aiProjects,
   characterProfiles,
   consumerUsers,
@@ -27,7 +30,42 @@ const suite = database ? describe : describe.skip;
 suite('M10 image worker PostgreSQL integration', () => {
   const db = database!.db;
 
-  async function queued(provider: 'MOCK' | 'BAILIAN' = 'MOCK') {
+  async function reserveBudget(resourceId: string, consumerUserId: string, amountMinor = 100) {
+    await db
+      .insert(aiBudgetWindows)
+      .values([
+        {
+          budgetKey: 'TEST_CUMULATIVE_500',
+          scopeType: 'GLOBAL',
+          consumerUserId: null,
+          windowKey: 'TEST_TOTAL',
+          limitMinor: 500,
+          reservedMinor: amountMinor,
+        },
+        {
+          budgetKey: 'TEST_CUMULATIVE_500',
+          scopeType: 'CONSUMER',
+          consumerUserId,
+          windowKey: 'TEST_TOTAL',
+          limitMinor: 500,
+          reservedMinor: amountMinor,
+        },
+      ])
+      .onConflictDoNothing();
+    await db.insert(aiCostReservations).values({
+      idempotencyKey: `worker-fixture:${resourceId}`,
+      budgetKey: 'TEST_CUMULATIVE_500',
+      windowKey: 'TEST_TOTAL',
+      consumerUserId,
+      resourceType: 'PICTURE_BOOK_IMAGE',
+      resourceId,
+      provider: 'BAILIAN',
+      model: 'server-image-model',
+      reservedMinor: amountMinor,
+    });
+  }
+
+  async function queued(provider: 'MOCK' | 'BAILIAN' = 'MOCK', reserve = true) {
     const [user] = await db.insert(consumerUsers).values({}).returning();
     const [project] = await db
       .insert(aiProjects)
@@ -144,7 +182,8 @@ suite('M10 image worker PostgreSQL integration', () => {
         consistency,
       })
       .returning();
-    return { illustration: illustration!, consistency };
+    if (provider === 'BAILIAN' && reserve) await reserveBudget(illustration!.id, user!.id);
+    return { illustration: illustration!, consistency, userId: user!.id };
   }
 
   afterEach(async () => {
@@ -257,6 +296,138 @@ suite('M10 image worker PostgreSQL integration', () => {
     expect(saved).toMatchObject({ status: 'READY', errorCode: null });
   });
 
+  it('rejects a legacy BAILIAN task without a reservation before Provider.generate', async () => {
+    const fixture = await queued('BAILIAN', false);
+    const generate = vi.fn<ImageProvider['generate']>();
+    const errorLogger = vi.fn();
+    await new ImageJobProcessor(db, { name: 'BAILIAN', generate }, 5_000, {
+      error: errorLogger,
+    }).processOne();
+    expect(generate).not.toHaveBeenCalled();
+    expect(errorLogger).toHaveBeenCalledWith(
+      expect.objectContaining({
+        illustrationId: fixture.illustration.id,
+        stage: 'BUDGET_VALIDATION',
+        validationCode: 'AI_BUDGET_RESERVATION_REQUIRED',
+      }),
+      expect.any(String),
+    );
+  });
+
+  it('does not settle another consumer window when a pre-provider job fails', async () => {
+    const consumerA = await queued('BAILIAN');
+    const consumerB = await queued('BAILIAN');
+    await db
+      .update(aiBudgetWindows)
+      .set({ reservedMinor: 200 })
+      .where(eq(aiBudgetWindows.scopeType, 'GLOBAL'));
+
+    const [invalidReference] = await db
+      .insert(mediaAssets)
+      .values({
+        provider: 'BAIDU_BOS',
+        objectKey: 'picture-books/bailian/invalid-ref-multi-user.png',
+        playbackUrl: 'http://untrusted.example.test/invalid-ref.png',
+        mimeType: 'image/png',
+        status: 'READY',
+      })
+      .returning();
+    await db
+      .update(workPageIllustrations)
+      .set({
+        createdAt: new Date('2020-01-01T00:00:00Z'),
+        consistency: [
+          { ...consumerA.consistency[0]!, referenceMediaAssetId: invalidReference!.id },
+        ],
+      })
+      .where(eq(workPageIllustrations.id, consumerA.illustration.id));
+
+    const generate = vi.fn<ImageProvider['generate']>();
+    await new ImageJobProcessor(db, { name: 'BAILIAN', generate }, 5_000).processOne();
+    expect(generate).not.toHaveBeenCalled();
+
+    const windows = await db.select().from(aiBudgetWindows);
+    expect(windows.find((row) => row.scopeType === 'GLOBAL')).toMatchObject({
+      reservedMinor: 100,
+      actualMinor: 0,
+    });
+    expect(windows.find((row) => row.consumerUserId === consumerA.userId)).toMatchObject({
+      reservedMinor: 0,
+      actualMinor: 0,
+    });
+    expect(windows.find((row) => row.consumerUserId === consumerB.userId)).toMatchObject({
+      reservedMinor: 100,
+      actualMinor: 0,
+    });
+    const [otherReservation] = await db
+      .select()
+      .from(aiCostReservations)
+      .where(eq(aiCostReservations.resourceId, consumerB.illustration.id));
+    expect(otherReservation).toMatchObject({
+      status: 'RESERVED',
+      uncertainty: 'NONE',
+      reservedMinor: 100,
+      actualMinor: null,
+    });
+    const [failedReservation] = await db
+      .select()
+      .from(aiCostReservations)
+      .where(eq(aiCostReservations.resourceId, consumerA.illustration.id));
+    expect(failedReservation).toMatchObject({
+      status: 'SETTLED',
+      uncertainty: 'NONE',
+      actualMinor: 0,
+    });
+    const ledgers = await db.select().from(aiCostLedger);
+    expect(ledgers).toHaveLength(1);
+    expect(ledgers[0]).toMatchObject({
+      resourceId: consumerA.illustration.id,
+      outcome: 'FAILED',
+      amountMinor: 0,
+    });
+  });
+
+  it('leaves the budget ledger untouched when an owned settlement window is missing', async () => {
+    const fixture = await queued('BAILIAN');
+    await db.delete(aiBudgetWindows).where(eq(aiBudgetWindows.consumerUserId, fixture.userId));
+    const [invalidReference] = await db
+      .insert(mediaAssets)
+      .values({
+        provider: 'BAIDU_BOS',
+        objectKey: 'picture-books/bailian/invalid-ref-missing-budget.png',
+        playbackUrl: 'http://untrusted.example.test/missing-budget.png',
+        mimeType: 'image/png',
+        status: 'READY',
+      })
+      .returning();
+    await db
+      .update(workPageIllustrations)
+      .set({
+        consistency: [{ ...fixture.consistency[0]!, referenceMediaAssetId: invalidReference!.id }],
+      })
+      .where(eq(workPageIllustrations.id, fixture.illustration.id));
+    const generate = vi.fn<ImageProvider['generate']>();
+    await expect(
+      new ImageJobProcessor(db, { name: 'BAILIAN', generate }, 5_000).processOne(),
+    ).rejects.toThrow('AI_BUDGET_WINDOW_INVALID');
+    expect(generate).not.toHaveBeenCalled();
+    expect(await db.select().from(aiCostLedger)).toHaveLength(0);
+    const [reservation] = await db
+      .select()
+      .from(aiCostReservations)
+      .where(eq(aiCostReservations.resourceId, fixture.illustration.id));
+    expect(reservation).toMatchObject({
+      status: 'RESERVED',
+      uncertainty: 'NONE',
+      actualMinor: null,
+    });
+    const [globalWindow] = await db
+      .select()
+      .from(aiBudgetWindows)
+      .where(eq(aiBudgetWindows.scopeType, 'GLOBAL'));
+    expect(globalWindow).toMatchObject({ reservedMinor: 100, actualMinor: 0 });
+  });
+
   it('never marks the whole book READY from MOCK page media', async () => {
     const fixture = await queued('MOCK');
     await new ImageJobProcessor(db, new MockImageProvider(), 5_000).processOne();
@@ -292,14 +463,18 @@ suite('M10 image worker PostgreSQL integration', () => {
         illustrationPrompt: 'storybook forest cover',
       })
       .returning();
-    await db.insert(workPageIllustrations).values({
-      pageId: cover!.id,
-      revisionNumber: 1,
-      prompt: 'storybook forest cover',
-      provider: 'BAILIAN',
-      model: 'server-image-model',
-      consistency: fixture.consistency,
-    });
+    const [coverIllustration] = await db
+      .insert(workPageIllustrations)
+      .values({
+        pageId: cover!.id,
+        revisionNumber: 1,
+        prompt: 'storybook forest cover',
+        provider: 'BAILIAN',
+        model: 'server-image-model',
+        consistency: fixture.consistency,
+      })
+      .returning();
+    await reserveBudget(coverIllustration!.id, fixture.userId);
     const generate = vi.fn<ImageProvider['generate']>((input) =>
       Promise.resolve({
         assetProvider: 'BAIDU_BOS',

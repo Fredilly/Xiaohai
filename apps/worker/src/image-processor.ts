@@ -1,7 +1,10 @@
-import { and, asc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import {
   characterProfiles,
   characterReferenceImages,
+  aiBudgetWindows,
+  aiCostLedger,
+  aiCostReservations,
   mediaAssets,
   workPageIllustrations,
   type createDatabase,
@@ -100,13 +103,41 @@ export class ImageJobProcessor {
 
     const generationStartedAt = Date.now();
     const effectiveTimeoutMs = Math.max(this.timeoutMs, 600_000);
+    let providerInvoked = false;
     try {
+      if (this.provider.name === 'BAILIAN') {
+        const [reservation] = await this.db
+          .select({
+            status: aiCostReservations.status,
+            uncertainty: aiCostReservations.uncertainty,
+          })
+          .from(aiCostReservations)
+          .where(
+            and(
+              eq(aiCostReservations.resourceId, row.id),
+              eq(aiCostReservations.resourceType, 'PICTURE_BOOK_IMAGE'),
+            ),
+          )
+          .orderBy(sql`${aiCostReservations.createdAt} desc`)
+          .limit(1);
+        if (
+          !reservation ||
+          reservation.status !== 'RESERVED' ||
+          reservation.uncertainty !== 'NONE'
+        ) {
+          throw new ImageProviderError('IMAGE_PROVIDER_UNAVAILABLE', {
+            stage: 'BUDGET_VALIDATION',
+            validationCode: 'AI_BUDGET_RESERVATION_REQUIRED',
+          });
+        }
+      }
       // MOCK uses consistency metadata only. Never pass its local display URL
       // to an image provider as an I2I input. BAILIAN keeps strict HTTPS checks.
       const referenceUrls =
         illustrationRow && this.provider.name === 'BAILIAN'
           ? await this.referenceUrls(illustrationRow.consistency)
           : [];
+      providerInvoked = true;
       const result = await this.provider.generate({
         generationKey: row.id,
         model: row.model,
@@ -188,6 +219,7 @@ export class ImageJobProcessor {
           )
         `);
         });
+        await this.recordBudgetOutcome(row.id, 'AT_RISK', null, result.providerRequestId);
       } catch (error) {
         throw new ImageProviderError('IMAGE_PROVIDER_UNAVAILABLE', {
           stage: 'DB_READY_WRITEBACK',
@@ -221,6 +253,13 @@ export class ImageJobProcessor {
         },
         'Picture book image generation failed',
       );
+      await this.recordBudgetOutcome(
+        row.id,
+        providerInvoked ? (code === 'IMAGE_PROVIDER_TIMEOUT' ? 'TIMED_OUT' : 'AT_RISK') : 'FAILED',
+        providerInvoked ? null : 0,
+        details.providerRequestId,
+        code,
+      );
       await this.db
         .update(isReference ? characterReferenceImages : workPageIllustrations)
         .set({ status: 'FAILED', errorCode: code, updatedAt: new Date() })
@@ -232,6 +271,101 @@ export class ImageJobProcessor {
         );
     }
     return row.id;
+  }
+
+  private async recordBudgetOutcome(
+    resourceId: string,
+    outcome: 'FAILED' | 'TIMED_OUT' | 'AT_RISK',
+    actualMinor: number | null,
+    providerRequestId?: string,
+    failureCode?: string,
+  ) {
+    await this.db.transaction(async (tx) => {
+      const [reservation] = await tx
+        .select()
+        .from(aiCostReservations)
+        .where(
+          and(
+            eq(aiCostReservations.resourceId, resourceId),
+            eq(aiCostReservations.resourceType, 'PICTURE_BOOK_IMAGE'),
+          ),
+        )
+        .for('update');
+      if (
+        !reservation ||
+        reservation.status !== 'RESERVED' ||
+        reservation.uncertainty === 'AT_RISK'
+      )
+        return;
+      const uncertain = outcome === 'AT_RISK' || actualMinor === null;
+      await tx.insert(aiCostLedger).values({
+        reservationId: reservation.id,
+        consumerUserId: reservation.consumerUserId,
+        resourceType: reservation.resourceType,
+        resourceId: reservation.resourceId,
+        provider: reservation.provider,
+        model: reservation.model,
+        amountMinor: actualMinor ?? reservation.reservedMinor,
+        outcome,
+        providerRequestId,
+        failureCode,
+      });
+      await tx
+        .update(aiCostReservations)
+        .set({
+          status: uncertain ? 'RESERVED' : 'SETTLED',
+          uncertainty: uncertain ? 'AT_RISK' : 'NONE',
+          actualMinor,
+          providerRequestId,
+          failureCode,
+          settledAt: uncertain ? null : new Date(),
+        })
+        .where(eq(aiCostReservations.id, reservation.id));
+      if (!uncertain) {
+        const windows = await tx
+          .select()
+          .from(aiBudgetWindows)
+          .where(
+            and(
+              eq(aiBudgetWindows.budgetKey, reservation.budgetKey),
+              eq(aiBudgetWindows.windowKey, reservation.windowKey),
+              or(
+                and(
+                  eq(aiBudgetWindows.scopeType, 'GLOBAL'),
+                  isNull(aiBudgetWindows.consumerUserId),
+                ),
+                and(
+                  eq(aiBudgetWindows.scopeType, 'CONSUMER'),
+                  eq(aiBudgetWindows.consumerUserId, reservation.consumerUserId!),
+                ),
+              ),
+            ),
+          )
+          .for('update');
+        if (
+          windows.length !== 2 ||
+          windows.filter((window) => window.scopeType === 'GLOBAL').length !== 1 ||
+          windows.filter(
+            (window) =>
+              window.scopeType === 'CONSUMER' &&
+              window.consumerUserId === reservation.consumerUserId,
+          ).length !== 1 ||
+          windows.some((window) => window.reservedMinor < reservation.reservedMinor)
+        ) {
+          throw new Error('AI_BUDGET_WINDOW_INVALID');
+        }
+        for (const window of windows) {
+          await tx
+            .update(aiBudgetWindows)
+            .set({
+              reservedMinor: window.reservedMinor - reservation.reservedMinor,
+              actualMinor: window.actualMinor + (actualMinor ?? 0),
+              updatedAt: new Date(),
+            })
+            .where(eq(aiBudgetWindows.id, window.id));
+        }
+      }
+    });
   }
 
   private async referenceUrls(consistency: Array<{ referenceMediaAssetId: string | null }>) {

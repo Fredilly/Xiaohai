@@ -9,6 +9,7 @@ export default defineConfig({
     './src/payment-schema.ts',
     './src/content-schema.ts',
     './src/ai-schema.ts',
+    './src/ai-budget-schema.ts',
     './src/works-schema.ts',
     './src/picture-book-schema.ts',
     './src/animation-schema.ts',

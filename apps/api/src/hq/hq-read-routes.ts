@@ -14,6 +14,7 @@ import { HqReadError, type HqReadService } from './hq-read-service.js';
 
 export const HQ_ORDERS_READ_PERMISSION = 'orders.read';
 export const HQ_USERS_READ_PERMISSION = 'users.read';
+export const HQ_AI_COST_READ_PERMISSION = 'finance.read';
 
 export function registerHqReadRoutes(
   app: FastifyInstance,
@@ -64,6 +65,19 @@ export function registerHqReadRoutes(
     try {
       await authorize(request, HQ_USERS_READ_PERMISSION);
       return hqUserDetailSchema.parse(await options.hqRead.getUser(params.data.id));
+    } catch (error) {
+      return fail(request, reply, error);
+    }
+  });
+
+  app.get('/api/v1/staff/ai-costs/summary', async (request, reply) => {
+    const input = z
+      .object({ from: z.iso.date().optional(), to: z.iso.date().optional() })
+      .safeParse(request.query);
+    if (!input.success) return invalid(reply, request.id);
+    try {
+      await authorize(request, HQ_AI_COST_READ_PERMISSION);
+      return options.hqRead.getAiCostSummary(input.data);
     } catch (error) {
       return fail(request, reply, error);
     }
