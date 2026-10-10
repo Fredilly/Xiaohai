@@ -26,11 +26,11 @@ describe('MockImageProvider', () => {
     const first = await provider.generate(input);
     const second = await provider.generate(input);
     expect(first).toEqual(second);
-    expect(first.objectKey).toMatch(/^picture-books\/mock\/[a-f0-9]{64}\.jpg$/);
+    expect(first.objectKey).toMatch(/^picture-books\/mock\/[a-f0-9]{64}\.png$/);
     expect(first.playbackUrl).toMatch(
-      /^http:\/\/127\.0\.0\.1:3000\/api\/v1\/dev\/mock-images\/[a-f0-9]{64}\.jpg$/,
+      /^http:\/\/127\.0\.0\.1:3000\/api\/v1\/dev\/mock-images\/[a-f0-9]{64}\.png$/,
     );
-    expect(first.mimeType).toBe('image/jpeg');
+    expect(first.mimeType).toBe('image/png');
     expect(first.playbackUrl).not.toMatch(/mock\.invalid|qwen|bailian/i);
     expect(JSON.stringify(first)).not.toMatch(/base64|data:image/i);
 
