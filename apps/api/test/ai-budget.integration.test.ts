@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
+import { eq } from 'drizzle-orm';
 import {
   aiBudgetWindows,
   aiCostLedger,
@@ -7,7 +8,11 @@ import {
   consumerUsers,
   createDatabase,
 } from '@xiaohai/db';
-import { reserveImageBudget, recordImageBudgetOutcome } from '../src/ai/budget-service.js';
+import {
+  confirmAtRiskImageBudget,
+  reserveImageBudget,
+  recordImageBudgetOutcome,
+} from '../src/ai/budget-service.js';
 
 const database = process.env.DATABASE_URL ? createDatabase(process.env) : null;
 const suite = database ? describe : describe.skip;
@@ -137,5 +142,44 @@ suite('AI budget protection', () => {
     ).rejects.toMatchObject({ code: 'AI_BUDGET_EXCEEDED' });
     const [stored] = await db.select().from(aiCostReservations);
     expect(stored).toMatchObject({ status: 'RESERVED', uncertainty: 'AT_RISK' });
+  });
+
+  it('confirms an at-risk charge once, releases the original reserve, and is idempotent', async () => {
+    const consumerUserId = await user();
+    const reservation = await db.transaction((tx) =>
+      reserveImageBudget(tx, {
+        ...budget,
+        amountMinor: 22,
+        idempotencyKey: 'manual-confirmation',
+        resourceId: randomUUID(),
+        consumerUserId,
+        provider: 'BAILIAN',
+        model: 'qwen-image-3.0',
+      }),
+    );
+    await recordImageBudgetOutcome(
+      db,
+      reservation.id,
+      'AT_RISK',
+      null,
+      undefined,
+      'provider-request-1',
+    );
+
+    expect(await confirmAtRiskImageBudget(db, reservation.id, 18, 'provider-request-1')).toBe(true);
+    expect(await confirmAtRiskImageBudget(db, reservation.id, 18, 'provider-request-1')).toBe(true);
+    const [storedReservation] = await db
+      .select()
+      .from(aiCostReservations)
+      .where(eq(aiCostReservations.id, reservation.id));
+    const ledgers = await db
+      .select()
+      .from(aiCostLedger)
+      .where(eq(aiCostLedger.reservationId, reservation.id));
+    const windows = await db.select().from(aiBudgetWindows);
+    expect(storedReservation).toMatchObject({ status: 'SETTLED', uncertainty: 'NONE', actualMinor: 18 });
+    expect(ledgers).toHaveLength(1);
+    expect(ledgers[0]).toMatchObject({ amountMinor: 18, outcome: 'SUCCEEDED' });
+    expect(windows.every((window) => window.reservedMinor === 0 && window.actualMinor === 18)).toBe(true);
   });
 });

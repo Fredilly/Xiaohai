@@ -170,3 +170,82 @@ export async function recordImageBudgetOutcome(
     return true;
   });
 }
+
+/**
+ * Confirms a provider charge that was previously left AT_RISK. This updates
+ * the existing ledger row in place, so manual confirmation is auditable and
+ * cannot create a second charge record.
+ */
+export async function confirmAtRiskImageBudget(
+  db: Db,
+  reservationId: string,
+  actualMinor: number,
+  providerRequestId?: string,
+) {
+  if (!Number.isInteger(actualMinor) || actualMinor < 0) {
+    throw new AiBudgetError('AI_COST_UNKNOWN');
+  }
+
+  return db.transaction(async (tx) => {
+    const [reservation] = await tx
+      .select()
+      .from(aiCostReservations)
+      .where(eq(aiCostReservations.id, reservationId))
+      .for('update');
+    if (!reservation) return false;
+    if (reservation.status === 'SETTLED' && reservation.uncertainty === 'NONE') return true;
+    if (reservation.status !== 'RESERVED' || reservation.uncertainty !== 'AT_RISK') return false;
+    if (actualMinor > reservation.reservedMinor) {
+      throw new AiBudgetError('AI_BUDGET_EXCEEDED');
+    }
+
+    const ledgers = await tx
+      .select()
+      .from(aiCostLedger)
+      .where(eq(aiCostLedger.reservationId, reservationId))
+      .for('update');
+    if (ledgers.length !== 1 || ledgers[0]!.outcome !== 'AT_RISK') return false;
+
+    const windows = await tx
+      .select()
+      .from(aiBudgetWindows)
+      .where(
+        and(
+          eq(aiBudgetWindows.budgetKey, reservation.budgetKey),
+          eq(aiBudgetWindows.windowKey, reservation.windowKey),
+        ),
+      )
+      .for('update');
+    if (windows.some((window) => window.reservedMinor < reservation.reservedMinor)) return false;
+
+    await tx
+      .update(aiCostLedger)
+      .set({
+        amountMinor: actualMinor,
+        outcome: 'SUCCEEDED',
+        providerRequestId: providerRequestId ?? reservation.providerRequestId,
+      })
+      .where(eq(aiCostLedger.id, ledgers[0]!.id));
+    await tx
+      .update(aiCostReservations)
+      .set({
+        status: 'SETTLED',
+        uncertainty: 'NONE',
+        actualMinor,
+        providerRequestId: providerRequestId ?? reservation.providerRequestId,
+        settledAt: new Date(),
+      })
+      .where(eq(aiCostReservations.id, reservationId));
+    for (const window of windows) {
+      await tx
+        .update(aiBudgetWindows)
+        .set({
+          reservedMinor: window.reservedMinor - reservation.reservedMinor,
+          actualMinor: window.actualMinor + actualMinor,
+          updatedAt: new Date(),
+        })
+        .where(eq(aiBudgetWindows.id, window.id));
+    }
+    return true;
+  });
+}
