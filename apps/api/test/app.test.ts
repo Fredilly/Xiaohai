@@ -60,5 +60,4 @@ describe('foundation health endpoint', () => {
         .statusCode,
     ).toBe(200);
   });
-
 });
