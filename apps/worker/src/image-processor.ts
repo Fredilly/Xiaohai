@@ -97,13 +97,16 @@ export class ImageJobProcessor {
     const row = claimed.row;
     const isReference = claimed.kind === 'REFERENCE';
     const illustrationRow = isReference ? null : (row as IllustrationInputRow);
-    const referenceUrls = illustrationRow
-      ? await this.referenceUrls(illustrationRow.consistency)
-      : [];
 
     const generationStartedAt = Date.now();
     const effectiveTimeoutMs = Math.max(this.timeoutMs, 600_000);
     try {
+      // MOCK uses consistency metadata only. Never pass its local display URL
+      // to an image provider as an I2I input. BAILIAN keeps strict HTTPS checks.
+      const referenceUrls =
+        illustrationRow && this.provider.name === 'BAILIAN'
+          ? await this.referenceUrls(illustrationRow.consistency)
+          : [];
       const result = await this.provider.generate({
         generationKey: row.id,
         model: row.model,
@@ -202,6 +205,7 @@ export class ImageJobProcessor {
           errorCode: code,
           httpStatus: details.httpStatus,
           providerErrorCode: details.providerErrorCode,
+          validationCode: details.validationCode,
           safeMessage: details.safeMessage,
           providerRequestId: details.providerRequestId,
         },
@@ -228,15 +232,31 @@ export class ImageJobProcessor {
     if (ids.length > 3)
       throw new ImageProviderError('IMAGE_PROVIDER_UNAVAILABLE', { stage: 'VALIDATION' });
     const rows = await this.db
-      .select({ id: mediaAssets.id, url: mediaAssets.playbackUrl, status: mediaAssets.status })
+      .select({
+        id: mediaAssets.id,
+        provider: mediaAssets.provider,
+        url: mediaAssets.playbackUrl,
+        status: mediaAssets.status,
+      })
       .from(mediaAssets)
       .where(inArray(mediaAssets.id, ids));
+    const realReferenceRows = rows.filter((row) => row.provider === 'BAIDU_BOS');
     if (
       rows.length !== ids.length ||
-      rows.some((row) => row.status !== 'READY' || !row.url || !row.url.startsWith('https://'))
+      rows.some(
+        (row) =>
+          row.status !== 'READY' ||
+          (row.provider !== 'MOCK_IMAGE' &&
+            (row.provider !== 'BAIDU_BOS' || !row.url || !row.url.startsWith('https://'))),
+      )
     )
-      throw new ImageProviderError('IMAGE_PROVIDER_UNAVAILABLE', { stage: 'VALIDATION' });
-    return ids.map((id) => rows.find((row) => row.id === id)!.url!);
+      throw new ImageProviderError('IMAGE_PROVIDER_UNAVAILABLE', {
+        stage: 'VALIDATION',
+        validationCode: 'INVALID_REFERENCE_ASSET',
+      });
+    return ids
+      .map((id) => realReferenceRows.find((row) => row.id === id)?.url)
+      .filter((url): url is string => Boolean(url));
   }
 }
 

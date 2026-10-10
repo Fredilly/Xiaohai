@@ -172,9 +172,133 @@ suite('M10 image worker PostgreSQL integration', () => {
       .select()
       .from(mediaAssets)
       .where(eq(mediaAssets.id, saved!.mediaAssetId!));
-    expect(asset).toMatchObject({ provider: 'MOCK_IMAGE', mimeType: 'image/png', status: 'READY' });
+    expect(asset).toMatchObject({
+      provider: 'MOCK_IMAGE',
+      mimeType: 'image/png',
+      status: 'READY',
+    });
     expect(asset!.objectKey).not.toMatch(/base64|data:/i);
     expect(asset!.playbackUrl).not.toMatch(/base64|data:/i);
+  });
+
+  it('does not pass a MOCK local display URL as an I2I reference and reaches READY', async () => {
+    const fixture = await queued();
+    const [referenceAsset] = await db
+      .insert(mediaAssets)
+      .values({
+        provider: 'MOCK_IMAGE',
+        objectKey: 'picture-books/mock/reference.jpg',
+        playbackUrl: 'http://127.0.0.1:3000/api/v1/dev/mock-images/reference.jpg',
+        mimeType: 'image/jpeg',
+        status: 'READY',
+      })
+      .returning();
+    await db
+      .update(workPageIllustrations)
+      .set({
+        consistency: [{ ...fixture.consistency[0]!, referenceMediaAssetId: referenceAsset!.id }],
+      })
+      .where(eq(workPageIllustrations.id, fixture.illustration.id));
+    const generate = vi.fn<ImageProvider['generate']>((input) => {
+      expect(input.referenceImages).toEqual([]);
+      return new MockImageProvider().generate(input);
+    });
+
+    await new ImageJobProcessor(db, { name: 'MOCK', generate }, 5_000).processOne();
+
+    const [saved] = await db
+      .select()
+      .from(workPageIllustrations)
+      .where(eq(workPageIllustrations.id, fixture.illustration.id));
+    expect(saved).toMatchObject({ status: 'READY' });
+    expect(saved!.mediaAssetId).toBeTruthy();
+  });
+
+  it('skips MOCK references for BAILIAN while preserving consistency descriptions', async () => {
+    const fixture = await queued('BAILIAN');
+    const [referenceAsset] = await db
+      .insert(mediaAssets)
+      .values({
+        provider: 'MOCK_IMAGE',
+        objectKey: 'picture-books/mock/reference-http.jpg',
+        playbackUrl: 'http://127.0.0.1:3000/api/v1/dev/mock-images/reference.jpg',
+        mimeType: 'image/jpeg',
+        status: 'READY',
+      })
+      .returning();
+    await db
+      .update(workPageIllustrations)
+      .set({
+        consistency: [{ ...fixture.consistency[0]!, referenceMediaAssetId: referenceAsset!.id }],
+      })
+      .where(eq(workPageIllustrations.id, fixture.illustration.id));
+    const generate = vi.fn<ImageProvider['generate']>((input) => {
+      expect(input.referenceImages).toEqual([]);
+      expect(input.consistency).toEqual([
+        expect.objectContaining({
+          consistencyKey: fixture.consistency[0]!.consistencyKey,
+          visualPrompt: fixture.consistency[0]!.visualPrompt,
+          referenceMediaAssetId: referenceAsset!.id,
+        }),
+      ]);
+      return Promise.resolve({
+        assetProvider: 'BAIDU_BOS',
+        objectKey: `picture-books/bailian/${fixture.illustration.id}.png`,
+        playbackUrl: `https://assets.example.test/picture-books/bailian/${fixture.illustration.id}.png`,
+        mimeType: 'image/png',
+        byteSize: 9,
+        providerRequestId: 'test-bailian-request',
+      });
+    });
+
+    await new ImageJobProcessor(db, { name: 'BAILIAN', generate }, 5_000).processOne();
+
+    const [saved] = await db
+      .select()
+      .from(workPageIllustrations)
+      .where(eq(workPageIllustrations.id, fixture.illustration.id));
+    expect(generate).toHaveBeenCalledOnce();
+    expect(saved).toMatchObject({ status: 'READY', errorCode: null });
+  });
+
+  it('rejects non-HTTPS real BOS references before provider generation', async () => {
+    const fixture = await queued('BAILIAN');
+    const [referenceAsset] = await db
+      .insert(mediaAssets)
+      .values({
+        provider: 'BAIDU_BOS',
+        objectKey: 'picture-books/bailian/reference.jpg',
+        playbackUrl: 'http://assets.example.com/reference.jpg',
+        mimeType: 'image/jpeg',
+        status: 'READY',
+      })
+      .returning();
+    await db
+      .update(workPageIllustrations)
+      .set({
+        consistency: [{ ...fixture.consistency[0]!, referenceMediaAssetId: referenceAsset!.id }],
+      })
+      .where(eq(workPageIllustrations.id, fixture.illustration.id));
+    const generate = vi.fn<ImageProvider['generate']>();
+    const errorLogger = vi.fn();
+
+    await new ImageJobProcessor(db, { name: 'BAILIAN', generate }, 5_000, {
+      error: errorLogger,
+    }).processOne();
+
+    const [saved] = await db
+      .select()
+      .from(workPageIllustrations)
+      .where(eq(workPageIllustrations.id, fixture.illustration.id));
+    expect(generate).not.toHaveBeenCalled();
+    expect(saved).toMatchObject({ status: 'FAILED', errorCode: 'IMAGE_PROVIDER_UNAVAILABLE' });
+    expect(errorLogger).toHaveBeenCalledWith(
+      expect.objectContaining({
+        stage: 'VALIDATION',
+        validationCode: 'INVALID_REFERENCE_ASSET',
+      }),
+      expect.any(String),
+    );
   });
 
   it('records provider failure without creating a false READY asset', async () => {

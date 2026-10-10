@@ -44,21 +44,31 @@ describe('AI provider adapters', () => {
 
     const storyboard = await provider.generate({
       model: 'mock-picture-book-v1',
-      prompt: 'XIAOHAI_TASK=PICTURE_BOOK_STORYBOARD',
+      prompt: `XIAOHAI_TASK=PICTURE_BOOK_STORYBOARD
+橘猫 [MAIN] consistencyKey=one
+星羽 [SUPPORTING] consistencyKey=two`,
       signal,
     });
 
     const storyboardPlan = JSON.parse(storyboard.text) as {
-      cover: { illustrationPrompt: string };
+      cover: { characterKeys: string[]; illustrationPrompt: string };
       pages: Array<{
+        characterKeys: string[];
         storyText: string;
         illustrationPrompt: string;
       }>;
     };
 
-    expect(storyboardPlan.cover.illustrationPrompt).toContain('green scarf');
+    const keys = [
+      ...storyboardPlan.cover.characterKeys,
+      ...storyboardPlan.pages.flatMap((page) => page.characterKeys),
+    ];
+    expect(keys).toEqual(expect.arrayContaining(['橘猫', '星羽']));
+    expect(keys).not.toContain('小狐狸');
+    expect(new Set(keys).size).toBeGreaterThan(1);
     expect(storyboardPlan.pages).toHaveLength(2);
-    expect(storyboardPlan.pages[1]!.illustrationPrompt).toContain('red satchel');
+    expect(storyboardPlan.pages[1]!.illustrationPrompt).toContain('橘猫');
+    expect(storyboardPlan.pages[1]!.illustrationPrompt).toContain('星羽');
 
     expect(characters.costMetadata).toEqual({
       source: 'MOCK',

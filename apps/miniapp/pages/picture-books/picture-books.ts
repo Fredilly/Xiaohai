@@ -2,7 +2,12 @@ import type { PictureBook } from '@xiaohai/contracts/picture-book';
 import { listPictureBooks } from '../../services/picture-book';
 
 Page({
-  data: { loading: true, error: '', books: [] as PictureBook[] },
+  data: {
+    loading: true,
+    error: '',
+    books: [] as (PictureBook & { coverPlaybackUrl: string | null })[],
+    imageErrors: {},
+  },
   onShow() {
     void this.load();
   },
@@ -10,7 +15,7 @@ Page({
     this.setData({ loading: true, error: '' });
     try {
       const result = await listPictureBooks();
-      this.setData({ books: result.pictureBooks });
+      this.setData({ books: result.pictureBooks, imageErrors: {} });
     } catch {
       this.setData({ error: '绘本加载失败，请检查登录状态和网络。' });
     } finally {
@@ -20,5 +25,9 @@ Page({
   open(event: WechatMiniprogram.TouchEvent) {
     const id = String(event.currentTarget.dataset.id || '');
     if (id) void wx.navigateTo({ url: `/pages/picture-book-detail/picture-book-detail?id=${id}` });
+  },
+  onCoverError(event: WechatMiniprogram.CustomEvent<{ errMsg?: string }>) {
+    const id = String(event.currentTarget.dataset.id || '');
+    if (id) this.setData({ [`imageErrors.${id}`]: true });
   },
 });

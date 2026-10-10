@@ -487,9 +487,48 @@ export class PictureBookService {
       .where(eq(pictureBooks.consumerUserId, consumerUserId))
       .orderBy(desc(pictureBooks.updatedAt))
       .limit(100);
+    const bookIds = rows.map((row) => row.id);
+    const coverPages =
+      bookIds.length === 0
+        ? []
+        : await this.db
+            .select({ bookId: workPages.pictureBookId, pageId: workPages.id })
+            .from(workPages)
+            .where(and(eq(workPages.pageKind, 'COVER'), inArray(workPages.pictureBookId, bookIds)));
+    const coverPageIds = coverPages.map((page) => page.pageId);
+    const coverIllustrations =
+      coverPageIds.length === 0
+        ? []
+        : await this.db
+            .select({ illustration: workPageIllustrations, media: mediaAssets })
+            .from(workPageIllustrations)
+            .innerJoin(mediaAssets, eq(workPageIllustrations.mediaAssetId, mediaAssets.id))
+            .where(
+              and(
+                inArray(workPageIllustrations.pageId, coverPageIds),
+                eq(workPageIllustrations.status, 'READY'),
+                eq(workPageIllustrations.provider, 'BAILIAN'),
+                eq(mediaAssets.status, 'READY'),
+                eq(mediaAssets.provider, 'BAIDU_BOS'),
+                sql`${mediaAssets.mimeType} like 'image/%'`,
+              ),
+            )
+            .orderBy(desc(workPageIllustrations.revisionNumber));
+    const coverPageByBook = new Map(coverPages.map((page) => [page.pageId, page.bookId]));
+    const coverUrlByBook = new Map<string, string>();
+    for (const row of coverIllustrations) {
+      const url = row.media.playbackUrl;
+      const bookId = coverPageByBook.get(row.illustration.pageId);
+      if (bookId && url && isHttpsImageUrl(url) && !coverUrlByBook.has(bookId)) {
+        coverUrlByBook.set(bookId, url);
+      }
+    }
 
     return {
-      pictureBooks: rows.map((row) => this.viewPictureBook(row)),
+      pictureBooks: rows.map((row) => ({
+        ...this.viewPictureBook(row),
+        coverPlaybackUrl: coverUrlByBook.get(row.id) ?? null,
+      })),
     };
   }
 
@@ -1044,5 +1083,14 @@ export class PictureBookService {
       createdAt: page.createdAt.toISOString(),
       updatedAt: page.updatedAt.toISOString(),
     };
+  }
+}
+
+function isHttpsImageUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && /\.(?:png|jpe?g|webp|gif)$/i.test(url.pathname);
+  } catch {
+    return false;
   }
 }

@@ -1111,6 +1111,54 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
     });
   });
 
+  it('lists the latest valid real cover and isolates books by consumer', async () => {
+    const pictureBook = service({ imageProvider: 'BAILIAN', imageModel: 'qwen-image-3.0' });
+    const alice = await createUser();
+    const bob = await createUser();
+    const { book: aliceBook } = await createBook(pictureBook, alice);
+    const aliceDetail = await applyStoryboard(pictureBook, alice, aliceBook.id);
+    const cover = aliceDetail.pages.find((page) => page.pageKind === 'COVER')!;
+    const first = await pictureBook.generateIllustration(alice, aliceBook.id, cover.id);
+    const [asset] = await db
+      .insert(mediaAssets)
+      .values({
+        provider: 'BAIDU_BOS',
+        objectKey: `picture-books/bailian/${first.illustrationId}.png`,
+        playbackUrl: 'https://bos.example.test/picture-books/cover.png',
+        mimeType: 'image/png',
+        byteSize: 1,
+        status: 'READY',
+      })
+      .returning();
+    await db
+      .update(workPageIllustrations)
+      .set({ status: 'READY', mediaAssetId: asset!.id })
+      .where(eq(workPageIllustrations.id, first.illustrationId));
+    const failed = await pictureBook.generateIllustration(alice, aliceBook.id, cover.id);
+    await db
+      .update(workPageIllustrations)
+      .set({ status: 'FAILED', errorCode: 'IMAGE_PROVIDER_UNAVAILABLE' })
+      .where(eq(workPageIllustrations.id, failed.illustrationId));
+
+    const { book: bobBook } = await createBook(pictureBook, bob);
+    await applyStoryboard(pictureBook, bob, bobBook.id);
+
+    const listed = await pictureBook.listPictureBooks(alice);
+    expect(listed.pictureBooks).toHaveLength(1);
+    expect(listed.pictureBooks[0]).toMatchObject({
+      id: aliceBook.id,
+      coverPlaybackUrl: 'https://bos.example.test/picture-books/cover.png',
+    });
+  });
+
+  it('returns null for MOCK-only or missing covers', async () => {
+    const pictureBook = service();
+    const alice = await createUser();
+    const { book } = await createBook(pictureBook, alice);
+    const listed = await pictureBook.listPictureBooks(alice);
+    expect(listed.pictureBooks[0]).toMatchObject({ id: book.id, coverPlaybackUrl: null });
+  });
+
   it('fails illustration requests closed, enforces ownership and rejects provider/model input', async () => {
     const pictureBook = service();
     const app = await createApp(pictureBook);

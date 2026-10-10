@@ -47,7 +47,9 @@ async function request<T>(
 export const createPictureBook = (input: CreatePictureBookRequest) =>
   request<PictureBook>('/api/v1/ai/picture-books', 'POST', input);
 export const listPictureBooks = () =>
-  request<{ pictureBooks: PictureBook[] }>('/api/v1/ai/picture-books');
+  request<{ pictureBooks: (PictureBook & { coverPlaybackUrl: string | null })[] }>(
+    '/api/v1/ai/picture-books',
+  );
 export const getPictureBook = (id: string) =>
   request<PictureBookDetail>(`/api/v1/ai/picture-books/${id}`);
 export const generatePictureBookPlan = (id: string, operation: PictureBookTextOperation) =>
@@ -83,17 +85,21 @@ export const listCharacterReferences = (bookId: string, characterId: string) =>
     references: Array<{
       id: string;
       status: string;
+      errorCode: string | null;
+      provider: string;
       revisionNumber: number;
       playbackUrl: string | null;
       mediaAssetId: string | null;
     }>;
   }>(`/api/v1/ai/picture-books/${bookId}/characters/${characterId}/reference-images`);
 export const generateCharacterReference = (bookId: string, characterId: string) =>
-  request(
-    `/api/v1/ai/picture-books/${bookId}/characters/${characterId}/reference-images`,
-    'POST',
-    {},
-  );
+  request<{
+    pictureBookId: string;
+    characterId: string;
+    referenceRevisionId: string;
+    revisionNumber: number;
+    status: 'QUEUED' | 'RUNNING' | 'READY' | 'FAILED';
+  }>(`/api/v1/ai/picture-books/${bookId}/characters/${characterId}/reference-images`, 'POST', {});
 export const selectCharacterReference = (bookId: string, characterId: string, revisionId: string) =>
   request<PictureBookDetail>(
     `/api/v1/ai/picture-books/${bookId}/characters/${characterId}/reference-images/${revisionId}/select`,

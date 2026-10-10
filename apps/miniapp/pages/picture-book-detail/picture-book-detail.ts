@@ -21,6 +21,9 @@ import {
 const sleep = (milliseconds: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
 
+const IMAGE_POLL_TIMEOUT_MS = 190_000;
+const IMAGE_POLL_INTERVAL_MS = 1_000;
+
 Page({
   data: {
     id: '',
@@ -31,6 +34,7 @@ Page({
     busy: false,
     polling: false,
     error: '',
+    imageError: false,
   },
   onLoad(query: Record<string, string | undefined>) {
     this.setData({ id: String(query.id || '') });
@@ -38,8 +42,15 @@ Page({
     else this.setData({ loading: false, error: '绘本参数无效' });
   },
   onUnload() {
+    this.pollingToken += 1;
     this.setData({ polling: false });
   },
+  onImageError(event: WechatMiniprogram.CustomEvent<{ errMsg?: string }>) {
+    const errMsg = String(event.detail?.errMsg || 'unknown image load error');
+    console.warn(`[picture-book] local image display failed: ${errMsg}`);
+    this.setData({ imageError: true });
+  },
+  pollingToken: 0,
   async load() {
     try {
       const detail = await getPictureBook(this.data.id);
@@ -70,13 +81,31 @@ Page({
     if (this.data.busy) return;
     const characterId = String(event.currentTarget.dataset.characterId || '');
     this.setData({ busy: true, error: '' });
+    const pollingToken = ++this.pollingToken;
     try {
-      await generateCharacterReference(this.data.id, characterId);
-      await this.load();
+      const accepted = await generateCharacterReference(this.data.id, characterId);
+      this.setData({ polling: true });
+      const deadline = Date.now() + IMAGE_POLL_TIMEOUT_MS;
+      while (Date.now() < deadline && this.data.polling && pollingToken === this.pollingToken) {
+        const result = (await listCharacterReferences(this.data.id, characterId)).references;
+        this.setData({ [`references.${characterId}`]: result });
+        const revision = result.find((item) => item.id === accepted.referenceRevisionId);
+        if (revision?.status === 'READY') {
+          await this.load();
+          return;
+        }
+        if (revision?.status === 'FAILED') {
+          this.setData({
+            error: `参考图生成失败（${revision.errorCode || 'REFERENCE_GENERATION_FAILED'}）`,
+          });
+          return;
+        }
+        await sleep(IMAGE_POLL_INTERVAL_MS);
+      }
     } catch {
       this.setData({ error: '参考图生成失败，请重试。' });
     } finally {
-      this.setData({ busy: false });
+      this.setData({ busy: false, polling: false });
     }
   },
   async selectReference(event: WechatMiniprogram.TouchEvent) {
@@ -202,25 +231,32 @@ Page({
     const regenerate = String(event.currentTarget.dataset.regenerate || '') === 'true';
     if (!pageId) return;
     this.setData({ busy: true, error: '' });
+    let failedErrorCode: string | null = null;
     try {
-      await generateIllustration(this.data.id, pageId, regenerate);
+      const accepted = await generateIllustration(this.data.id, pageId, regenerate);
       this.setData({ polling: true });
-      for (let index = 0; index < 90 && this.data.polling; index += 1) {
+      const pollingToken = ++this.pollingToken;
+      const deadline = Date.now() + IMAGE_POLL_TIMEOUT_MS;
+      while (Date.now() < deadline && this.data.polling && pollingToken === this.pollingToken) {
         const detail = await getPictureBook(this.data.id);
         this.setData({ detail });
         const page = detail.pages.find((item: PictureBookPage) => item.id === pageId);
-        const latest = page?.illustrations[page.illustrations.length - 1];
+        const latest = page?.illustrations.find((item) => item.id === accepted.illustrationId);
         if (latest?.status === 'READY') return;
-        if (latest?.status === 'FAILED') throw new Error('Illustration failed');
-        await sleep(1000);
+        if (latest?.status === 'FAILED') {
+          failedErrorCode = latest.errorCode || 'ILLUSTRATION_FAILED';
+          throw new Error('ILLUSTRATION_FAILED');
+        }
+        await sleep(IMAGE_POLL_INTERVAL_MS);
       }
-      throw new Error('Illustration polling timed out');
     } catch (error) {
       this.setData({
         error:
           error instanceof PictureBookApiError && error.status === 503
             ? '图片生成未开启（安全关闭）'
-            : '插画任务失败，请稍后重试。',
+            : error instanceof Error && error.message === 'ILLUSTRATION_FAILED'
+              ? `插画生成失败（${failedErrorCode || 'ILLUSTRATION_FAILED'}）`
+              : '插画任务失败，请稍后重试。',
       });
     } finally {
       this.setData({ busy: false, polling: false });
