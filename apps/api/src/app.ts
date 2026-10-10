@@ -111,11 +111,11 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     process.env.NODE_ENV === 'test' ||
     (process.env.NODE_ENV === 'development' && process.env.MOCK_IMAGE_DEV_ROUTE_ENABLED === 'true')
   ) {
-    app.get('/api/v1/dev/mock-images/:imageId.jpg', async (_request, reply) => {
+    app.get('/api/v1/dev/mock-images/:imageId.png', async (_request, reply) => {
       const mockImage = readFileSync(
-        new URL('../../miniapp/assets/brand/home-parent-reading.jpg', import.meta.url),
+        new URL('../../miniapp/assets/brand/xiaohai-logo.png', import.meta.url),
       );
-      return reply.type('image/jpeg').send(mockImage);
+      return reply.type('image/png').send(mockImage);
     });
   }
   if (options.readiness) {
