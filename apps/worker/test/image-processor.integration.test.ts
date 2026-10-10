@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import {
   aiJobs,
   aiBudgetWindows,
+  aiCostLedger,
   aiCostReservations,
   aiProjects,
   characterProfiles,
@@ -311,6 +312,124 @@ suite('M10 image worker PostgreSQL integration', () => {
       }),
       expect.any(String),
     );
+  });
+
+  it('does not settle another consumer window when a pre-provider job fails', async () => {
+    const consumerA = await queued('BAILIAN');
+    const consumerB = await queued('BAILIAN');
+    await db
+      .update(aiBudgetWindows)
+      .set({ reservedMinor: 200 })
+      .where(eq(aiBudgetWindows.scopeType, 'GLOBAL'));
+
+    const [invalidReference] = await db
+      .insert(mediaAssets)
+      .values({
+        provider: 'BAIDU_BOS',
+        objectKey: 'picture-books/bailian/invalid-ref-multi-user.png',
+        playbackUrl: 'http://untrusted.example.test/invalid-ref.png',
+        mimeType: 'image/png',
+        status: 'READY',
+      })
+      .returning();
+    await db
+      .update(workPageIllustrations)
+      .set({
+        createdAt: new Date('2020-01-01T00:00:00Z'),
+        consistency: [
+          { ...consumerA.consistency[0]!, referenceMediaAssetId: invalidReference!.id },
+        ],
+      })
+      .where(eq(workPageIllustrations.id, consumerA.illustration.id));
+
+    const generate = vi.fn<ImageProvider['generate']>();
+    await new ImageJobProcessor(db, { name: 'BAILIAN', generate }, 5_000).processOne();
+    expect(generate).not.toHaveBeenCalled();
+
+    const windows = await db.select().from(aiBudgetWindows);
+    expect(windows.find((row) => row.scopeType === 'GLOBAL')).toMatchObject({
+      reservedMinor: 100,
+      actualMinor: 0,
+    });
+    expect(windows.find((row) => row.consumerUserId === consumerA.userId)).toMatchObject({
+      reservedMinor: 0,
+      actualMinor: 0,
+    });
+    expect(windows.find((row) => row.consumerUserId === consumerB.userId)).toMatchObject({
+      reservedMinor: 100,
+      actualMinor: 0,
+    });
+    const [otherReservation] = await db
+      .select()
+      .from(aiCostReservations)
+      .where(eq(aiCostReservations.resourceId, consumerB.illustration.id));
+    expect(otherReservation).toMatchObject({
+      status: 'RESERVED',
+      uncertainty: 'NONE',
+      reservedMinor: 100,
+      actualMinor: null,
+    });
+    const [failedReservation] = await db
+      .select()
+      .from(aiCostReservations)
+      .where(eq(aiCostReservations.resourceId, consumerA.illustration.id));
+    expect(failedReservation).toMatchObject({
+      status: 'SETTLED',
+      uncertainty: 'NONE',
+      actualMinor: 0,
+    });
+    const ledgers = await db.select().from(aiCostLedger);
+    expect(ledgers).toHaveLength(1);
+    expect(ledgers[0]).toMatchObject({
+      resourceId: consumerA.illustration.id,
+      outcome: 'FAILED',
+      amountMinor: 0,
+    });
+  });
+
+  it('leaves the budget ledger untouched when an owned settlement window is missing', async () => {
+    const fixture = await queued('BAILIAN');
+    await db
+      .delete(aiBudgetWindows)
+      .where(eq(aiBudgetWindows.consumerUserId, fixture.userId));
+    const [invalidReference] = await db
+      .insert(mediaAssets)
+      .values({
+        provider: 'BAIDU_BOS',
+        objectKey: 'picture-books/bailian/invalid-ref-missing-budget.png',
+        playbackUrl: 'http://untrusted.example.test/missing-budget.png',
+        mimeType: 'image/png',
+        status: 'READY',
+      })
+      .returning();
+    await db
+      .update(workPageIllustrations)
+      .set({
+        consistency: [
+          { ...fixture.consistency[0]!, referenceMediaAssetId: invalidReference!.id },
+        ],
+      })
+      .where(eq(workPageIllustrations.id, fixture.illustration.id));
+    const generate = vi.fn<ImageProvider['generate']>();
+    await expect(
+      new ImageJobProcessor(db, { name: 'BAILIAN', generate }, 5_000).processOne(),
+    ).rejects.toThrow('AI_BUDGET_WINDOW_INVALID');
+    expect(generate).not.toHaveBeenCalled();
+    expect(await db.select().from(aiCostLedger)).toHaveLength(0);
+    const [reservation] = await db
+      .select()
+      .from(aiCostReservations)
+      .where(eq(aiCostReservations.resourceId, fixture.illustration.id));
+    expect(reservation).toMatchObject({
+      status: 'RESERVED',
+      uncertainty: 'NONE',
+      actualMinor: null,
+    });
+    const [globalWindow] = await db
+      .select()
+      .from(aiBudgetWindows)
+      .where(eq(aiBudgetWindows.scopeType, 'GLOBAL'));
+    expect(globalWindow).toMatchObject({ reservedMinor: 100, actualMinor: 0 });
   });
 
   it('never marks the whole book READY from MOCK page media', async () => {
