@@ -82,12 +82,12 @@ export class MockImageProvider implements ImageProvider {
         }),
       )
       .digest('hex');
-    const objectKey = `picture-books/mock/${digest}.png`;
+    const objectKey = `picture-books/mock/${digest}.jpg`;
     return Promise.resolve({
       assetProvider: 'MOCK_IMAGE',
       objectKey,
       playbackUrl: `${this.playbackOrigin}/${digest}.jpg`,
-      mimeType: 'image/png',
+      mimeType: 'image/jpeg',
       byteSize: null,
       providerRequestId: `mock-image-${digest.slice(0, 24)}`,
     });
