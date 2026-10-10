@@ -488,24 +488,33 @@ export class PictureBookService {
       .orderBy(desc(pictureBooks.updatedAt))
       .limit(100);
     const bookIds = rows.map((row) => row.id);
-    const coverPages =
+    const bookPages =
       bookIds.length === 0
         ? []
         : await this.db
-            .select({ bookId: workPages.pictureBookId, pageId: workPages.id })
+            .select({
+              bookId: workPages.pictureBookId,
+              pageId: workPages.id,
+              pageKind: workPages.pageKind,
+            })
             .from(workPages)
-            .where(and(eq(workPages.pageKind, 'COVER'), inArray(workPages.pictureBookId, bookIds)));
-    const coverPageIds = coverPages.map((page) => page.pageId);
-    const coverIllustrations =
-      coverPageIds.length === 0
+            .where(inArray(workPages.pictureBookId, bookIds));
+    const coverPages = bookPages.filter((page) => page.pageKind === 'COVER');
+    const pageIds = bookPages.map((page) => page.pageId);
+    const realIllustrations =
+      pageIds.length === 0
         ? []
         : await this.db
-            .select({ illustration: workPageIllustrations, media: mediaAssets })
+            .select({
+              pageId: workPageIllustrations.pageId,
+              revisionNumber: workPageIllustrations.revisionNumber,
+              playbackUrl: mediaAssets.playbackUrl,
+            })
             .from(workPageIllustrations)
             .innerJoin(mediaAssets, eq(workPageIllustrations.mediaAssetId, mediaAssets.id))
             .where(
               and(
-                inArray(workPageIllustrations.pageId, coverPageIds),
+                inArray(workPageIllustrations.pageId, pageIds),
                 eq(workPageIllustrations.status, 'READY'),
                 eq(workPageIllustrations.provider, 'BAILIAN'),
                 eq(mediaAssets.status, 'READY'),
@@ -514,21 +523,35 @@ export class PictureBookService {
               ),
             )
             .orderBy(desc(workPageIllustrations.revisionNumber));
-    const coverPageByBook = new Map(coverPages.map((page) => [page.pageId, page.bookId]));
+    const readyPageIds = new Set<string>();
+    const coverPageById = new Map(coverPages.map((page) => [page.pageId, page.bookId]));
     const coverUrlByBook = new Map<string, string>();
-    for (const row of coverIllustrations) {
-      const url = row.media.playbackUrl;
-      const bookId = coverPageByBook.get(row.illustration.pageId);
-      if (bookId && url && isHttpsImageUrl(url) && !coverUrlByBook.has(bookId)) {
-        coverUrlByBook.set(bookId, url);
+    for (const illustration of realIllustrations) {
+      const { pageId, playbackUrl } = illustration;
+      if (!playbackUrl || !isHttpsImageUrl(playbackUrl)) continue;
+      readyPageIds.add(pageId);
+      const coverBookId = coverPageById.get(pageId);
+      if (coverBookId && !coverUrlByBook.has(coverBookId)) {
+        coverUrlByBook.set(coverBookId, playbackUrl);
       }
+    }
+    const pagesByBook = new Map<string, string[]>();
+    for (const page of bookPages) {
+      const existing = pagesByBook.get(page.bookId) ?? [];
+      existing.push(page.pageId);
+      pagesByBook.set(page.bookId, existing);
     }
 
     return {
-      pictureBooks: rows.map((row) => ({
-        ...this.viewPictureBook(row),
-        coverPlaybackUrl: coverUrlByBook.get(row.id) ?? null,
-      })),
+      pictureBooks: rows.map((row) => {
+        const pages = pagesByBook.get(row.id) ?? [];
+        const allPagesReal = pages.length > 0 && pages.every((pageId) => readyPageIds.has(pageId));
+        return {
+          ...this.viewPictureBook(row),
+          status: row.status === 'READY' && !allPagesReal ? 'ILLUSTRATING' : row.status,
+          coverPlaybackUrl: coverUrlByBook.get(row.id) ?? null,
+        };
+      }),
     };
   }
 
@@ -570,8 +593,28 @@ export class PictureBookService {
       byPage.set(illustration.illustration.pageId, rows);
     }
 
+    // Older rows may be marked READY because a MOCK illustration counted as complete.
+    // Derive the visible status from real, attached media without mutating historical data.
+    const readyPageIds = new Set(
+      illustrations
+        .filter(
+          ({ illustration, media }) =>
+            illustration.status === 'READY' &&
+            illustration.provider === 'BAILIAN' &&
+            media?.status === 'READY' &&
+            media.provider === 'BAIDU_BOS' &&
+            media.mimeType.startsWith('image/') &&
+            Boolean(media.playbackUrl && isHttpsImageUrl(media.playbackUrl)),
+        )
+        .map(({ illustration }) => illustration.pageId),
+    );
+    const allPagesReal = pages.length > 0 && pages.every((page) => readyPageIds.has(page.id));
+
     return {
-      pictureBook: this.viewPictureBook(book),
+      pictureBook: {
+        ...this.viewPictureBook(book),
+        status: book.status === 'READY' && !allPagesReal ? 'ILLUSTRATING' : book.status,
+      },
       characters: characters.map((row) => this.viewCharacter(row)),
       pages: pages.map((row) =>
         this.viewPage(
