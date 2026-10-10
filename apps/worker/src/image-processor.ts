@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import {
   characterProfiles,
   characterReferenceImages,
@@ -329,9 +329,28 @@ export class ImageJobProcessor {
             and(
               eq(aiBudgetWindows.budgetKey, reservation.budgetKey),
               eq(aiBudgetWindows.windowKey, reservation.windowKey),
+              or(
+                and(eq(aiBudgetWindows.scopeType, 'GLOBAL'), isNull(aiBudgetWindows.consumerUserId)),
+                and(
+                  eq(aiBudgetWindows.scopeType, 'CONSUMER'),
+                  eq(aiBudgetWindows.consumerUserId, reservation.consumerUserId!),
+                ),
+              ),
             ),
           )
           .for('update');
+        if (
+          windows.length !== 2 ||
+          windows.filter((window) => window.scopeType === 'GLOBAL').length !== 1 ||
+          windows.filter(
+            (window) =>
+              window.scopeType === 'CONSUMER' &&
+              window.consumerUserId === reservation.consumerUserId,
+          ).length !== 1 ||
+          windows.some((window) => window.reservedMinor < reservation.reservedMinor)
+        ) {
+          throw new Error('AI_BUDGET_WINDOW_INVALID');
+        }
         for (const window of windows) {
           await tx
             .update(aiBudgetWindows)
