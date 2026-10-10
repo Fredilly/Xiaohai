@@ -23,11 +23,13 @@ describe('foundation health endpoint', () => {
     apps.push(app);
     const response = await app.inject({
       method: 'GET',
-      url: '/api/v1/dev/mock-images/fixture.jpg',
+      url: '/api/v1/dev/mock-images/fixture.png',
     });
     expect(response.statusCode).toBe(200);
-    expect(response.headers['content-type']).toContain('image/jpeg');
-    expect(Buffer.from(response.rawPayload).subarray(0, 2)).toEqual(Buffer.from([0xff, 0xd8]));
+    expect(response.headers['content-type']).toContain('image/png');
+    expect(Buffer.from(response.rawPayload).subarray(0, 8)).toEqual(
+      Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+    );
   });
 
   it('does not expose the fixture in production, even with the dev flag', async () => {
@@ -37,7 +39,7 @@ describe('foundation health endpoint', () => {
     apps.push(app);
     const response = await app.inject({
       method: 'GET',
-      url: '/api/v1/dev/mock-images/fixture.jpg',
+      url: '/api/v1/dev/mock-images/fixture.png',
     });
     expect(response.statusCode).toBe(404);
   });
@@ -48,7 +50,7 @@ describe('foundation health endpoint', () => {
     const disabledApp = buildApp({ logger: false });
     apps.push(disabledApp);
     expect(
-      (await disabledApp.inject({ method: 'GET', url: '/api/v1/dev/mock-images/fixture.jpg' }))
+      (await disabledApp.inject({ method: 'GET', url: '/api/v1/dev/mock-images/fixture.png' }))
         .statusCode,
     ).toBe(404);
 
@@ -56,7 +58,7 @@ describe('foundation health endpoint', () => {
     const enabledApp = buildApp({ logger: false });
     apps.push(enabledApp);
     expect(
-      (await enabledApp.inject({ method: 'GET', url: '/api/v1/dev/mock-images/fixture.jpg' }))
+      (await enabledApp.inject({ method: 'GET', url: '/api/v1/dev/mock-images/fixture.png' }))
         .statusCode,
     ).toBe(200);
   });
