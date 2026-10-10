@@ -73,7 +73,12 @@ export class PictureBookService {
     private readonly logger?: PictureBookLogger,
   ) {}
 
-  async generateIllustration(consumerUserId: string, pictureBookId: string, pageId: string) {
+  async generateIllustration(
+    consumerUserId: string,
+    pictureBookId: string,
+    pageId: string,
+    regenerate = false,
+  ) {
     if (!this.config.imageEnabled) throw new PictureBookError('FEATURE_DISABLED');
 
     const { illustration, shouldNotify } = await this.db.transaction(async (tx) => {
@@ -132,6 +137,14 @@ export class PictureBookService {
       if (active) {
         return { illustration: active, shouldNotify: active.status === 'QUEUED' };
       }
+
+      const [latest] = await tx
+        .select({ status: workPageIllustrations.status })
+        .from(workPageIllustrations)
+        .where(eq(workPageIllustrations.pageId, pageId))
+        .orderBy(desc(workPageIllustrations.revisionNumber))
+        .limit(1);
+      if (latest && !regenerate) throw new PictureBookError('INVALID_STATE');
 
       const [revision] = await tx
         .select({

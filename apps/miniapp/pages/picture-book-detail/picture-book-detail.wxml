@@ -32,7 +32,7 @@
           </view>
         </view>
         <button wx:if="{{item.illustrations.length === 0}}" data-page-id="{{item.id}}" data-regenerate="false" disabled="{{busy}}" bindtap="illustrate">生成本页插画</button>
-        <button wx:else data-page-id="{{item.id}}" data-regenerate="true" disabled="{{busy}}" bindtap="illustrate">重新生成（保留历史）</button>
+        <button wx:else data-page-id="{{item.id}}" data-regenerate="true" disabled="{{busy || item.illustrations[item.illustrations.length - 1].status === 'QUEUED' || item.illustrations[item.illustrations.length - 1].status === 'RUNNING'}}" bindtap="illustrate">{{item.illustrations[item.illustrations.length - 1].status === 'FAILED' ? '重试本页插画' : '重新生成（保留历史）'}}</button>
       </view>
     </view>
   </block>
