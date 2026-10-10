@@ -387,9 +387,7 @@ suite('M10 image worker PostgreSQL integration', () => {
 
   it('leaves the budget ledger untouched when an owned settlement window is missing', async () => {
     const fixture = await queued('BAILIAN');
-    await db
-      .delete(aiBudgetWindows)
-      .where(eq(aiBudgetWindows.consumerUserId, fixture.userId));
+    await db.delete(aiBudgetWindows).where(eq(aiBudgetWindows.consumerUserId, fixture.userId));
     const [invalidReference] = await db
       .insert(mediaAssets)
       .values({
