@@ -177,9 +177,15 @@ suite('AI budget protection', () => {
       .from(aiCostLedger)
       .where(eq(aiCostLedger.reservationId, reservation.id));
     const windows = await db.select().from(aiBudgetWindows);
-    expect(storedReservation).toMatchObject({ status: 'SETTLED', uncertainty: 'NONE', actualMinor: 18 });
+    expect(storedReservation).toMatchObject({
+      status: 'SETTLED',
+      uncertainty: 'NONE',
+      actualMinor: 18,
+    });
     expect(ledgers).toHaveLength(1);
     expect(ledgers[0]).toMatchObject({ amountMinor: 18, outcome: 'SUCCEEDED' });
-    expect(windows.every((window) => window.reservedMinor === 0 && window.actualMinor === 18)).toBe(true);
+    expect(windows.every((window) => window.reservedMinor === 0 && window.actualMinor === 18)).toBe(
+      true,
+    );
   });
 });

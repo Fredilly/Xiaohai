@@ -1,4 +1,4 @@
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, isNull, or } from 'drizzle-orm';
 import {
   aiBudgetWindows,
   aiCostLedger,
@@ -105,6 +105,40 @@ export async function reserveImageBudget(
   return reservation!;
 }
 
+async function lockReservationWindows(
+  tx: BudgetDb,
+  reservation: typeof aiCostReservations.$inferSelect,
+) {
+  const windows = await tx
+    .select()
+    .from(aiBudgetWindows)
+    .where(
+      and(
+        eq(aiBudgetWindows.budgetKey, reservation.budgetKey),
+        eq(aiBudgetWindows.windowKey, reservation.windowKey),
+        or(
+          and(eq(aiBudgetWindows.scopeType, 'GLOBAL'), isNull(aiBudgetWindows.consumerUserId)),
+          and(
+            eq(aiBudgetWindows.scopeType, 'CONSUMER'),
+            eq(aiBudgetWindows.consumerUserId, reservation.consumerUserId!),
+          ),
+        ),
+      ),
+    )
+    .for('update');
+  if (windows.length !== 2) return null;
+  const global = windows.filter((window) => window.scopeType === 'GLOBAL');
+  const consumer = windows.filter((window) => window.scopeType === 'CONSUMER');
+  if (
+    global.length !== 1 ||
+    consumer.length !== 1 ||
+    consumer[0]!.consumerUserId !== reservation.consumerUserId
+  ) {
+    return null;
+  }
+  return windows;
+}
+
 export async function recordImageBudgetOutcome(
   db: Db,
   reservationId: string,
@@ -122,6 +156,13 @@ export async function recordImageBudgetOutcome(
     if (!reservation || reservation.status !== 'RESERVED' || reservation.uncertainty === 'AT_RISK')
       return false;
     const uncertain = outcome === 'AT_RISK' || actualMinor === null;
+    const windows = uncertain ? null : await lockReservationWindows(tx, reservation);
+    if (
+      !uncertain &&
+      (!windows || windows.some((window) => window.reservedMinor < reservation.reservedMinor))
+    ) {
+      return false;
+    }
     await tx.insert(aiCostLedger).values({
       reservationId,
       consumerUserId: reservation.consumerUserId,
@@ -146,21 +187,11 @@ export async function recordImageBudgetOutcome(
       })
       .where(eq(aiCostReservations.id, reservationId));
     if (!uncertain) {
-      const windows = await tx
-        .select()
-        .from(aiBudgetWindows)
-        .where(
-          and(
-            eq(aiBudgetWindows.budgetKey, reservation.budgetKey),
-            eq(aiBudgetWindows.windowKey, reservation.windowKey),
-          ),
-        )
-        .for('update');
-      for (const window of windows) {
+      for (const window of windows!) {
         await tx
           .update(aiBudgetWindows)
           .set({
-            reservedMinor: Math.max(0, window.reservedMinor - reservation.reservedMinor),
+            reservedMinor: window.reservedMinor - reservation.reservedMinor,
             actualMinor: window.actualMinor + (actualMinor ?? reservation.reservedMinor),
             updatedAt: new Date(),
           })
@@ -180,7 +211,7 @@ export async function confirmAtRiskImageBudget(
   db: Db,
   reservationId: string,
   actualMinor: number,
-  providerRequestId?: string,
+  providerRequestId: string,
 ) {
   if (!Number.isInteger(actualMinor) || actualMinor < 0) {
     throw new AiBudgetError('AI_COST_UNKNOWN');
@@ -193,8 +224,14 @@ export async function confirmAtRiskImageBudget(
       .where(eq(aiCostReservations.id, reservationId))
       .for('update');
     if (!reservation) return false;
-    if (reservation.status === 'SETTLED' && reservation.uncertainty === 'NONE') return true;
+    if (reservation.status === 'SETTLED' && reservation.uncertainty === 'NONE') {
+      return (
+        reservation.actualMinor === actualMinor &&
+        reservation.providerRequestId === providerRequestId
+      );
+    }
     if (reservation.status !== 'RESERVED' || reservation.uncertainty !== 'AT_RISK') return false;
+    if (reservation.providerRequestId !== providerRequestId) return false;
     if (actualMinor > reservation.reservedMinor) {
       throw new AiBudgetError('AI_BUDGET_EXCEEDED');
     }
@@ -206,16 +243,8 @@ export async function confirmAtRiskImageBudget(
       .for('update');
     if (ledgers.length !== 1 || ledgers[0]!.outcome !== 'AT_RISK') return false;
 
-    const windows = await tx
-      .select()
-      .from(aiBudgetWindows)
-      .where(
-        and(
-          eq(aiBudgetWindows.budgetKey, reservation.budgetKey),
-          eq(aiBudgetWindows.windowKey, reservation.windowKey),
-        ),
-      )
-      .for('update');
+    const windows = await lockReservationWindows(tx, reservation);
+    if (!windows) return false;
     if (windows.some((window) => window.reservedMinor < reservation.reservedMinor)) return false;
 
     await tx
