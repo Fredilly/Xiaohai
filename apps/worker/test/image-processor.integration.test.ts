@@ -172,7 +172,7 @@ suite('M10 image worker PostgreSQL integration', () => {
       .select()
       .from(mediaAssets)
       .where(eq(mediaAssets.id, saved!.mediaAssetId!));
-    expect(asset).toMatchObject({ provider: 'MOCK_IMAGE', mimeType: 'image/png', status: 'READY' });
+    expect(asset).toMatchObject({ provider: 'MOCK_IMAGE', mimeType: 'image/jpeg', status: 'READY' });
     expect(asset!.objectKey).not.toMatch(/base64|data:/i);
     expect(asset!.playbackUrl).not.toMatch(/base64|data:/i);
   });
