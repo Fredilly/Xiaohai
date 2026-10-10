@@ -188,4 +188,148 @@ suite('AI budget protection', () => {
       true,
     );
   });
+
+  it('settles two consumers independently while sharing global actual spend', async () => {
+    const [consumerA, consumerB] = await Promise.all([user(), user()]);
+    const reservations = await Promise.all(
+      [consumerA, consumerB].map((consumerUserId, index) =>
+        db.transaction((tx) =>
+          reserveImageBudget(tx, {
+            ...budget,
+            amountMinor: 100,
+            idempotencyKey: `multi-consumer-${index}`,
+            resourceId: randomUUID(),
+            consumerUserId,
+            provider: 'BAILIAN',
+            model: 'qwen-image-3.0',
+          }),
+        ),
+      ),
+    );
+    await Promise.all(
+      reservations.map((reservation, index) =>
+        recordImageBudgetOutcome(
+          db,
+          reservation.id,
+          'AT_RISK',
+          null,
+          undefined,
+          `provider-${index}`,
+        ),
+      ),
+    );
+
+    expect(await confirmAtRiskImageBudget(db, reservations[0]!.id, 80, 'provider-0')).toBe(true);
+    const [consumerBWindowBefore] = await db
+      .select()
+      .from(aiBudgetWindows)
+      .where(eq(aiBudgetWindows.consumerUserId, consumerB));
+    expect(consumerBWindowBefore).toMatchObject({ reservedMinor: 100, actualMinor: 0 });
+    expect(await confirmAtRiskImageBudget(db, reservations[1]!.id, 70, 'provider-1')).toBe(true);
+
+    const windows = await db.select().from(aiBudgetWindows);
+    const global = windows.find((window) => window.scopeType === 'GLOBAL');
+    const consumerWindows = windows.filter((window) => window.scopeType === 'CONSUMER');
+    expect(global).toMatchObject({ reservedMinor: 0, actualMinor: 150 });
+    expect(consumerWindows.map((window) => window.actualMinor).sort()).toEqual([70, 80]);
+    expect(consumerWindows.every((window) => window.reservedMinor === 0)).toBe(true);
+  });
+
+  it('rejects conflicting confirmation replays without changing settled state', async () => {
+    const consumerUserId = await user();
+    const reservation = await db.transaction((tx) =>
+      reserveImageBudget(tx, {
+        ...budget,
+        amountMinor: 100,
+        idempotencyKey: 'conflicting-replay',
+        resourceId: randomUUID(),
+        consumerUserId,
+        provider: 'BAILIAN',
+        model: 'qwen-image-3.0',
+      }),
+    );
+    await recordImageBudgetOutcome(
+      db,
+      reservation.id,
+      'AT_RISK',
+      null,
+      undefined,
+      'provider-replay',
+    );
+    expect(await confirmAtRiskImageBudget(db, reservation.id, 80, 'provider-replay')).toBe(true);
+    const before = await db
+      .select()
+      .from(aiCostReservations)
+      .where(eq(aiCostReservations.id, reservation.id));
+    const beforeLedger = await db
+      .select()
+      .from(aiCostLedger)
+      .where(eq(aiCostLedger.reservationId, reservation.id));
+    expect(await confirmAtRiskImageBudget(db, reservation.id, 81, 'provider-replay')).toBe(false);
+    expect(await confirmAtRiskImageBudget(db, reservation.id, 80, 'provider-other')).toBe(false);
+    expect(
+      await db.select().from(aiCostReservations).where(eq(aiCostReservations.id, reservation.id)),
+    ).toEqual(before);
+    expect(
+      await db.select().from(aiCostLedger).where(eq(aiCostLedger.reservationId, reservation.id)),
+    ).toEqual(beforeLedger);
+  });
+
+  it('rolls back confirmation when a required window is missing or under-reserved', async () => {
+    const consumerUserId = await user();
+    const reservation = await db.transaction((tx) =>
+      reserveImageBudget(tx, {
+        ...budget,
+        amountMinor: 100,
+        idempotencyKey: 'window-integrity',
+        resourceId: randomUUID(),
+        consumerUserId,
+        provider: 'BAILIAN',
+        model: 'qwen-image-3.0',
+      }),
+    );
+    await recordImageBudgetOutcome(
+      db,
+      reservation.id,
+      'AT_RISK',
+      null,
+      undefined,
+      'provider-window',
+    );
+    await db.delete(aiBudgetWindows).where(eq(aiBudgetWindows.consumerUserId, consumerUserId));
+    expect(await confirmAtRiskImageBudget(db, reservation.id, 80, 'provider-window')).toBe(false);
+    const [afterMissing] = await db
+      .select()
+      .from(aiCostReservations)
+      .where(eq(aiCostReservations.id, reservation.id));
+    expect(afterMissing).toMatchObject({
+      status: 'RESERVED',
+      uncertainty: 'AT_RISK',
+      actualMinor: null,
+    });
+
+    await db.insert(aiBudgetWindows).values({
+      budgetKey: reservation.budgetKey,
+      scopeType: 'CONSUMER',
+      consumerUserId,
+      windowKey: reservation.windowKey,
+      limitMinor: 100,
+      reservedMinor: 50,
+    });
+    expect(await confirmAtRiskImageBudget(db, reservation.id, 80, 'provider-window')).toBe(false);
+    const [afterShort] = await db
+      .select()
+      .from(aiCostReservations)
+      .where(eq(aiCostReservations.id, reservation.id));
+    const ledger = await db
+      .select()
+      .from(aiCostLedger)
+      .where(eq(aiCostLedger.reservationId, reservation.id));
+    expect(afterShort).toMatchObject({
+      status: 'RESERVED',
+      uncertainty: 'AT_RISK',
+      actualMinor: null,
+    });
+    expect(ledger[0]).toMatchObject({ outcome: 'AT_RISK', amountMinor: 100 });
+  });
 });
