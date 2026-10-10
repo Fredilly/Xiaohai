@@ -106,14 +106,18 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     done();
   });
   app.get('/health', () => healthResponseSchema.parse({ status: 'ok', service: 'api' }));
-  // Deterministic local image used only by MockImageProvider. It intentionally
-  // does not read storage or call an external provider.
-  app.get('/api/v1/dev/mock-images/:imageId.jpg', async (_request, reply) => {
-    const mockImage = readFileSync(
-      new URL('../../miniapp/assets/brand/home-parent-reading.jpg', import.meta.url),
-    );
-    return reply.type('image/jpeg').send(mockImage);
-  });
+  // Explicit local-only MOCK fixture. Never expose this route in production.
+  if (
+    process.env.NODE_ENV === 'test' ||
+    (process.env.NODE_ENV === 'development' && process.env.MOCK_IMAGE_DEV_ROUTE_ENABLED === 'true')
+  ) {
+    app.get('/api/v1/dev/mock-images/:imageId.jpg', async (_request, reply) => {
+      const mockImage = readFileSync(
+        new URL('../../miniapp/assets/brand/home-parent-reading.jpg', import.meta.url),
+      );
+      return reply.type('image/jpeg').send(mockImage);
+    });
+  }
   if (options.readiness) {
     app.get('/ready', async (_request, reply) => {
       try {
