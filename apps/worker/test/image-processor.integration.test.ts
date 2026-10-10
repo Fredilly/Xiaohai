@@ -280,8 +280,11 @@ suite('M10 image worker PostgreSQL integration', () => {
       })
       .where(eq(workPageIllustrations.id, fixture.illustration.id));
     const generate = vi.fn<ImageProvider['generate']>();
+    const errorLogger = vi.fn();
 
-    await new ImageJobProcessor(db, { name: 'BAILIAN', generate }, 5_000).processOne();
+    await new ImageJobProcessor(db, { name: 'BAILIAN', generate }, 5_000, {
+      error: errorLogger,
+    }).processOne();
 
     const [saved] = await db
       .select()
@@ -289,6 +292,13 @@ suite('M10 image worker PostgreSQL integration', () => {
       .where(eq(workPageIllustrations.id, fixture.illustration.id));
     expect(generate).not.toHaveBeenCalled();
     expect(saved).toMatchObject({ status: 'FAILED', errorCode: 'IMAGE_PROVIDER_UNAVAILABLE' });
+    expect(errorLogger).toHaveBeenCalledWith(
+      expect.objectContaining({
+        stage: 'VALIDATION',
+        validationCode: 'INVALID_REFERENCE_ASSET',
+      }),
+      expect.any(String),
+    );
   });
 
   it('records provider failure without creating a false READY asset', async () => {
