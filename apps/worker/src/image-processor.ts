@@ -330,7 +330,10 @@ export class ImageJobProcessor {
               eq(aiBudgetWindows.budgetKey, reservation.budgetKey),
               eq(aiBudgetWindows.windowKey, reservation.windowKey),
               or(
-                and(eq(aiBudgetWindows.scopeType, 'GLOBAL'), isNull(aiBudgetWindows.consumerUserId)),
+                and(
+                  eq(aiBudgetWindows.scopeType, 'GLOBAL'),
+                  isNull(aiBudgetWindows.consumerUserId),
+                ),
                 and(
                   eq(aiBudgetWindows.scopeType, 'CONSUMER'),
                   eq(aiBudgetWindows.consumerUserId, reservation.consumerUserId!),
