@@ -36,6 +36,7 @@ export type ImageProviderStage =
   | 'TEMPORARY_IMAGE_DOWNLOAD'
   | 'VALIDATION'
   | 'BOS_UPLOAD'
+  | 'BUDGET_VALIDATION'
   | 'DB_READY_WRITEBACK';
 
 export class ImageProviderError extends Error {
@@ -50,7 +51,8 @@ export class ImageProviderError extends Error {
         | 'TEMPORARY_MIME_INVALID'
         | 'TEMPORARY_SIZE_INVALID'
         | 'TEMPORARY_IMAGE_EMPTY'
-        | 'INVALID_REFERENCE_ASSET';
+        | 'INVALID_REFERENCE_ASSET'
+        | 'AI_BUDGET_RESERVATION_REQUIRED';
       httpStatus?: number;
       providerErrorCode?: string;
       safeMessage?: string;
