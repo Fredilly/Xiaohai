@@ -21,7 +21,8 @@ import {
 const sleep = (milliseconds: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
 
-const IMAGE_POLL_TIMEOUT_MS = 190_000;
+// Worker enforces a 600s minimum image deadline; keep UI polling beyond it without retrying.
+const IMAGE_POLL_TIMEOUT_MS = 620_000;
 const IMAGE_POLL_INTERVAL_MS = 1_000;
 
 Page({
