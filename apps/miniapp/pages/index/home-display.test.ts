@@ -39,11 +39,7 @@ describe('home display content', () => {
       },
     ];
 
-    const updated = clearFailedHeroMedia(
-      sections,
-      0,
-      miniappRemoteAssets.home.parentChildReading,
-    );
+    const updated = clearFailedHeroMedia(sections, 0, miniappRemoteAssets.home.parentChildReading);
     expect(updated[0]).toEqual({ ...sections[0], mediaUrl: '' });
     expect(sections[0]?.mediaUrl).toBe(miniappRemoteAssets.home.parentChildReading);
   });
