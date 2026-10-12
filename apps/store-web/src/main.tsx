@@ -5,7 +5,7 @@ import type { StaffStore } from '@xiaohai/contracts/stores';
 import './styles.css';
 import { getStaffMe, loginStaff } from './staff-auth';
 import { loadStaffStores } from './stores-api';
-import { storeModules, visibleStoreModules } from './mock-data';
+import { visibleStoreModules } from './mock-data';
 import { BookSearchPanel } from './book-search-panel';
 import { InventoryPanel } from './inventory-panel';
 import { RentalPanel } from './rental-panel';
