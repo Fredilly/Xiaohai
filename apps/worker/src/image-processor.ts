@@ -168,12 +168,22 @@ export class ImageJobProcessor {
           where pb.id = (
             select wp.picture_book_id from work_pages wp where wp.id = ${illustrationRow?.pageId}
           )
+          and exists (
+            select 1 from work_pages page where page.picture_book_id = pb.id
+          )
           and not exists (
             select 1 from work_pages page
             where page.picture_book_id = pb.id
               and not exists (
                 select 1 from work_page_illustrations illustration
-                where illustration.page_id = page.id and illustration.status = 'READY'
+                join media_assets media on media.id = illustration.media_asset_id
+                where illustration.page_id = page.id
+                  and illustration.status = 'READY'
+                  and illustration.provider = 'BAILIAN'
+                  and media.status = 'READY'
+                  and media.provider = 'BAIDU_BOS'
+                  and media.mime_type like 'image/%'
+                  and media.playback_url ~* '^https://[^/?#]+/[^?#]+[.](png|jpg|jpeg|webp|gif)([?][^#]*)?$'
               )
           )
         `);
