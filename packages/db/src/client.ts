@@ -7,6 +7,7 @@ import * as commerceSchema from './commerce-schema.js';
 import * as paymentSchema from './payment-schema.js';
 import * as contentSchema from './content-schema.js';
 import * as aiSchema from './ai-schema.js';
+import * as aiBudgetSchema from './ai-budget-schema.js';
 
 const schema = {
   ...coreSchema,
@@ -15,6 +16,7 @@ const schema = {
   ...paymentSchema,
   ...contentSchema,
   ...aiSchema,
+  ...aiBudgetSchema,
 };
 
 export function assertTestDatabaseUrl(value: string | undefined): string {

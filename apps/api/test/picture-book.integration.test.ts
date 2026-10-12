@@ -42,11 +42,21 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
     imageEnabled: true,
     imageProvider: 'MOCK',
     imageModel: 'server-controlled-image-model',
+    imageBudget: {
+      budgetKey: 'TEST_PICTURE_BOOK_IMAGES',
+      amountMinor: 100,
+      globalLimitMinor: 500,
+      consumerLimitMinor: 500,
+      windowKey: 'TEST_CUMULATIVE',
+    },
   };
 
   const resetDatabase = async () => {
     await database!.pool.query(`
       TRUNCATE TABLE
+        ai_cost_ledger,
+        ai_cost_reservations,
+        ai_budget_windows,
         work_page_illustrations,
         character_reference_images,
         work_pages,

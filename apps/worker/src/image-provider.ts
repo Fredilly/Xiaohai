@@ -36,6 +36,7 @@ export type ImageProviderStage =
   | 'TEMPORARY_IMAGE_DOWNLOAD'
   | 'VALIDATION'
   | 'BOS_UPLOAD'
+  | 'BUDGET_VALIDATION'
   | 'DB_READY_WRITEBACK';
 
 export class ImageProviderError extends Error {
@@ -49,7 +50,9 @@ export class ImageProviderError extends Error {
         | 'UNTRUSTED_TEMPORARY_URL'
         | 'TEMPORARY_MIME_INVALID'
         | 'TEMPORARY_SIZE_INVALID'
-        | 'TEMPORARY_IMAGE_EMPTY';
+        | 'TEMPORARY_IMAGE_EMPTY'
+        | 'INVALID_REFERENCE_ASSET'
+        | 'AI_BUDGET_RESERVATION_REQUIRED';
       httpStatus?: number;
       providerErrorCode?: string;
       safeMessage?: string;
@@ -86,7 +89,7 @@ export class MockImageProvider implements ImageProvider {
     return Promise.resolve({
       assetProvider: 'MOCK_IMAGE',
       objectKey,
-      playbackUrl: `${this.playbackOrigin}/${digest}.jpg`,
+      playbackUrl: `${this.playbackOrigin}/${digest}.png`,
       mimeType: 'image/png',
       byteSize: null,
       providerRequestId: `mock-image-${digest.slice(0, 24)}`,
