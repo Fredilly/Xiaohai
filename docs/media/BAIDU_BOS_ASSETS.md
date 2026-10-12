@@ -16,8 +16,8 @@ No access key, secret key, private Bucket configuration, or Baidu Netdisk share 
 | --- | --- | --- |
 | `home.parentChildReading` | `home/hero/parent-child-reading-v2.jpg` | `assets/brand/home-parent-reading.jpg` |
 | `shop.dinosaursNeedBigHandCover` | `books/covers/dinosaurs-need-a-big-hand-v2.png` | `assets/books/book-dinosaurs-need-a-big-hand.jpg` |
-| `shop.pewPewTigerCover` | `books/covers/pew-pew-tiger-v1.jpg` | `assets/books/book-pew-pew-tiger.jpg` |
-| `shop.dodosHairyDayCover` | `books/covers/dodos-hairy-day-v1.jpg` | `assets/books/book-dodos-hairy-day.jpg` |
+| `shop.pewPewTigerCover` | `books/covers/pew-pew-tiger-v2.jpg` | `assets/books/book-pew-pew-tiger.jpg` |
+| `shop.dodosHairyDayCover` | `books/covers/dodos-hairy-day-v2.jpg` | `assets/books/book-dodos-hairy-day.jpg` |
 | `shop.yunsDiaryCover` | `books/covers/yuns-diary-v2.png` | `assets/books/book-yuns-diary.jpg` |
 
 The version suffix makes replacement explicit: publish a new object such as `-v2.jpg` or `-v2.png`, verify it, then update the manifest. Do not overwrite a versioned object used by a released Mini Program.
@@ -61,7 +61,7 @@ The five migrated files are removed from the Mini Program source bundle.
 
 ## Current evidence status
 
-The historical Issue #70 / PR #75 record reported HTTP 200 and source-file hash matches for the original five v1 assets, but **the old home v1 and Yun's Diary v1 did not decode**. The recovered home v2 JPEG (2496×1664), Yun's Diary v2 PNG (800×800), and dinosaur v2 PNG (799×800) have since passed owner-local public HTTPS download, image dimension decode, and byte-for-byte comparisons against valid originals. Although the dinosaur v1 JPEG decoded as 600×601, its rendered pixels were mostly gray compared with the correct colorful archived source. Two other cover v1 JPEGs decoded locally (PEW PEW TIGER 260×284, DoDo 260×293), but their visible content still needs separate quality inspection. File validity alone does not prove commerce UI rendering.
+The historical Issue #70 / PR #75 record reported HTTP 200 and source-file hash matches for the original five v1 assets, but **the old home v1 and Yun's Diary v1 did not decode**. The recovered home v2 JPEG (2496×1664), Yun's Diary v2 PNG (800×800), and dinosaur v2 PNG (799×800) have since passed owner-local public HTTPS download, image dimension decode, and byte-for-byte comparisons against valid originals. Although the dinosaur v1 JPEG decoded as 600×601, its rendered pixels were mostly gray compared with the correct colorful archived source. PEW PEW TIGER and DoDo v1 JPEGs decoded locally but rendered with large gray lower blocks not present in their legacy originals. They have now been replaced with verified public v2 JPEGs (1960×2140 and 1932×2172). File validity alone does not prove commerce UI rendering.
 
 For the current release gate, GitHub CI, static file inventory, and deterministic tests are separate from WeChat DevTools screenshots and real-device evidence. Owner DevTools screenshots demonstrate a manually injected Home HERO with v2 JPEG rendering consistently at 16:02 and 16:03, plus a 200 image response. This is a **partial** image rendering PASS, not full CMS integration or shop/product/failure-state acceptance. Device checks remain outstanding.
 
@@ -87,7 +87,20 @@ The owner observed a mostly gray `books/covers/dinosaurs-need-a-big-hand-v1.jpg`
 
 The corresponding archived original `图片/big_380ebb63a00b19c66daec2bff3637593.png` was shown in macOS Preview as the intended colorful yellow dinosaur book cover, with the title "Dinosaurs Need a Big Hand". The verified source was copied without conversion and uploaded as a separate versioned `books/covers/dinosaurs-need-a-big-hand-v2.png`. The owner-provided BOS object list shows v2 alongside retained v1. After public HTTPS download, macOS `sips` decoded v2 at **799 × 800**, and `cmp -s` against the local source returned **`V2_MATCH_OK`**.
 
-The runtime manifest and checks now select v2 PNG. **Pending:** new WeChat DevTools Shop card and Product Detail visual screenshots for v2; assess the gray lower bands seen on the PEW PEW TIGER and DoDo covers rather than assuming those two v1 assets are fully correct. No DB seed, payment action, paid generation, or v1 overwrite was performed.
+The runtime manifest and checks now select v2 PNG. A manually injected WeChat DevTools Shop card at 16:45 displayed the correct colorful dinosaur v2 cover. **Pending:** real API-backed product behavior, Product Detail visual evidence and failure-state checks. No DB seed, payment action, paid generation, or v1 overwrite was performed.
+
+## PEW PEW TIGER and DoDo cover v2
+
+The owner's macOS Preview side-by-side comparison showed that `books/covers/pew-pew-tiger-v1.jpg` and `books/covers/dodos-hairy-day-v1.jpg` had substantial flat gray regions, absent from the corresponding full-sized original illustrations. Their earlier `wx.getImageInfo` success therefore established **decode**, not visual content integrity.
+
+Recovered verified originals:
+
+| Cover | Archived local original | Public replacement | Verified dimensions | Verification |
+| --- | --- | --- | --- | --- |
+| PEW PEW TIGER | `图片/3c0d665b10ed592b74b776074fa97fdf.jpg` | `books/covers/pew-pew-tiger-v2.jpg` | 1960×2140 JPEG | `V2_MATCH_OK` |
+| DoDo's Hairy Day | `图片/72a31c645c7f6aa53740011e439c8dcc.jpg` | `books/covers/dodos-hairy-day-v2.jpg` | 1932×2172 JPEG | `V2_MATCH_OK` |
+
+The owner copied the local originals without conversion, uploaded new versioned BOS objects, downloaded the public URLs, checked dimensions with macOS `sips`, and obtained byte-for-byte matching comparisons against their local copies. The old v1 objects were not overwritten. **Pending:** WeChat DevTools Shop/Product component screenshots using these v2 URLs and deliberate image-failure fallback checks; neither HTTP success nor standalone decode substitutes for UI acceptance.
 
 ## Manual acceptance matrix
 
@@ -96,7 +109,7 @@ Do not mark an unexecuted row as PASS.
 | Target | Network | Flow | Expected | Current status |
 | --- | --- | --- | --- | --- |
 | WeChat DevTools | Normal | Home editorial HERO | Stable v2 image in manually injected HERO and HTTP 200; real CMS override still unverified | PARTIAL PASS (manual injection screenshots) |
-| WeChat DevTools | Normal | Shop → known book | Correct BOS cover loads; unrelated item keeps “暂无封面” | PENDING SCREENSHOT |
+| WeChat DevTools | Normal | Shop → known book | Temporary Shop-card tests showed old v1 defects; dinosaur v2 visually PASS, other current v2 covers still pending | PARTIAL PASS (temporary Shop cards) |
 | WeChat DevTools | Normal | Product detail | Correct BOS cover loads in fixed cover area | PENDING SCREENSHOT |
 | DevTools | Forced image failure | Home / shop / product | Existing placeholder appears; business state remains usable | PENDING SCREENSHOT |
 | iPhone | Normal / weak | Home → shop → product | BOS images load or fail safely without broken navigation | BLOCKED BY #76 |
