@@ -11,7 +11,12 @@
       "face": "round brown eyes, gentle expression, rust-orange fur",
       "clothing": "yellow knit scarf, blue overalls",
       "accessories": "small red satchel",
-      "colors": ["rust-orange", "yellow", "blue", "red"],
+      "colors": [
+        "rust-orange",
+        "yellow",
+        "blue",
+        "red"
+      ],
       "proportions": "small child proportions, rounded storybook silhouette",
       "referenceSlot": "mimi-reference"
     },
@@ -22,7 +27,12 @@
       "face": "small friendly eyes, short rounded beak",
       "clothing": "green cap",
       "accessories": "tiny orange satchel",
-      "colors": ["sky-blue", "pale-yellow", "green", "orange"],
+      "colors": [
+        "sky-blue",
+        "pale-yellow",
+        "green",
+        "orange"
+      ],
       "proportions": "small bird-child proportions, rounded wings and head",
       "referenceSlot": "pip-reference"
     }
@@ -51,16 +61,44 @@
     {
       "pageKey": "page-1",
       "scene": "Mimi walks beside a forest stream at sunrise while Pip flies just above the water.",
-      "characters": ["mimi", "pip"],
-      "requiredContinuity": ["same faces", "same clothing", "same accessories", "same palette", "same medium"],
-      "forbiddenArtifacts": ["extra character", "unrequested text", "garbled text", "duplicate limbs"]
+      "characters": [
+        "mimi",
+        "pip"
+      ],
+      "requiredContinuity": [
+        "same faces",
+        "same clothing",
+        "same accessories",
+        "same palette",
+        "same medium"
+      ],
+      "forbiddenArtifacts": [
+        "extra character",
+        "unrequested text",
+        "garbled text",
+        "duplicate limbs"
+      ]
     },
     {
       "pageKey": "page-2",
       "scene": "Mimi and Pip sit under a friendly tree sharing a paper map in warm afternoon light.",
-      "characters": ["mimi", "pip"],
-      "requiredContinuity": ["same faces", "same clothing", "same accessories", "same palette", "same medium"],
-      "forbiddenArtifacts": ["extra character", "unrequested text", "garbled text", "duplicate limbs"]
+      "characters": [
+        "mimi",
+        "pip"
+      ],
+      "requiredContinuity": [
+        "same faces",
+        "same clothing",
+        "same accessories",
+        "same palette",
+        "same medium"
+      ],
+      "forbiddenArtifacts": [
+        "extra character",
+        "unrequested text",
+        "garbled text",
+        "duplicate limbs"
+      ]
     }
   ],
   "regenerationPlan": {
