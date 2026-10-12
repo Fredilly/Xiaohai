@@ -663,8 +663,14 @@ suite('M10 image worker PostgreSQL integration', () => {
       .select()
       .from(mediaAssets)
       .where(eq(mediaAssets.id, saved!.mediaAssetId!));
-    expect(saved).toMatchObject({ status: 'READY', errorCode: null });
-    expect(asset).toMatchObject({ provider: 'BAIDU_BOS', status: 'READY', byteSize: 9 });
+    expect(generate).toHaveBeenCalledOnce();
+    expect(saved).toMatchObject({ status: 'READY', errorCode: null, mediaAssetId: asset!.id });
+    expect(asset).toMatchObject({
+      provider: 'BAIDU_BOS',
+      status: 'READY',
+      byteSize: 9,
+      playbackUrl: `https://assets.example.com/picture-books/bailian/${fixture.illustration.id}.png`,
+    });
   });
 
   it('marks an orphaned image terminal once without publishing a stale asset', async () => {

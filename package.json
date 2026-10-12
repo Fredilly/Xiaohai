@@ -26,7 +26,9 @@
     "check:workspace": "node scripts/check-workspace.mjs",
     "check:secrets": "node --test scripts/secret-policy.test.mjs scripts/set-local-secret.test.mjs && node scripts/check-secrets.mjs",
     "check:miniapp": "node scripts/check-miniapp.mjs",
-    "check": "pnpm check:workspace && pnpm check:miniapp && pnpm check:secrets && pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build"
+    "check": "pnpm check:workspace && pnpm check:miniapp && pnpm check:secrets && pnpm test:preflight && pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build",
+    "preflight:image": "node --env-file-if-exists .env scripts/image-preflight.mjs",
+    "test:preflight": "node --test scripts/local-startup.test.mjs scripts/image-preflight.test.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.35.0",
