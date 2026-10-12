@@ -1126,9 +1126,7 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
     const stored = await db
       .select()
       .from(workPageIllustrations)
-      .where(
-        inArray(workPageIllustrations.id, [first.illustrationId, second.illustrationId]),
-      );
+      .where(inArray(workPageIllustrations.id, [first.illustrationId, second.illustrationId]));
     expect(stored).toHaveLength(2);
     for (const illustration of stored) {
       expect(
