@@ -43,9 +43,7 @@
       "desc": "用于查找附近的胖竹书店"
     }
   },
-  "requiredPrivateInfos": [
-    "getLocation"
-  ],
+  "requiredPrivateInfos": ["getLocation"],
   "tabBar": {
     "color": "#A2ABB5",
     "selectedColor": "#718DA0",
