@@ -258,6 +258,7 @@ export function registerPictureBookRoutes(
                 consumer(request),
                 params.data.bookId,
                 params.data.pageId,
+                suffix.endsWith('/regenerate'),
               ),
             ),
           );
