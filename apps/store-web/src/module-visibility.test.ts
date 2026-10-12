@@ -3,9 +3,7 @@ import { visibleStoreModules } from './mock-data';
 
 describe('Store Web module visibility', () => {
   it('shows only modules backed by the current Staff permissions', () => {
-    const visible = visibleStoreModules(['stores.read', 'inventory.read']).map(
-      (item) => item.key,
-    );
+    const visible = visibleStoreModules(['stores.read', 'inventory.read']).map((item) => item.key);
 
     expect(visible).toEqual(['dashboard', 'books', 'inventory', 'operations']);
     expect(visible).not.toContain('rental');
