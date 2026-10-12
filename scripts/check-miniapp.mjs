@@ -78,7 +78,7 @@ if (!assetManifest.includes("BOS_ASSET_ORIGIN = 'https://xiaohai-prod-assets.cd.
 
 for (const objectPath of [
   'home/hero/parent-child-reading-v2.jpg',
-  'books/covers/dinosaurs-need-a-big-hand-v1.jpg',
+  'books/covers/dinosaurs-need-a-big-hand-v2.png',
   'books/covers/pew-pew-tiger-v1.jpg',
   'books/covers/dodos-hairy-day-v1.jpg',
   'books/covers/yuns-diary-v2.png',
