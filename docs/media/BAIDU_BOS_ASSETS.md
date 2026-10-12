@@ -51,12 +51,19 @@ This is an account-level setting and must not be simulated in `project.config.js
 CI verifies:
 
 - the approved HTTPS BOS origin;
+- the five migrated large images remain absent from the bundled assets directory;
 - all five versioned runtime object paths;
 - runtime visual helpers no longer reference the removed bundled editorial files;
 - HOME / shop / product images keep `binderror` fallbacks;
 - image areas reserve stable dimensions to avoid material layout jumps.
 
 The five migrated files are removed from the Mini Program source bundle.
+
+## Current evidence status
+
+The historical Issue #70 / PR #75 record says the five versioned BOS objects previously returned HTTP 200 with `image/jpeg` and matched source-file SHA-256 values. This is historical evidence, not a new live object check on the current PR HEAD.
+
+For the current release gate, GitHub CI, static file inventory, and deterministic tests are separate from WeChat DevTools screenshots and real-device evidence. This PR does **not** claim that live image loading or network recovery on a device has been demonstrated. A fresh runtime network check is still required before marking #70 complete.
 
 ## Manual acceptance matrix
 
