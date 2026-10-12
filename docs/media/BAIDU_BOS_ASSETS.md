@@ -15,7 +15,7 @@ No access key, secret key, private Bucket configuration, or Baidu Netdisk share 
 | Runtime logical asset | BOS object key | Source removed from bundle |
 | --- | --- | --- |
 | `home.parentChildReading` | `home/hero/parent-child-reading-v2.jpg` | `assets/brand/home-parent-reading.jpg` |
-| `shop.dinosaursNeedBigHandCover` | `books/covers/dinosaurs-need-a-big-hand-v1.jpg` | `assets/books/book-dinosaurs-need-a-big-hand.jpg` |
+| `shop.dinosaursNeedBigHandCover` | `books/covers/dinosaurs-need-a-big-hand-v2.png` | `assets/books/book-dinosaurs-need-a-big-hand.jpg` |
 | `shop.pewPewTigerCover` | `books/covers/pew-pew-tiger-v1.jpg` | `assets/books/book-pew-pew-tiger.jpg` |
 | `shop.dodosHairyDayCover` | `books/covers/dodos-hairy-day-v1.jpg` | `assets/books/book-dodos-hairy-day.jpg` |
 | `shop.yunsDiaryCover` | `books/covers/yuns-diary-v2.png` | `assets/books/book-yuns-diary.jpg` |
@@ -61,7 +61,7 @@ The five migrated files are removed from the Mini Program source bundle.
 
 ## Current evidence status
 
-The historical Issue #70 / PR #75 record reported HTTP 200 and source-file hash matches for the original five v1 assets, but **the old home v1 and Yun's Diary v1 did not decode**. The recovered home v2 JPEG (2496×1664) and Yun's Diary v2 PNG (800×800) have since passed owner-local public HTTPS download, image dimension decode, and byte-for-byte comparisons against valid originals. Three other cover v1 JPEGs decoded locally (600×601, 260×284, 260×293). These checks establish file validity only, not commerce UI rendering.
+The historical Issue #70 / PR #75 record reported HTTP 200 and source-file hash matches for the original five v1 assets, but **the old home v1 and Yun's Diary v1 did not decode**. The recovered home v2 JPEG (2496×1664), Yun's Diary v2 PNG (800×800), and dinosaur v2 PNG (799×800) have since passed owner-local public HTTPS download, image dimension decode, and byte-for-byte comparisons against valid originals. Although the dinosaur v1 JPEG decoded as 600×601, its rendered pixels were mostly gray compared with the correct colorful archived source. Two other cover v1 JPEGs decoded locally (PEW PEW TIGER 260×284, DoDo 260×293), but their visible content still needs separate quality inspection. File validity alone does not prove commerce UI rendering.
 
 For the current release gate, GitHub CI, static file inventory, and deterministic tests are separate from WeChat DevTools screenshots and real-device evidence. Owner DevTools screenshots demonstrate a manually injected Home HERO with v2 JPEG rendering consistently at 16:02 and 16:03, plus a 200 image response. This is a **partial** image rendering PASS, not full CMS integration or shop/product/failure-state acceptance. Device checks remain outstanding.
 
@@ -80,6 +80,14 @@ The prior `books/covers/yuns-diary-v1.jpg` gave `pixelWidth: <nil>` and `pixelHe
 The owner uploaded a separate `books/covers/yuns-diary-v2.png` object to the existing BOS bucket (the console shows both versions). The public URL then downloaded successfully, decoded at **800 × 800**, and `cmp` against the owner's local verified PNG returned **`V2_MATCH_OK`**. The v1 JPG remains preserved for diagnosis, but the Mini Program manifest now selects v2 PNG.
 
 **Still pending:** WeChat DevTools shop-list and product-detail visual checks for this cover, as well as the other three previously decoded covers and image-error placeholders. Do not treat a valid downloaded object as proof the Mini Program UI has rendered it.
+
+## Dinosaurs Need a Big Hand cover v2
+
+The owner observed a mostly gray `books/covers/dinosaurs-need-a-big-hand-v1.jpg` in a manually injected Shop list and confirmed the same defective content in macOS Preview. Image dimensions were readable, so **successful decoding did not mean correct visual content**.
+
+The corresponding archived original `图片/big_380ebb63a00b19c66daec2bff3637593.png` was shown in macOS Preview as the intended colorful yellow dinosaur book cover, with the title "Dinosaurs Need a Big Hand". The verified source was copied without conversion and uploaded as a separate versioned `books/covers/dinosaurs-need-a-big-hand-v2.png`. The owner-provided BOS object list shows v2 alongside retained v1. After public HTTPS download, macOS `sips` decoded v2 at **799 × 800**, and `cmp -s` against the local source returned **`V2_MATCH_OK`**.
+
+The runtime manifest and checks now select v2 PNG. **Pending:** new WeChat DevTools Shop card and Product Detail visual screenshots for v2; assess the gray lower bands seen on the PEW PEW TIGER and DoDo covers rather than assuming those two v1 assets are fully correct. No DB seed, payment action, paid generation, or v1 overwrite was performed.
 
 ## Manual acceptance matrix
 
