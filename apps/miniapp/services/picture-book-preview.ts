@@ -20,15 +20,17 @@ const latestFirst = (left: PictureBookIllustration, right: PictureBookIllustrati
 export function selectPreviewIllustration(
   illustrations: PictureBookIllustration[],
 ): PictureBookIllustration | null {
-  return [...illustrations]
-    .sort(latestFirst)
-    .find(
-      (revision) =>
-        revision.status === 'READY' &&
-        revision.provider !== 'MOCK' &&
-        Boolean(revision.mediaAssetId) &&
-        Boolean(revision.playbackUrl),
-    ) ?? null;
+  return (
+    [...illustrations]
+      .sort(latestFirst)
+      .find(
+        (revision) =>
+          revision.status === 'READY' &&
+          revision.provider !== 'MOCK' &&
+          Boolean(revision.mediaAssetId) &&
+          Boolean(revision.playbackUrl),
+      ) ?? null
+  );
 }
 
 function previewState(
