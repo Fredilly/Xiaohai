@@ -1088,6 +1088,97 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
     expect(revisions.illustrations.map((row) => row.revisionNumber)).toEqual([1, 2]);
   });
 
+  it('preserves locked character references across two pages and explicit regeneration', async () => {
+    const pictureBook = service();
+    const alice = await createUser();
+    const { book } = await createBook(pictureBook, alice);
+    const detail = await applyStoryboard(pictureBook, alice, book.id);
+    const characters = detail.characters;
+
+    expect(characters).toHaveLength(2);
+    expect(characters.every((character) => character.confirmed && character.locked)).toBe(true);
+    expect(characters.every((character) => character.referenceMediaAssetId)).toBe(true);
+
+    const characterIds = characters.map((character) => character.characterId);
+    const expectedReferences = characters
+      .map((character) => character.referenceMediaAssetId!)
+      .sort();
+
+    const firstPage = detail.pages.find((page) => page.pageKind === 'CONTENT')!;
+    await db
+      .update(workPages)
+      .set({ characterIds })
+      .where(eq(workPages.id, firstPage.id));
+
+    const [secondPage] = await db
+      .insert(workPages)
+      .values({
+        pictureBookId: book.id,
+        pageNumber: 2,
+        pageKind: 'CONTENT',
+        storyText: '小狐狸和小鸟一起看地图。',
+        sceneDescription: '树下，两位朋友分享一张地图。',
+        illustrationPrompt: 'orange fox and small blue bird sharing a map under a tree',
+        characterIds,
+      })
+      .returning();
+
+    const first = await pictureBook.generateIllustration(alice, book.id, firstPage.id);
+    const second = await pictureBook.generateIllustration(alice, book.id, secondPage!.id);
+
+    const stored = await db
+      .select()
+      .from(workPageIllustrations)
+      .where(inArray(workPageIllustrations.id, [first.illustrationId, second.illustrationId]));
+    expect(stored).toHaveLength(2);
+    for (const illustration of stored) {
+      expect(
+        illustration.consistency
+          .map((item) => item.referenceMediaAssetId)
+          .filter((value): value is string => Boolean(value))
+          .sort(),
+      ).toEqual(expectedReferences);
+    }
+
+    await db
+      .update(workPageIllustrations)
+      .set({ status: 'FAILED', errorCode: 'IMAGE_PROVIDER_UNAVAILABLE', updatedAt: new Date() })
+      .where(eq(workPageIllustrations.id, second.illustrationId));
+    const regenerated = await pictureBook.generateIllustration(
+      alice,
+      book.id,
+      secondPage!.id,
+      true,
+    );
+    const [storedRegeneration] = await db
+      .select()
+      .from(workPageIllustrations)
+      .where(eq(workPageIllustrations.id, regenerated.illustrationId));
+    expect(
+      storedRegeneration!.consistency
+        .map((item) => item.referenceMediaAssetId)
+        .filter((value): value is string => Boolean(value))
+        .sort(),
+    ).toEqual(expectedReferences);
+
+    const after = await pictureBook.getPictureBook(alice, book.id);
+    expect(
+      after.characters.map((character) => ({
+        id: character.characterId,
+        referenceMediaAssetId: character.referenceMediaAssetId,
+        confirmed: character.confirmed,
+        locked: character.locked,
+      })),
+    ).toEqual(
+      characters.map((character) => ({
+        id: character.characterId,
+        referenceMediaAssetId: character.referenceMediaAssetId,
+        confirmed: true,
+        locked: true,
+      })),
+    );
+  });
+
   it('returns request-level state conflicts and accepts only explicit regeneration', async () => {
     const pictureBook = service();
     const app = await createApp(pictureBook);
