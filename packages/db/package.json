@@ -21,7 +21,8 @@
     "db:seed-local-home": "node --env-file-if-exists ../../.env --import tsx/esm src/seed-local-home-cli.ts",
     "lint": "eslint src drizzle.config.ts",
     "test": "vitest run --passWithNoTests",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "db:status": "node --env-file-if-exists ../../.env --import tsx/esm src/migration-status.ts"
   },
   "dependencies": {
     "@xiaohai/config": "workspace:*",
