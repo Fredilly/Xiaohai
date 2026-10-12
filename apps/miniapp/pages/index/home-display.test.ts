@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { homeDisplaySections } from './home-display';
+import { clearFailedHeroMedia, homeDisplaySections } from './home-display';
 import type { HomeSection } from '../../services/home';
+import { miniappRemoteAssets } from '../../src/config/assets';
 
 describe('home display content', () => {
   it('hides old development badges without changing CMS editorial badges or source data', () => {
@@ -26,7 +27,58 @@ describe('home display content', () => {
     expect((sections[0]?.config.items as { badge: string }[])[0]?.badge).toBe('M9');
   });
 
-  it('uses supplied editorial art only when a matching CMS hero has no media', () => {
+  it('keeps the whole HERO section when its image fails', () => {
+    const sections: HomeSection[] = [
+      {
+        id: 'bos-test',
+        sectionType: 'HERO',
+        title: 'BOS 图片验收',
+        displayOrder: 0,
+        config: {},
+        mediaUrl: miniappRemoteAssets.home.parentChildReading,
+      },
+    ];
+
+    const updated = clearFailedHeroMedia(sections, 0, miniappRemoteAssets.home.parentChildReading);
+    expect(updated[0]).toEqual({ ...sections[0], mediaUrl: '' });
+    expect(sections[0]?.mediaUrl).toBe(miniappRemoteAssets.home.parentChildReading);
+  });
+
+  it('ignores stale image errors after CMS content is replaced', () => {
+    const sections: HomeSection[] = [
+      {
+        id: 'current-banner',
+        sectionType: 'BANNER',
+        title: '运营自定义首页',
+        displayOrder: 0,
+        config: { body: 'real CMS content wins' },
+        mediaUrl: null,
+      },
+    ];
+
+    expect(clearFailedHeroMedia(sections, 0, miniappRemoteAssets.home.parentChildReading)).toBe(
+      sections,
+    );
+    expect(clearFailedHeroMedia(sections, 1, miniappRemoteAssets.home.parentChildReading)).toBe(
+      sections,
+    );
+
+    const newerHero: HomeSection[] = [
+      {
+        id: 'newer-hero',
+        sectionType: 'HERO',
+        title: '更新后的首页',
+        displayOrder: 0,
+        config: {},
+        mediaUrl: 'https://cdn.example.com/newer-hero.jpg',
+      },
+    ];
+    expect(clearFailedHeroMedia(newerHero, 0, miniappRemoteAssets.home.parentChildReading)).toBe(
+      newerHero,
+    );
+  });
+
+  it('uses BOS editorial art when a CMS hero has no media and preserves explicit CMS media', () => {
     const sections: HomeSection[] = [
       {
         id: 'fallback',
@@ -45,7 +97,7 @@ describe('home display content', () => {
         mediaUrl: 'https://cdn.example.com/cms-hero.jpg',
       },
       {
-        id: 'unrelated',
+        id: 'default-local-seed',
         sectionType: 'HERO',
         title: '把一个想法变成故事',
         subtitle: '小海 AI · 故事创作',
@@ -56,9 +108,9 @@ describe('home display content', () => {
     ];
 
     const display = homeDisplaySections(sections);
-    expect(display[0]?.mediaUrl).toBe('/assets/brand/home-parent-reading.jpg');
+    expect(display[0]?.mediaUrl).toBe(miniappRemoteAssets.home.parentChildReading);
     expect(display[1]?.mediaUrl).toBe('https://cdn.example.com/cms-hero.jpg');
-    expect(display[2]?.mediaUrl).toBeNull();
+    expect(display[2]?.mediaUrl).toBe(miniappRemoteAssets.home.parentChildReading);
     expect(sections[0]?.mediaUrl).toBeNull();
   });
 });

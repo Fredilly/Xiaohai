@@ -1,4 +1,5 @@
 import { listProducts, type Product } from '../../services/commerce';
+import { clearFailedShopCover } from './shop-display';
 import { resolveEditorialBookCover } from '../../utils/real-visuals';
 
 type DisplayProduct = Product & { displayCoverUrl: string };
@@ -34,6 +35,13 @@ Page({
   },
   open(e: WechatMiniprogram.TouchEvent) {
     void wx.navigateTo({ url: `/pages/product/product?id=${e.currentTarget.dataset.id}` });
+  },
+  coverError(event: WechatMiniprogram.TouchEvent) {
+    const index = Number(event.currentTarget.dataset.index);
+    const productId = String(event.currentTarget.dataset.id ?? '');
+    const failedUrl = String(event.currentTarget.dataset.src ?? '');
+    const products = clearFailedShopCover(this.data.products, index, productId, failedUrl);
+    if (products !== this.data.products) this.setData({ products });
   },
   cart() {
     void wx.navigateTo({ url: '/pages/cart/cart' });
