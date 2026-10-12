@@ -1,0 +1,44 @@
+<view class="page preview-page">
+  <view wx:if="{{loading}}" class="state-card">正在打开整书预览…</view>
+  <view wx:elif="{{!detail}}" class="state-card">
+    <text>{{error}}</text>
+    <button bindtap="retry">重新加载</button>
+  </view>
+  <block wx:else>
+    <view class="hero hero-soft">
+      <text class="hero-title">{{detail.pictureBook.title}}</text>
+      <text>只读预览 · 已保存到“我的绘本”</text>
+    </view>
+
+    <view class="state-card export-note">
+      <text class="state-title">导出与印刷</text>
+      <text class="state-copy">当前版本未提供 PDF / 印刷导出；本页仅验证整书预览能力。</text>
+    </view>
+
+    <view wx:if="{{pages.length === 0}}" class="state-card">还没有分页内容。</view>
+
+    <view wx:for="{{pages}}" wx:key="id" class="preview-sheet">
+      <text class="page-heading">{{item.label}}</text>
+
+      <image
+        wx:if="{{item.imageUrl && !imageErrors[item.id]}}"
+        class="preview-image"
+        src="{{item.imageUrl}}"
+        mode="widthFix"
+        data-page-id="{{item.id}}"
+        binderror="onImageError"
+      />
+
+      <view wx:else class="preview-placeholder">
+        <text wx:if="{{item.imageState === 'FAILED'}}">本页最新生成失败，暂无可用预览图。</text>
+        <text wx:elif="{{item.imageState === 'PENDING'}}">本页插画正在生成中。</text>
+        <text wx:else>本页暂时没有可显示的真实插画。</text>
+      </view>
+
+      <text wx:if="{{item.storyText}}" class="story-copy">{{item.storyText}}</text>
+      <text wx:if="{{item.revisionNumber}}" class="section-note">
+        当前展示第 {{item.revisionNumber}} 次有效插画
+      </text>
+    </view>
+  </block>
+</view>
