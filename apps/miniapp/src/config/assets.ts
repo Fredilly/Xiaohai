@@ -20,7 +20,7 @@ export const miniappRemoteAssets = {
   shop: {
     dinosaursNeedBigHandCover: `${BOS_ASSET_ORIGIN}/books/covers/dinosaurs-need-a-big-hand-v2.png`,
     pewPewTigerCover: `${BOS_ASSET_ORIGIN}/books/covers/pew-pew-tiger-v2.jpg`,
-    dodosHairyDayCover: `${BOS_ASSET_ORIGIN}/books/covers/dodos-hairy-day-v1.jpg`,
+    dodosHairyDayCover: `${BOS_ASSET_ORIGIN}/books/covers/dodos-hairy-day-v2.jpg`,
     yunsDiaryCover: `${BOS_ASSET_ORIGIN}/books/covers/yuns-diary-v2.png`,
   },
 } as const;
