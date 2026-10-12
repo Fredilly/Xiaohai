@@ -29,3 +29,20 @@ export function homeDisplaySections(sections: HomeSection[]): HomeSection[] {
     };
   });
 }
+
+/**
+ * Ignore stale image errors from a previous CMS load or a recycled list row.
+ * Replace the entire matching section to preserve its id, type, title and config.
+ */
+export function clearFailedHeroMedia(
+  sections: HomeSection[],
+  index: number,
+  failedUrl: string,
+): HomeSection[] {
+  if (!Number.isInteger(index) || index < 0 || !failedUrl) return sections;
+  const current = sections[index];
+  if (current?.sectionType !== 'HERO' || current.mediaUrl !== failedUrl) return sections;
+  return sections.map((section, position) =>
+    position === index ? { ...section, mediaUrl: '' } : section,
+  );
+}
