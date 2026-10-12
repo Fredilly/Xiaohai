@@ -3,7 +3,9 @@ import { visibleAdminModules } from './mock-data';
 
 describe('HQ Admin module visibility', () => {
   it('hides business modules when the Staff context lacks their permissions', () => {
-    const visible = visibleAdminModules(['stores.read', 'inventory.read']).map((item) => item.key);
+    const visible = visibleAdminModules(['stores.read', 'inventory.read']).map(
+      (item) => item.key,
+    );
 
     expect(visible).toContain('dashboard');
     expect(visible).toContain('stores');
@@ -30,7 +32,15 @@ describe('HQ Admin module visibility', () => {
     const visible = visibleAdminModules(permissions).map((item) => item.key);
 
     expect(visible).toEqual(
-      expect.arrayContaining(['catalog', 'content', 'ai', 'franchise', 'commission', 'cms', 'staff']),
+      expect.arrayContaining([
+        'catalog',
+        'content',
+        'ai',
+        'franchise',
+        'commission',
+        'cms',
+        'staff',
+      ]),
     );
   });
 });

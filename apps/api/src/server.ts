@@ -191,6 +191,21 @@ const pictureBook = new PictureBookService(
     imageEnabled: config.PICTURE_BOOK_IMAGE_ENABLED,
     imageProvider: config.PICTURE_BOOK_IMAGE_PROVIDER,
     imageModel: config.PICTURE_BOOK_IMAGE_MODEL,
+    imageBudget:
+      config.PICTURE_BOOK_IMAGE_BUDGET_ENABLED &&
+      config.PICTURE_BOOK_IMAGE_BUDGET_KEY &&
+      config.PICTURE_BOOK_IMAGE_BUDGET_RESERVATION_MINOR &&
+      config.PICTURE_BOOK_IMAGE_BUDGET_GLOBAL_LIMIT_MINOR &&
+      config.PICTURE_BOOK_IMAGE_BUDGET_CONSUMER_LIMIT_MINOR &&
+      config.PICTURE_BOOK_IMAGE_BUDGET_WINDOW_KEY
+        ? {
+            budgetKey: config.PICTURE_BOOK_IMAGE_BUDGET_KEY,
+            amountMinor: config.PICTURE_BOOK_IMAGE_BUDGET_RESERVATION_MINOR,
+            globalLimitMinor: config.PICTURE_BOOK_IMAGE_BUDGET_GLOBAL_LIMIT_MINOR,
+            consumerLimitMinor: config.PICTURE_BOOK_IMAGE_BUDGET_CONSUMER_LIMIT_MINOR,
+            windowKey: config.PICTURE_BOOK_IMAGE_BUDGET_WINDOW_KEY,
+          }
+        : undefined,
   },
   app.log,
 );

@@ -1,0 +1,3 @@
+DROP INDEX "ai_budget_windows_key_scope_window_unique";--> statement-breakpoint
+CREATE UNIQUE INDEX "ai_budget_windows_consumer_key_unique" ON "ai_budget_windows" USING btree ("budget_key","scope_type","consumer_user_id","window_key") WHERE "ai_budget_windows"."scope_type" = 'CONSUMER';--> statement-breakpoint
+CREATE UNIQUE INDEX "ai_budget_windows_global_key_unique" ON "ai_budget_windows" USING btree ("budget_key","scope_type","window_key") WHERE "ai_budget_windows"."scope_type" = 'GLOBAL' and "ai_budget_windows"."consumer_user_id" is null;

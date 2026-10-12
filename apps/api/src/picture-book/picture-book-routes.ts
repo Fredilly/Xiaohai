@@ -258,6 +258,7 @@ export function registerPictureBookRoutes(
                 consumer(request),
                 params.data.bookId,
                 params.data.pageId,
+                suffix.endsWith('/regenerate'),
               ),
             ),
           );
@@ -318,6 +319,12 @@ function fail(request: FastifyRequest, reply: FastifyReply, error: unknown) {
     } else if (error.code === 'CHARACTER_LOCKED') {
       status = 409;
       message = 'Character settings are locked; explicitly reopen them to edit';
+    } else if (error.code === 'AI_BUDGET_EXCEEDED') {
+      status = 429;
+      message = 'AI budget exhausted';
+    } else if (error.code === 'AI_COST_UNKNOWN') {
+      status = 503;
+      message = 'AI cost is not configured';
     } else {
       status = 409;
       message = 'Picture Book workflow state conflict';

@@ -42,11 +42,21 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
     imageEnabled: true,
     imageProvider: 'MOCK',
     imageModel: 'server-controlled-image-model',
+    imageBudget: {
+      budgetKey: 'TEST_PICTURE_BOOK_IMAGES',
+      amountMinor: 100,
+      globalLimitMinor: 500,
+      consumerLimitMinor: 500,
+      windowKey: 'TEST_CUMULATIVE',
+    },
   };
 
   const resetDatabase = async () => {
     await database!.pool.query(`
       TRUNCATE TABLE
+        ai_cost_ledger,
+        ai_cost_reservations,
+        ai_budget_windows,
         work_page_illustrations,
         character_reference_images,
         work_pages,
@@ -1014,7 +1024,7 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
       })
       .returning();
 
-    const retry = await pictureBook.generateIllustration(alice, book.id, page!.id);
+    const retry = await pictureBook.generateIllustration(alice, book.id, page!.id, true);
     expect(retry.revisionNumber).toBe(2);
     expect(retry.illustrationId).not.toBe(old!.id);
 
@@ -1068,11 +1078,123 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
       .update(workPageIllustrations)
       .set({ status: 'FAILED', errorCode: 'IMAGE_PROVIDER_UNAVAILABLE', updatedAt: new Date() })
       .where(eq(workPageIllustrations.id, first.illustrationId));
-    const retry = await pictureBook.generateIllustration(alice, book.id, page.id);
+    await expect(pictureBook.generateIllustration(alice, book.id, page.id)).rejects.toMatchObject({
+      code: 'INVALID_STATE',
+    });
+    const retry = await pictureBook.generateIllustration(alice, book.id, page.id, true);
     expect(retry.revisionNumber).toBe(2);
     expect(retry.illustrationId).not.toBe(first.illustrationId);
     revisions = await pictureBook.listIllustrations(alice, book.id, page.id);
     expect(revisions.illustrations.map((row) => row.revisionNumber)).toEqual([1, 2]);
+  });
+
+  it('returns request-level state conflicts and accepts only explicit regeneration', async () => {
+    const pictureBook = service();
+    const app = await createApp(pictureBook);
+    try {
+      const alice = await createUser();
+      const { book } = await createBook(pictureBook, alice);
+      const detail = await applyStoryboard(pictureBook, alice, book.id);
+      const page = detail.pages[0]!;
+      const headers = { authorization: `Bearer ${token(alice)}` };
+
+      const first = await app.inject({
+        method: 'POST',
+        url: `/api/v1/ai/picture-books/${book.id}/pages/${page.id}/illustrations`,
+        headers,
+        payload: {},
+      });
+      expect(first.statusCode).toBe(202);
+      const firstBody = first.json<{ illustrationId: string }>();
+
+      const duplicate = await app.inject({
+        method: 'POST',
+        url: `/api/v1/ai/picture-books/${book.id}/pages/${page.id}/illustrations/regenerate`,
+        headers,
+        payload: {},
+      });
+      expect(duplicate.statusCode).toBe(202);
+      expect(duplicate.json<{ illustrationId: string }>().illustrationId).toBe(
+        firstBody.illustrationId,
+      );
+
+      await db
+        .update(workPageIllustrations)
+        .set({ status: 'RUNNING', updatedAt: new Date() })
+        .where(eq(workPageIllustrations.id, firstBody.illustrationId));
+      const running = await app.inject({
+        method: 'POST',
+        url: `/api/v1/ai/picture-books/${book.id}/pages/${page.id}/illustrations`,
+        headers,
+        payload: {},
+      });
+      expect(running.statusCode).toBe(202);
+      expect(running.json<{ illustrationId: string }>().illustrationId).toBe(
+        firstBody.illustrationId,
+      );
+
+      await db
+        .update(workPageIllustrations)
+        .set({ status: 'FAILED', errorCode: 'IMAGE_PROVIDER_TIMEOUT', updatedAt: new Date() })
+        .where(eq(workPageIllustrations.id, firstBody.illustrationId));
+      const ordinaryRetry = await app.inject({
+        method: 'POST',
+        url: `/api/v1/ai/picture-books/${book.id}/pages/${page.id}/illustrations`,
+        headers,
+        payload: {},
+      });
+      expect(ordinaryRetry.statusCode).toBe(409);
+      expect(ordinaryRetry.json<{ error: { code: string } }>().error.code).toBe('INVALID_STATE');
+
+      const explicitRetry = await app.inject({
+        method: 'POST',
+        url: `/api/v1/ai/picture-books/${book.id}/pages/${page.id}/illustrations/regenerate`,
+        headers,
+        payload: {},
+      });
+      expect(explicitRetry.statusCode).toBe(202);
+      const secondBody = explicitRetry.json<{ illustrationId: string }>();
+      expect(secondBody.illustrationId).not.toBe(firstBody.illustrationId);
+
+      const [readyAsset] = await db
+        .insert(mediaAssets)
+        .values({
+          provider: 'MOCK_IMAGE',
+          objectKey: `picture-books/mock/${secondBody.illustrationId}.png`,
+          playbackUrl: 'http://127.0.0.1:3000/api/v1/dev/mock-images/state-test.png',
+          mimeType: 'image/png',
+          byteSize: 1,
+          status: 'READY',
+        })
+        .returning({ id: mediaAssets.id });
+      await db
+        .update(workPageIllustrations)
+        .set({
+          status: 'READY',
+          errorCode: null,
+          mediaAssetId: readyAsset!.id,
+          updatedAt: new Date(),
+        })
+        .where(eq(workPageIllustrations.id, secondBody.illustrationId));
+      const ordinaryAfterReady = await app.inject({
+        method: 'POST',
+        url: `/api/v1/ai/picture-books/${book.id}/pages/${page.id}/illustrations`,
+        headers,
+        payload: {},
+      });
+      expect(ordinaryAfterReady.statusCode).toBe(409);
+
+      const explicitAfterReady = await app.inject({
+        method: 'POST',
+        url: `/api/v1/ai/picture-books/${book.id}/pages/${page.id}/illustrations/regenerate`,
+        headers,
+        payload: {},
+      });
+      expect(explicitAfterReady.statusCode).toBe(202);
+      expect(explicitAfterReady.json<{ revisionNumber: number }>().revisionNumber).toBe(3);
+    } finally {
+      await app.close();
+    }
   });
 
   it('exposes only a READY media asset playback URL for illustration previews', async () => {
@@ -1134,7 +1256,7 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
       .update(workPageIllustrations)
       .set({ status: 'READY', mediaAssetId: asset!.id })
       .where(eq(workPageIllustrations.id, first.illustrationId));
-    const failed = await pictureBook.generateIllustration(alice, aliceBook.id, cover.id);
+    const failed = await pictureBook.generateIllustration(alice, aliceBook.id, cover.id, true);
     await db
       .update(workPageIllustrations)
       .set({ status: 'FAILED', errorCode: 'IMAGE_PROVIDER_UNAVAILABLE' })
@@ -1149,6 +1271,66 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
       id: aliceBook.id,
       coverPlaybackUrl: 'https://bos.example.test/picture-books/cover.png',
     });
+
+    // A legacy READY row with a real cover but MOCK-only content is still incomplete.
+    const contentPage = aliceDetail.pages.find((page) => page.pageKind === 'CONTENT')!;
+    const [mockAsset] = await db
+      .insert(mediaAssets)
+      .values({
+        provider: 'MOCK_IMAGE',
+        objectKey: `picture-books/mock/${contentPage.id}.png`,
+        playbackUrl: 'http://127.0.0.1:3000/api/v1/dev/mock-images/page.png',
+        mimeType: 'image/png',
+        status: 'READY',
+      })
+      .returning();
+    await db.insert(workPageIllustrations).values({
+      pageId: contentPage.id,
+      revisionNumber: 1,
+      prompt: contentPage.illustrationPrompt!,
+      provider: 'MOCK',
+      model: 'mock-image-model',
+      consistency: [],
+      status: 'READY',
+      mediaAssetId: mockAsset!.id,
+    });
+    await db.update(pictureBooks).set({ status: 'READY' }).where(eq(pictureBooks.id, aliceBook.id));
+
+    const incompleteList = await pictureBook.listPictureBooks(alice);
+    expect(incompleteList.pictureBooks[0]).toMatchObject({
+      id: aliceBook.id,
+      status: 'ILLUSTRATING',
+      coverPlaybackUrl: 'https://bos.example.test/picture-books/cover.png',
+    });
+    const incompleteDetail = await pictureBook.getPictureBook(alice, aliceBook.id);
+    expect(incompleteDetail.pictureBook.status).toBe('ILLUSTRATING');
+    expect((await pictureBook.listPictureBooks(bob)).pictureBooks[0]?.id).toBe(bobBook.id);
+
+    // A genuine READY revision on the missing content page completes both read models.
+    const [contentAsset] = await db
+      .insert(mediaAssets)
+      .values({
+        provider: 'BAIDU_BOS',
+        objectKey: `picture-books/bailian/${contentPage.id}.png`,
+        playbackUrl: 'https://bos.example.test/picture-books/content.png',
+        mimeType: 'image/png',
+        status: 'READY',
+      })
+      .returning();
+    await db.insert(workPageIllustrations).values({
+      pageId: contentPage.id,
+      revisionNumber: 2,
+      prompt: contentPage.illustrationPrompt!,
+      provider: 'BAILIAN',
+      model: 'qwen-image-3.0',
+      consistency: [],
+      status: 'READY',
+      mediaAssetId: contentAsset!.id,
+    });
+    const completedList = await pictureBook.listPictureBooks(alice);
+    const completedDetail = await pictureBook.getPictureBook(alice, aliceBook.id);
+    expect(completedList.pictureBooks[0]?.status).toBe('READY');
+    expect(completedDetail.pictureBook.status).toBe('READY');
   });
 
   it('returns null for MOCK-only or missing covers', async () => {
