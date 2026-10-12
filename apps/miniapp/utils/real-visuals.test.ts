@@ -54,5 +54,11 @@ describe('real visual fallbacks', () => {
     expect(miniappRemoteAssets.shop.dinosaursNeedBigHandCover).toBe(
       `${BOS_ASSET_ORIGIN}/books/covers/dinosaurs-need-a-big-hand-v2.png`,
     );
+    expect(miniappRemoteAssets.shop.pewPewTigerCover).toBe(
+      `${BOS_ASSET_ORIGIN}/books/covers/pew-pew-tiger-v2.jpg`,
+    );
+    expect(miniappRemoteAssets.shop.dodosHairyDayCover).toBe(
+      `${BOS_ASSET_ORIGIN}/books/covers/dodos-hairy-day-v2.jpg`,
+    );
   });
 });
