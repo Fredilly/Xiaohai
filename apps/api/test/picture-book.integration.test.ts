@@ -1180,6 +1180,87 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
     );
   });
 
+  it('persists cover/page order and real image linkage across reopen with failed history retained', async () => {
+    const pictureBook = service();
+    const alice = await createUser();
+    const { book } = await createBook(pictureBook, alice);
+    const planned = await applyStoryboard(pictureBook, alice, book.id);
+    const cover = planned.pages.find((page) => page.pageKind === 'COVER')!;
+    const contentPage = planned.pages.find((page) => page.pageKind === 'CONTENT')!;
+
+    const assets = await db
+      .insert(mediaAssets)
+      .values(
+        [cover, contentPage].map((page) => ({
+          provider: 'BAIDU_BOS',
+          objectKey: `picture-book-test/reopen/${page.id}.png`,
+          playbackUrl: `https://bos.example.test/reopen/${page.id}.png`,
+          mimeType: 'image/png',
+          byteSize: 10,
+          status: 'READY' as const,
+        })),
+      )
+      .returning();
+
+    await db.insert(workPageIllustrations).values([
+      {
+        pageId: cover.id,
+        revisionNumber: 1,
+        prompt: cover.illustrationPrompt!,
+        provider: 'BAILIAN',
+        model: 'qwen-image-3.0',
+        status: 'READY',
+        mediaAssetId: assets[0]!.id,
+      },
+      {
+        pageId: contentPage.id,
+        revisionNumber: 1,
+        prompt: contentPage.illustrationPrompt!,
+        provider: 'BAILIAN',
+        model: 'qwen-image-3.0',
+        status: 'READY',
+        mediaAssetId: assets[1]!.id,
+      },
+      {
+        pageId: contentPage.id,
+        revisionNumber: 2,
+        prompt: contentPage.illustrationPrompt!,
+        provider: 'BAILIAN',
+        model: 'qwen-image-3.0',
+        status: 'FAILED',
+        errorCode: 'IMAGE_PROVIDER_UNAVAILABLE',
+      },
+    ]);
+
+    const reopened = await service().getPictureBook(alice, book.id);
+    expect(reopened.pages.map((page) => [page.pageKind, page.pageNumber])).toEqual([
+      ['COVER', 0],
+      ['CONTENT', 1],
+    ]);
+    expect(reopened.pages[0]!.illustrations[0]).toMatchObject({
+      revisionNumber: 1,
+      status: 'READY',
+      playbackUrl: `https://bos.example.test/reopen/${cover.id}.png`,
+    });
+    expect(reopened.pages[1]!.illustrations).toEqual([
+      expect.objectContaining({
+        revisionNumber: 1,
+        status: 'READY',
+        playbackUrl: `https://bos.example.test/reopen/${contentPage.id}.png`,
+      }),
+      expect.objectContaining({
+        revisionNumber: 2,
+        status: 'FAILED',
+        errorCode: 'IMAGE_PROVIDER_UNAVAILABLE',
+      }),
+    ]);
+
+    const listing = await service().listPictureBooks(alice);
+    expect(listing.pictureBooks[0]?.coverPlaybackUrl).toBe(
+      `https://bos.example.test/reopen/${cover.id}.png`,
+    );
+  });
+
   it('returns request-level state conflicts and accepts only explicit regeneration', async () => {
     const pictureBook = service();
     const app = await createApp(pictureBook);
