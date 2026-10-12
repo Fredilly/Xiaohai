@@ -18,9 +18,9 @@ No access key, secret key, private Bucket configuration, or Baidu Netdisk share 
 | `shop.dinosaursNeedBigHandCover` | `books/covers/dinosaurs-need-a-big-hand-v1.jpg` | `assets/books/book-dinosaurs-need-a-big-hand.jpg` |
 | `shop.pewPewTigerCover` | `books/covers/pew-pew-tiger-v1.jpg` | `assets/books/book-pew-pew-tiger.jpg` |
 | `shop.dodosHairyDayCover` | `books/covers/dodos-hairy-day-v1.jpg` | `assets/books/book-dodos-hairy-day.jpg` |
-| `shop.yunsDiaryCover` | `books/covers/yuns-diary-v1.jpg` | `assets/books/book-yuns-diary.jpg` |
+| `shop.yunsDiaryCover` | `books/covers/yuns-diary-v2.png` | `assets/books/book-yuns-diary.jpg` |
 
-The version suffix makes replacement explicit: publish a new object such as `-v2.jpg`, verify it, then update the manifest. Do not overwrite a versioned object used by a released Mini Program.
+The version suffix makes replacement explicit: publish a new object such as `-v2.jpg` or `-v2.png`, verify it, then update the manifest. Do not overwrite a versioned object used by a released Mini Program.
 
 ## Runtime boundary
 
@@ -61,9 +61,9 @@ The five migrated files are removed from the Mini Program source bundle.
 
 ## Current evidence status
 
-The historical Issue #70 / PR #75 record reported HTTP 200 and source-file hash matches for the original five v1 assets, but **the old home v1 proved undecodable**; HTTP 200 and matching hashes did not establish usable imagery. The four book-cover v1 objects still require their own decode and visual checks. The home v2 upload is shown in the owner's BOS console; public fetch/decode and DevTools acceptance remain pending.
+The historical Issue #70 / PR #75 record reported HTTP 200 and source-file hash matches for the original five v1 assets, but **the old home v1 and Yun's Diary v1 did not decode**. The recovered home v2 JPEG (2496×1664) and Yun's Diary v2 PNG (800×800) have since passed owner-local public HTTPS download, image dimension decode, and byte-for-byte comparisons against valid originals. Three other cover v1 JPEGs decoded locally (600×601, 260×284, 260×293). These checks establish file validity only, not commerce UI rendering.
 
-For the current release gate, GitHub CI, static file inventory, and deterministic tests are separate from WeChat DevTools screenshots and real-device evidence. This PR does **not** claim that live image loading or network recovery on a device has been demonstrated. A fresh runtime network check is still required before marking #70 complete.
+For the current release gate, GitHub CI, static file inventory, and deterministic tests are separate from WeChat DevTools screenshots and real-device evidence. Owner DevTools screenshots demonstrate a manually injected Home HERO with v2 JPEG rendering consistently at 16:02 and 16:03, plus a 200 image response. This is a **partial** image rendering PASS, not full CMS integration or shop/product/failure-state acceptance. Device checks remain outstanding.
 
 ## Home HERO v2 source and runtime evidence
 
@@ -71,7 +71,15 @@ The previous `home/hero/parent-child-reading-v1.jpg` is preserved for diagnosis 
 
 For v2, the owner recovered the archived source `图片/3939cc01762a13ccd07eb8e462681c75.jpg` on their Mac. The file opened in macOS Preview, `sips` reported **2496 × 1664**, and the owner approved its embedded Chinese copy. The owner uploaded a new `home/hero/parent-child-reading-v2.jpg` object into the existing BOS bucket; the BOS console screenshot shows it alongside v1 (approximately 540 KB).
 
-**Pending before marking PASS:** a fresh HTTPS fetch and image decode of the public v2 URL, stable real image display in WeChat DevTools with Network evidence, and explicit CMS media precedence; later, real-device checks in #76. The assistant's environment could not independently resolve the BOS hostname, so upload listing is not proof of successful public retrieval or decode. This PR updates the versioned URL for controlled verification, not as a claim of final acceptance.
+**Evidence:** the owner downloaded v2 over HTTPS, decoded 2496×1664 dimensions, and obtained `V2_MATCH_OK`. DevTools screenshots show the parent-child image displayed in a manually injected HERO with Network HTTP 200; the image remained present between 16:02 and 16:03. **Remaining:** real CMS HERO path and explicit CMS media precedence, plus real-device checks in #76. Do not interpret a manual `setData` test as CMS integration acceptance.
+
+## Yun's Diary cover v2 source and verification
+
+The prior `books/covers/yuns-diary-v1.jpg` gave `pixelWidth: <nil>` and `pixelHeight: <nil>` under macOS `sips` after public HTTPS download. The owner recovered the legacy original `图片/big_922c4ce3663df0954434a6f203c708d7.png`, confirmed the visible cover says "YUN'S DIARY / 归云日记", and checked it with macOS Preview and `sips` as an **800 × 800 PNG**. No format conversion or paid generation was performed.
+
+The owner uploaded a separate `books/covers/yuns-diary-v2.png` object to the existing BOS bucket (the console shows both versions). The public URL then downloaded successfully, decoded at **800 × 800**, and `cmp` against the owner's local verified PNG returned **`V2_MATCH_OK`**. The v1 JPG remains preserved for diagnosis, but the Mini Program manifest now selects v2 PNG.
+
+**Still pending:** WeChat DevTools shop-list and product-detail visual checks for this cover, as well as the other three previously decoded covers and image-error placeholders. Do not treat a valid downloaded object as proof the Mini Program UI has rendered it.
 
 ## Manual acceptance matrix
 
@@ -79,7 +87,7 @@ Do not mark an unexecuted row as PASS.
 
 | Target | Network | Flow | Expected | Current status |
 | --- | --- | --- | --- | --- |
-| WeChat DevTools | Normal | Home editorial HERO | BOS image loads in reserved area; explicit CMS media still wins | PENDING SCREENSHOT |
+| WeChat DevTools | Normal | Home editorial HERO | Stable v2 image in manually injected HERO and HTTP 200; real CMS override still unverified | PARTIAL PASS (manual injection screenshots) |
 | WeChat DevTools | Normal | Shop → known book | Correct BOS cover loads; unrelated item keeps “暂无封面” | PENDING SCREENSHOT |
 | WeChat DevTools | Normal | Product detail | Correct BOS cover loads in fixed cover area | PENDING SCREENSHOT |
 | DevTools | Forced image failure | Home / shop / product | Existing placeholder appears; business state remains usable | PENDING SCREENSHOT |
