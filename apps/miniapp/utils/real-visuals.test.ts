@@ -43,7 +43,10 @@ describe('real visual fallbacks', () => {
     expect(urls).toHaveLength(5);
     for (const url of urls) {
       expect(url.startsWith(`${BOS_ASSET_ORIGIN}/`)).toBe(true);
-      expect(url).toMatch(/-v1\.jpg$/);
+      expect(url).toMatch(/-v\d+\.jpg$/);
     }
+    expect(miniappRemoteAssets.home.parentChildReading).toBe(
+      `${BOS_ASSET_ORIGIN}/home/hero/parent-child-reading-v2.jpg`,
+    );
   });
 });
