@@ -12,7 +12,7 @@ Page({
     pages: [] as PictureBookPreviewPage[],
     loading: true,
     error: '',
-    imageErrors: {} as Record<string, boolean>,
+    imageErrors: {},
   },
   onLoad(query: Record<string, string | undefined>) {
     const id = String(query.id || '');
