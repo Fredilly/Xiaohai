@@ -42,6 +42,24 @@ const ignore = await readFile('.gitignore', 'utf8');
 if (!ignore.includes('apps/miniapp/project.private.config.json')) {
   throw new Error('project.private.config.json must remain ignored.');
 }
+// A BOS URL alone is insufficient: migrated editorial images must stay out of the bundle.
+for (const removedAsset of [
+  'assets/brand/home-parent-reading.jpg',
+  'assets/books/book-dinosaurs-need-a-big-hand.jpg',
+  'assets/books/book-pew-pew-tiger.jpg',
+  'assets/books/book-dodos-hairy-day.jpg',
+  'assets/books/book-yuns-diary.jpg',
+]) {
+  try {
+    await access(`${root}/${removedAsset}`);
+  } catch (error) {
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') {
+      continue;
+    }
+    throw error;
+  }
+  throw new Error(`BOS-migrated asset must not be bundled: ${removedAsset}`);
+}
 const assetManifest = await readFile(`${root}/src/config/assets.ts`, 'utf8');
 const runtimeVisuals = await readFile(`${root}/utils/real-visuals.ts`, 'utf8');
 const [homeTemplate, homeStyles, shopTemplate, globalStyles, productTemplate, productStyles] =
