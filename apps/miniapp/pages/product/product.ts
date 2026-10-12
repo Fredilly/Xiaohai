@@ -38,6 +38,10 @@ Page({
       this.setData({ message: '加入失败；请先登录或检查商品状态' });
     }
   },
+  coverError() {
+    if (!this.data.product) return;
+    this.setData({ 'product.displayCoverUrl': '' });
+  },
   openCart() {
     void wx.navigateTo({ url: '/pages/cart/cart' });
   },
