@@ -15,7 +15,7 @@ export const BOS_ASSET_ORIGIN = 'https://xiaohai-prod-assets.cd.bcebos.com' as c
 
 export const miniappRemoteAssets = {
   home: {
-    parentChildReading: `${BOS_ASSET_ORIGIN}/home/hero/parent-child-reading-v1.jpg`,
+    parentChildReading: `${BOS_ASSET_ORIGIN}/home/hero/parent-child-reading-v2.jpg`,
   },
   shop: {
     dinosaursNeedBigHandCover: `${BOS_ASSET_ORIGIN}/books/covers/dinosaurs-need-a-big-hand-v1.jpg`,
