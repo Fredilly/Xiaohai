@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 1,
+  "fixtureId": "m10-two-character-two-page-v1",
+  "approvalStatus": "PENDING_OWNER_VISUAL_APPROVAL",
+  "providerBaseline": "qwen-image-3.0",
+  "characters": [
+    {
+      "key": "mimi",
+      "name": "Mimi",
+      "identity": "five-year-old red panda child",
+      "face": "round brown eyes, gentle expression, rust-orange fur",
+      "clothing": "yellow knit scarf, blue overalls",
+      "accessories": "small red satchel",
+      "colors": ["rust-orange", "yellow", "blue", "red"],
+      "proportions": "small child proportions, rounded storybook silhouette",
+      "referenceSlot": "mimi-reference"
+    },
+    {
+      "key": "pip",
+      "name": "Pip",
+      "identity": "small sky-blue bird child",
+      "face": "small friendly eyes, short rounded beak",
+      "clothing": "green cap",
+      "accessories": "tiny orange satchel",
+      "colors": ["sky-blue", "pale-yellow", "green", "orange"],
+      "proportions": "small bird-child proportions, rounded wings and head",
+      "referenceSlot": "pip-reference"
+    }
+  ],
+  "visualStyle": {
+    "medium": "warm watercolor storybook illustration",
+    "lighting": "soft warm natural light",
+    "lineAndTexture": "soft edges, visible watercolor texture, child-friendly detail",
+    "composition": "clear readable focal action, no photorealism",
+    "candidateStyleSamples": [
+      {
+        "source": "benchmarks/image/PER_IMAGE_REVIEW.json",
+        "model": "qwen-image-3.0",
+        "promptId": "same-character-new-scene",
+        "runNumber": 1
+      },
+      {
+        "source": "benchmarks/image/PER_IMAGE_REVIEW.json",
+        "model": "qwen-image-3.0",
+        "promptId": "two-recurring-characters",
+        "runNumber": 1
+      }
+    ]
+  },
+  "pages": [
+    {
+      "pageKey": "page-1",
+      "scene": "Mimi walks beside a forest stream at sunrise while Pip flies just above the water.",
+      "characters": ["mimi", "pip"],
+      "requiredContinuity": ["same faces", "same clothing", "same accessories", "same palette", "same medium"],
+      "forbiddenArtifacts": ["extra character", "unrequested text", "garbled text", "duplicate limbs"]
+    },
+    {
+      "pageKey": "page-2",
+      "scene": "Mimi and Pip sit under a friendly tree sharing a paper map in warm afternoon light.",
+      "characters": ["mimi", "pip"],
+      "requiredContinuity": ["same faces", "same clothing", "same accessories", "same palette", "same medium"],
+      "forbiddenArtifacts": ["extra character", "unrequested text", "garbled text", "duplicate limbs"]
+    }
+  ],
+  "regenerationPlan": {
+    "requiredPage": "page-2",
+    "purpose": "verify character reference locks and style continuity survive explicit regeneration",
+    "implicitRetryAllowed": false
+  },
+  "realGenerationPolicy": {
+    "authorized": false,
+    "note": "Real provider runs require explicit owner approval and budgeted preflight before execution."
+  }
+}
