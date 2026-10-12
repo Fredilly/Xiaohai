@@ -16,7 +16,7 @@ import { HqSupportManager } from './hq-support-manager';
 import { StaffAdminManager } from './staff-admin-manager';
 import { SystemManager } from './system-manager';
 import { getStaffMe, loginStaff } from './staff-auth';
-import { adminModules, visibleAdminModules } from './mock-data';
+import { visibleAdminModules } from './mock-data';
 import { NavIcon } from './nav-icon';
 
 const tokenKey = 'staff_session_token';
