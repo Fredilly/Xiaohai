@@ -35,10 +35,11 @@ try {
     console.log(`Database migrations are current through ${latest.tag ?? latest.when}.`);
   }
 } catch (error) {
-  const code =
+  const rawCode =
     error && typeof error === 'object' && 'code' in error
-      ? String((error as { code?: unknown }).code ?? '')
-      : '';
+      ? (error as { code?: unknown }).code
+      : undefined;
+  const code = typeof rawCode === 'string' || typeof rawCode === 'number' ? String(rawCode) : '';
 
   if (code === '42P01' || code === '3F000') {
     console.error(
