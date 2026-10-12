@@ -1,4 +1,12 @@
-export const storeModules = [
+export type StoreModule = {
+  key: 'dashboard' | 'books' | 'inventory' | 'rental' | 'orders' | 'operations' | 'manager';
+  label: string;
+  description: string;
+  status: string;
+  requiredPermission?: string;
+};
+
+export const storeModules: StoreModule[] = [
   {
     key: 'dashboard',
     label: '工作台',
@@ -10,35 +18,47 @@ export const storeModules = [
     label: '图书查询',
     description: '书名、作者、出版社、ISBN / 条码查询当前门店库存',
     status: 'M13 已接入',
+    requiredPermission: 'stores.read',
   },
   {
     key: 'inventory',
     label: '库存',
     description: '当前门店库存余额、出库与调整入口',
     status: 'M14 已接入',
+    requiredPermission: 'inventory.read',
   },
   {
     key: 'rental',
     label: '租借',
     description: '当前门店预约、借出、归还与逾期处理',
     status: 'M15 已接入',
+    requiredPermission: 'rental.read',
   },
   {
     key: 'orders',
     label: '订单 / 自提 / 配送',
     description: '当前门店订单履约、自提核验、配送与区域费用',
     status: 'M16 已接入',
+    requiredPermission: 'fulfillment.read',
   },
   {
     key: 'operations',
     label: '门店运营',
     description: '采购收货、低库存、盘点、调拨与库存流水',
     status: 'M14 / M19 已接入',
+    requiredPermission: 'inventory.read',
   },
   {
     key: 'manager',
     label: '店长视图',
     description: '实时运营报表、当前 Staff 权限与门店授权范围',
     status: 'M19 店长能力',
+    requiredPermission: 'stores.manage',
   },
-] as const;
+];
+
+export function visibleStoreModules(permissions: readonly string[]): StoreModule[] {
+  return storeModules.filter(
+    (item) => !item.requiredPermission || permissions.includes(item.requiredPermission),
+  );
+}

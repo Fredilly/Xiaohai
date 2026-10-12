@@ -15,7 +15,13 @@ export const adminModules: ModulePreview[] = [
     status: '可查看',
     requiredPermission: 'stores.read',
   },
-  { key: 'catalog', label: '图书 / 商品', description: '商品与 SKU 管理', status: '可查看' },
+  {
+    key: 'catalog',
+    label: '图书 / 商品',
+    description: '商品与 SKU 管理',
+    status: '可查看',
+    requiredPermission: 'catalog.manage',
+  },
   {
     key: 'inventory',
     label: '库存 / 进销存',
@@ -42,8 +48,15 @@ export const adminModules: ModulePreview[] = [
     label: '动画 / 内容',
     description: '动画系列、分集与媒体管理',
     status: '可查看',
+    requiredPermission: 'content.manage',
   },
-  { key: 'ai', label: 'AI', description: 'AI 作业与审核监控', status: '可查看' },
+  {
+    key: 'ai',
+    label: 'AI',
+    description: 'AI 作业与审核监控',
+    status: '可查看',
+    requiredPermission: 'ai.manage',
+  },
   {
     key: 'rental',
     label: '租借',
@@ -63,6 +76,7 @@ export const adminModules: ModulePreview[] = [
     label: '加盟',
     description: '加盟线索、跟进与审核',
     status: '可查看',
+    requiredPermission: 'franchise.read',
   },
   {
     key: 'payments',
@@ -76,6 +90,7 @@ export const adminModules: ModulePreview[] = [
     label: '佣金 / 提现',
     description: '佣金规则、结算与提现审核',
     status: '可查看',
+    requiredPermission: 'commission.read',
   },
   {
     key: 'finance',
@@ -84,7 +99,13 @@ export const adminModules: ModulePreview[] = [
     status: '可查看',
     requiredPermission: 'finance.read',
   },
-  { key: 'cms', label: 'CMS / 运营', description: '首页内容与运营位管理', status: '可查看' },
+  {
+    key: 'cms',
+    label: 'CMS / 运营',
+    description: '首页内容与运营位管理',
+    status: '可查看',
+    requiredPermission: 'cms.home.manage',
+  },
   {
     key: 'staff',
     label: 'Staff / 权限',
@@ -99,3 +120,9 @@ export const adminModules: ModulePreview[] = [
     status: '可查看',
   },
 ];
+
+export function visibleAdminModules(permissions: readonly string[]): ModulePreview[] {
+  return adminModules.filter(
+    (item) => !item.requiredPermission || permissions.includes(item.requiredPermission),
+  );
+}
