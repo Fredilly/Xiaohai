@@ -226,6 +226,12 @@ Page({
       this.setData({ busy: false });
     }
   },
+  openPreview() {
+    if (!this.data.id || !this.data.detail?.pages.length) return;
+    void wx.navigateTo({
+      url: `/pages/picture-book-preview/picture-book-preview?id=${encodeURIComponent(this.data.id)}`,
+    });
+  },
   async illustrate(event: WechatMiniprogram.TouchEvent) {
     if (this.data.busy) return;
     const pageId = String(event.currentTarget.dataset.pageId || '');
