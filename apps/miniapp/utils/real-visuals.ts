@@ -1,22 +1,24 @@
-export const HOME_EDITORIAL_FALLBACK = '/assets/brand/home-parent-reading.jpg';
+import { miniappRemoteAssets } from '../src/config/assets';
+
+export const HOME_EDITORIAL_FALLBACK = miniappRemoteAssets.home.parentChildReading;
 
 const BOOK_COVER_BY_TITLE = [
   {
     matches: (title: string) => title.includes('dinosaurs need a big hand'),
-    asset: '/assets/books/book-dinosaurs-need-a-big-hand.jpg',
+    asset: miniappRemoteAssets.shop.dinosaursNeedBigHandCover,
   },
   {
     matches: (title: string) => title.includes('pew pew tiger'),
-    asset: '/assets/books/book-pew-pew-tiger.jpg',
+    asset: miniappRemoteAssets.shop.pewPewTigerCover,
   },
   {
     matches: (title: string) => title.includes('dodo') && title.includes('hairy day'),
-    asset: '/assets/books/book-dodos-hairy-day.jpg',
+    asset: miniappRemoteAssets.shop.dodosHairyDayCover,
   },
   {
     matches: (title: string) =>
       title.includes("yun's diary") || title.includes('yuns diary') || title.includes('归云日记'),
-    asset: '/assets/books/book-yuns-diary.jpg',
+    asset: miniappRemoteAssets.shop.yunsDiaryCover,
   },
 ] as const;
 
