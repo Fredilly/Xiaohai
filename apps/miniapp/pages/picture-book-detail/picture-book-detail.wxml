@@ -12,6 +12,7 @@
     </view>
     <view class="section">
       <view class="section-head"><text class="section-title">分页与整书预览</text><text class="section-note">{{detail.pages.length}} 页</text></view>
+      <button wx:if="{{detail.pages.length > 0}}" class="primary-btn" bindtap="openPreview">打开只读整书预览</button>
       <button wx:if="{{characterBibleConfirmed && detail.pages.length === 0}}" class="primary-btn" data-operation="STORYBOARD" loading="{{busy}}" disabled="{{busy}}" bindtap="generatePlan">生成分页分镜</button>
       <view wx:if="{{detail.pages.length === 0 && detail.characters.length > 0}}" class="state-card">请先保存并确认角色设定</view>
       <view wx:for="{{detail.pages}}" wx:key="id" class="page-card">

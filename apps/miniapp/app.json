@@ -20,6 +20,7 @@
     "pages/picture-books/picture-books",
     "pages/picture-book-create/picture-book-create",
     "pages/picture-book-detail/picture-book-detail",
+    "pages/picture-book-preview/picture-book-preview",
     "pages/animations/animations",
     "pages/animation-create/animation-create",
     "pages/animation-detail/animation-detail",

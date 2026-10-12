@@ -1,0 +1,47 @@
+.preview-page {
+  padding-bottom: 48rpx;
+}
+
+.export-note {
+  margin: 20rpx 0;
+}
+
+.preview-sheet {
+  margin: 24rpx 0;
+  padding: 28rpx;
+  border-radius: 24rpx;
+  background: #ffffff;
+  border: 1rpx solid #e8edf1;
+}
+
+.page-heading {
+  display: block;
+  margin-bottom: 18rpx;
+  font-size: 30rpx;
+  font-weight: 800;
+}
+
+.preview-image {
+  display: block;
+  width: 100%;
+  border-radius: 18rpx;
+}
+
+.preview-placeholder {
+  min-height: 260rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 28rpx;
+  border-radius: 18rpx;
+  background: #f7f9fa;
+  color: #7c8792;
+  text-align: center;
+}
+
+.story-copy {
+  display: block;
+  margin-top: 22rpx;
+  font-size: 28rpx;
+  line-height: 1.85;
+}
