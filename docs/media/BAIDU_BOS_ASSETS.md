@@ -14,7 +14,7 @@ No access key, secret key, private Bucket configuration, or Baidu Netdisk share 
 
 | Runtime logical asset | BOS object key | Source removed from bundle |
 | --- | --- | --- |
-| `home.parentChildReading` | `home/hero/parent-child-reading-v1.jpg` | `assets/brand/home-parent-reading.jpg` |
+| `home.parentChildReading` | `home/hero/parent-child-reading-v2.jpg` | `assets/brand/home-parent-reading.jpg` |
 | `shop.dinosaursNeedBigHandCover` | `books/covers/dinosaurs-need-a-big-hand-v1.jpg` | `assets/books/book-dinosaurs-need-a-big-hand.jpg` |
 | `shop.pewPewTigerCover` | `books/covers/pew-pew-tiger-v1.jpg` | `assets/books/book-pew-pew-tiger.jpg` |
 | `shop.dodosHairyDayCover` | `books/covers/dodos-hairy-day-v1.jpg` | `assets/books/book-dodos-hairy-day.jpg` |
@@ -61,9 +61,17 @@ The five migrated files are removed from the Mini Program source bundle.
 
 ## Current evidence status
 
-The historical Issue #70 / PR #75 record says the five versioned BOS objects previously returned HTTP 200 with `image/jpeg` and matched source-file SHA-256 values. This is historical evidence, not a new live object check on the current PR HEAD.
+The historical Issue #70 / PR #75 record reported HTTP 200 and source-file hash matches for the original five v1 assets, but **the old home v1 proved undecodable**; HTTP 200 and matching hashes did not establish usable imagery. The four book-cover v1 objects still require their own decode and visual checks. The home v2 upload is shown in the owner's BOS console; public fetch/decode and DevTools acceptance remain pending.
 
 For the current release gate, GitHub CI, static file inventory, and deterministic tests are separate from WeChat DevTools screenshots and real-device evidence. This PR does **not** claim that live image loading or network recovery on a device has been demonstrated. A fresh runtime network check is still required before marking #70 complete.
+
+## Home HERO v2 source and runtime evidence
+
+The previous `home/hero/parent-child-reading-v1.jpg` is preserved for diagnosis but **must not be used**: the Git-tracked bundled source and downloaded BOS copy matched SHA-256, yet both failed macOS Preview and `sips` dimension decoding. WeChat DevTools `wx.getImageInfo` returned `getImageInfo:fail invalid` despite an HTTP 200 image response. A successful network request alone is not a visual acceptance.
+
+For v2, the owner recovered the archived source `图片/3939cc01762a13ccd07eb8e462681c75.jpg` on their Mac. The file opened in macOS Preview, `sips` reported **2496 × 1664**, and the owner approved its embedded Chinese copy. The owner uploaded a new `home/hero/parent-child-reading-v2.jpg` object into the existing BOS bucket; the BOS console screenshot shows it alongside v1 (approximately 540 KB).
+
+**Pending before marking PASS:** a fresh HTTPS fetch and image decode of the public v2 URL, stable real image display in WeChat DevTools with Network evidence, and explicit CMS media precedence; later, real-device checks in #76. The assistant's environment could not independently resolve the BOS hostname, so upload listing is not proof of successful public retrieval or decode. This PR updates the versioned URL for controlled verification, not as a claim of final acceptance.
 
 ## Manual acceptance matrix
 
