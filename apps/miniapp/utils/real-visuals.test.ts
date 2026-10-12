@@ -51,5 +51,8 @@ describe('real visual fallbacks', () => {
     expect(miniappRemoteAssets.shop.yunsDiaryCover).toBe(
       `${BOS_ASSET_ORIGIN}/books/covers/yuns-diary-v2.png`,
     );
+    expect(miniappRemoteAssets.shop.dinosaursNeedBigHandCover).toBe(
+      `${BOS_ASSET_ORIGIN}/books/covers/dinosaurs-need-a-big-hand-v2.png`,
+    );
   });
 });
