@@ -3,9 +3,7 @@ import { visibleAdminModules } from './mock-data';
 
 describe('HQ Admin module visibility', () => {
   it('hides business modules when the Staff context lacks their permissions', () => {
-    const visible = visibleAdminModules(['stores.read', 'inventory.read']).map(
-      (item) => item.key,
-    );
+    const visible = visibleAdminModules(['stores.read', 'inventory.read']).map((item) => item.key);
 
     expect(visible).toContain('dashboard');
     expect(visible).toContain('stores');
