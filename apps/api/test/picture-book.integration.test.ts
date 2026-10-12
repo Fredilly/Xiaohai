@@ -1105,10 +1105,7 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
       .sort();
 
     const firstPage = detail.pages.find((page) => page.pageKind === 'CONTENT')!;
-    await db
-      .update(workPages)
-      .set({ characterIds })
-      .where(eq(workPages.id, firstPage.id));
+    await db.update(workPages).set({ characterIds }).where(eq(workPages.id, firstPage.id));
 
     const [secondPage] = await db
       .insert(workPages)
@@ -1144,7 +1141,11 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
 
     await db
       .update(workPageIllustrations)
-      .set({ status: 'FAILED', errorCode: 'IMAGE_PROVIDER_UNAVAILABLE', updatedAt: new Date() })
+      .set({
+        status: 'FAILED',
+        errorCode: 'IMAGE_PROVIDER_UNAVAILABLE',
+        updatedAt: new Date(),
+      })
       .where(eq(workPageIllustrations.id, second.illustrationId));
     const regenerated = await pictureBook.generateIllustration(
       alice,
