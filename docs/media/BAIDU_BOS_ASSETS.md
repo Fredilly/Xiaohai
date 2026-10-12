@@ -102,6 +102,14 @@ Recovered verified originals:
 
 The owner copied the local originals without conversion, uploaded new versioned BOS objects, downloaded the public URLs, checked dimensions with macOS `sips`, and obtained byte-for-byte matching comparisons against their local copies. The old v1 objects were not overwritten. **Pending:** WeChat DevTools Shop/Product component screenshots using these v2 URLs and deliberate image-failure fallback checks; neither HTTP success nor standalone decode substitutes for UI acceptance.
 
+## Shop cover-failure regression (2026-10-12)
+
+In the owner's DevTools manual 404 test, Shop displayed `暂无封面` but unexpectedly lost the card title and numeric price, showing `查看商品详情` and `¥NaN`. This is a **failed acceptance** despite the placeholder appearing. The old `coverError` handler used a deep `setData` path (`products[index].displayCoverUrl`), which did not safely preserve complete catalog rows in the observed WeChat environment.
+
+The correction replaces the **entire product array** with a shallow-copied matching row and `displayCoverUrl: ''`, leaving its id, title/name, author, SKU/price and other records intact. The handler checks index, product identity and failing URL so late events from previous search results cannot clobber new content. Deterministic tests cover retaining price/title, unchanged source rows, and stale/error guards.
+
+**This is not yet a runtime PASS.** Recompile the current PR head and deliberately trigger an absent cover again, verifying `暂无封面`, the original book name, numeric price and no lost product data. Product Detail's separate 404 fallback was observed passing. No database seeds or paid provider calls are involved.
+
 ## Manual acceptance matrix
 
 Do not mark an unexecuted row as PASS.
@@ -111,7 +119,7 @@ Do not mark an unexecuted row as PASS.
 | WeChat DevTools | Normal | Home editorial HERO | Stable v2 image in manually injected HERO and HTTP 200; real CMS override still unverified | PARTIAL PASS (manual injection screenshots) |
 | WeChat DevTools | Normal | Shop → known book | Temporary Shop-card tests showed old v1 defects; dinosaur v2 visually PASS, other current v2 covers still pending | PARTIAL PASS (temporary Shop cards) |
 | WeChat DevTools | Normal | Product detail | Correct BOS cover loads in fixed cover area | PENDING SCREENSHOT |
-| DevTools | Forced image failure | Home / shop / product | Existing placeholder appears; business state remains usable | PENDING SCREENSHOT |
+| DevTools | Forced image failure | Home / shop / product | Product Detail 404 fallback passed; Shop 404 exposed dropped title/price and awaits retest of full-list fix; Home forced failure pending | PARTIAL / SHOP RETEST REQUIRED |
 | iPhone | Normal / weak | Home → shop → product | BOS images load or fail safely without broken navigation | BLOCKED BY #76 |
 | Android | Normal / weak | Home → shop → product | BOS images load or fail safely without broken navigation | BLOCKED BY #76 |
 
