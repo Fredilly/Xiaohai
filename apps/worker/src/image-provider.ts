@@ -51,6 +51,7 @@ export class ImageProviderError extends Error {
         | 'TEMPORARY_MIME_INVALID'
         | 'TEMPORARY_SIZE_INVALID'
         | 'TEMPORARY_IMAGE_EMPTY'
+        | 'INVALID_REFERENCE_ASSET'
         | 'AI_BUDGET_RESERVATION_REQUIRED';
       httpStatus?: number;
       providerErrorCode?: string;
@@ -88,7 +89,7 @@ export class MockImageProvider implements ImageProvider {
     return Promise.resolve({
       assetProvider: 'MOCK_IMAGE',
       objectKey,
-      playbackUrl: `${this.playbackOrigin}/${digest}.jpg`,
+      playbackUrl: `${this.playbackOrigin}/${digest}.png`,
       mimeType: 'image/png',
       byteSize: null,
       providerRequestId: `mock-image-${digest.slice(0, 24)}`,
