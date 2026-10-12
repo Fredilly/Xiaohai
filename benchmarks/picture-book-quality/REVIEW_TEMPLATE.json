@@ -1,0 +1,83 @@
+{
+  "schemaVersion": 1,
+  "fixtureId": "m10-two-character-two-page-v1",
+  "reviewStatus": "PENDING_OWNER_APPROVAL",
+  "currency": "CNY",
+  "runs": [
+    {
+      "runId": "page-1-original",
+      "pageKey": "page-1",
+      "revision": 1,
+      "provider": null,
+      "model": null,
+      "success": null,
+      "accepted": null,
+      "generationLatencyMs": null,
+      "costMinor": null,
+      "providerRequestId": null,
+      "publicEvidenceRef": null,
+      "scores": {
+        "faceIdentity": null,
+        "clothing": null,
+        "colors": null,
+        "proportions": null,
+        "artMediumStyle": null,
+        "sceneContinuity": null,
+        "promptAdherence": null
+      },
+      "unwantedTextArtifacts": null,
+      "technicalDefects": [],
+      "notes": ""
+    },
+    {
+      "runId": "page-2-original",
+      "pageKey": "page-2",
+      "revision": 1,
+      "provider": null,
+      "model": null,
+      "success": null,
+      "accepted": null,
+      "generationLatencyMs": null,
+      "costMinor": null,
+      "providerRequestId": null,
+      "publicEvidenceRef": null,
+      "scores": {
+        "faceIdentity": null,
+        "clothing": null,
+        "colors": null,
+        "proportions": null,
+        "artMediumStyle": null,
+        "sceneContinuity": null,
+        "promptAdherence": null
+      },
+      "unwantedTextArtifacts": null,
+      "technicalDefects": [],
+      "notes": ""
+    },
+    {
+      "runId": "page-2-regeneration",
+      "pageKey": "page-2",
+      "revision": 2,
+      "provider": null,
+      "model": null,
+      "success": null,
+      "accepted": null,
+      "generationLatencyMs": null,
+      "costMinor": null,
+      "providerRequestId": null,
+      "publicEvidenceRef": null,
+      "scores": {
+        "faceIdentity": null,
+        "clothing": null,
+        "colors": null,
+        "proportions": null,
+        "artMediumStyle": null,
+        "sceneContinuity": null,
+        "promptAdherence": null
+      },
+      "unwantedTextArtifacts": null,
+      "technicalDefects": [],
+      "notes": ""
+    }
+  ]
+}
