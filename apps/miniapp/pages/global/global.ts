@@ -1,5 +1,6 @@
 import type { PublicRegion, PublicStore } from '@xiaohai/contracts/stores';
 import { listRegions, listStores } from '../../services/stores';
+import { storeCountLabel, type StoreDataStatus } from './global-state';
 
 type StoreMarker = {
   id: number;
@@ -16,6 +17,8 @@ type PickerEvent = { detail: { value?: string | number } };
 Page({
   data: {
     loading: false,
+    storeStatus: 'loading' as StoreDataStatus,
+    storeCountLabel: '加载中',
     errorMessage: '',
     query: '',
     regions: [] as PublicRegion[],
@@ -35,7 +38,12 @@ Page({
   },
 
   async loadInitialData() {
-    this.setData({ loading: true, errorMessage: '' });
+    this.setData({
+      loading: true,
+      storeStatus: 'loading',
+      storeCountLabel: storeCountLabel('loading', 0),
+      errorMessage: '',
+    });
     try {
       const [regions, stores] = await Promise.all([listRegions(), listStores()]);
       this.applyStores(stores);
@@ -44,7 +52,13 @@ Page({
         regionNames: ['全部区域', ...regions.map((region) => region.name)],
       });
     } catch {
-      this.setData({ errorMessage: '门店信息加载失败，请稍后重试。' });
+      this.setData({
+        stores: [],
+        markers: [],
+        storeStatus: 'error',
+        storeCountLabel: storeCountLabel('error', 0),
+        errorMessage: '门店信息加载失败，请稍后重试。',
+      });
     } finally {
       this.setData({ loading: false });
     }
@@ -98,7 +112,12 @@ Page({
   },
 
   async refreshStores() {
-    this.setData({ loading: true, errorMessage: '' });
+    this.setData({
+      loading: true,
+      storeStatus: 'loading',
+      storeCountLabel: storeCountLabel('loading', 0),
+      errorMessage: '',
+    });
     try {
       const selectedRegion =
         this.data.selectedRegionIndex > 0
@@ -113,7 +132,13 @@ Page({
       });
       this.applyStores(stores);
     } catch {
-      this.setData({ errorMessage: '门店搜索失败，请稍后重试。' });
+      this.setData({
+        stores: [],
+        markers: [],
+        storeStatus: 'error',
+        storeCountLabel: storeCountLabel('error', 0),
+        errorMessage: '门店搜索失败，请稍后重试。',
+      });
     } finally {
       this.setData({ loading: false });
     }
@@ -123,6 +148,8 @@ Page({
     const first = stores[0];
     this.setData({
       stores,
+      storeStatus: 'ready',
+      storeCountLabel: storeCountLabel('ready', stores.length),
       mapLatitude: first?.latitude ?? this.data.latitude ?? 30.657,
       mapLongitude: first?.longitude ?? this.data.longitude ?? 104.066,
       markers: stores.map((store, index) => ({

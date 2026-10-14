@@ -30,14 +30,23 @@
     </view>
   </view>
 
-  <view wx:if="{{errorMessage}}" class="demo-note">{{errorMessage}}<text class="retry-link" bindtap="refreshStores">重试</text></view>
+  <view wx:if="{{errorMessage && storeStatus !== 'error'}}" class="demo-note"><text>{{errorMessage}}</text><button size="mini" bindtap="refreshStores">重试</button></view>
 
   <view class="section" id="store-map">
     <view class="section-head">
       <text class="section-title">门店地图</text>
-      <text class="section-note">{{stores.length}} 家门店</text>
+      <text class="section-note">{{storeCountLabel}}</text>
     </view>
-    <map
+    <view wx:if="{{storeStatus === 'loading'}}" class="state-card">
+      <text class="state-title">正在加载门店地图</text>
+      <text class="state-copy">请稍候。</text>
+    </view>
+    <view wx:elif="{{storeStatus === 'error'}}" class="state-card">
+      <text class="state-title">门店地图暂时不可用</text>
+      <text class="state-copy">{{errorMessage}}</text>
+      <button size="mini" bindtap="refreshStores">重试</button>
+    </view>
+    <map wx:else
       class="store-map"
       latitude="{{mapLatitude}}"
       longitude="{{mapLongitude}}"
@@ -53,12 +62,18 @@
       <text class="section-note">营业门店</text>
     </view>
 
-    <view wx:if="{{loading && stores.length === 0}}" class="state-card">
+    <view wx:if="{{storeStatus === 'loading'}}" class="state-card">
       <text class="state-title">正在加载门店</text>
       <text class="state-copy">请稍候。</text>
     </view>
 
-    <view wx:elif="{{!loading && stores.length === 0}}" class="state-card">
+    <view wx:elif="{{storeStatus === 'error'}}" class="state-card">
+      <text class="state-title">门店信息暂时不可用</text>
+      <text class="state-copy">{{errorMessage}}</text>
+      <button size="mini" bindtap="refreshStores">重试</button>
+    </view>
+
+    <view wx:elif="{{storeStatus === 'ready' && stores.length === 0}}" class="state-card">
       <text class="state-title">没有找到门店</text>
       <text class="state-copy">可以更换搜索词、区域，或关闭附近门店筛选后再试。</text>
     </view>
