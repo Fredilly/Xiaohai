@@ -12,3 +12,19 @@ export function classifyCommissionError(
 export function canUseCommissionActions(status: CommissionAccountStatus): boolean {
   return status === 'ready';
 }
+
+export function commissionActionFailure(error: unknown, fallbackMessage: string) {
+  if (classifyCommissionError(error) === 'unauthenticated') {
+    return {
+      accountStatus: 'unauthenticated' as const,
+      error: '登录已失效，请重新登录后查看佣金信息。',
+      frozenMinor: 0,
+      availableMinor: 0,
+      entries: [],
+      links: [],
+      withdrawals: [],
+      amountYuan: '',
+    };
+  }
+  return { error: fallbackMessage };
+}

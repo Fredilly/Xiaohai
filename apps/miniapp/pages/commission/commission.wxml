@@ -6,6 +6,7 @@
   </view>
   <block wx:else>
   <view class="commission-overview"><text class="page-heading">分享与佣金</text><view class="balance-row"><view><text class="balance-label">待结算</text><text class="balance-value">¥{{frozenMinor / 100}}</text></view><view><text class="balance-label">可提现</text><text class="balance-value">¥{{availableMinor / 100}}</text></view></view></view>
+  <view wx:if="{{error}}" class="error-note">{{error}}</view>
   <button bindtap="createLink" loading="{{busy}}" disabled="{{busy || accountStatus !== 'ready'}}">创建分享链接</button>
   <view class="card" wx:for="{{links}}" wx:key="id"><text>{{item.label || '分享链接'}}</text><text selectable>{{item.code}}</text><button size="mini" open-type="share" data-code="{{item.code}}">分享</button><button size="mini" data-code="{{item.code}}" bindtap="copyLink">复制码</button></view>
   <view class="card"><text class="title">申请提现</text><input type="digit" value="{{amountYuan}}" bindinput="amountInput" placeholder="金额（元）" disabled="{{accountStatus !== 'ready'}}"/><button bindtap="withdraw" disabled="{{busy || accountStatus !== 'ready'}}">提交申请</button><text class="hint">申请提交后仍需审核，到账请以提现记录为准。</text></view>

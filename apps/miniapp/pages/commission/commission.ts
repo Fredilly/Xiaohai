@@ -8,6 +8,7 @@ import {
 } from '../../services/commission';
 import {
   canUseCommissionActions,
+  commissionActionFailure,
   classifyCommissionError,
   type CommissionAccountStatus,
 } from './commission-state';
@@ -73,13 +74,13 @@ Page({
   },
   async createLink() {
     if (this.data.busy || !canUseCommissionActions(this.data.accountStatus)) return;
-    this.setData({ busy: true });
+    this.setData({ busy: true, error: '' });
     try {
       await createReferralLink('我的分享');
       // eslint-disable-next-line @typescript-eslint/no-unsafe-call
       await this.load();
-    } catch {
-      this.setData({ error: '分享链接创建失败。' });
+    } catch (error) {
+      this.setData(commissionActionFailure(error, '分享链接创建失败。'));
     } finally {
       this.setData({ busy: false });
     }
@@ -101,8 +102,10 @@ Page({
       this.setData({ amountYuan: '' });
       // eslint-disable-next-line @typescript-eslint/no-unsafe-call
       await this.load();
-    } catch {
-      this.setData({ error: '提现申请失败，请检查可用余额或稍后重试。' });
+    } catch (error) {
+      this.setData(
+        commissionActionFailure(error, '提现申请失败，请检查可用余额或稍后重试。'),
+      );
     } finally {
       this.setData({ busy: false });
     }
