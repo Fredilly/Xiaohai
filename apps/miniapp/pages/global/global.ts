@@ -1,6 +1,6 @@
 import type { PublicRegion, PublicStore } from '@xiaohai/contracts/stores';
 import { listRegions, listStores } from '../../services/stores';
-import { storeCountLabel, type StoreDataStatus } from './global-state';
+import { storeCountLabel } from './global-state';
 
 type StoreMarker = {
   id: number;
@@ -17,7 +17,7 @@ type PickerEvent = { detail: { value?: string | number } };
 Page({
   data: {
     loading: false,
-    storeStatus: 'loading' as StoreDataStatus,
+    storeStatus: 'loading',
     storeCountLabel: '加载中',
     errorMessage: '',
     query: '',
