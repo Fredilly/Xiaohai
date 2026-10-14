@@ -263,6 +263,10 @@
   color: #8d6b4d;
   font-size: 22rpx;
 }
+.demo-note button,
+.state-card button {
+  margin: 18rpx auto 0;
+}
 .retry-link {
   margin-left: 18rpx;
   text-decoration: underline;
