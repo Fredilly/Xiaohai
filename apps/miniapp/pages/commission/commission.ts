@@ -103,9 +103,7 @@ Page({
       // eslint-disable-next-line @typescript-eslint/no-unsafe-call
       await this.load();
     } catch (error) {
-      this.setData(
-        commissionActionFailure(error, '提现申请失败，请检查可用余额或稍后重试。'),
-      );
+      this.setData(commissionActionFailure(error, '提现申请失败，请检查可用余额或稍后重试。'));
     } finally {
       this.setData({ busy: false });
     }
