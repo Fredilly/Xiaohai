@@ -27,7 +27,7 @@ async function newestMtime(path) {
   if (!info.isDirectory()) return info.mtimeMs;
 
   const entries = await readdir(path, { withFileTypes: true });
-  let newest = info.mtimeMs;
+  let newest = 0;
   for (const entry of entries) {
     const child = resolve(path, entry.name);
     const childMtime = entry.isDirectory() ? await newestMtime(child) : (await stat(child)).mtimeMs;

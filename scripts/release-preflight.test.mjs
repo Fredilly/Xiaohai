@@ -35,7 +35,10 @@ test('release preflight requires budgeted Bailian configuration without exposing
   });
   assert.ok(failures.some((item) => item.includes('PICTURE_BOOK_IMAGE_BUDGET_ENABLED')));
   assert.ok(failures.some((item) => item.includes('BAIDU_BOS_PUBLIC_ORIGIN')));
-  assert.equal(failures.some((item) => item.includes('secret')), false);
+  assert.equal(
+    failures.some((item) => item.includes('secret')),
+    false,
+  );
 });
 
 test('release preflight rejects signed or off-origin BOS smoke URLs', () => {
@@ -46,10 +49,8 @@ test('release preflight rejects signed or off-origin BOS smoke URLs', () => {
     ).length > 0,
   );
   assert.ok(
-    validatePublicBosObjectUrl(
-      'https://other.example.com/smoke.png',
-      'https://assets.example.com',
-    ).length > 0,
+    validatePublicBosObjectUrl('https://other.example.com/smoke.png', 'https://assets.example.com')
+      .length > 0,
   );
   assert.deepEqual(
     validatePublicBosObjectUrl(

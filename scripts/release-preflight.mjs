@@ -76,10 +76,7 @@ export function validatePaidImageConfiguration(env) {
   }
   if (env.BAIDU_BOS_PUBLIC_ORIGIN || env.BOS_PREFLIGHT_OBJECT_URL) {
     failures.push(
-      ...validatePublicBosObjectUrl(
-        env.BOS_PREFLIGHT_OBJECT_URL,
-        env.BAIDU_BOS_PUBLIC_ORIGIN,
-      ),
+      ...validatePublicBosObjectUrl(env.BOS_PREFLIGHT_OBJECT_URL, env.BAIDU_BOS_PUBLIC_ORIGIN),
     );
   }
 
