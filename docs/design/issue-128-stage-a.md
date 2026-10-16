@@ -165,8 +165,8 @@ A：身份卡 → 阅读进度 → 横向订单轨道 → 服务；B：阅读护
 
 ### 重新验收要求（必须在新提交 SHA 上执行）
 
-此前基于 `a7aa819` 生成的六张截图只对应旧线框方案，**不再代表这版高保真设计的验收证据**。当前修改后的 375 / 430 屏幕截图、滚动/裁切检查、页面长标题、常态/加载/空/错误切换均尚未在真实浏览器复验，统一标记为 **NOT TESTED**。在 Mac 设计 worktree 同步到本次更新的最新 SHA 后，重新运行 Chrome headless，提交至少六张新的浏览器截图及一份状态矩阵；不得使用旧图或虚构 PASS。由 Fred 复审，未经明确批准不进入 Stage B。
+此前基于 `a7aa819` 生成的六张截图只对应旧线框方案，已被本次证据替换。基于源提交 `297135d`，已重新生成 B/A/B 的 375 / 430 六张完整浏览器截图，并检查滚动/裁切、中文长标题、底部导航及三页一致性；另对三个页面执行常态、加载、空、错误/重试状态切换，状态面板均在 375px 画面内可见。证据与状态矩阵见 [B/A/B 浏览器证据](../prototypes/evidence/issue-128-bab/README.md)。这些仍是静态浏览器证据，不是微信 DevTools/真机验收；未经 Fred 明确批准不进入 Stage B。
 
 ## 8. 证据边界
 
-本阶段的 AFTER 是静态方案稿，不是微信 DevTools 实际截图；BEFORE 面板是基于当前 WXML/WXSS 结构的示意对照，不宣称真实设备渲染。旧版 B/A/B 布局此前完成过桌面 Chrome headless 渲染并提供 [历史六张截图](../prototypes/evidence/issue-128-bab/README.md)，但这些截图不涵盖 Fred 要求的最新高保真修改。**本次新的浏览器图像、布局及状态验证为 NOT TESTED**，必须在更新后的 SHA 重新生成并作为新版证据。实际微信 DevTools/真机验收仍保留为 Stage B 之后的 NOT TESTED 项。
+本阶段的 AFTER 是静态方案稿，不是微信 DevTools 实际截图；BEFORE 面板是基于当前 WXML/WXSS 结构的示意对照，不宣称真实设备渲染。本次基于 `297135d` 的六张浏览器截图、状态切换与布局检查已完成，结果见 [B/A/B 浏览器证据](../prototypes/evidence/issue-128-bab/README.md)。实际微信 DevTools/真机验收仍保留为 Stage B 之后的 NOT TESTED 项。
