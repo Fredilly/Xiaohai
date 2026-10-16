@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Issue 128 Stage A — Xiaohai UI proposals</title>
+  <style>
+    :root { color-scheme: light; font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif; background:#ece9e3; color:#26394a; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:#ece9e3; }
+    .shell { max-width:1220px; margin:0 auto; padding:24px; }
+    .masthead { display:flex; justify-content:space-between; gap:18px; align-items:flex-end; margin-bottom:18px; }
+    h1 { margin:0; font-size:clamp(24px,3vw,40px); letter-spacing:-.04em; }
+    .lead { margin:8px 0 0; color:#65717a; line-height:1.6; max-width:700px; }
+    .controls { display:flex; flex-wrap:wrap; gap:8px; padding:12px; border-radius:18px; background:#fff; box-shadow:0 10px 24px #26394a12; }
+    button { border:1px solid #d9dfe2; background:#fff; color:#344653; border-radius:999px; min-height:38px; padding:0 14px; font:inherit; cursor:pointer; }
+    button[aria-pressed="true"] { background:#26394a; border-color:#26394a; color:#fff; }
+    .legend { display:flex; flex-wrap:wrap; gap:10px; margin:14px 0; color:#6d777d; font-size:13px; }
+    .dot { width:10px; height:10px; display:inline-block; border-radius:50%; margin-right:5px; vertical-align:-1px; }
+    .dot.before { background:#b5bcc0; } .dot.after { background:#6f8fa5; } .dot.mock { background:#c28d63; }
+    .board { display:grid; grid-template-columns:minmax(220px,.7fr) minmax(0,1.7fr); gap:18px; align-items:start; }
+    .brief { padding:22px; border-radius:22px; background:#26394a; color:#f7f3ec; min-height:100%; }
+    .brief h2 { margin:0 0 14px; font-size:22px; }
+    .brief p { color:#cdd8de; line-height:1.7; font-size:14px; }
+    .brief ul { padding-left:18px; color:#dfe7eb; line-height:1.8; font-size:14px; }
+    .direction-note { margin-top:18px; padding-top:15px; border-top:1px solid #ffffff2b; color:#cbd7dc; font-size:13px; line-height:1.65; }
+    .screens { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
+    .screen-wrap { min-width:0; }
+    .screen-label { display:flex; justify-content:space-between; color:#667178; font-size:12px; margin:0 4px 7px; }
+    .screen { min-height:650px; padding:16px; border:8px solid #263239; border-radius:30px; background:var(--paper); box-shadow:0 16px 28px #26394a1c; overflow:hidden; position:relative; }
+    .screen.wide { min-height:540px; }
+    .screen.narrow { max-width:340px; margin:auto; }
+    .phone-notch { width:72px; height:16px; background:#263239; border-radius:0 0 10px 10px; margin:-16px auto 14px; }
+    .brand { display:flex; align-items:center; gap:9px; margin-bottom:13px; }
+    .brand-mark { width:35px; height:35px; border-radius:12px; background:var(--accent); display:grid; place-items:center; color:#fff; font-weight:800; }
+    .brand strong { display:block; font-size:17px; } .brand small { color:var(--muted); font-size:10px; }
+    .search { display:flex; gap:8px; align-items:center; padding:11px 13px; background:#fff; border:1px solid var(--line); border-radius:15px; color:var(--muted); font-size:12px; }
+    .hero { margin-top:12px; padding:18px; min-height:142px; border-radius:22px; background:linear-gradient(135deg,var(--hero),var(--hero2)); position:relative; overflow:hidden; }
+    .hero:after { content:""; position:absolute; width:126px; height:126px; right:-32px; bottom:-45px; border-radius:50%; background:var(--decor); opacity:.5; }
+    .eyebrow { color:var(--accent); font-size:10px; letter-spacing:.12em; font-weight:800; } .hero h3 { margin:8px 0 5px; font-size:25px; letter-spacing:-.04em; position:relative; z-index:1; } .hero p { margin:0; max-width:230px; color:var(--muted); font-size:12px; line-height:1.5; position:relative; z-index:1; }
+    .cta { display:inline-block; margin-top:13px; padding:8px 12px; border-radius:999px; background:var(--accent); color:#fff; font-size:11px; position:relative; z-index:1; }
+    .section-head { display:flex; justify-content:space-between; align-items:baseline; margin:18px 0 9px; } .section-head strong { font-size:16px; } .section-head small { color:var(--muted); font-size:10px; }
+    .tiles { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; } .tile { min-height:92px; padding:12px; background:#fff; border:1px solid var(--line); border-radius:16px; } .tile.featured { background:var(--accent-soft); border-color:transparent; } .tile-icon { width:27px; height:27px; border-radius:9px; background:var(--tile); margin-bottom:16px; } .tile strong { display:block; font-size:12px; } .tile small { color:var(--muted); font-size:10px; line-height:1.4; }
+    .reading-list { display:grid; gap:8px; } .reading { display:flex; align-items:center; gap:10px; padding:10px; background:#fff; border:1px solid var(--line); border-radius:14px; } .cover { width:35px; height:45px; border-radius:7px; background:linear-gradient(145deg,var(--tile),#fff); border:1px solid #ffffffaa; } .reading strong { display:block; font-size:12px; } .reading small { color:var(--muted); font-size:10px; }
+    .tabbar { position:absolute; left:16px; right:16px; bottom:10px; padding:10px 8px 7px; border-radius:17px; background:#fffffff2; border:1px solid var(--line); display:grid; grid-template-columns:repeat(3,1fr); text-align:center; font-size:10px; color:var(--muted); } .tabbar b { color:var(--accent); }
+    .before { --paper:#f7f8fa; --accent:#87939a; --accent-soft:#edf0f2; --hero:#e8edf0; --hero2:#f7f8fa; --decor:#cdd6db; --tile:#dfe5e8; --line:#e4e8ea; --muted:#7b858c; }
+    .direction-a { --paper:#f7f3ec; --accent:#5f7e96; --accent-soft:#e6edf2; --hero:#dce8f0; --hero2:#ece4f2; --decor:#c9b6d6; --tile:#d8e4ed; --line:#e5e0d7; --muted:#687681; }
+    .direction-b { --paper:#f4f7f1; --accent:#5f806a; --accent-soft:#e4efe6; --hero:#dcebdc; --hero2:#eef4e9; --decor:#b9d0bd; --tile:#d4e5d5; --line:#dfe9df; --muted:#6d7c70; }
+    .direction-c { --paper:#f3edf0; --accent:#9d6273; --accent-soft:#f0dfe4; --hero:#273b52; --hero2:#465b74; --decor:#e3ac9e; --tile:#dfb2bd; --line:#e2d6da; --muted:#6f6971; }
+    .direction-c .hero h3,.direction-c .hero p,.direction-c .hero .eyebrow { color:#fff; }
+    .direction-c .hero .eyebrow { color:#f1c7b8; }
+    .before .brand-mark { background:#9aa4aa; } .before .hero h3 { color:#4a5860; }
+    .global .hero { min-height:104px; } .global .map { margin-top:12px; height:180px; border-radius:18px; background:radial-gradient(circle at 67% 35%,var(--accent) 0 4px,transparent 5px),radial-gradient(circle at 40% 62%,var(--accent) 0 4px,transparent 5px),linear-gradient(145deg,var(--hero),var(--accent-soft)); position:relative; } .global .map:after { content:"MAP · 示意区域"; position:absolute; left:13px; bottom:12px; color:var(--muted); font-size:10px; letter-spacing:.08em; } .store { margin-top:10px; padding:12px; border:1px solid var(--line); background:#fff; border-radius:14px; } .store strong { font-size:12px; } .store small { display:block; color:var(--muted); font-size:10px; margin-top:5px; }
+    .me .profile { display:flex; align-items:center; gap:11px; padding:15px; border-radius:20px; background:linear-gradient(135deg,var(--hero),var(--hero2)); } .avatar { width:48px; height:48px; border-radius:17px; background:#fff; display:grid; place-items:center; color:var(--accent); font-size:20px; } .profile strong { display:block; font-size:15px; } .profile small { color:var(--muted); font-size:10px; } .order { display:grid; grid-template-columns:repeat(4,1fr); gap:5px; padding:14px 8px; border:1px solid var(--line); border-radius:17px; background:#fff; text-align:center; } .order span { display:block; font-size:10px; color:var(--muted); margin-top:6px; } .order i { font-style:normal; color:var(--accent); font-size:17px; } .service { display:grid; grid-template-columns:repeat(4,1fr); gap:10px 5px; } .service-item { text-align:center; font-size:10px; color:var(--muted); } .service-item i { display:grid; place-items:center; margin:auto; width:35px; height:35px; border-radius:12px; background:var(--tile); color:var(--accent); font-style:normal; font-size:15px; } .service-item em { display:block; margin-top:5px; color:#9b8e9a; font-size:9px; font-style:normal; }
+    .status { margin-top:12px; padding:11px; border-radius:14px; border:1px dashed var(--line); color:var(--muted); font-size:11px; line-height:1.5; background:#ffffff80; } .status.error { border-color:#d5a6a6; color:#a95858; background:#fff7f5; } .status.empty { color:#7a858e; }
+    .comparison { margin-top:16px; padding:13px 15px; border-radius:16px; background:#fff; border:1px solid #ddd8d0; color:#667178; font-size:12px; line-height:1.6; }
+    @media (max-width:800px) { .shell { padding:16px; } .masthead { display:block; } .controls { margin-top:14px; } .board { grid-template-columns:1fr; } .brief { min-height:auto; } .screens { grid-template-columns:1fr; } .screen.wide { min-height:650px; } }
+  </style>
+</head>
+<body>
+  <main class="shell" id="issue128">
+    <header class="masthead">
+      <div><h1>小海童话 · Stage A 视觉提案</h1><p class="lead">Issue #128 · 方案稿，不是 DevTools 实际截图。示意数据均为 illustrative / 非真实商品、门店或账户。</p></div>
+      <div class="controls" aria-label="原型控制"><button data-control="direction" data-value="a" aria-pressed="true">A 雾蓝绘本</button><button data-control="direction" data-value="b" aria-pressed="false">B 胖竹自然</button><button data-control="direction" data-value="c" aria-pressed="false">C 纸上剧场</button><button data-control="page" data-value="home" aria-pressed="true">首页</button><button data-control="page" data-value="global" aria-pressed="false">胖竹全球</button><button data-control="page" data-value="me" aria-pressed="false">我的</button><button data-control="viewport" data-value="narrow" aria-pressed="true">窄屏 375</button><button data-control="viewport" data-value="wide" aria-pressed="false">宽屏 430</button></div>
+    </header>
+    <div class="legend"><span><i class="dot before"></i>BEFORE：依据当前 WXML/WXSS 结构的示意，不是截图</span><span><i class="dot after"></i>AFTER：本阶段方案稿</span><span><i class="dot mock"></i>示意内容：不代表 API/CMS 数据</span></div>
+    <section class="board">
+      <aside class="brief"><h2 id="directionTitle">A · 雾蓝绘本</h2><p id="directionCopy">温暖纸张、雾蓝与淡紫，把真实阅读内容放在视觉中心；小海温柔但不幼稚，胖竹全球保留独立的自然绿。</p><ul><li>优先：真实 CMS Hero、童书与故事</li><li>减少嵌套卡片与无意义留白</li><li>正文长文本可换行，不隐藏数据</li><li>状态清楚：加载、空、错误、重试</li></ul><div class="direction-note">推荐：A。B 适合作为胖竹局部品牌模式；C 等内容/AI 成为主入口后再评审。</div></aside>
+      <div class="screens">
+        <div class="screen-wrap"><div class="screen-label"><span>BEFORE · 当前结构示意</span><span id="beforeLabel">非截图</span></div><div id="beforeScreen" class="screen narrow before"></div></div>
+        <div class="screen-wrap"><div class="screen-label"><span>AFTER · 方案稿</span><span id="afterLabel">A / 窄屏</span></div><div id="afterScreen" class="screen narrow direction-a"></div></div>
+      </div>
+    </section>
+    <div class="comparison" id="comparison">对照重点：方案稿把主要注意力交给真实内容与主任务；当前结构示意保留现有功能，但卡片层级与状态表达较平。</div>
+  </main>
+  <script>
+    const root = document.getElementById('issue128');
+    const state = { direction: 'a', page: 'home', viewport: 'narrow' };
+    const directions = {
+      a: { title:'A · 雾蓝绘本', copy:'温暖纸张、雾蓝与淡紫，把真实阅读内容放在视觉中心；小海温柔但不幼稚，胖竹全球保留独立的自然绿。', note:'对家长阅读、电商浏览和儿童内容都较平衡。' },
+      b: { title:'B · 胖竹自然', copy:'把门店网络做成自然手册：地图、区域、营业信息和门店服务优先，首页与我的仍保持小海的纸张与雾蓝。', note:'业务识别最强，适合门店网络成为近期主增长入口。' },
+      c: { title:'C · 纸上剧场', copy:'以深蓝舞台、奶油纸张和珊瑚色讲故事，章节、动画和 AI 状态更有叙事感，但需要更严格的对比度与内容资产治理。', note:'差异最大，但家长阅读和表单负担也最高。' }
+    };
+    function chrome(kind, content) { return '<div class="phone-notch"></div>' + content + '<div class="tabbar"><b>⌂<br>首页</b><span>⌖<br>胖竹全球</span><span>♙<br>我的</span></div>'; }
+    function home(before) { return chrome('home', '<div class="brand"><div class="brand-mark">海</div><div><strong>小海童话</strong><small>陪每一个好奇的故事长大</small></div></div><div class="search">⌕　搜索童书与好故事 <span style="margin-left:auto">去商城 ›</span></div><div class="hero"><span class="eyebrow">' + (before ? '首页 CMS' : 'OPEN A STORY') + '</span><h3>' + (before ? '首页内容' : '把今天读成一个故事') + '</h3><p>' + (before ? 'CMS 内容与功能入口集中在多个卡片中。' : '真实 CMS Hero 优先；没有媒体时保留诚实的结构化插图。') + '</p><span class="cta">' + (before ? '立即探索 →' : '开始阅读 →') + '</span></div><div class="section-head"><strong>' + (before ? '功能区' : '今天想去哪里？') + '</strong><small>示意入口</small></div><div class="tiles"><div class="tile featured"><div class="tile-icon"></div><strong>小海商城</strong><small>真实童书与好礼</small></div><div class="tile"><div class="tile-icon"></div><strong>童话动画</strong><small>故事与选集</small></div><div class="tile"><div class="tile-icon"></div><strong>小海 AI</strong><small>创作状态</small></div></div><div class="section-head"><strong>继续阅读</strong><small>示意内容</small></div><div class="reading-list"><div class="reading"><div class="cover"></div><div><strong>示意故事标题</strong><small>非真实 CMS 内容 · 详情 ›</small></div></div></div>'); }
+    function global(before) { return chrome('global', '<div class="brand"><div class="brand-mark">竹</div><div><strong>胖竹全球</strong><small>在地图上发现阅读空间</small></div></div><div class="hero"><span class="eyebrow">PANGZHU GLOBAL</span><h3>' + (before ? '门店与地图' : '从身边的一家书店出发') + '</h3><p>' + (before ? '介绍、服务入口、筛选和地图连续堆叠。' : '先找到门店，再决定找书、租借、自提或配送。') + '</p></div><div class="search">⌕　搜索门店名称 <span style="margin-left:auto">区域：全部</span></div><div class="map"></div><div class="section-head"><strong>门店列表</strong><small>1 家 · 示意</small></div><div class="store"><strong>示意胖竹门店</strong><small>非真实门店 · 城市/区域信息由 API 决定</small></div><div class="status empty">空态：没有找到门店；错误态：数量未知 + 重试。地图、数量与列表保持一致。</div>'); }
+    function me(before) { return chrome('me', '<div class="brand"><div class="brand-mark">海</div><div><strong>我的</strong><small>个人阅读与创作空间</small></div></div><div class="profile"><div class="avatar">♙</div><div><strong>' + (before ? '欢迎来到小海' : '欢迎来到小海') + '</strong><small>登录后查看订单、租借与创作内容</small></div></div><div class="section-head"><strong>订单中心</strong><small>查看全部 ›</small></div><div class="order"><div><i>○</i><span>待付款</span></div><div><i>□</i><span>待发货</span></div><div><i>△</i><span>待收货</span></div><div><i>☆</i><span>售后</span></div></div><div class="section-head"><strong>我的服务</strong><small>按需探索</small></div><div class="service"><div class="service-item"><i>✦</i>AI作品</div><div class="service-item"><i>▶</i>AI动画</div><div class="service-item"><i>◎</i>我的租借</div><div class="service-item"><i>¥</i>我的佣金</div><div class="service-item"><i>⌖</i>地址管理</div><div class="service-item"><i>♕</i>会员中心<em>即将开放</em></div><div class="service-item"><i>⚙</i>设置<em>即将开放</em></div></div>'); }
+    function render() {
+      const d = directions[state.direction];
+      document.getElementById('directionTitle').textContent = d.title;
+      document.getElementById('directionCopy').textContent = d.copy;
+      const after = document.getElementById('afterScreen');
+      after.className = 'screen ' + state.viewport + ' direction-' + state.direction + ' ' + state.page;
+      document.getElementById('beforeScreen').className = 'screen ' + state.viewport + ' before ' + state.page;
+      document.getElementById('beforeScreen').innerHTML = ({home,global,me}[state.page])(true);
+      after.innerHTML = ({home,global,me}[state.page])(false);
+      document.getElementById('afterLabel').textContent = state.direction.toUpperCase() + ' / ' + (state.viewport === 'narrow' ? '窄屏 375' : '宽屏 430');
+      document.getElementById('comparison').textContent = state.page === 'global' ? '对照重点：方案稿把地图与真实门店信息提到首要层级，并明确区分正常、空结果和错误/重试；示意门店不代表真实数据。' : state.page === 'me' ? '对照重点：方案稿移除未接入接口的虚拟统计，让登录状态、订单中心和服务入口成为主层级；未开放功能显式标记。' : '对照重点：方案稿把真实 CMS Hero、商城/童话/AI 主入口与阅读内容建立清晰层级，减少重复卡片和装饰性留白。';
+      document.querySelectorAll('[data-control]').forEach(btn => btn.setAttribute('aria-pressed', String(state[btn.dataset.control] === btn.dataset.value)));
+    }
+    root.addEventListener('click', event => { const btn = event.target.closest('[data-control]'); if (!btn) return; state[btn.dataset.control] = btn.dataset.value; render(); });
+    render();
+  </script>
+</body>
+</html>
