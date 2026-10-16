@@ -150,4 +150,4 @@ A：身份卡 → 阅读进度 → 横向订单轨道 → 服务；B：阅读护
 
 ## 8. 证据边界
 
-本阶段的 AFTER 是静态方案稿，不是 DevTools 实际截图；BEFORE 面板是基于当前 WXML/WXSS 结构的示意对照，不宣称真实设备渲染。原型通过桌面 Chrome headless 对 18 个组合（A/B/C × Home/Global/Me × 375/430）渲染检查，实际宽度为 375px 或 430px，未发现面板横向溢出；截图保存在 `/private/tmp/xiaohai-issue128-stage-a-previews/`。已有旧 DevTools 截图属于历史验收证据，不能证明当前 main 或未来方案稿的真实渲染。新增的 B/A/B 混合组合已添加到 HTML 原型，但本次远程文档更新未执行真实浏览器重新渲染，故混合组合 3 页 × 2 尺寸的实际视觉测试暂记为 NOT TESTED；此前 18 张截图不等于已选组合的实测证据。真实微信 DevTools/真机验收仍保留为 Stage B 之后的 NOT TESTED 项。
+本阶段的 AFTER 是静态方案稿，不是微信 DevTools 实际截图；BEFORE 面板是基于当前 WXML/WXSS 结构的示意对照，不宣称真实设备渲染。原型已用桌面 Chrome headless 对最终选定的 B/A/B 组合（首页 B、胖竹全球 A、我的 B）在 375px 和 430px 各渲染一次，共 6 张截图；实际宽度为 375px 或 430px，未发现横向溢出。证据见 [B/A/B 浏览器截图](../prototypes/evidence/issue-128-bab/README.md)。截图是本次原型渲染证据，不是微信 DevTools/真机证据；真实微信 DevTools/真机验收仍保留为 Stage B 之后的 NOT TESTED 项。
