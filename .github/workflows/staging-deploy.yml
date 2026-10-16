@@ -1,0 +1,72 @@
+name: Deploy staging (after CI)
+on:
+  workflow_run:
+    workflows: ['CI']
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  packages: write
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+jobs:
+  build:
+    if: >-
+      ${{ (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success') && vars.STAGING_READY == 'true' }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [api, worker]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/Dockerfile
+          push: true
+          build-args: SERVICE=${{ matrix.service }}
+          tags: ghcr.io/fredilly/xiaohai-${{ matrix.service }}:${{ github.event.workflow_run.head_sha || github.sha }}
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - name: Install SSH key
+        env:
+          SSH_KEY: ${{ secrets.STAGING_SSH_PRIVATE_KEY }}
+          SSH_HOST: ${{ secrets.STAGING_SSH_HOST }}
+          SSH_USER: ${{ secrets.STAGING_SSH_USER }}
+          SSH_KNOWN_HOSTS: ${{ secrets.STAGING_SSH_KNOWN_HOSTS }}
+        run: |
+          set -eu
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          test -n "$SSH_USER"
+      - name: Deploy exact CI-verified revision
+        env:
+          HOST: ${{ secrets.STAGING_SSH_HOST }}
+          USER: ${{ secrets.STAGING_SSH_USER }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REVISION: ${{ github.event.workflow_run.head_sha || github.sha }}
+        run: |
+          set -eu
+          ssh "$USER@$HOST" 'mkdir -p ~/xiaohai-deploy'
+          scp deploy/staging.compose.yml deploy/Caddyfile "$USER@$HOST:~/xiaohai-deploy/"
+          printf '%s' "$GH_TOKEN" | ssh "$USER@$HOST" 'docker login ghcr.io -u xiaohai-deploy --password-stdin'
+          ssh "$USER@$HOST" "cd ~/xiaohai-deploy && test -f staging.env && printf 'REVISION=%s\\n' '$REVISION' > revision.env && docker compose --env-file staging.env --env-file revision.env -f staging.compose.yml pull && docker compose --env-file staging.env --env-file revision.env -f staging.compose.yml up -d --remove-orphans && docker logout ghcr.io"
+          curl --fail --retry 8 --retry-delay 5 --retry-connrefused "https://staging-api.pamboo.asia/health"

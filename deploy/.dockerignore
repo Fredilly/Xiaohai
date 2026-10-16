@@ -1,0 +1,11 @@
+# Copy this file to repository root as .dockerignore when building.
+.git
+.env
+.env.*
+node_modules
+**/node_modules
+dist
+**/dist
+.turbo
+playwright-report
+test-results
