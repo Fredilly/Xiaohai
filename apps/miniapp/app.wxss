@@ -179,7 +179,16 @@ textarea {
   background: #fff;
 }
 .state-title {
+  display: block;
+  font-size: 30rpx;
+  font-weight: 800;
   color: #35404b;
+}
+.state-copy {
+  display: block;
+  margin-top: 12rpx;
+  font-size: 23rpx;
+  line-height: 1.7;
 }
 .demo-note,
 .error-note {
