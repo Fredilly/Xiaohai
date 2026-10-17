@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 420" role="img" aria-label="A fox reading among storybook flowers">
+<defs><linearGradient id="sky" x2="0" y2="1"><stop stop-color="#cceef4"/><stop offset="1" stop-color="#fbe7b1"/></linearGradient><linearGradient id="book" x2="0" y2="1"><stop stop-color="#fff9df"/><stop offset="1" stop-color="#e7d9b1"/></linearGradient></defs>
+<path d="M24 360Q-6 234 76 132Q172 12 343 38Q501 35 567 157Q643 340 521 389L86 400Z" fill="url(#sky)"/>
+<circle cx="483" cy="97" r="35" fill="#ffe29b"/><path d="M68 330Q113 268 170 305T285 322T444 308T584 333L575 411H31Z" fill="#81c9a2"/>
+<path d="M66 329Q84 271 92 219M92 261L61 231M92 246L125 221" fill="none" stroke="#397c60" stroke-width="14" stroke-linecap="round"/><path d="M80 213Q53 173 36 199Q40 227 80 213M100 224Q130 187 145 207Q134 235 100 224" fill="#5dac81"/>
+<path d="M472 327Q483 281 471 244M474 286L451 268" stroke="#438667" stroke-width="10" fill="none" stroke-linecap="round"/><path d="M467 243Q437 223 447 204Q468 199 475 235Q488 206 513 215Q517 240 482 250" fill="#5baf85"/>
+<g fill="#f5f0da"><circle cx="99" cy="338" r="9"/><circle cx="131" cy="365" r="8"/><circle cx="526" cy="351" r="10"/></g><g fill="#ee8e77"><circle cx="99" cy="338" r="4"/><circle cx="131" cy="365" r="4"/><circle cx="526" cy="351" r="5"/></g>
+<path d="M178 304Q132 268 159 215Q177 183 215 207Q247 235 269 292L242 351Z" fill="#df753c" stroke="#ad532f" stroke-width="6"/>
+<path d="M223 238L159 113L244 162L310 94L355 224Z" fill="#e98640" stroke="#ad532f" stroke-width="7" stroke-linejoin="round"/>
+<path d="M240 169Q291 136 340 184Q380 232 348 290Q325 321 265 311Q209 291 205 233Q207 193 240 169Z" fill="#ed934b" stroke="#ad532f" stroke-width="6"/>
+<path d="M254 248Q280 224 314 247Q329 262 308 280L263 277Q245 265 254 248Z" fill="#fff0ce"/>
+<path d="M247 220q9 -11 18 0m52 0q9 -11 18 0" fill="none" stroke="#583e31" stroke-width="6" stroke-linecap="round"/>
+<path d="M286 248l13 0 -6 8Z" fill="#583e31"/><ellipse cx="237" cy="245" rx="13" ry="8" fill="#e87361" opacity=".65"/><ellipse cx="341" cy="245" rx="13" ry="8" fill="#e87361" opacity=".65"/>
+<path d="M174 308Q228 279 290 324Q345 282 408 302L401 375Q343 352 290 392Q230 351 173 380Z" fill="url(#book)" stroke="#647d81" stroke-width="7" stroke-linejoin="round"/>
+<path d="M291 324v66M197 325q38 -6 71 15m-68 10q35 -3 66 12m47 -24q33 -18 70 -13m-69 39q33 -17 71 -13" fill="none" stroke="#a4a48d" stroke-width="4" stroke-linecap="round"/>
+<path d="M350 179Q400 171 406 216" fill="none" stroke="#fff7d7" stroke-width="8" stroke-linecap="round"/>
+<g fill="#fff5ca"><path d="M411 91l8 17 18 6-18 7-8 18-7-18-17-7 17-6Z"/><path d="M111 139l5 10 11 3-11 4-5 11-4-11-11-4 11-3Z"/></g>
+</svg>
