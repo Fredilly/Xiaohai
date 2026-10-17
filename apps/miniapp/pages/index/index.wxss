@@ -271,3 +271,43 @@
   background: #e8e6f4;
   color: #536277;
 }
+
+
+/* #130 illustrated visual layer. Keep all data and navigation bindings unchanged. */
+.page { background: #fff9ef; color: #24384b; }
+.brand-name { color: #276f57; }
+.brand-note { color: #697a75; }
+.storybook-intro {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  min-height: 320rpx;
+  padding: 28rpx 24rpx;
+  margin-bottom: 22rpx;
+  overflow: hidden;
+  border-radius: 36rpx;
+  background: #dff1ed;
+}
+.storybook-intro-copy { position: relative; z-index: 1; width: 58%; display: flex; flex-direction: column; gap: 13rpx; }
+.storybook-kicker { color: #28795c; font-size: 21rpx; font-weight: 700; }
+.storybook-heading { color: #253f48; font-size: 37rpx; line-height: 1.38; font-weight: 800; white-space: pre-line; }
+.storybook-blurb { color: #42635c; font-size: 22rpx; line-height: 1.5; }
+.storybook-scene { position: absolute; right: -56rpx; bottom: -12rpx; width: 385rpx; height: 295rpx; }
+.home-search { border: 2rpx solid #e5ebe3; background: #ffffff; box-shadow: 0 8rpx 18rpx rgba(37,90,71,.06); }
+.search-action { color: #28795c; font-weight: 700; }
+.hero, .section, .state-card { border-color: #eee8dc; border-radius: 30rpx; box-shadow: 0 8rpx 20rpx rgba(57,75,62,.04); }
+.hero { background: #fce9c9; border-color: #f3e0b8; }
+.hero-with-media { background: #fff; }
+.storybook-hero-art { width: 190rpx; height: 185rpx; right: 5rpx; bottom: 10rpx; }
+.hero-without-media { padding-right: 205rpx; }
+.hero-title, .state-title { color: #253f48; }
+.hero-cta { background: #28795c; color: #fff; }
+.eyebrow { color: #28795c; }
+.section-title { color: #253f48; }
+.card { border-color: #f1e7d9; background: #fff; }
+.card-featured { background: #e1f2e5; }
+.feature-icon { background: #fff1d8; }
+.card-title, .list-title { color: #253f48; }
+.banner { background: #e3f1ed; }
+.state-card button { background: #28795c; color: #fff; }
