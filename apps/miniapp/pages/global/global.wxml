@@ -9,19 +9,6 @@
     </view>
   </view>
 
-  <view class="quick-actions">
-    <view class="quick-action" bindtap="useNearby">
-      <view class="quick-icon"><image src="/assets/ui/pin.svg" mode="aspectFit" /></view>
-      <view class="quick-text"><text class="quick-title">找附近门店</text><text class="quick-subtitle">按当前位置查找</text></view>
-      <text class="quick-arrow">›</text>
-    </view>
-    <view class="quick-action" bindtap="openBookSearch">
-      <view class="quick-icon"><image src="/assets/ui/search.svg" mode="aspectFit" /></view>
-      <view class="quick-text"><text class="quick-title">查找一本书</text><text class="quick-subtitle">查询真实门店库存</text></view>
-      <text class="quick-arrow">›</text>
-    </view>
-  </view>
-
   <view class="store-search card">
     <view class="search-heading"><text>寻找阅读空间</text><text>按门店名称或区域筛选</text></view>
     <view class="search-row">
@@ -67,6 +54,19 @@
       show-location="{{nearbyMode}}"
     />
     <text wx:if="{{storeStatus === 'ready' && stores.length > 0}}" class="map-caption">地图标记来自门店数据，点击下方门店查看详情。</text>
+  </view>
+
+  <view class="quick-actions">
+    <view class="quick-action" bindtap="useNearby">
+      <view class="quick-icon"><image src="/assets/ui/pin.svg" mode="aspectFit" /></view>
+      <view class="quick-text"><text class="quick-title">找附近门店</text><text class="quick-subtitle">按当前位置查找</text></view>
+      <text class="quick-arrow">›</text>
+    </view>
+    <view class="quick-action" bindtap="openBookSearch">
+      <view class="quick-icon"><image src="/assets/ui/search.svg" mode="aspectFit" /></view>
+      <view class="quick-text"><text class="quick-title">查找一本书</text><text class="quick-subtitle">查询真实门店库存</text></view>
+      <text class="quick-arrow">›</text>
+    </view>
   </view>
 
   <view class="section store-section" id="store-list">
