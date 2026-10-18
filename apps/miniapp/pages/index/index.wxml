@@ -1,6 +1,6 @@
 <view class="page">
   <view class="brand-row"><image class="brand-logo" src="/assets/brand/xiaohai-logo.png" mode="aspectFit" /><view class="brand-copy"><text class="brand-name">小海童话</text><text class="brand-note">陪每一个好奇的故事长大</text></view></view>
-  <view class="storybook-intro">
+  <view wx:if="{{loading || error || !hasCmsHero}}" class="storybook-intro">
     <view class="storybook-intro-copy">
       <text class="storybook-kicker">小海的故事世界 ✦</text>
       <text class="storybook-heading">翻开一本书，\n开启一场奇妙冒险</text>
