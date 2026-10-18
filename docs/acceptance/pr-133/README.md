@@ -27,7 +27,10 @@ The only store shown is the explicitly labelled isolated fixture `[TEST-ISSUE113
 | No-match empty state in the page | PASS | `global-empty.png`: page visibly shows `0 家门店`, map empty state and `没有找到门店` after the real isolated API response |
 | API error state and recovery | PASS / NOT TESTED | `global-error.png` shows quantity unknown, both error cards and `重试`; the same session restored the real API and returned to 1 store. Physical button tap was not asserted |
 | Location denied handling | PASS (isolated callback) / NOT TESTED (real permission dialog) | `global-location-denied.png` shows the permission guidance and retry control after a safe `wx.getLocation` denial callback |
-| Store detail, book search, rental and franchise navigation | NOT TESTED | The final combined navigation probe timed out; no navigation result is claimed |
+| Store detail navigation | PASS | Safe runtime route reached `pages/store-detail/store-detail` using the ID of the isolated ACTIVE fixture; no write was performed |
+| Book search navigation | PASS | Safe runtime route reached `pages/book-search/book-search` |
+| Rental navigation | PASS | Safe runtime route reached `pages/rentals/rentals` |
+| Franchise navigation | PASS | Safe runtime route reached `pages/franchise-apply/franchise-apply` |
 | Horizontal overflow, clipping, safe-area behavior | NOT TESTED | Requires the requested viewport profiles and/or manual inspection |
 
 ## API-only check
