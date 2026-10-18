@@ -30,10 +30,7 @@ export function buildStoreMarkers(stores: readonly MarkerStore[]): StoreMarker[]
  * This is a pure checkable mapping; the UI intentionally keeps its existing
  * store-list navigation and does not add a marker-tap route in this PR.
  */
-export function storeIdForMarker(
-  stores: readonly MarkerStore[],
-  markerId: number,
-): string | null {
+export function storeIdForMarker(stores: readonly MarkerStore[], markerId: number): string | null {
   if (!Number.isInteger(markerId) || markerId < 1) return null;
   return stores[markerId - 1]?.id ?? null;
 }
