@@ -1,12 +1,14 @@
 # PR #134 — Me page acceptance report
 
 - Source commit under test: `875c60539402b7ec1fdb9ce549e013776796b9b8`
-- Test date: 2026-10-18 (Asia/Shanghai)
+- Test date: 2026-10-18 (Asia/Shanghai); a second isolated-session attempt was made after the prior report.
 - Static checks were run from this isolated worktree. No production API, database write, login, payment, AI, or user-data operation was used.
 
 ## DevTools status
 
 `cli open` and an automation endpoint were available, but the visible DevTools window did not load this worktree. It showed another project (`xiaohai-miniapp`) with an AppID-change dialog and simulator error: `app.json` could not find the configured `pages/index/index.js`. The automator connection to port 9421 was established, but `currentPage()` and `screenshot()` timed out. Therefore no image from that window is evidence for PR #134.
+
+The follow-up used `cli open-other` against the existing IDE port to avoid disturbing the old project. It produced a separate blank DevTools window; no project page or automation endpoint for `/private/tmp/xiaohai-pr134-me/apps/miniapp` became available. A separate-user-directory launch also exited without opening a usable IDE HTTP port. This is an environment/session blocker, not evidence of a page failure.
 
 ## Result matrix
 
@@ -33,4 +35,3 @@ All passed on the isolated PR worktree:
 - `pnpm format:check`
 
 This report deliberately does not convert static checks into visual or real-device PASS results.
-
