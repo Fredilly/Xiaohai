@@ -12,6 +12,7 @@
 - [global-empty.png](./global-empty.png) — actual page empty state after the isolated API returned HTTP 200 with `stores: []` for `NO_MATCH_PR133`.
 - [global-error.png](./global-error.png) — actual page error state with quantity unknown and visible retry control after an isolated `wx.request` failure mock; no production request was made.
 - [global-location-denied.png](./global-location-denied.png) — actual page response to an isolated `wx.getLocation` authorization-denied callback.
+- [global-320.png](./global-320.png) — real DevTools screenshot from the #133 isolated project; automator reported `windowWidth=320`; no credentials, user data, or production content is visible.
 - [global-375-manual-screen.png](./global-375-manual-screen.png) — real DevTools screen capture after the user manually selected 375px; visual-only evidence, not an automator `windowWidth` reading.
 - [global-430-manual-screen.png](./global-430-manual-screen.png) — real DevTools screen capture after the user manually selected 430px; visual-only evidence, not an automator `windowWidth` reading.
 
