@@ -1,22 +1,30 @@
 import { getPublicHome, type HomeSection } from '../../services/home';
 import { resolveHomeTargetUrl } from './home-navigation';
-import { clearFailedHeroMedia, homeDisplaySections } from './home-display';
+import { clearFailedHeroMedia, hasCmsHero, homeDisplaySections } from './home-display';
 Page({
-  data: { loading: true, error: false, pageTitle: '小海童话', sections: [] as HomeSection[] },
+  data: {
+    loading: true,
+    error: false,
+    hasCmsHero: false,
+    pageTitle: '小海童话',
+    sections: [] as HomeSection[],
+  },
   onLoad() {
     void this.loadHome();
   },
   async loadHome() {
-    this.setData({ loading: true, error: false });
+    this.setData({ loading: true, error: false, hasCmsHero: false });
     try {
       const home = await getPublicHome();
+      const sections = homeDisplaySections(home.sections);
       this.setData({
         loading: false,
         pageTitle: home.page.title,
-        sections: homeDisplaySections(home.sections),
+        hasCmsHero: hasCmsHero(sections),
+        sections,
       });
     } catch {
-      this.setData({ loading: false, error: true, sections: [] });
+      this.setData({ loading: false, error: true, hasCmsHero: false, sections: [] });
     }
   },
   openShop() {
