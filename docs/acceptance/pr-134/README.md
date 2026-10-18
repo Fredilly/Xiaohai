@@ -8,20 +8,31 @@
 
 `cli open` and an automation endpoint were available, but the visible DevTools window did not load this worktree. It showed another project (`xiaohai-miniapp`) with an AppID-change dialog and simulator error: `app.json` could not find the configured `pages/index/index.js`. The automator connection to port 9421 was established, but `currentPage()` and `screenshot()` timed out. Therefore no image from that window is evidence for PR #134.
 
-The follow-up used `cli open-other` against the existing IDE port to avoid disturbing the old project. It produced a separate blank DevTools window; no project page or automation endpoint for `/private/tmp/xiaohai-pr134-me/apps/miniapp` became available. A separate-user-directory launch also exited without opening a usable IDE HTTP port. This is an environment/session blocker, not evidence of a page failure.
+The follow-up used `cli open-other` against the existing IDE port to avoid disturbing the old project. It initially produced a blank window, but after the project was trusted and `cli auto --auto-port 9422` was enabled, the target project loaded and exposed `pages/index/index` then `pages/me/me`. The DevTools config was verified as `touristappid` with the TypeScript compiler plugin; no formal AppID was written to the worktree.
+
+The page evidence below is from the target project session at 390px. It is not real-device evidence.
+
+## Screenshots
+
+- [me-390-top.png](./me-390-top.png) — unauthenticated reader-passport header, login prompt, five order entries, and eight service entries.
+- [me-390-scroll.png](./me-390-scroll.png) — lower-scroll capture; the page content fits the same viewport and has no additional clipped section.
 
 ## Result matrix
 
 | Scenario | Result | Evidence / limitation |
 | --- | --- | --- |
-| Reader-passport top layout | NOT TESTED | Target project was not loaded in DevTools |
-| Unauthenticated avatar placeholder, status and login button | NOT TESTED | No target-project screenshot |
-| Five order-center entries | NOT TESTED | No target-project screenshot or reliable element query |
-| Eight personal-service entries and navigation | NOT TESTED | No target-project screenshot or reliable click |
+| Reader-passport top layout | PASS | `me-390-top.png` from target project |
+| Unauthenticated avatar placeholder, status and login button | PASS | `me-390-top.png`; no user ID, balance, order data or personal data shown |
+| Five order-center entries | PASS | `me-390-top.png`; all five labels are visible |
+| Eight personal-service entries | PASS | `me-390-top.png`; all eight labels are visible with no clipping |
+| Order-center navigation | PASS | Safe runtime navigation reached `pages/orders/orders`; no order was created |
+| Service navigation: AI作品 / AI动画 / 我的动画 / 我的租借 / 我的佣金 / 会员中心 | PASS | Safe runtime navigation reached `pages/story-works/story-works`, `pages/animations/animations`, `pages/feature/feature`, `pages/rentals/rentals`, `pages/commission/commission`, and `pages/feature/feature` respectively |
+| Service navigation: 地址管理 | NOT TESTED | The isolated navigation probe did not return reliably |
+| Service navigation: 设置 | NOT TESTED | The isolated navigation probe timed out |
 | Login success / failure | BLOCKED | Requires an approved real WeChat login or a separate safe AppService mock; no credentials were used |
 | Avatar selection | NOT TESTED | Would require manual DevTools interaction; no user image was uploaded |
-| 320px / 375px / 430px layout | NOT TESTED | Target project was not loaded and the simulator profile was not changed |
-| Loading / empty / error / retry states | NOT TESTED | No reliable target-project runtime session |
+| 320px / 375px / 430px layout | NOT TESTED | DevTools automation exposed only the current 390px profile; no width-setting API was available |
+| Loading / empty / error / retry states | NOT TESTED | The page has no remote data load in the unauthenticated initial state; dedicated state injection was not used |
 | Vivo real-device acceptance | NOT TESTED | No paired-device session was available |
 
 ## Static validation
