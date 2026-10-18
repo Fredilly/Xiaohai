@@ -32,8 +32,8 @@ The page evidence below is from the target project session at 390px. It is not r
 | Eight personal-service entries | PASS | `me-390-top.png`; all eight labels are visible with no clipping |
 | Order-center navigation | PASS | Safe runtime navigation reached `pages/orders/orders`; no order was created |
 | Service navigation: AI作品 / AI动画 / 我的动画 / 我的租借 / 我的佣金 / 会员中心 | PASS | Safe runtime navigation reached `pages/story-works/story-works`, `pages/animations/animations`, `pages/feature/feature`, `pages/rentals/rentals`, `pages/commission/commission`, and `pages/feature/feature` respectively |
-| Service navigation: 地址管理 | NOT TESTED | The isolated navigation probe did not return reliably |
-| Service navigation: 设置 | NOT TESTED | The isolated navigation probe timed out |
+| Service navigation: 地址管理 | PASS | Safe runtime route reached `pages/address/address`; no address was added, changed or deleted |
+| Service navigation: 设置 | PASS | Safe runtime route reached `pages/feature/feature`; no setting was changed |
 | Login success / failure | BLOCKED | Requires an approved real WeChat login or a separate safe AppService mock; no credentials were used |
 | Avatar selection | NOT TESTED | Would require manual DevTools interaction; no user image was uploaded |
 | 320px layout | PASS | `me-320.png`; actual `windowWidth=320`, no horizontal overflow or important clipping |
