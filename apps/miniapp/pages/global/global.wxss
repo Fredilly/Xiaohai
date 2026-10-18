@@ -1,137 +1,175 @@
-.page {
-  min-height: 100vh;
-  padding: 24rpx 26rpx 76rpx;
+/* #130 Stage 2: map-first, storybook-inspired Pangzhu Global.
+ * Keep the native map, original data states, handlers and routes intact. */
+.page.pangzhu-global {
   box-sizing: border-box;
-  background: #f7f8fa;
-  color: #354640;
+  min-height: 100vh;
+  padding: 26rpx 26rpx 90rpx;
+  background: #fff9ef;
+  color: #263f34;
 }
-.hero-soft {
+.pangzhu-masthead {
   position: relative;
-  padding: 36rpx;
-  border-radius: 28rpx;
-  background: linear-gradient(125deg, #dcebdc, #e8f2e8 58%, #e6f2ed);
-  margin-bottom: 30rpx;
+  overflow: hidden;
+  padding: 32rpx 30rpx 26rpx;
+  border-radius: 34rpx;
+  background: #e3f0df;
 }
-.eyebrow {
-  font-size: 20rpx;
-  letter-spacing: 3rpx;
-  color: #688573;
+.pangzhu-masthead::before,
+.pangzhu-masthead::after {
+  position: absolute;
+  right: -30rpx;
+  display: block;
+  width: 145rpx;
+  height: 210rpx;
+  border-radius: 90% 6% 90% 6%;
+  background: rgba(101, 155, 100, 0.14);
+  content: '';
+  transform: rotate(-35deg);
+}
+.pangzhu-masthead::before {
+  top: -80rpx;
+}
+.pangzhu-masthead::after {
+  right: 30rpx;
+  bottom: -160rpx;
+  transform: rotate(28deg);
+}
+.masthead-kicker {
+  position: relative;
+  display: block;
+  color: #4f8067;
+  font-size: 19rpx;
+  font-weight: 700;
+  letter-spacing: 2rpx;
 }
 .hero-title {
+  position: relative;
   display: block;
-  margin: 12rpx 0;
-  font-size: 43rpx;
+  margin: 12rpx 0 8rpx;
+  color: #244e3c;
+  font-size: 44rpx;
   font-weight: 800;
+  line-height: 1.3;
 }
 .hero-subtitle {
+  position: relative;
   display: block;
-  max-width: 550rpx;
-  color: #60766a;
-  font-size: 24rpx;
-  line-height: 1.6;
+  max-width: 560rpx;
+  color: #536d5c;
+  font-size: 23rpx;
+  line-height: 1.65;
 }
 .hero-links {
+  position: relative;
   display: flex;
-  gap: 14rpx;
-  margin-top: 30rpx;
-  font-size: 23rpx;
-  color: #456b56;
+  flex-wrap: wrap;
+  gap: 16rpx;
+  margin-top: 22rpx;
 }
 .hero-links text {
-  padding: 12rpx 18rpx;
+  padding: 12rpx 20rpx;
+  border: 1rpx solid #c9ddc8;
   border-radius: 999rpx;
-  background: rgba(255, 255, 255, 0.7);
-}
-.service-heading,
-.section-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 16rpx;
-  margin: 24rpx 4rpx 18rpx;
-}
-.service-heading text:first-child,
-.section-title {
-  font-size: 31rpx;
-  font-weight: 800;
-}
-.service-heading text:last-child,
-.section-note {
+  background: rgba(255, 255, 255, 0.76);
+  color: #2a674c;
   font-size: 22rpx;
-  color: #8a9a90;
+  font-weight: 700;
 }
-.service-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
+.quick-actions {
+  display: flex;
   gap: 14rpx;
+  margin-top: 18rpx;
 }
-.service-entry {
+.quick-action {
+  box-sizing: border-box;
   display: flex;
-  flex-direction: column;
+  flex: 1;
   align-items: center;
-  justify-content: center;
-  gap: 12rpx;
-  min-height: 142rpx;
-  background: #fff;
-  border: 1rpx solid #edf1ee;
+  gap: 10rpx;
+  min-width: 0;
+  min-height: 112rpx;
+  padding: 16rpx 13rpx;
+  border: 1rpx solid #e1e9dd;
   border-radius: 22rpx;
-  color: #52665a;
-  font-size: 22rpx;
+  background: #fff;
 }
+.quick-action:active,
 .service-entry:active,
-.franchise-card:active,
-.store-card:active {
-  opacity: 0.76;
+.store-card:active,
+.franchise-card:active {
+  opacity: 0.75;
 }
+.quick-icon,
 .service-icon {
   display: flex;
+  flex: none;
   align-items: center;
   justify-content: center;
-  width: 58rpx;
-  height: 58rpx;
-  border-radius: 17rpx;
-  background: #eef5ee;
+  width: 53rpx;
+  height: 53rpx;
+  border-radius: 16rpx;
+  background: #e9f4e8;
 }
+.quick-icon image,
 .service-icon image {
-  width: 33rpx;
-  height: 33rpx;
+  width: 31rpx;
+  height: 31rpx;
 }
-.service-hint {
-  margin: 14rpx 6rpx 22rpx;
-  color: #8a9a90;
-  font-size: 20rpx;
+.quick-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 4rpx;
+  min-width: 0;
+}
+.quick-title {
+  display: block;
+  color: #315642;
+  font-size: 23rpx;
+  font-weight: 700;
+  line-height: 1.4;
+}
+.quick-subtitle {
+  display: block;
+  color: #728477;
+  font-size: 19rpx;
+  line-height: 1.35;
+}
+.quick-arrow {
+  color: #7d9a88;
+  font-size: 32rpx;
 }
 .card,
 .section {
-  padding: 26rpx;
-  margin-top: 22rpx;
-  border: 1rpx solid #edf1ee;
+  box-sizing: border-box;
+  padding: 23rpx;
+  border: 1rpx solid #ece8dc;
   border-radius: 28rpx;
   background: #fff;
-  box-shadow: 0 8rpx 24rpx rgba(48, 73, 58, 0.04);
 }
-.franchise-card {
+.store-search,
+.map-section,
+.store-section {
+  margin-top: 20rpx;
+}
+.search-heading,
+.service-heading {
   display: flex;
+  align-items: baseline;
   justify-content: space-between;
-  align-items: center;
-  gap: 18rpx;
-  background: #f0f5f0;
+  gap: 12rpx;
+  margin-bottom: 17rpx;
 }
-.card-title {
-  display: block;
-  font-size: 26rpx;
-  font-weight: 700;
+.search-heading text:first-child,
+.service-heading text:first-child {
+  color: #315542;
+  font-size: 27rpx;
+  font-weight: 800;
 }
-.card-subtitle {
-  display: block;
-  margin-top: 8rpx;
-  font-size: 21rpx;
-  color: #73877a;
-}
-.franchise-link {
-  flex-shrink: 0;
-  color: #52755e;
-  font-size: 22rpx;
+.search-heading text:last-child,
+.service-heading text:last-child {
+  color: #7c8c7e;
+  font-size: 19rpx;
 }
 .search-row {
   display: flex;
@@ -139,67 +177,126 @@
   gap: 12rpx;
 }
 .search-input {
+  box-sizing: border-box;
   flex: 1;
   min-width: 0;
-  height: 74rpx;
-  padding: 0 20rpx;
-  border-radius: 18rpx;
-  background: #f5f8f5;
+  min-height: 76rpx;
+  padding: 0 18rpx;
+  border: 1rpx solid #e2e9e0;
+  border-radius: 16rpx;
+  background: #f6faf5;
+  color: #324c3c;
   font-size: 24rpx;
 }
 .search-btn {
+  flex: none;
+  height: 76rpx;
   margin: 0;
   padding: 0 24rpx;
-  height: 74rpx;
-  line-height: 74rpx;
-  border-radius: 18rpx;
-  background: #719881;
+  border: 0;
+  border-radius: 16rpx;
+  background: #2d7654;
   color: #fff;
   font-size: 23rpx;
+  line-height: 76rpx;
 }
 .filter-row {
   display: flex;
   flex-wrap: wrap;
   gap: 12rpx;
-  margin-top: 18rpx;
+  margin-top: 16rpx;
 }
 .filter-pill {
+  box-sizing: border-box;
   display: inline-flex;
   align-items: center;
-  box-sizing: border-box;
-  min-height: 54rpx;
-  padding: 10rpx 16rpx;
-  border: 1rpx solid #dfeae1;
+  min-height: 65rpx;
+  padding: 10rpx 17rpx;
+  border: 1rpx solid #dce8d9;
   border-radius: 999rpx;
-  background: #f7faf7;
-  color: #5b7162;
+  background: #f6faf5;
+  color: #416650;
   font-size: 21rpx;
 }
 .button-pill {
   margin: 0;
-  line-height: 1.4;
+  line-height: 1.5;
 }
 .button-pill.active {
   background: #dcebdc;
+  color: #2b654a;
+}
+.section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12rpx;
+  margin-bottom: 20rpx;
+}
+.section-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 6rpx;
+}
+.section-kicker {
+  color: #7b9a80;
+  font-size: 18rpx;
+  font-weight: 700;
+  letter-spacing: 1.5rpx;
+}
+.section-title {
+  color: #294a38;
+  font-size: 31rpx;
+  font-weight: 800;
+}
+.section-note {
+  flex: none;
+  color: #63816a;
+  font-size: 21rpx;
 }
 .store-map {
+  display: block;
   width: 100%;
-  height: 420rpx;
-  border-radius: 22rpx;
-  overflow: hidden;
+  height: 460rpx;
+  border-radius: 18rpx;
+  background: #edf3e9;
+}
+.map-caption {
+  display: block;
+  margin-top: 13rpx;
+  color: #738677;
+  font-size: 20rpx;
+  line-height: 1.5;
 }
 .store-list {
   display: flex;
   flex-direction: column;
   gap: 14rpx;
 }
-.list-card {
+.store-card {
+  box-sizing: border-box;
   display: flex;
+  align-items: flex-start;
+  gap: 12rpx;
+  min-width: 0;
+  padding: 20rpx;
+  border: 1rpx solid #e3eade;
+  border-radius: 22rpx;
+  background: #f8fbf6;
+}
+.store-mark {
+  display: flex;
+  flex: none;
   align-items: center;
-  gap: 14rpx;
-  padding: 22rpx;
-  border-radius: 20rpx;
-  background: #f8faf8;
+  justify-content: center;
+  width: 48rpx;
+  height: 48rpx;
+  border-radius: 14rpx;
+  background: #e7f2e6;
+}
+.store-mark image {
+  width: 27rpx;
+  height: 27rpx;
 }
 .list-main {
   flex: 1;
@@ -207,27 +304,35 @@
 }
 .store-title-row {
   display: flex;
+  align-items: flex-start;
   justify-content: space-between;
-  align-items: center;
-  gap: 12rpx;
+  gap: 10rpx;
 }
 .list-title {
-  font-size: 27rpx;
-  font-weight: 700;
+  display: block;
+  min-width: 0;
+  color: #294c39;
+  font-size: 26rpx;
+  font-weight: 800;
+  line-height: 1.5;
+  overflow-wrap: break-word;
+  white-space: normal;
 }
 .list-meta {
   display: block;
   margin-top: 8rpx;
+  color: #687c6e;
   font-size: 21rpx;
-  color: #7b8c80;
+  line-height: 1.5;
+  overflow-wrap: break-word;
 }
 .distance,
 .chip {
-  flex-shrink: 0;
-  padding: 5rpx 12rpx;
+  flex: none;
+  padding: 6rpx 11rpx;
   border-radius: 999rpx;
-  background: #eaf3eb;
-  color: #52755e;
+  background: #e5f0e2;
+  color: #41664e;
   font-size: 19rpx;
 }
 .chips {
@@ -237,97 +342,124 @@
   margin-top: 12rpx;
 }
 .arrow {
-  color: #91a797;
+  align-self: center;
+  color: #789783;
+  font-size: 34rpx;
 }
 .state-card {
-  padding: 36rpx 12rpx;
+  box-sizing: border-box;
+  padding: 42rpx 20rpx;
+  border-radius: 20rpx;
+  background: #f5f9f2;
   text-align: center;
 }
 .state-title {
   display: block;
-  font-size: 27rpx;
+  color: #375c43;
+  font-size: 26rpx;
   font-weight: 700;
+  line-height: 1.5;
 }
 .state-copy {
   display: block;
-  margin-top: 12rpx;
+  margin-top: 10rpx;
+  color: #6a8072;
   font-size: 22rpx;
   line-height: 1.6;
-  color: #8a9a90;
+}
+.state-card button {
+  margin: 20rpx auto 0;
+  border-radius: 14rpx;
+  background: #e0ece0;
+  color: #28543f;
 }
 .demo-note {
-  margin-top: 20rpx;
-  padding: 18rpx;
-  border-radius: 18rpx;
-  background: #fff4e5;
-  color: #8d6b4d;
-  font-size: 22rpx;
-}
-.demo-note button,
-.state-card button {
-  margin: 18rpx auto 0;
-}
-.retry-link {
-  margin-left: 18rpx;
-  text-decoration: underline;
-}
-/* Let real map and store data lead; keep secondary services compact. */
-.hero-soft {
-  padding: 28rpx 30rpx;
-  margin-bottom: 14rpx;
-  background: #e6f0e7;
-}
-.hero-title {
-  margin: 0 0 8rpx;
-}
-.hero-links {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10rpx;
   margin-top: 16rpx;
+  padding: 16rpx;
+  border-radius: 16rpx;
+  background: #fff1e5;
+  color: #98643f;
+  font-size: 21rpx;
+  line-height: 1.5;
 }
-.service-heading {
-  margin: 18rpx 4rpx 12rpx;
+.demo-note button {
+  flex: none;
+  margin: 0;
+  border-radius: 10rpx;
+}
+.more-services {
+  margin-top: 30rpx;
 }
 .service-grid {
-  grid-template-columns: repeat(4, 1fr);
+  display: flex;
+  flex-wrap: wrap;
   gap: 10rpx;
 }
 .service-entry {
-  min-height: 98rpx;
-  gap: 8rpx;
-  font-size: 19rpx;
-  border: 0;
-  background: #f1f6f1;
-}
-.service-entry-primary {
-  grid-column: span 2;
-  flex-direction: row;
-  min-height: 104rpx;
-  gap: 14rpx;
-  justify-content: flex-start;
-  padding-left: 22rpx;
-  font-size: 25rpx;
-  font-weight: 700;
-  background: #e7f1e8;
+  box-sizing: border-box;
+  display: flex;
+  flex: 1 1 22%;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10rpx;
+  min-width: 0;
+  min-height: 122rpx;
+  padding: 15rpx 4rpx;
+  border: 1rpx solid #e4eade;
+  border-radius: 18rpx;
+  background: #fff;
+  color: #42614b;
+  font-size: 20rpx;
+  text-align: center;
 }
 .service-icon {
-  width: 40rpx;
-  height: 40rpx;
-  background: transparent;
+  width: 44rpx;
+  height: 44rpx;
 }
 .service-icon image {
-  width: 30rpx;
-  height: 30rpx;
-}
-.service-entry-primary .service-icon {
-  width: 48rpx;
-  height: 48rpx;
-}
-.service-entry-primary .service-icon image {
-  width: 38rpx;
-  height: 38rpx;
+  width: 28rpx;
+  height: 28rpx;
 }
 .service-hint {
-  margin-bottom: 10rpx;
+  margin: 13rpx 2rpx 0;
+  color: #7e8b7f;
+  font-size: 20rpx;
+  line-height: 1.5;
 }
 .franchise-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14rpx;
   margin-top: 28rpx;
+  background: #e8f2e4;
+}
+.franchise-copy {
+  flex: 1;
+  min-width: 0;
+}
+.card-title {
+  display: block;
+  color: #315b43;
+  font-size: 27rpx;
+  font-weight: 800;
+  line-height: 1.4;
+}
+.card-subtitle {
+  display: block;
+  margin-top: 7rpx;
+  color: #697e6c;
+  font-size: 21rpx;
+  line-height: 1.5;
+}
+.franchise-link {
+  flex: none;
+  color: #2e7654;
+  font-size: 22rpx;
+  font-weight: 700;
 }
