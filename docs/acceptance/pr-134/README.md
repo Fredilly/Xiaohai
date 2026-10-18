@@ -16,6 +16,11 @@ The page evidence below is from the target project session at 390px. It is not r
 
 - [me-390-top.png](./me-390-top.png) — unauthenticated reader-passport header, login prompt, five order entries, and eight service entries.
 - [me-390-scroll.png](./me-390-scroll.png) — lower-scroll capture; the page content fits the same viewport and has no additional clipped section.
+- [me-320.png](./me-320.png) — 320px simulator viewport.
+- [me-375.png](./me-375.png) — 375px simulator viewport.
+- [me-375-scroll.png](./me-375-scroll.png) — 375px lower-scroll viewport.
+- [me-430.png](./me-430.png) — 430px simulator viewport.
+- [me-430-scroll.png](./me-430-scroll.png) — 430px lower-scroll viewport.
 
 ## Result matrix
 
@@ -31,7 +36,9 @@ The page evidence below is from the target project session at 390px. It is not r
 | Service navigation: 设置 | NOT TESTED | The isolated navigation probe timed out |
 | Login success / failure | BLOCKED | Requires an approved real WeChat login or a separate safe AppService mock; no credentials were used |
 | Avatar selection | NOT TESTED | Would require manual DevTools interaction; no user image was uploaded |
-| 320px / 375px / 430px layout | NOT TESTED | DevTools automation exposed only the current 390px profile; no width-setting API was available |
+| 320px layout | PASS | `me-320.png`; actual `windowWidth=320`, no horizontal overflow or important clipping |
+| 375px layout | PASS | `me-375.png` and `me-375-scroll.png`; actual `windowWidth=375`, no horizontal overflow or important clipping |
+| 430px layout | PASS | `me-430.png` and `me-430-scroll.png`; actual `windowWidth=430`, no horizontal overflow or important clipping |
 | Loading / empty / error / retry states | NOT TESTED | The page has no remote data load in the unauthenticated initial state; dedicated state injection was not used |
 | Vivo real-device acceptance | NOT TESTED | No paired-device session was available |
 
