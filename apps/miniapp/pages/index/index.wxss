@@ -272,6 +272,13 @@
   color: #536277;
 }
 
+/* Keep the CMS Hero slot stable during loading without flashing the fallback fox. */
+.home-hero-loading {
+  min-height: 400rpx;
+  justify-content: center;
+  background: #f7f9f2;
+}
+
 /* #130 illustrated visual layer. Keep all data and navigation bindings unchanged. */
 .page {
   background: #fff9ef;
