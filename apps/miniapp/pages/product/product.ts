@@ -5,15 +5,20 @@ type DisplayProduct = Product & { displayCoverUrl: string };
 
 Page({
   data: {
+    id: '',
     product: null as DisplayProduct | null,
     loading: true,
     error: false,
     message: '',
   },
   onLoad(q: Record<string, string | undefined>) {
-    if (q.id) void this.load(q.id);
+    const id = q.id ?? '';
+    this.setData({ id });
+    if (id) void this.load(id);
+    else this.setData({ loading: false, error: true });
   },
   async load(id: string) {
+    this.setData({ loading: true, error: false, message: '' });
     try {
       const product = await getProduct(id);
       this.setData({
@@ -25,10 +30,14 @@ Page({
           ),
         },
         loading: false,
+        error: false,
       });
     } catch {
-      this.setData({ loading: false, error: true });
+      this.setData({ loading: false, error: true, product: null });
     }
+  },
+  retry() {
+    if (this.data.id) void this.load(this.data.id);
   },
   async add(e: WechatMiniprogram.TouchEvent) {
     try {
