@@ -25,7 +25,7 @@
     </view>
   </view>
 
-  <view wx:if="{{errorMessage && storeStatus !== 'error'}}" class="demo-note"><text>{{errorMessage}}</text><button size="mini" bindtap="refreshStores">重试</button></view>
+  <view wx:if="{{errorMessage && storeStatus !== 'error'}}" class="demo-note"><text>{{errorMessage}}</text><button size="mini" bindtap="useNearby">重试</button></view>
 
   <view class="section map-section" id="store-map">
     <view class="section-head">
