@@ -2,6 +2,8 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const template = readFileSync(new URL('./me.wxml', import.meta.url), 'utf8');
+const addressTemplate = readFileSync(new URL('../address/address.wxml', import.meta.url), 'utf8');
+const meLogic = readFileSync(new URL('./me.ts', import.meta.url), 'utf8');
 
 describe('Me Reader Passport and order views integration', () => {
   it('preserves the Reader Passport design and real login action', () => {
@@ -25,4 +27,17 @@ describe('Me Reader Passport and order views integration', () => {
     expect(template).toContain('wx:for="{{serviceTiles}}"');
     expect(template).toContain('data-key="orders" bindtap="openFeature"');
   });
+  it('retains the Me address shortcut and its login-required destination', () => {
+    expect(template).toContain('wx:for="{{serviceTiles}}"');
+    expect(meLogic).toContain("key === 'address'");
+    expect(meLogic).toContain("'/pages/address/address'");
+    expect(addressTemplate).toContain('wx:elif="{{needsLogin}}"');
+    expect(addressTemplate).toContain('bindtap="goToLogin"');
+  });
+
+  it('does not expose the address create button after login-required is set', () => {
+    expect(addressTemplate).toContain('wx:if="{{!needsLogin}}"');
+    expect(addressTemplate).toContain('登录后管理收货地址');
+  });
+
 });
