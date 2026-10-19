@@ -27,13 +27,13 @@ Page({
     void this.load();
   },
   async load() {
-    if (this.data.unsupported) {
-      this.setData({ orders: [], loading: false, error: false, needsLogin: false });
+    if (!consumerToken()) {
+      this.setData({ orders: [], loading: false, error: false, needsLogin: true });
       return;
     }
 
-    if (!consumerToken()) {
-      this.setData({ orders: [], loading: false, error: false, needsLogin: true });
+    if (this.data.unsupported) {
+      this.setData({ orders: [], loading: false, error: false, needsLogin: false });
       return;
     }
 
