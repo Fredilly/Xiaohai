@@ -1,6 +1,11 @@
 <view class="page">
-  <view class="section-head"><text class="section-title">收货地址</text><button class="primary-btn address-add" bindtap="add">新增地址</button></view>
+  <view class="section-head"><text class="section-title">收货地址</text><button wx:if="{{!needsLogin}}" class="primary-btn address-add" bindtap="add">新增地址</button></view>
   <view wx:if="{{loading}}" class="state-card">正在加载地址…</view>
+  <view wx:elif="{{needsLogin}}" class="state-card">
+    <text class="state-title">登录后管理收货地址</text>
+    <text class="state-copy">收货地址属于个人账户，请先微信登录。</text>
+    <button class="primary-btn" bindtap="goToLogin">去登录</button>
+  </view>
   <view wx:elif="{{error}}" class="state-card"><text class="state-title">地址加载或保存失败</text><button bindtap="load">重试</button></view>
   <view wx:elif="{{addresses.length===0}}" class="state-card"><text class="state-title">还没有收货地址</text></view>
   <view wx:else class="address-list"><view class="address-card" wx:for="{{addresses}}" wx:key="id">
