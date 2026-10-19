@@ -2,7 +2,10 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const template = readFileSync(new URL('./me.wxml', import.meta.url), 'utf8');
-const addressTemplate = readFileSync(new URL('../address/address.wxml', import.meta.url), 'utf8');
+const addressTemplate = readFileSync(
+  new URL('../address/address.wxml', import.meta.url),
+  'utf8',
+);
 const meLogic = readFileSync(new URL('./me.ts', import.meta.url), 'utf8');
 
 describe('Me Reader Passport and order views integration', () => {
