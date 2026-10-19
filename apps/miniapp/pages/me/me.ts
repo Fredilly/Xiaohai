@@ -6,11 +6,11 @@ const AVATAR_STORAGE_KEY = 'xiaohai.consumer.avatar';
 type ChooseAvatarEvent = { detail: { avatarUrl?: string } };
 
 const orderActions = [
-  { key: 'orders', title: '待付款', icon: 'wallet' },
-  { key: 'orders', title: '待发货', icon: 'truck' },
-  { key: 'orders', title: '待收货', icon: 'package' },
-  { key: 'orders', title: '待评价', icon: 'star' },
-  { key: 'orders', title: '退款/售后', icon: 'return' },
+  { key: 'orders', view: 'unpaid', title: '待付款', icon: 'wallet' },
+  { key: 'orders', view: 'shipping', title: '待发货', icon: 'truck' },
+  { key: 'orders', view: 'receiving', title: '待收货', icon: 'package' },
+  { key: 'orders', view: 'review', title: '待评价', icon: 'star' },
+  { key: 'orders', view: 'after-sales', title: '退款/售后', icon: 'return' },
 ];
 
 const serviceTiles = [
@@ -102,8 +102,14 @@ Page({
   },
   openFeature(event: WechatMiniprogram.TouchEvent) {
     const key = String(event.currentTarget.dataset.key || '');
-    if (key === 'orders') void wx.navigateTo({ url: '/pages/orders/orders' });
-    else if (key === 'address') void wx.navigateTo({ url: '/pages/address/address' });
+    if (key === 'orders') {
+      const view = String(event.currentTarget.dataset.view || '');
+      void wx.navigateTo({
+        url: view
+          ? `/pages/orders/orders?view=${encodeURIComponent(view)}`
+          : '/pages/orders/orders',
+      });
+    } else if (key === 'address') void wx.navigateTo({ url: '/pages/address/address' });
     else if (key === 'works') void wx.navigateTo({ url: '/pages/story-works/story-works' });
     else if (key === 'animations') void wx.navigateTo({ url: '/pages/animations/animations' });
     else if (key === 'my-rental') void wx.navigateTo({ url: '/pages/rentals/rentals' });
