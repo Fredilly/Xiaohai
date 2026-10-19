@@ -109,6 +109,22 @@ describe('Orders page view handling', () => {
     expect(mocks.listOrders).not.toHaveBeenCalled();
   });
 
+  it.each(['shipping', 'review'])(
+    'still shows login-required when the %s view is opened without a session',
+    async (view) => {
+      mocks.token.mockReturnValue('');
+      const page = makePage();
+
+      page.onLoad({ view });
+      await page.load();
+
+      expect(page.data.unsupported).toBe(true);
+      expect(page.data.needsLogin).toBe(true);
+      expect(page.data.error).toBe(false);
+      expect(mocks.listOrders).not.toHaveBeenCalled();
+    },
+  );
+
   it('filters refund statuses without inventing a review/after-sale record', async () => {
     mocks.token.mockReturnValue('test-token');
     mocks.listOrders.mockResolvedValue({ orders });
