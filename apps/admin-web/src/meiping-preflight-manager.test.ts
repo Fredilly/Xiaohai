@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { filterMeipingRows, issueSummary } from './meiping-preflight-manager';
+import {
+  filterMeipingRows,
+  formatPrice,
+  isReportCurrent,
+  issueSummary,
+} from './meiping-preflight-manager';
 import type { MeipingPreflightRow } from './meiping-preflight-api';
 
 const row = (
@@ -29,6 +34,15 @@ const row = (
 });
 
 describe('Meiping preflight presentation helpers', () => {
+  it('formats minor currency units as RMB and invalidates a report when context changes', () => {
+    const file = new File(['xls'], 'dongmen.xls');
+    expect(formatPrice(3800)).toBe('¥38.00');
+    expect(formatPrice(null)).toBe('—');
+    expect(isReportCurrent('east', file, 'east', file)).toBe(true);
+    expect(isReportCurrent('east', file, 'south', file)).toBe(false);
+    expect(isReportCurrent('east', file, 'east', new File(['xls'], 'dongmen.xls'))).toBe(false);
+  });
+
   it('filters warning, error, and issue code without changing source rows', () => {
     const rows = [
       row(2, [

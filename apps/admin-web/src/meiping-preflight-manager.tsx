@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { StaffMeResponse } from '@xiaohai/contracts';
+import { MEIPING_PREFLIGHT_MAX_BYTES } from '@xiaohai/contracts/meiping';
 import { loadHqStores } from './hq-operations-api';
 import {
   downloadMeipingExceptions,
@@ -12,7 +13,6 @@ import {
 
 type IssueFilter = string;
 
-const MAX_FILE_BYTES = 20 * 1024 * 1024;
 const issueLabels: Record<string, string> = {
   MISSING_AUTHOR: '缺少作者',
   MISSING_PUBLISHER: '缺少出版社',
@@ -53,8 +53,21 @@ function fileExtension(name: string) {
   return name.toLowerCase().endsWith('.xls') || name.toLowerCase().endsWith('.xlsx');
 }
 
-function formatPrice(value: number | null) {
-  return value === null ? '—' : String(value);
+export function formatPrice(value: number | null) {
+  return value === null
+    ? '—'
+    : new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY' }).format(value / 100);
+}
+
+export function isReportCurrent(
+  reportStoreId: string | null,
+  reportFile: File | null,
+  selectedStoreId: string,
+  selectedFile: File | null,
+) {
+  return Boolean(
+    reportStoreId && reportFile && reportStoreId === selectedStoreId && reportFile === selectedFile,
+  );
 }
 
 function renderIssue(issue: MeipingIssue) {
@@ -76,6 +89,8 @@ export function MeipingPreflightManager({ token, me }: { token: string; me: Staf
   const [storeId, setStoreId] = useState('');
   const [file, setFile] = useState<(File & { readonly name: string }) | null>(null);
   const [report, setReport] = useState<MeipingPreflightReport | null>(null);
+  const [reportStoreId, setReportStoreId] = useState<string | null>(null);
+  const [reportFile, setReportFile] = useState<File | null>(null);
   const [filter, setFilter] = useState<IssueFilter>('ALL');
   const [status, setStatus] = useState('');
   const [loadingStores, setLoadingStores] = useState(false);
@@ -108,6 +123,7 @@ export function MeipingPreflightManager({ token, me }: { token: string; me: Staf
   const reportRows = report ? filterMeipingRows(report.rows, filter) : [];
   const issueKinds = report ? issueSummary(report.rows) : [];
   const selectedStore = stores?.stores.find((store) => store.id === storeId);
+  const reportIsCurrent = isReportCurrent(reportStoreId, reportFile, storeId, file);
 
   if (!canPreflight) {
     return (
@@ -131,6 +147,8 @@ export function MeipingPreflightManager({ token, me }: { token: string; me: Staf
 
   function chooseFile(next: File | undefined) {
     setReport(null);
+    setReportStoreId(null);
+    setReportFile(null);
     setFilter('ALL');
     if (!next) {
       setFile(null);
@@ -142,9 +160,9 @@ export function MeipingPreflightManager({ token, me }: { token: string; me: Staf
       setStatus('文件格式不支持，请选择 .xls 或 .xlsx 文件。');
       return;
     }
-    if (next.size > MAX_FILE_BYTES) {
+    if (next.size > MEIPING_PREFLIGHT_MAX_BYTES) {
       setFile(null);
-      setStatus('文件超过 20 MB 限制，请拆分后重试。');
+      setStatus('文件超过 5 MB 限制，请拆分后重试。');
       return;
     }
     setFile(next);
@@ -157,10 +175,15 @@ export function MeipingPreflightManager({ token, me }: { token: string; me: Staf
       return;
     }
     setBusy(true);
+    setReport(null);
+    setReportStoreId(null);
+    setReportFile(null);
     setStatus('正在读取并生成预检查报告…');
     try {
       const nextReport = await preflightMeipingFile(token, storeId, file);
       setReport(nextReport);
+      setReportStoreId(storeId);
+      setReportFile(file);
       setFilter('ALL');
       setStatus('预检查完成：未写入商品、SKU 或库存。');
     } catch (error: unknown) {
@@ -181,7 +204,7 @@ export function MeipingPreflightManager({ token, me }: { token: string; me: Staf
   }
 
   async function downloadCsv() {
-    if (!file || !storeId) return;
+    if (!file || !storeId || !reportIsCurrent) return;
     setBusy(true);
     try {
       const csv = await downloadMeipingExceptions(token, storeId, file);
@@ -215,7 +238,14 @@ export function MeipingPreflightManager({ token, me }: { token: string; me: Staf
             <select
               value={storeId}
               disabled={loadingStores || busy}
-              onChange={(event) => setStoreId(event.target.value)}
+              onChange={(event) => {
+                setStoreId(event.target.value);
+                setReport(null);
+                setReportStoreId(null);
+                setReportFile(null);
+                setFilter('ALL');
+                setStatus('门店已切换，请重新执行预检查。');
+              }}
             >
               <option value="">{loadingStores ? '门店加载中…' : '请选择门店'}</option>
               {stores?.stores.map((store) => (
@@ -246,7 +276,7 @@ export function MeipingPreflightManager({ token, me }: { token: string; me: Staf
             </button>
             <button
               className="secondary"
-              disabled={busy || !report || !file}
+              disabled={busy || !reportIsCurrent}
               onClick={() => void downloadCsv()}
             >
               下载异常 CSV

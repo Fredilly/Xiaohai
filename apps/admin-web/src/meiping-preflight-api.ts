@@ -47,6 +47,8 @@ export type MeipingPreflightReport = {
   missingMappedFields: string[];
 };
 
+export { MEIPING_PREFLIGHT_MAX_BYTES } from '@xiaohai/contracts/meiping';
+
 const configuredBase: unknown = import.meta.env.VITE_API_BASE_URL;
 const base = typeof configuredBase === 'string' ? configuredBase : 'http://127.0.0.1:3000';
 
