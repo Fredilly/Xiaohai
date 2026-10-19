@@ -1,10 +1,6 @@
 import { CommerceApiError, listOrders } from '../../services/commerce';
 import { consumerToken } from '../../services/consumer-session';
-import {
-  filterOrdersByView,
-  orderViewDefinitions,
-  parseOrderView,
-} from './order-view';
+import { filterOrdersByView, orderViewDefinitions, parseOrderView } from './order-view';
 
 Page({
   data: {
