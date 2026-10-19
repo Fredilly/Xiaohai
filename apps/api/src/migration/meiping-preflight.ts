@@ -75,6 +75,16 @@ export function buildMeipingPreflight(
     for (const code of options.missingMappedFields ?? []) {
       issues.push(issue(sourceRow.sourceRowNumber, code, 'ERROR', '缺少必要字段列，无法可靠映射'));
     }
+    if (sourceRow.hasFormula) {
+      issues.push(
+        issue(
+          sourceRow.sourceRowNumber,
+          'FORMULA_ROW_REVIEW',
+          'WARNING',
+          '商品行包含公式，需人工确认解析结果',
+        ),
+      );
+    }
     if (base.normalized.priceMinor === 0) {
       issues.push(
         issue(sourceRow.sourceRowNumber, 'ZERO_PRICE', 'ERROR', '价格为 0，需要人工确认'),

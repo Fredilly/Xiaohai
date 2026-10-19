@@ -19,6 +19,7 @@ export type MeipingParsedRow = {
   rawColumns: Record<string, unknown>;
   sourceCategory: string | null;
   sourceCategoryType: MeipingSourceCategory;
+  hasFormula: boolean;
   bookCode: string | null;
   internalCode: string | null;
   barcode: string | null;
@@ -100,10 +101,15 @@ function firstNonEmptyRow(rows: unknown[][]): number {
   return index;
 }
 
+function columnIndex(column: string): number {
+  return [...column].reduce((index, character) => index * 26 + character.charCodeAt(0) - 64, 0) - 1;
+}
+
 export function parseMeipingWorkbook(buffer: Buffer): MeipingWorkbook {
   const workbook = XLSX.read(buffer, {
     type: 'buffer',
     cellDates: false,
+    cellFormula: true,
     raw: true,
     // Meiping's legacy BIFF export uses the GBK-compatible Windows-936 code page.
     codepage: 936,
@@ -128,13 +134,29 @@ export function parseMeipingWorkbook(buffer: Buffer): MeipingWorkbook {
   const missingMappedFields = ['title', 'price']
     .filter((key) => !keys[key as keyof typeof keys])
     .map((key) => `MISSING_COLUMN_${key.toUpperCase()}`);
-  const formulaRows = new Set<number>();
-  for (const [address, cell] of Object.entries(sheet)) {
-    const match = /^(?:[A-Z]+)(\d+)$/.exec(address);
-    if (match && typeof cell === 'object' && cell !== null && 'f' in cell) {
-      formulaRows.add(Number(match[1]));
+  const formulasByRow = new Map<number, string[]>();
+  const formulaColumnsByRow = new Map<number, Set<number>>();
+  const sheetEntries = Object.entries(sheet) as Array<[string, { f?: unknown }]>;
+  for (const [address, cell] of sheetEntries) {
+    const match = /^([A-Z]+)(\d+)$/.exec(address);
+    if (match) {
+      const formula = cell.f;
+      if (typeof formula === 'string') {
+        const rowNumber = Number(match[2]);
+        const formulas = formulasByRow.get(rowNumber) ?? [];
+        formulas.push(formula);
+        formulasByRow.set(rowNumber, formulas);
+        const columns = formulaColumnsByRow.get(rowNumber) ?? new Set<number>();
+        columns.add(columnIndex(match[1]!));
+        formulaColumnsByRow.set(rowNumber, columns);
+      }
     }
   }
+  const lastNonEmptyRowNumber = matrix.reduce(
+    (last, values, index) =>
+      values.some((value) => text(value) !== null) ? headerIndex + index + 1 : last,
+    headerIndex + 1,
+  );
 
   const rows = matrix.slice(headerIndex + 1).flatMap((values, offset) => {
     const sourceRowNumber = headerIndex + offset + 2;
@@ -142,13 +164,30 @@ export function parseMeipingWorkbook(buffer: Buffer): MeipingWorkbook {
       headers.map((header, index) => [header, values?.[index] ?? null]),
     );
     if (Object.values(rawColumns).every((value) => text(value) === null)) return [];
-    if (formulaRows.has(sourceRowNumber)) {
-      return [];
-    }
     const valueOf = (key: keyof typeof keys) => {
       const header = keys[key];
       return header ? rawColumns[header] : null;
     };
+    const formulas = formulasByRow.get(sourceRowNumber) ?? [];
+    const formulaColumns = formulaColumnsByRow.get(sourceRowNumber) ?? new Set<number>();
+    const hasFormula = formulas.length > 0;
+    const hasProductIdentity = ['bookCode', 'internalCode', 'title', 'barcode', 'isbn', 'category']
+      .map((key) => {
+        const header = keys[key as keyof typeof keys];
+        return header && !formulaColumns.has(headers.indexOf(header))
+          ? valueOf(key as keyof typeof keys)
+          : null;
+      })
+      .some((value) => text(value) !== null);
+    const isAggregateFormula = formulas.every((formula) =>
+      /^(?:=)?\s*(?:COUNTA|COUNT|SUM|SUBTOTAL|AVERAGE|MIN|MAX)\s*\(/i.test(formula),
+    );
+    const isSummaryFooter =
+      hasFormula &&
+      sourceRowNumber === lastNonEmptyRowNumber &&
+      !hasProductIdentity &&
+      isAggregateFormula;
+    if (isSummaryFooter) return [];
     const sourceCategory = text(valueOf('category'));
     const bookCode = text(valueOf('bookCode'));
     const internalCode = text(valueOf('internalCode'));
@@ -160,6 +199,7 @@ export function parseMeipingWorkbook(buffer: Buffer): MeipingWorkbook {
         rawColumns,
         sourceCategory,
         sourceCategoryType: categoryType(sourceCategory),
+        hasFormula,
         bookCode,
         internalCode,
         barcode,

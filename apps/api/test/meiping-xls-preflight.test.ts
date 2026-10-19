@@ -102,6 +102,7 @@ describe('Meiping workbook parser and dry-run preflight', () => {
       ['150001', '测试绘本', '文学', '690000000001', '本', '', '', '正常', '否', 38, 1, 1, 1, ''],
       [null, null, null, null, null, null, null, null, null, null, null, null, null, null],
     ]);
+    sheet.J2 = { t: 'n', v: 38, f: '10+28' };
     sheet.A3 = { t: 'n', v: 1, f: 'COUNTA(A2:A2)' };
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, sheet, '商品资料');
@@ -112,6 +113,12 @@ describe('Meiping workbook parser and dry-run preflight', () => {
     const parsed = parseMeipingWorkbook(buffer);
     expect(parsed.rows).toHaveLength(1);
     expect(parsed.rows[0]!.sourceRowNumber).toBe(2);
+    expect(parsed.rows[0]!.hasFormula).toBe(true);
+    const report = buildMeipingPreflight(parsed.rows, {
+      storeId: 'store-east-test',
+      storeCode: 'TEST-EAST',
+    });
+    expect(report.rows[0]!.issues.map((item) => item.code)).toContain('FORMULA_ROW_REVIEW');
   });
 
   it('keeps missing fields as row-level exceptions instead of dropping records', () => {
