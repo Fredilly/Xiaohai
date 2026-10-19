@@ -105,10 +105,11 @@ Page({
     if (key === 'orders') {
       const view = String(event.currentTarget.dataset.view || '');
       void wx.navigateTo({
-        url: view ? `/pages/orders/orders?view=${encodeURIComponent(view)}` : '/pages/orders/orders',
+        url: view
+          ? `/pages/orders/orders?view=${encodeURIComponent(view)}`
+          : '/pages/orders/orders',
       });
-    }
-    else if (key === 'address') void wx.navigateTo({ url: '/pages/address/address' });
+    } else if (key === 'address') void wx.navigateTo({ url: '/pages/address/address' });
     else if (key === 'works') void wx.navigateTo({ url: '/pages/story-works/story-works' });
     else if (key === 'animations') void wx.navigateTo({ url: '/pages/animations/animations' });
     else if (key === 'my-rental') void wx.navigateTo({ url: '/pages/rentals/rentals' });
