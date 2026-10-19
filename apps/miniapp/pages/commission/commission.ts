@@ -1,3 +1,4 @@
+import { consumerToken } from '../../services/consumer-session';
 import {
   createReferralLink,
   createWithdrawal,
@@ -47,6 +48,14 @@ Page({
       links: [],
       withdrawals: [],
     });
+    if (!consumerToken()) {
+      this.setData({
+        loading: false,
+        accountStatus: 'unauthenticated',
+        error: '请先登录后查看佣金信息。',
+      });
+      return;
+    }
     try {
       const [account, links, withdrawals] = await Promise.all([
         getCommissionAccount(),
@@ -71,6 +80,9 @@ Page({
             : '佣金信息加载失败，请检查网络后重试。',
       });
     }
+  },
+  goToLogin() {
+    void wx.switchTab({ url: '/pages/me/me' });
   },
   async createLink() {
     if (this.data.busy || !canUseCommissionActions(this.data.accountStatus)) return;
