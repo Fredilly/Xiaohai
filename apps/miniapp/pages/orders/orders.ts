@@ -4,7 +4,6 @@ import {
   filterOrdersByView,
   orderViewDefinitions,
   parseOrderView,
-  type OrderView,
 } from './order-view';
 
 Page({
@@ -13,7 +12,7 @@ Page({
     loading: true,
     error: false,
     needsLogin: false,
-    view: 'all' as OrderView,
+    view: 'all',
     viewTitle: '我的订单',
     viewNote: '',
     unsupported: false,
@@ -45,7 +44,7 @@ Page({
     this.setData({ loading: true, error: false, needsLogin: false });
     try {
       this.setData({
-        orders: filterOrdersByView((await listOrders()).orders, this.data.view || 'all'),
+        orders: filterOrdersByView((await listOrders()).orders, parseOrderView(this.data.view)),
         loading: false,
         error: false,
         needsLogin: false,
