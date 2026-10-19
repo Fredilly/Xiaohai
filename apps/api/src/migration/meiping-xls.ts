@@ -1,6 +1,16 @@
 import { createHash } from 'node:crypto';
 import * as XLSX from '@stackline/xlsx';
+import * as codepageModule from '@stackline/xlsx/dist/cpexcel.full.mjs';
 import type { CanonicalMigrationInput } from './meiping.js';
+
+// The Meiping export is a legacy BIFF workbook whose byte strings use CP936.
+// The hardened SheetJS-compatible package keeps code-page tables optional, so
+// register the bundled tables explicitly before reading any legacy workbook.
+const codepage = codepageModule as unknown as {
+  cptable: Record<string, unknown>;
+  utils: { decode: (codepage: number, data: Uint8Array) => string };
+};
+XLSX.set_cptable({ ...codepage.cptable, utils: codepage.utils });
 
 export type MeipingSourceCategory = 'BOOK' | 'NON_BOOK' | 'UNKNOWN';
 
@@ -70,7 +80,18 @@ function findHeader(headers: string[], candidates: readonly string[]): string | 
 
 function categoryType(value: string | null): MeipingSourceCategory {
   if (!value) return 'UNKNOWN';
-  return /书|绘本|童书|读物/.test(value) ? 'BOOK' : 'NON_BOOK';
+  const normalized = value.normalize('NFKC').trim();
+  const bookCategories = new Set([
+    '图书',
+    '绘本',
+    '童书',
+    '读物',
+    '少儿',
+    '文学',
+    '教育',
+    '工具书',
+  ]);
+  return bookCategories.has(normalized) ? 'BOOK' : 'NON_BOOK';
 }
 
 function firstNonEmptyRow(rows: unknown[][]): number {
@@ -80,28 +101,50 @@ function firstNonEmptyRow(rows: unknown[][]): number {
 }
 
 export function parseMeipingWorkbook(buffer: Buffer): MeipingWorkbook {
-  const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: false, raw: true });
+  const workbook = XLSX.read(buffer, {
+    type: 'buffer',
+    cellDates: false,
+    raw: true,
+    // Meiping's legacy BIFF export uses the GBK-compatible Windows-936 code page.
+    codepage: 936,
+  });
   const sheetName = workbook.SheetNames[0];
   if (!sheetName) throw new Error('WORKBOOK_NO_SHEET');
   const sheet = workbook.Sheets[sheetName];
   if (!sheet) throw new Error('WORKBOOK_NO_SHEET');
   const matrix = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: null, raw: true });
   const headerIndex = firstNonEmptyRow(matrix);
-  const headers = (matrix[headerIndex] ?? []).map(
-    (value, index) => text(value) ?? `未命名列${index + 1}`,
+  const headerValues = matrix[headerIndex] ?? [];
+  const lastHeaderIndex = headerValues.reduce<number>(
+    (last, value, index) => (text(value) === null ? last : index),
+    -1,
   );
+  const headers = headerValues
+    .slice(0, lastHeaderIndex + 1)
+    .map((value, index) => text(value) ?? `未命名列${index + 1}`);
   const keys = Object.fromEntries(
     Object.entries(aliases).map(([key, candidates]) => [key, findHeader(headers, candidates)]),
   ) as Record<keyof typeof aliases, string | undefined>;
   const missingMappedFields = ['title', 'price']
     .filter((key) => !keys[key as keyof typeof keys])
     .map((key) => `MISSING_COLUMN_${key.toUpperCase()}`);
+  const formulaRows = new Set<number>();
+  for (const [address, cell] of Object.entries(sheet)) {
+    const match = /^(?:[A-Z]+)(\d+)$/.exec(address);
+    if (match && typeof cell === 'object' && cell !== null && 'f' in cell) {
+      formulaRows.add(Number(match[1]));
+    }
+  }
 
   const rows = matrix.slice(headerIndex + 1).flatMap((values, offset) => {
+    const sourceRowNumber = headerIndex + offset + 2;
     const rawColumns = Object.fromEntries(
       headers.map((header, index) => [header, values?.[index] ?? null]),
     );
     if (Object.values(rawColumns).every((value) => text(value) === null)) return [];
+    if (formulaRows.has(sourceRowNumber)) {
+      return [];
+    }
     const valueOf = (key: keyof typeof keys) => {
       const header = keys[key];
       return header ? rawColumns[header] : null;
@@ -113,7 +156,7 @@ export function parseMeipingWorkbook(buffer: Buffer): MeipingWorkbook {
     const isbn = text(valueOf('isbn'));
     return [
       {
-        sourceRowNumber: headerIndex + offset + 2,
+        sourceRowNumber,
         rawColumns,
         sourceCategory,
         sourceCategoryType: categoryType(sourceCategory),

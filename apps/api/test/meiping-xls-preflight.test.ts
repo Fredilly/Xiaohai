@@ -14,6 +14,22 @@ function workbookBuffer(rows: unknown[][], bookType: 'xls' | 'xlsx' = 'xls') {
 }
 
 const headers = ['商品编号', '自有编号', '商品名称', '作者', '出版社', '价格', '条码', '类别'];
+const meipingHeaders = [
+  '商品编号',
+  '商品名称',
+  '类别',
+  '商品条码',
+  '单位',
+  '作者',
+  '出版商',
+  '状态',
+  '特价商品',
+  '定价',
+  '销售折扣',
+  '批发折扣',
+  '采购折扣',
+  '备注',
+];
 
 describe('Meiping workbook parser and dry-run preflight', () => {
   it('reads legacy XLS and XLSX while preserving source row and external identifiers', () => {
@@ -43,6 +59,59 @@ describe('Meiping workbook parser and dry-run preflight', () => {
         ),
       ).rows,
     ).toHaveLength(1);
+  });
+
+  it('decodes Chinese legacy XLS headers and maps the Meiping columns without treating barcodes as ISBN', () => {
+    const parsed = parseMeipingWorkbook(
+      workbookBuffer([
+        meipingHeaders,
+        [
+          '150001',
+          '测试绘本',
+          '少儿',
+          '690000000001',
+          '本',
+          '测试作者',
+          '测试出版商',
+          '正常',
+          '否',
+          38,
+          1,
+          1,
+          1,
+          '',
+        ],
+      ]),
+    );
+    expect(parsed.headers).toEqual(meipingHeaders);
+    expect(parsed.missingMappedFields).toEqual([]);
+    expect(parsed.rows[0]).toMatchObject({
+      sourceRowNumber: 2,
+      bookCode: '150001',
+      barcode: '690000000001',
+      isbn: null,
+      sourceCategory: '少儿',
+      sourceCategoryType: 'BOOK',
+      canonical: { title: '测试绘本', publisher: '测试出版商', price: 38, inventory: 1 },
+    });
+  });
+
+  it('excludes a formula summary row while preserving the product source row number', () => {
+    const sheet = XLSX.utils.aoa_to_sheet([
+      meipingHeaders,
+      ['150001', '测试绘本', '文学', '690000000001', '本', '', '', '正常', '否', 38, 1, 1, 1, ''],
+      [null, null, null, null, null, null, null, null, null, null, null, null, null, null],
+    ]);
+    sheet.A3 = { t: 'n', v: 1, f: 'COUNTA(A2:A2)' };
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, sheet, '商品资料');
+    const output = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }) as unknown;
+    if (typeof output === 'string') throw new Error('Unexpected string workbook output');
+    if (!(output instanceof Uint8Array)) throw new Error('Unexpected workbook output');
+    const buffer = Buffer.from(output);
+    const parsed = parseMeipingWorkbook(buffer);
+    expect(parsed.rows).toHaveLength(1);
+    expect(parsed.rows[0]!.sourceRowNumber).toBe(2);
   });
 
   it('keeps missing fields as row-level exceptions instead of dropping records', () => {
