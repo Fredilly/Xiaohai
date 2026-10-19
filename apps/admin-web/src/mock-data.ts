@@ -30,6 +30,13 @@ export const adminModules: ModulePreview[] = [
     requiredPermission: 'inventory.read',
   },
   {
+    key: 'meiping',
+    label: '美萍导入预检查',
+    description: '上传商品资料并在正式入库前审核解析结果',
+    status: '可查看',
+    requiredPermission: 'inventory.receive',
+  },
+  {
     key: 'orders',
     label: '订单',
     description: '订单列表与详情',
