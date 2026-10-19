@@ -8,6 +8,7 @@
     "predev": "[ -f ../../.env ] || cp ../../.env.example ../../.env",
     "dev": "node --env-file ../../.env --conditions=development --import tsx/esm --watch src/server.ts",
     "finance:backfill": "node --env-file ../../.env --conditions=development --import tsx/esm src/finance/backfill.ts",
+    "meiping:preflight": "node --conditions=development --import tsx/esm src/migration/meiping-preflight-cli.ts",
     "seed:local-staff": "node --env-file ../../.env --conditions=development --import tsx/esm src/dev/seed-local-staff-cli.ts",
     "lint": "eslint src test",
     "start": "node dist/server.js",
@@ -24,6 +25,7 @@
     "fastify": "catalog:",
     "pino": "catalog:",
     "redis": "^5.12.1",
+    "xlsx": "^0.18.5",
     "zod": "catalog:"
   },
   "devDependencies": {
