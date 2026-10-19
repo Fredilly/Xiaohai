@@ -22,9 +22,12 @@ beforeEach(() => {
 });
 
 function tap(key: string, view?: string) {
-  definition.openFeature.call({} as PageDef, {
-    currentTarget: { dataset: { key, view } },
-  } as unknown as WechatMiniprogram.TouchEvent);
+  definition.openFeature.call(
+    {} as PageDef,
+    {
+      currentTarget: { dataset: { key, view } },
+    } as unknown as WechatMiniprogram.TouchEvent,
+  );
 }
 
 describe('Me order actions', () => {
