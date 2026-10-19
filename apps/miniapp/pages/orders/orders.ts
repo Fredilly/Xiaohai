@@ -45,7 +45,7 @@ Page({
     this.setData({ loading: true, error: false, needsLogin: false });
     try {
       this.setData({
-        orders: filterOrdersByView((await listOrders()).orders, this.data.view),
+        orders: filterOrdersByView((await listOrders()).orders, this.data.view || 'all'),
         loading: false,
         error: false,
         needsLogin: false,
