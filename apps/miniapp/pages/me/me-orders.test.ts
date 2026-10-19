@@ -45,4 +45,12 @@ describe('Me order actions', () => {
     tap('orders');
     expect(mocks.navigateTo).toHaveBeenCalledWith({ url: '/pages/orders/orders' });
   });
+
+  it.each([
+    ['address', '/pages/address/address'],
+    ['commission', '/pages/commission/commission'],
+  ])('keeps the %s service tile pointing to %s', (key, url) => {
+    tap(key);
+    expect(mocks.navigateTo).toHaveBeenCalledWith({ url });
+  });
 });
