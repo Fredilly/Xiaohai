@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import * as XLSX from 'xlsx';
+import * as XLSX from '@stackline/xlsx';
 import type { CanonicalMigrationInput } from './meiping.js';
 
 export type MeipingSourceCategory = 'BOOK' | 'NON_BOOK' | 'UNKNOWN';

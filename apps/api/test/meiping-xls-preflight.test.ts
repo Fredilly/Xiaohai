@@ -1,4 +1,4 @@
-import * as XLSX from 'xlsx';
+import * as XLSX from '@stackline/xlsx';
 import { describe, expect, it } from 'vitest';
 import { buildMeipingPreflight } from '../src/migration/meiping-preflight.js';
 import { parseMeipingWorkbook, sourceChecksum } from '../src/migration/meiping-xls.js';

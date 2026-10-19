@@ -1,5 +1,5 @@
 import Fastify from 'fastify';
-import * as XLSX from 'xlsx';
+import * as XLSX from '@stackline/xlsx';
 import { describe, expect, it } from 'vitest';
 import { ConsumerAuthError } from '../src/auth/errors.js';
 import { inventoryPermissions } from '../src/inventory/inventory-operations-service.js';

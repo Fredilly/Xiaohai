@@ -17,6 +17,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@stackline/xlsx": "1.0.9",
     "@xiaohai/config": "workspace:*",
     "@xiaohai/contracts": "workspace:*",
     "@xiaohai/db": "workspace:*",
@@ -25,7 +26,6 @@
     "fastify": "catalog:",
     "pino": "catalog:",
     "redis": "^5.12.1",
-    "xlsx": "^0.18.5",
     "zod": "catalog:"
   },
   "devDependencies": {
