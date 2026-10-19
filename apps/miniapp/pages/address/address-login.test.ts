@@ -105,9 +105,7 @@ describe('address protected UI', () => {
     mocks.token.mockReturnValue('');
     const p = page();
     await p.add();
-    await p.remove(
-      { currentTarget: { dataset: { id: 'fake' } } } as unknown as WechatMiniprogram.TouchEvent,
-    );
+    await p.remove({ currentTarget: { dataset: { id: 'fake' } } } as never);
     expect(mocks.createAddress).not.toHaveBeenCalled();
     expect(mocks.deleteAddress).not.toHaveBeenCalled();
   });
