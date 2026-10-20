@@ -324,13 +324,15 @@ export function MeipingReviewManager({
   storeId,
   file,
   report,
-  canReview,
+  canReadReview,
+  canEditReview,
   canVerifyCorrection,
   restoredSession,
 }: {
   token: string;
   storeId: string;
-  canReview: boolean;
+  canReadReview: boolean;
+  canEditReview: boolean;
   canVerifyCorrection?: boolean;
 } & (
   | { file: File; report: MeipingPreflightReport; restoredSession?: never }
@@ -380,7 +382,7 @@ export function MeipingReviewManager({
 
   async function createSession() {
     if (
-      !canReview ||
+      !canEditReview ||
       !file ||
       !report ||
       session ||
@@ -417,7 +419,7 @@ export function MeipingReviewManager({
   }
 
   async function save(input: ReviewDecisionInput) {
-    if (!session || !page || savingRow !== null) return;
+    if (!canEditReview || !session || !page || savingRow !== null) return;
     setSavingRow(input.sourceRowNumber);
     setNotice('');
     try {
@@ -436,7 +438,7 @@ export function MeipingReviewManager({
   }
 
   async function saveCorrection(sourceRowNumber: number, proposal: ReviewCorrectionInput) {
-    if (!session || !page || busy) return;
+    if (!canEditReview || !session || !page || busy) return;
     setSavingCorrection(sourceRowNumber);
     setNotice('');
     try {
@@ -497,9 +499,13 @@ export function MeipingReviewManager({
         </div>
         {session && <span className="meiping-readonly">审核状态：草稿 DRAFT</span>}
       </div>
-      {!canReview ? (
+      {!canReadReview ? (
         <div className="meiping-status" role="status">
-          当前账号还需要 inventory.stocktake 权限才能保存人工审核草稿。预检查结果仍可查看。
+          当前账号没有审核草稿读取权限。
+        </div>
+      ) : !session && !canEditReview ? (
+        <div className="meiping-status" role="status">
+          当前账号仅可读取审核草稿并进行独立纠错复核，不能创建或修改审核草稿。
         </div>
       ) : !session ? (
         <div className="meiping-review-setup">
@@ -588,7 +594,7 @@ export function MeipingReviewManager({
                         key={item.sourceRowNumber + ':' + (item.decision?.version ?? 0)}
                         item={item}
                         checksum={session.sourceChecksum}
-                        disabled={busy}
+                        disabled={busy || !canEditReview}
                         onSave={save}
                       />
                       <ReviewCorrectionEditor
@@ -600,7 +606,7 @@ export function MeipingReviewManager({
                         }
                         item={item}
                         checksum={session.sourceChecksum}
-                        disabled={busy}
+                        disabled={busy || !canEditReview}
                         onSave={saveCorrection}
                       />
                       <CorrectionIndependentReview

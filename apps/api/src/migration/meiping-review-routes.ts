@@ -93,6 +93,23 @@ export function registerMeipingReviewRoutes(
     return { actorStaffAccountId: actor.staffAccountId, requestId: request.id };
   };
 
+  const authorizeReviewRead = async (request: FastifyRequest, storeId: string) => {
+    const actor = await options.staffAuthorization.authenticate(request.headers.authorization);
+    const canEditReview =
+      options.staffAuthorization.hasPermission(actor, inventoryPermissions.receive) &&
+      options.staffAuthorization.hasPermission(actor, inventoryPermissions.stocktake);
+    const canReviewCorrection = options.staffAuthorization.hasPermission(
+      actor,
+      'meiping.correction.review',
+    );
+    if (!canEditReview && !canReviewCorrection) {
+      throw new ConsumerAuthError('STAFF_FORBIDDEN', 403);
+    }
+    await options.stores.getStaffStore(storeId, actor);
+    await options.inventory.requireStoreAccess(actor, storeId);
+    return { actorStaffAccountId: actor.staffAccountId, requestId: request.id };
+  };
+
   const authorizeIndependentReviewer = async (request: FastifyRequest, storeId: string) => {
     const actor = await options.staffAuthorization.authenticate(request.headers.authorization);
     options.staffAuthorization.requirePermission(actor, 'meiping.correction.review');
@@ -107,7 +124,7 @@ export function registerMeipingReviewRoutes(
     const query = listQuery.safeParse(request.query);
     if (!query.success) return invalid(reply, request.id);
     try {
-      await authorize(request, query.data.storeId);
+      await authorizeReviewRead(request, query.data.storeId);
       return await options.review.listSessions(
         query.data.storeId,
         query.data.offset,
@@ -176,7 +193,7 @@ export function registerMeipingReviewRoutes(
     const query = listQuery.safeParse(request.query);
     if (!params.success || !query.success) return invalid(reply, request.id);
     try {
-      await authorize(request, query.data.storeId);
+      await authorizeReviewRead(request, query.data.storeId);
       return await options.review.listRows(
         params.data.id,
         query.data.storeId,

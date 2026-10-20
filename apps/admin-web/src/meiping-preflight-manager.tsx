@@ -4,6 +4,7 @@ import { MEIPING_PREFLIGHT_MAX_BYTES, MEIPING_PREFLIGHT_MAX_MIB } from '@xiaohai
 import { loadHqStores } from './hq-operations-api';
 import { MeipingReviewManager } from './meiping-review-manager';
 import { MeipingReviewResumePanel } from './meiping-review-resume-panel';
+import { meipingReviewPermissions } from './meiping-review-permissions';
 import {
   downloadMeipingExceptions,
   MeipingPreflightApiError,
@@ -97,6 +98,9 @@ function renderIssue(issue: MeipingIssue) {
 export function MeipingPreflightManager({ token, me }: { token: string; me: StaffMeResponse }) {
   const permissions = useMemo(() => new Set(me.permissions), [me.permissions]);
   const canPreflight = permissions.has('inventory.receive');
+  const { canReadReview, canEditReview, canVerifyCorrection } = meipingReviewPermissions(
+    me.permissions,
+  );
   const canReadStores = permissions.has('stores.read');
   const [stores, setStores] = useState<Awaited<ReturnType<typeof loadHqStores>> | null>(null);
   const [storeId, setStoreId] = useState('');
@@ -308,8 +312,9 @@ export function MeipingPreflightManager({ token, me }: { token: string; me: Staf
           key={storeId}
           token={token}
           storeId={storeId}
-          canReview={permissions.has('inventory.stocktake')}
-          canVerifyCorrection={permissions.has('meiping.correction.review')}
+          canReadReview={canReadReview}
+          canEditReview={canEditReview}
+          canVerifyCorrection={canVerifyCorrection}
         />
       )}
       {!report ? (
@@ -430,8 +435,9 @@ export function MeipingPreflightManager({ token, me }: { token: string; me: Staf
               storeId={storeId}
               file={file}
               report={report}
-              canReview={permissions.has('inventory.stocktake')}
-              canVerifyCorrection={permissions.has('meiping.correction.review')}
+              canReadReview={canReadReview}
+              canEditReview={canEditReview}
+              canVerifyCorrection={canVerifyCorrection}
             />
           )}
           <section className="panel meiping-future">
