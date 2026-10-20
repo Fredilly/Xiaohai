@@ -1,6 +1,9 @@
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import {
   auditLogs,
+  bookEditions,
+  skus,
+  meipingCorrectionReviews,
   meipingReviewCorrections,
   meipingReviewDecisions,
   meipingReviewSessions,
@@ -12,7 +15,7 @@ import { buildMeipingReviewPlan, type MeipingReviewDecision } from './meiping-im
 type Database = ReturnType<typeof createDatabase>['db'];
 
 export class MeipingReviewError extends Error {
-  constructor(readonly code: 'NOT_FOUND' | 'CONFLICT' | 'INVALID_ROW') {
+  constructor(readonly code: 'NOT_FOUND' | 'CONFLICT' | 'INVALID_ROW' | 'SELF_REVIEW_FORBIDDEN' | 'BARCODE_NOT_VERIFIED') {
     super(code);
   }
 }
@@ -39,6 +42,13 @@ export type MeipingCorrectionInput = {
   expectedVersion: number;
   expectedChecksum: string;
   proposedFields: MeipingCorrectionFields;
+  reason: string;
+};
+
+export type MeipingCorrectionReviewInput = {
+  expectedChecksum: string;
+  expectedCorrectionVersion: number;
+  verdict: 'ACCEPTED' | 'REJECTED';
   reason: string;
 };
 
@@ -206,6 +216,22 @@ export class MeipingReviewService {
               ),
             )
         : [];
+    const reviewed =
+      rowNumbers.length > 0
+        ? await this.db
+            .select()
+            .from(meipingCorrectionReviews)
+            .where(and(
+              eq(meipingCorrectionReviews.sessionId, id),
+              inArray(meipingCorrectionReviews.sourceRowNumber, rowNumbers),
+            ))
+        : [];
+    const activeReview = new Map(
+      reviewed.map((item) => [
+        item.sourceRowNumber + ':' + item.correctionVersion,
+        item,
+      ]),
+    );
     const correctionsByRow = new Map(corrections.map((item) => [item.sourceRowNumber, item]));
     const decisionsByRow = new Map(saved.map((item) => [item.sourceRowNumber, item]));
     return {
@@ -227,6 +253,9 @@ export class MeipingReviewService {
         saleBlocked: row.saleBlocked.length > 0,
         decision: decisionsByRow.get(row.sourceRowNumber) ?? null,
         correction: correctionsByRow.get(row.sourceRowNumber) ?? null,
+        correctionReview: activeReview.get(
+          row.sourceRowNumber + ':' + (correctionsByRow.get(row.sourceRowNumber)?.version ?? 0),
+        ) ?? null,
       })),
     };
   }
@@ -335,6 +364,118 @@ export class MeipingReviewService {
       sourceRowNumber,
       version: updated.version,
       status: 'PENDING_VERIFICATION' as const,
+      approved: false as const,
+      catalogOrInventoryWritten: false as const,
+    };
+  }
+
+  /**
+   * Review is immutable and bound to one correction version; it NEVER resolves
+   * original row issues, authorizes import, or touches catalog/stock.
+   */
+  async reviewCorrection(
+    id: string,
+    storeId: string,
+    sourceRowNumber: number,
+    input: MeipingCorrectionReviewInput,
+    audit: MeipingReviewAuditContext,
+  ) {
+    const { session, report } = await this.load(id, storeId);
+    if (
+      session.status !== 'DRAFT' ||
+      input.expectedChecksum !== session.sourceChecksum ||
+      !Number.isSafeInteger(input.expectedCorrectionVersion) ||
+      input.expectedCorrectionVersion < 1 ||
+      !['ACCEPTED', 'REJECTED'].includes(input.verdict) ||
+      !input.reason.trim() ||
+      input.reason.length > 500
+    ) throw new MeipingReviewError('CONFLICT');
+    const row = report.rows.find((item) => item.sourceRowNumber === sourceRowNumber);
+    if (!row) throw new MeipingReviewError('INVALID_ROW');
+
+    const result = await this.db.transaction(async (tx) => {
+      // Lock this proposal so concurrent edits cannot change its version during review.
+      const [current] = await tx.select()
+        .from(meipingReviewCorrections)
+        .where(and(
+          eq(meipingReviewCorrections.sessionId, id),
+          eq(meipingReviewCorrections.sourceRowNumber, sourceRowNumber),
+        ))
+        .for('update')
+        .limit(1);
+      if (!current || current.version !== input.expectedCorrectionVersion) {
+        throw new MeipingReviewError('CONFLICT');
+      }
+      if (current.updatedByStaffAccountId === audit.actorStaffAccountId) {
+        throw new MeipingReviewError('SELF_REVIEW_FORBIDDEN');
+      }
+      if (input.verdict === 'ACCEPTED') {
+        const fields = current.proposedFields as MeipingCorrectionFields;
+        if (typeof fields.barcode === 'string') {
+          const barcode = fields.barcode.trim();
+          // Conservative pre-check only: not proof of final uniqueness in future imports.
+          const collisionInSource = report.rows.some((other) =>
+            other.sourceRowNumber !== sourceRowNumber &&
+            (other.sourceIdentifiers.barcode === barcode ||
+              other.sourceIdentifiers.isbn === barcode),
+          );
+          if (collisionInSource) throw new MeipingReviewError('BARCODE_NOT_VERIFIED');
+          const [skuMatch, editionMatch] = await Promise.all([
+            tx.select({ id: skus.id }).from(skus).where(eq(skus.code, barcode)).limit(1),
+            tx.select({ id: bookEditions.id }).from(bookEditions)
+              .where(eq(bookEditions.isbn, barcode)).limit(1),
+          ]);
+          if (skuMatch.length || editionMatch.length) {
+            throw new MeipingReviewError('BARCODE_NOT_VERIFIED');
+          }
+          const previouslyAccepted = await tx
+            .select({ proposedFields: meipingReviewCorrections.proposedFields })
+            .from(meipingCorrectionReviews)
+            .innerJoin(meipingReviewCorrections, and(
+              eq(meipingCorrectionReviews.sessionId, meipingReviewCorrections.sessionId),
+              eq(meipingCorrectionReviews.sourceRowNumber, meipingReviewCorrections.sourceRowNumber),
+              eq(meipingCorrectionReviews.correctionVersion, meipingReviewCorrections.version),
+            ))
+            .where(and(
+              eq(meipingCorrectionReviews.verdict, 'ACCEPTED'),
+              eq(meipingCorrectionReviews.sessionId, id),
+            ));
+          if (previouslyAccepted.some((entry) => entry.proposedFields.barcode === barcode)) {
+            throw new MeipingReviewError('BARCODE_NOT_VERIFIED');
+          }
+        } else if (row.blockingIssues.some((issue) => [
+          'BARCODE_CONFLICT', 'DUPLICATE_BARCODE',
+        ].includes(issue.code))) {
+          throw new MeipingReviewError('BARCODE_NOT_VERIFIED');
+        }
+      }
+      const [inserted] = await tx.insert(meipingCorrectionReviews).values({
+        sessionId: id,
+        sourceRowNumber,
+        correctionVersion: current.version,
+        verdict: input.verdict,
+        reason: input.reason.trim(),
+        reviewedByStaffAccountId: audit.actorStaffAccountId,
+      }).onConflictDoNothing().returning({
+        correctionVersion: meipingCorrectionReviews.correctionVersion,
+      });
+      if (!inserted) throw new MeipingReviewError('CONFLICT');
+      await tx.insert(auditLogs).values({
+        actorStaffAccountId: audit.actorStaffAccountId,
+        actionKey: 'meiping.review.correction.verdict',
+        resourceType: 'MEIPING_REVIEW_SESSION',
+        resourceId: id,
+        requestId: audit.requestId,
+        metadata: { storeId, sourceRowNumber, correctionVersion: current.version, verdict: input.verdict },
+        // No raw proposed fields or reviewer free-text reason in the audit metadata.
+      });
+      return inserted;
+    });
+    return {
+      sourceRowNumber,
+      correctionVersion: result.correctionVersion,
+      verdict: input.verdict,
+      correctionAcceptedForLaterReview: input.verdict === 'ACCEPTED',
       approved: false as const,
       catalogOrInventoryWritten: false as const,
     };
