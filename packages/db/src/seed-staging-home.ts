@@ -27,10 +27,7 @@ export async function seedStagingHome(db: Database) {
   }
 
   // Check if staging seed was already applied via marker section
-  const existing = await db
-    .select()
-    .from(cmsSections)
-    .where(eq(cmsSections.pageId, page.id));
+  const existing = await db.select().from(cmsSections).where(eq(cmsSections.pageId, page.id));
 
   const hasMarker = existing.some(
     (s) =>
@@ -116,11 +113,7 @@ async function seedStagingBooks(db: Database) {
     if (!book) continue;
 
     // Upsert edition by ISBN
-    let [edition] = await db
-      .select()
-      .from(bookEditions)
-      .where(eq(bookEditions.isbn, item.isbn))
-      .limit(1);
+    let [edition] = await db.select().from(bookEditions).where(eq(bookEditions.isbn, item.isbn)).limit(1);
     if (!edition) {
       [edition] = await db
         .insert(bookEditions)
@@ -130,11 +123,7 @@ async function seedStagingBooks(db: Database) {
     if (!edition) continue;
 
     // Upsert product
-    let [product] = await db
-      .select()
-      .from(products)
-      .where(eq(products.name, item.productName))
-      .limit(1);
+    let [product] = await db.select().from(products).where(eq(products.name, item.productName)).limit(1);
     if (!product) {
       [product] = await db
         .insert(products)
