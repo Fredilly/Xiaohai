@@ -232,6 +232,13 @@
       "when": 1791536585219,
       "tag": "0032_special_whizzer",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1792512000000,
+      "tag": "0033_meiping_review_sessions",
+      "breakpoints": true
     }
   ]
 }
