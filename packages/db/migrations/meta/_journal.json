@@ -239,6 +239,13 @@
       "when": 1792512000000,
       "tag": "0033_meiping_review_sessions",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1792512600000,
+      "tag": "0034_meiping_review_corrections",
+      "breakpoints": true
     }
   ]
 }
