@@ -113,11 +113,13 @@ function ReviewEditor({
         <button className="button-primary" disabled={disabled} onClick={submit}>
           {disabled ? '处理中…' : '保存审核草稿'}
         </button>
-        <small>
-          {item.decision ? '已保存版本 ' + item.decision.version : '尚未保存'}
-        </small>
+        <small>{item.decision ? '已保存版本 ' + item.decision.version : '尚未保存'}</small>
       </div>
-      {message && <small className="form-error" role="alert">{message}</small>}
+      {message && (
+        <small className="form-error" role="alert">
+          {message}
+        </small>
+      )}
     </div>
   );
 }
@@ -164,7 +166,9 @@ export function MeipingReviewManager({
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [token, storeId, session, offset]);
 
   const visible = useMemo(() => filterReviewPage(page?.items ?? [], view), [page, view]);
@@ -176,17 +180,22 @@ export function MeipingReviewManager({
     setNotice('正在创建审核草稿，只有审核记录会写入数据库…');
     try {
       const created = await createMeipingReviewSession(token, storeId, file);
-      if (created.storeId !== storeId || created.sourceChecksum !== checksum ||
-          created.totalRows !== report.totalRows) {
+      if (
+        created.storeId !== storeId ||
+        created.sourceChecksum !== checksum ||
+        created.totalRows !== report.totalRows
+      ) {
         setNotice('原文件与预检查结果不一致。请重新选择文件并运行预检查。');
         return;
       }
       setOffset(0);
       setView('ALL');
       setSession(created);
-      setNotice(created.created
-        ? '审核草稿已建立。没有写入商品、SKU 或库存。'
-        : '已载入同一门店及文件的既有审核草稿，保存的记录不会丢失。');
+      setNotice(
+        created.created
+          ? '审核草稿已建立。没有写入商品、SKU 或库存。'
+          : '已载入同一门店及文件的既有审核草稿，保存的记录不会丢失。',
+      );
     } catch (error) {
       setNotice(reviewApiErrorMessage(error));
     } finally {
@@ -234,7 +243,10 @@ export function MeipingReviewManager({
         <div>
           <span className="badge">人工审核草稿 · 不会正式入库</span>
           <h2 id="meiping-review-heading">商品资料与人工盘点审核</h2>
-          <p>逐条核对源 Excel。录入的是待核实的盘点申报，不代表批准库存；不自动合并冲突条码或上架销售。</p>
+          <p>
+            逐条核对源
+            Excel。录入的是待核实的盘点申报，不代表批准库存；不自动合并冲突条码或上架销售。
+          </p>
         </div>
         {session && <span className="meiping-readonly">审核状态：草稿 DRAFT</span>}
       </div>
@@ -244,7 +256,9 @@ export function MeipingReviewManager({
         </div>
       ) : !session ? (
         <div className="meiping-review-setup">
-          <p>建立草稿后可保存逐行审核记录。此操作会向审核专用数据表写入会话与审计日志，不会创建正式商品或修改库存。</p>
+          <p>
+            建立草稿后可保存逐行审核记录。此操作会向审核专用数据表写入会话与审计日志，不会创建正式商品或修改库存。
+          </p>
           <button
             className="button-primary"
             disabled={busy || !checksum || report.sourceStoreId !== storeId}
@@ -257,7 +271,9 @@ export function MeipingReviewManager({
         <>
           <div className="meiping-review-meta">
             <span>原始记录：{session.totalRows} 条</span>
-            <span>当前页已保存：{savedOnPage} / {page?.items.length ?? 0}</span>
+            <span>
+              当前页已保存：{savedOnPage} / {page?.items.length ?? 0}
+            </span>
             <span>仅供审核，不是全文件审批进度</span>
           </div>
           <div className="meiping-filters">
@@ -295,7 +311,8 @@ export function MeipingReviewManager({
                         <span>
                           {item.sourceIdentifiers.barcode
                             ? '条码：' + item.sourceIdentifiers.barcode
-                            : '未提供条码'} · 商品编号：{item.sourceIdentifiers.bookCode ?? '—'}
+                            : '未提供条码'}{' '}
+                          · 商品编号：{item.sourceIdentifiers.bookCode ?? '—'}
                         </span>
                         <span>
                           作者：{item.normalized.author ?? '待完善'} · 出版社：
@@ -305,14 +322,20 @@ export function MeipingReviewManager({
                             : '¥' + (item.normalized.priceMinor / 100).toFixed(2)}
                         </span>
                         <span>
-                          来源分类：{item.disposition === 'CREATE_CANDIDATE' ? '可提出建档草稿' : '需人工解决 / 不可自动建档'}
+                          来源分类：
+                          {item.disposition === 'CREATE_CANDIDATE'
+                            ? '可提出建档草稿'
+                            : '需人工解决 / 不可自动建档'}
                         </span>
                         {item.issueCodes.length > 0 && (
                           <small>
-                            审核事项：{item.issueCodes.map((code) => issueLabels[code] ?? code).join('、')}
+                            审核事项：
+                            {item.issueCodes.map((code) => issueLabels[code] ?? code).join('、')}
                           </small>
                         )}
-                        {item.saleBlocked && <small className="form-error">禁止正常销售，需后续独立审核</small>}
+                        {item.saleBlocked && (
+                          <small className="form-error">禁止正常销售，需后续独立审核</small>
+                        )}
                       </div>
                       <ReviewEditor
                         key={item.sourceRowNumber + ':' + (item.decision?.version ?? 0)}
@@ -326,15 +349,25 @@ export function MeipingReviewManager({
                 </div>
               )}
               <div className="meiping-review-pagination">
-                <button disabled={busy || offset === 0} onClick={() => { setOffset(Math.max(0, offset - PAGE_SIZE)); setView('ALL'); }}>
+                <button
+                  disabled={busy || offset === 0}
+                  onClick={() => {
+                    setOffset(Math.max(0, offset - PAGE_SIZE));
+                    setView('ALL');
+                  }}
+                >
                   上一页
                 </button>
                 <span>
-                  第 {Math.floor(offset / PAGE_SIZE) + 1} / {Math.ceil(page.totalRows / PAGE_SIZE)} 页
+                  第 {Math.floor(offset / PAGE_SIZE) + 1} / {Math.ceil(page.totalRows / PAGE_SIZE)}{' '}
+                  页
                 </span>
                 <button
                   disabled={busy || offset + PAGE_SIZE >= page.totalRows}
-                  onClick={() => { setOffset(offset + PAGE_SIZE); setView('ALL'); }}
+                  onClick={() => {
+                    setOffset(offset + PAGE_SIZE);
+                    setView('ALL');
+                  }}
                 >
                   下一页
                 </button>
@@ -343,9 +376,14 @@ export function MeipingReviewManager({
           )}
         </>
       )}
-      {notice && <p className="meiping-status" role="status">{notice}</p>}
+      {notice && (
+        <p className="meiping-status" role="status">
+          {notice}
+        </p>
+      )}
       <p className="meiping-review-warning">
-        本页面只存储 DRAFT 审核决定。条码冲突、人工确认、独立审批、正式建档与 INITIAL_MIGRATION 库存流水均需后续流程。
+        本页面只存储 DRAFT 审核决定。条码冲突、人工确认、独立审批、正式建档与 INITIAL_MIGRATION
+        库存流水均需后续流程。
       </p>
     </section>
   );

@@ -16,8 +16,14 @@ describe('Meiping review admin HTTP adapter', () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       json: vi.fn().mockResolvedValue({
-        id: sessionId, storeId, sourceChecksum: checksum, created: true,
-        totalRows: 1000, status: 'DRAFT', approved: false, catalogOrInventoryWritten: false,
+        id: sessionId,
+        storeId,
+        sourceChecksum: checksum,
+        created: true,
+        totalRows: 1000,
+        status: 'DRAFT',
+        approved: false,
+        catalogOrInventoryWritten: false,
       }),
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -29,7 +35,7 @@ describe('Meiping review admin HTTP adapter', () => {
     expect(options.method).toBe('POST');
     expect(options.body).toBe(file);
     expect(options.headers).toMatchObject({
-      Authorization: 'Bearer staff-token',
+      Authorization: '***',
       'content-type': 'application/vnd.ms-excel',
     });
   });
@@ -38,67 +44,108 @@ describe('Meiping review admin HTTP adapter', () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       json: vi.fn().mockResolvedValue({
-        sessionId, storeId, sourceChecksum: checksum, status: 'DRAFT',
-        totalRows: 1000, offset: 25, limit: 25, items: [],
-        approved: false, catalogOrInventoryWritten: false,
+        sessionId,
+        storeId,
+        sourceChecksum: checksum,
+        status: 'DRAFT',
+        totalRows: 1000,
+        offset: 25,
+        limit: 25,
+        items: [],
+        approved: false,
+        catalogOrInventoryWritten: false,
       }),
     });
     vi.stubGlobal('fetch', fetchMock);
-    await expect(getMeipingReviewPage('staff-token', storeId, sessionId, 25, 25))
-      .resolves.toMatchObject({ offset: 25, items: [] });
+    await expect(
+      getMeipingReviewPage('staff-token', storeId, sessionId, 25, 25),
+    ).resolves.toMatchObject({ offset: 25, items: [] });
     const [url, options] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toContain(sessionId);
     expect(url).toContain('storeId=' + storeId);
     expect(url).toContain('offset=25');
-    expect(options.headers).toMatchObject({ Authorization: 'Bearer staff-token' });
+    expect(options.headers).toMatchObject({ Authorization: '***' });
 
     fetchMock.mockResolvedValueOnce({
       ok: true,
       json: vi.fn().mockResolvedValue({
-        sessionId, storeId: 'other-store', sourceChecksum: checksum, totalRows: 1000,
-        offset: 25, items: [], approved: false, catalogOrInventoryWritten: false,
+        sessionId,
+        storeId: 'other-store',
+        sourceChecksum: checksum,
+        totalRows: 1000,
+        offset: 25,
+        items: [],
+        approved: false,
+        catalogOrInventoryWritten: false,
       }),
     });
-    await expect(getMeipingReviewPage('staff-token', storeId, sessionId, 25))
-      .rejects.toThrow('REVIEW_PAGE_CONTEXT_MISMATCH');
+    await expect(getMeipingReviewPage('staff-token', storeId, sessionId, 25)).rejects.toThrow(
+      'REVIEW_PAGE_CONTEXT_MISMATCH',
+    );
   });
 
   it('saves a version-bound decision without assuming inventory or approval', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       json: vi.fn().mockResolvedValue({
-        version: 2, approved: false, catalogOrInventoryWritten: false,
+        version: 2,
+        approved: false,
+        catalogOrInventoryWritten: false,
       }),
     });
     vi.stubGlobal('fetch', fetchMock);
-    await expect(saveMeipingReviewDecision('staff-token', storeId, sessionId, {
-      action: 'CREATE_DRAFT', sourceRowNumber: 21,
-      countedQuantity: 0, expectedVersion: 1, expectedChecksum: checksum,
-    })).resolves.toEqual({ version: 2 });
+    await expect(
+      saveMeipingReviewDecision('staff-token', storeId, sessionId, {
+        action: 'CREATE_DRAFT',
+        sourceRowNumber: 21,
+        countedQuantity: 0,
+        expectedVersion: 1,
+        expectedChecksum: checksum,
+      }),
+    ).resolves.toEqual({ version: 2 });
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toContain('/decisions/21?');
     expect(init.method).toBe('PUT');
-    expect(init.headers).toMatchObject({ Authorization: 'Bearer staff-token' });
+    expect(init.headers).toMatchObject({ Authorization: '***' });
     expect(JSON.parse(init.body as string)).toEqual({
-      action: 'CREATE_DRAFT', sourceRowNumber: 21,
-      countedQuantity: 0, expectedVersion: 1, expectedChecksum: checksum,
+      action: 'CREATE_DRAFT',
+      sourceRowNumber: 21,
+      countedQuantity: 0,
+      expectedVersion: 1,
+      expectedChecksum: checksum,
     });
   });
 
   it('keeps backend conflict, permission and malformed response errors explicit', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-      ok: false, status: 409,
-      json: vi.fn().mockResolvedValue({ error: { code: 'CONFLICT' } }),
-    }));
-    await expect(getMeipingReviewPage('token', storeId, sessionId, 0))
-      .rejects.toMatchObject({ status: 409, code: 'CONFLICT' });
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-      ok: true,
-      json: vi.fn().mockResolvedValue({ version: 1, approved: true, catalogOrInventoryWritten: true }),
-    }));
-    await expect(saveMeipingReviewDecision('token', storeId, sessionId, {
-      sourceRowNumber: 2, action: 'EXCLUDE', reason: '待核对',
-      expectedVersion: 0, expectedChecksum: checksum,
-    })).rejects.toThrow('INVALID_DECISION_RESPONSE');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 409,
+        json: vi.fn().mockResolvedValue({ error: { code: 'CONFLICT' } }),
+      }),
+    );
+    await expect(getMeipingReviewPage('token', storeId, sessionId, 0)).rejects.toMatchObject({
+      status: 409,
+      code: 'CONFLICT',
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: vi
+          .fn()
+          .mockResolvedValue({ version: 1, approved: true, catalogOrInventoryWritten: true }),
+      }),
+    );
+    await expect(
+      saveMeipingReviewDecision('token', storeId, sessionId, {
+        sourceRowNumber: 2,
+        action: 'EXCLUDE',
+        reason: '待核对',
+        expectedVersion: 0,
+        expectedChecksum: checksum,
+      }),
+    ).rejects.toThrow('INVALID_DECISION_RESPONSE');
   });
 });

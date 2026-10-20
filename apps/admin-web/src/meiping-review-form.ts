@@ -1,8 +1,11 @@
 import type { ReviewDecisionInput, ReviewItem } from './meiping-review-api';
 
 export function reviewDecisionInput(
-  row: ReviewItem, action: 'CREATE_DRAFT' | 'EXCLUDE',
-  quantity: string, reason: string, checksum: string,
+  row: ReviewItem,
+  action: 'CREATE_DRAFT' | 'EXCLUDE',
+  quantity: string,
+  reason: string,
+  checksum: string,
 ): ReviewDecisionInput | string {
   const common = {
     sourceRowNumber: row.sourceRowNumber,
