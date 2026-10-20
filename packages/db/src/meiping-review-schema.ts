@@ -89,3 +89,36 @@ export const meipingReviewCorrections = pgTable(
     ),
   ],
 );
+
+/**
+ * Immutable verdict on a specific version of a human correction proposal.
+ * ACCEPTED here only means a reviewer accepted the suggestion for later work;
+ * it never authorizes catalog promotion, physical inventory, or sale.
+ */
+export const meipingCorrectionReviews = pgTable(
+  'meiping_correction_reviews',
+  {
+    sessionId: uuid('session_id')
+      .notNull()
+      .references(() => meipingReviewSessions.id, { onDelete: 'restrict' }),
+    sourceRowNumber: integer('source_row_number').notNull(),
+    correctionVersion: integer('correction_version').notNull(),
+    verdict: text('verdict').notNull(),
+    reason: text('reason').notNull(),
+    reviewedByStaffAccountId: uuid('reviewed_by_staff_account_id')
+      .notNull()
+      .references(() => staffAccounts.id, { onDelete: 'restrict' }),
+    reviewedAt: timestamp('reviewed_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({
+      columns: [t.sessionId, t.sourceRowNumber, t.correctionVersion],
+      name: 'meiping_correction_reviews_pk',
+    }),
+    check('meiping_correction_reviews_source_row_positive', sql.raw('"source_row_number" > 0')),
+    check('meiping_correction_reviews_correction_version_positive', sql.raw('"correction_version" > 0')),
+    check('meiping_correction_reviews_verdict_check', sql.raw('"verdict" IN (\'ACCEPTED\',\'REJECTED\')')),
+    check('meiping_correction_reviews_reason_check', sql.raw('length(trim("reason")) > 0')),
+    index('meiping_correction_reviews_session_idx').on(t.sessionId),
+  ],
+);
