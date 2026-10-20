@@ -6,6 +6,7 @@ import {
   books,
   createDatabase,
   meipingReviewDecisions,
+  meipingReviewSessions,
   regions,
   staffAccounts,
   storeInventory,
@@ -26,7 +27,13 @@ const checksum = 'a'.repeat(64);
 
 suite('Meiping review staging PostgreSQL integration', () => {
   const review = new MeipingReviewService(database!.db);
-  afterAll(async () => database?.pool.end());
+  afterAll(async () => {
+    if (!database) return;
+    await database.db.delete(meipingReviewDecisions);
+    await database.db.delete(meipingReviewSessions);
+    await database.db.delete(auditLogs).where(eq(auditLogs.resourceType, 'MEIPING_REVIEW_SESSION'));
+    await database.pool.end();
+  });
 
   async function fixture() {
     const suffix = randomUUID().slice(0, 8);
