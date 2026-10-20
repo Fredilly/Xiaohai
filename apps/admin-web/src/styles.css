@@ -983,7 +983,11 @@ textarea {
   background: #fff;
   padding: 7px 9px;
 }
-.meiping-correction-editor button { justify-self: start; }
+.meiping-correction-editor button {
+  justify-self: start;
+}
 @media (max-width: 640px) {
-  .meiping-correction-grid { grid-template-columns: 1fr; }
+  .meiping-correction-grid {
+    grid-template-columns: 1fr;
+  }
 }

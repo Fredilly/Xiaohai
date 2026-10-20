@@ -75,33 +75,49 @@ describe('Meiping correction proposals', () => {
   const empty = { title: '', author: '', publisher: '', barcode: '', priceYuan: '' };
   it('needs a changed field and a reason, and accepts zero-price as unverified', () => {
     expect(correctionProposalInput(candidate, empty, '人工复核', checksum)).toMatch('至少填写');
-    expect(correctionProposalInput(candidate, { ...empty, author: '建议作者' }, '', checksum))
-      .toMatch('纠错原因');
-    expect(correctionProposalInput(candidate, { ...empty, priceYuan: '0' }, '核对价格', checksum))
-      .toEqual({
-        expectedChecksum: checksum, expectedVersion: 0,
-        proposedFields: { priceMinor: 0 }, reason: '核对价格',
-      });
-    expect(correctionProposalInput(candidate, { ...empty, priceYuan: '12.345' }, '核对', checksum))
-      .toMatch('最多两位');
+    expect(
+      correctionProposalInput(candidate, { ...empty, author: '建议作者' }, '', checksum),
+    ).toMatch('纠错原因');
+    expect(
+      correctionProposalInput(candidate, { ...empty, priceYuan: '0' }, '核对价格', checksum),
+    ).toEqual({
+      expectedChecksum: checksum,
+      expectedVersion: 0,
+      proposedFields: { priceMinor: 0 },
+      reason: '核对价格',
+    });
+    expect(
+      correctionProposalInput(candidate, { ...empty, priceYuan: '12.345' }, '核对', checksum),
+    ).toMatch('最多两位');
   });
   it('validates barcode proposals but never marks rows eligible for auto import', () => {
-    expect(correctionProposalInput(candidate, { ...empty, barcode: '=FORMULA' }, '条码有误', checksum))
-      .toMatch('条码建议');
-    const input = correctionProposalInput(candidate, { ...empty, barcode: 'PR148-NEW-100' }, '建议纸书核对', checksum);
+    expect(
+      correctionProposalInput(candidate, { ...empty, barcode: '=FORMULA' }, '条码有误', checksum),
+    ).toMatch('条码建议');
+    const input = correctionProposalInput(
+      candidate,
+      { ...empty, barcode: 'PR148-NEW-100' },
+      '建议纸书核对',
+      checksum,
+    );
     expect(input).toMatchObject({
       proposedFields: { barcode: 'PR148-NEW-100' },
       reason: '建议纸书核对',
     });
     const previous: ReviewItem = {
-      ...candidate, disposition: 'REVIEW',
+      ...candidate,
+      disposition: 'REVIEW',
       correction: {
-        sourceRowNumber: 2, proposedFields: { author: '甲' }, reason: '待核验',
-        version: 3, updatedAt: '2026-10-20T00:00:00Z',
+        sourceRowNumber: 2,
+        proposedFields: { author: '甲' },
+        reason: '待核验',
+        version: 3,
+        updatedAt: '2026-10-20T00:00:00Z',
       },
     };
-    expect(correctionProposalInput(previous, { ...empty, author: '乙' }, '复核', checksum))
-      .toMatchObject({ expectedVersion: 3 });
+    expect(
+      correctionProposalInput(previous, { ...empty, author: '乙' }, '复核', checksum),
+    ).toMatchObject({ expectedVersion: 3 });
     expect(previous.disposition).toBe('REVIEW');
   });
 });

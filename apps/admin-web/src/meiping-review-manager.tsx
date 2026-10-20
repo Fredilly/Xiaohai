@@ -152,35 +152,53 @@ function ReviewCorrectionEditor({
 
   function submit() {
     const proposal = correctionProposalInput(item, values, reason, checksum);
-    if (typeof proposal === 'string') { setError(proposal); return; }
+    if (typeof proposal === 'string') {
+      setError(proposal);
+      return;
+    }
     setError('');
     void onSave(item.sourceRowNumber, proposal);
   }
 
   return (
     <div className="meiping-correction-editor">
-      <button className="secondary" disabled={disabled} onClick={() => setOpen((current) => !current)}>
-        {open ? '收起人工纠错建议' : item.correction ? '查看 / 修改已保存纠错建议' : '提出人工纠错建议'}
+      <button
+        className="secondary"
+        disabled={disabled}
+        onClick={() => setOpen((current) => !current)}
+      >
+        {open
+          ? '收起人工纠错建议'
+          : item.correction
+            ? '查看 / 修改已保存纠错建议'
+            : '提出人工纠错建议'}
       </button>
       {item.correction && <small>纠错建议待独立复核 · 版本 {item.correction.version}</small>}
       {open && (
         <>
-          <p>仅填写需要修改的字段。这里保存的是人工建议，不会修改原始 Excel、自动解决条码冲突或允许商品入库。</p>
+          <p>
+            仅填写需要修改的字段。这里保存的是人工建议，不会修改原始
+            Excel、自动解决条码冲突或允许商品入库。
+          </p>
           <div className="meiping-correction-grid">
-            {([
-              ['title', '建议书名'],
-              ['author', '建议作者'],
-              ['publisher', '建议出版社'],
-              ['barcode', '建议条码'],
-              ['priceYuan', '建议定价（元）'],
-            ] as const).map(([field, label]) => (
+            {(
+              [
+                ['title', '建议书名'],
+                ['author', '建议作者'],
+                ['publisher', '建议出版社'],
+                ['barcode', '建议条码'],
+                ['priceYuan', '建议定价（元）'],
+              ] as const
+            ).map(([field, label]) => (
               <label key={field}>
                 {label}
                 <input
                   aria-label={'源行 ' + item.sourceRowNumber + ' ' + label}
                   value={values[field]}
                   disabled={disabled}
-                  onChange={(event) => setValues((prev) => ({ ...prev, [field]: event.target.value }))}
+                  onChange={(event) =>
+                    setValues((prev) => ({ ...prev, [field]: event.target.value }))
+                  }
                   placeholder="留空代表不提出修改"
                 />
               </label>
@@ -197,7 +215,11 @@ function ReviewCorrectionEditor({
               placeholder="如：原始条码重复，建议核对实体书后更正"
             />
           </label>
-          {error && <small className="form-error" role="alert">{error}</small>}
+          {error && (
+            <small className="form-error" role="alert">
+              {error}
+            </small>
+          )}
           <button className="button-primary" disabled={disabled} onClick={submit}>
             {disabled ? '保存中…' : '保存纠错建议（待复核）'}
           </button>
@@ -459,7 +481,12 @@ export function MeipingReviewManager({
                         onSave={save}
                       />
                       <ReviewCorrectionEditor
-                        key={'correction:' + item.sourceRowNumber + ':' + (item.correction?.version ?? 0)}
+                        key={
+                          'correction:' +
+                          item.sourceRowNumber +
+                          ':' +
+                          (item.correction?.version ?? 0)
+                        }
                         item={item}
                         checksum={session.sourceChecksum}
                         disabled={busy}

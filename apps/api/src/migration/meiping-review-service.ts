@@ -206,9 +206,7 @@ export class MeipingReviewService {
               ),
             )
         : [];
-    const correctionsByRow = new Map(
-      corrections.map((item) => [item.sourceRowNumber, item]),
-    );
+    const correctionsByRow = new Map(corrections.map((item) => [item.sourceRowNumber, item]));
     const decisionsByRow = new Map(saved.map((item) => [item.sourceRowNumber, item]));
     return {
       sessionId: id,
@@ -268,7 +266,12 @@ export class MeipingReviewService {
     for (const key of keys) {
       const value = fields[key as keyof MeipingCorrectionFields];
       if (key === 'priceMinor') {
-        if (typeof value !== 'number' || !Number.isInteger(value) || value < 0 || value > 2147483647) {
+        if (
+          typeof value !== 'number' ||
+          !Number.isInteger(value) ||
+          value < 0 ||
+          value > 2147483647
+        ) {
           throw new MeipingReviewError('CONFLICT');
         }
         clean[key] = value;
@@ -302,11 +305,13 @@ export class MeipingReviewService {
         [result] = await tx
           .update(meipingReviewCorrections)
           .set({ ...values, version: sql.raw('"version" + 1') })
-          .where(and(
-            eq(meipingReviewCorrections.sessionId, id),
-            eq(meipingReviewCorrections.sourceRowNumber, sourceRowNumber),
-            eq(meipingReviewCorrections.version, input.expectedVersion),
-          ))
+          .where(
+            and(
+              eq(meipingReviewCorrections.sessionId, id),
+              eq(meipingReviewCorrections.sourceRowNumber, sourceRowNumber),
+              eq(meipingReviewCorrections.version, input.expectedVersion),
+            ),
+          )
           .returning({ version: meipingReviewCorrections.version });
       }
       if (!result) throw new MeipingReviewError('CONFLICT');
@@ -317,7 +322,9 @@ export class MeipingReviewService {
         resourceId: id,
         requestId: audit.requestId,
         metadata: {
-          storeId, sourceRowNumber, version: result.version,
+          storeId,
+          sourceRowNumber,
+          version: result.version,
           proposedFieldNames: Object.keys(clean),
           // Never log raw proposed values, barcode, or reason in audit metadata.
         },

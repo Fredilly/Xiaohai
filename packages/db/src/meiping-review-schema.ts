@@ -76,10 +76,16 @@ export const meipingReviewCorrections = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
-    primaryKey({ columns: [t.sessionId, t.sourceRowNumber], name: 'meiping_review_corrections_pk' }),
+    primaryKey({
+      columns: [t.sessionId, t.sourceRowNumber],
+      name: 'meiping_review_corrections_pk',
+    }),
     check('meiping_review_corrections_row_positive', sql.raw('"source_row_number" > 0')),
     check('meiping_review_corrections_version_positive', sql.raw('"version" > 0')),
     check('meiping_review_corrections_reason_check', sql.raw('length(trim("reason")) > 0')),
-    check('meiping_review_corrections_fields_check', sql.raw(`jsonb_typeof("proposed_fields") = 'object' AND "proposed_fields" <> '{}'::jsonb`)),
+    check(
+      'meiping_review_corrections_fields_check',
+      sql.raw(`jsonb_typeof("proposed_fields") = 'object' AND "proposed_fields" <> '{}'::jsonb`),
+    ),
   ],
 );

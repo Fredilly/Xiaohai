@@ -8,7 +8,13 @@ export type ReviewDecision = {
 };
 export type ReviewCorrection = {
   sourceRowNumber: number;
-  proposedFields: Partial<{ title: string; author: string; publisher: string; barcode: string; priceMinor: number }>;
+  proposedFields: Partial<{
+    title: string;
+    author: string;
+    publisher: string;
+    barcode: string;
+    priceMinor: number;
+  }>;
   reason: string;
   version: number;
   updatedAt: string;
@@ -251,8 +257,7 @@ export async function saveMeipingReviewCorrection(
   proposal: ReviewCorrectionInput,
 ): Promise<{ version: number; status: 'PENDING_VERIFICATION' }> {
   const response = await fetch(
-    root + '/' + encodeURIComponent(sessionId) +
-      '/corrections/' + sourceRowNumber + query(storeId),
+    root + '/' + encodeURIComponent(sessionId) + '/corrections/' + sourceRowNumber + query(storeId),
     {
       method: 'PUT',
       headers: { ...headers(token), 'content-type': 'application/json' },
@@ -261,9 +266,14 @@ export async function saveMeipingReviewCorrection(
   );
   if (!response.ok) throw await parseError(response);
   const payload: unknown = await response.json();
-  if (!object(payload) || payload.sourceRowNumber !== sourceRowNumber ||
-      payload.status !== 'PENDING_VERIFICATION' || typeof payload.version !== 'number' ||
-      payload.approved !== false || payload.catalogOrInventoryWritten !== false) {
+  if (
+    !object(payload) ||
+    payload.sourceRowNumber !== sourceRowNumber ||
+    payload.status !== 'PENDING_VERIFICATION' ||
+    typeof payload.version !== 'number' ||
+    payload.approved !== false ||
+    payload.catalogOrInventoryWritten !== false
+  ) {
     throw new Error('INVALID_CORRECTION_RESPONSE');
   }
   return { version: payload.version, status: 'PENDING_VERIFICATION' };
