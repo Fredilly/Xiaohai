@@ -120,6 +120,10 @@ suite('Meiping review staging PostgreSQL integration', () => {
     const second = await fixture();
     const auditA = { actorStaffAccountId: first.actorId, requestId: randomUUID() };
     const auditB = { actorStaffAccountId: second.actorId, requestId: randomUUID() };
+    const [catalogBefore, stockBefore] = await Promise.all([
+      database!.db.select().from(books),
+      database!.db.select().from(storeInventory),
+    ]);
     const a = await review.createSession(first.report, auditA);
     const b = await review.createSession(second.report, auditB);
     await review.saveDecision(a.id, first.storeId, 2, {
@@ -139,8 +143,8 @@ suite('Meiping review staging PostgreSQL integration', () => {
     expect(listB.items.map((row) => row.id)).toEqual([b.id]);
     const afterLast = await review.listSessions(first.storeId, 1, 20);
     expect(afterLast.items).toHaveLength(0);
-    expect((await database!.db.select().from(books)).length).toBe(0);
-    expect((await database!.db.select().from(storeInventory)).length).toBe(0);
+    expect((await database!.db.select().from(books)).length).toBe(catalogBefore.length);
+    expect((await database!.db.select().from(storeInventory)).length).toBe(stockBefore.length);
   });
 
   it('stages by store/checksum once without modifying catalog or physical stock', async () => {

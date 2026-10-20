@@ -101,7 +101,7 @@ export class MeipingReviewService {
         storeId: meipingReviewSessions.storeId,
         sourceChecksum: meipingReviewSessions.sourceChecksum,
         status: meipingReviewSessions.status,
-        report: meipingReviewSessions.report,
+        totalRows: sql<number>`(${meipingReviewSessions.report} ->> 'totalRows')::integer`,
         createdAt: meipingReviewSessions.createdAt,
       })
       .from(meipingReviewSessions)
@@ -133,7 +133,7 @@ export class MeipingReviewService {
         storeId: row.storeId,
         sourceChecksum: row.sourceChecksum,
         status: 'DRAFT' as const,
-        totalRows: Number(row.report.totalRows),
+        totalRows: row.totalRows,
         savedDecisions: decisionCounts.get(row.id) ?? 0,
         createdAt: row.createdAt.toISOString(),
         approved: false as const,
