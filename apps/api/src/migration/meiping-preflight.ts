@@ -175,7 +175,13 @@ export function buildMeipingPreflight(
       'BOOK_CODE_CONFLICT',
       'INTERNAL_CODE_CONFLICT',
     ]);
-    const blockingIssues = issues.filter((item) => blockingCodes.has(item.code));
+    const blockingIssues = issues.filter(
+      (item) =>
+        blockingCodes.has(item.code) ||
+        (item.severity === 'ERROR' &&
+          !saleBlocked.includes(item) &&
+          !metadataWarnings.includes(item)),
+    );
     const hasBlockingIssue = blockingIssues.length > 0;
     const disposition =
       sourceRow.sourceCategoryType !== 'BOOK'
@@ -222,6 +228,7 @@ export function buildMeipingPreflight(
     (row) =>
       row.blockingIssues.length > 0 || !['CREATE_CANDIDATE', 'MATCHED'].includes(row.disposition),
   );
+  const issueRows = resultRows.filter((row) => row.issues.length > 0);
   return {
     sourceType: 'MEIPING_XLS',
     sourceStoreId: input.storeId,
@@ -239,12 +246,15 @@ export function buildMeipingPreflight(
     plannedInventoryTotal: resultRows.length,
     rows: resultRows,
     exceptionReportCsv: exceptionCsv(
-      exceptions.map((row) => ({
+      issueRows.map((row) => ({
         sourceRowNumber: row.sourceRowNumber,
-        reasonCodes: row.issues.map((item) => item.code),
         title: row.normalized.title,
         barcode: row.sourceIdentifiers.barcode,
         category: row.sourceCategoryType,
+        disposition: row.disposition,
+        metadataWarningCodes: row.metadataWarnings.map((item) => item.code),
+        blockingIssueCodes: row.blockingIssues.map((item) => item.code),
+        saleBlockedCodes: row.saleBlocked.map((item) => item.code),
       })),
     ),
   };

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { StaffMeResponse } from '@xiaohai/contracts';
-import { MEIPING_PREFLIGHT_MAX_BYTES } from '@xiaohai/contracts/meiping';
+import { MEIPING_PREFLIGHT_MAX_BYTES, MEIPING_PREFLIGHT_MAX_MIB } from '@xiaohai/contracts/meiping';
 import { loadHqStores } from './hq-operations-api';
 import {
   downloadMeipingExceptions,
@@ -14,8 +14,8 @@ import {
 type IssueFilter = string;
 
 const issueLabels: Record<string, string> = {
-  MISSING_AUTHOR: '缺少作者',
-  MISSING_PUBLISHER: '缺少出版社',
+  AUTHOR_MISSING: '缺少作者',
+  PUBLISHER_MISSING: '缺少出版社',
   MISSING_TITLE: '缺少书名',
   MISSING_BOOK_CODE: '缺少商品编号',
   MISSING_BARCODE: '缺少商品条码',
@@ -64,6 +64,10 @@ export function formatPrice(value: number | null) {
   return value === null
     ? '—'
     : new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY' }).format(value / 100);
+}
+
+export function meipingMaxFileSizeLabel() {
+  return `Excel 文件（最大 ${MEIPING_PREFLIGHT_MAX_MIB} MiB）`;
 }
 
 export function isReportCurrent(
@@ -263,7 +267,7 @@ export function MeipingPreflightManager({ token, me }: { token: string; me: Staf
             </select>
           </label>
           <label>
-            Excel 文件（最大 20 MB）
+            {meipingMaxFileSizeLabel()}
             <input
               ref={inputRef}
               type="file"
@@ -286,7 +290,7 @@ export function MeipingPreflightManager({ token, me }: { token: string; me: Staf
               disabled={busy || !reportIsCurrent}
               onClick={() => void downloadCsv()}
             >
-              下载异常 CSV
+              下载问题明细 CSV
             </button>
           </div>
         </div>

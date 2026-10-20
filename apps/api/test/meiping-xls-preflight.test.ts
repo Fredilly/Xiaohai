@@ -163,6 +163,7 @@ describe('Meiping workbook parser and dry-run preflight', () => {
     expect(report.exceptionReportCsv).toContain('BARCODE_CONFLICT');
     expect(report.rows[0]!.blockingIssues.map((item) => item.code)).toContain('DUPLICATE_BARCODE');
     expect(report.rows[2]!.blockingIssues.map((item) => item.code)).toContain('BARCODE_CONFLICT');
+    expect(report.exceptionReportCsv).toContain('blocking_issue_codes');
   });
 
   it('keeps missing author and publisher as metadata warnings without blocking a candidate', () => {
@@ -208,6 +209,37 @@ describe('Meiping workbook parser and dry-run preflight', () => {
     expect(report.metadataWarningRows).toBe(1);
     expect(report.saleBlockedRows).toBe(1);
     expect(report.exceptionRows).toBe(0);
+    expect(report.exceptionReportCsv).toContain('ZERO_PRICE');
+    expect(report.exceptionReportCsv).toContain('AUTHOR_MISSING|PUBLISHER_MISSING');
+  });
+
+  it('exports metadata-only rows and blocks unknown future errors conservatively', () => {
+    const parsed = parseMeipingWorkbook(
+      workbookBuffer([
+        headers,
+        ['M-010', 'OWN-010', '资料待完善', '', '', '20', '690000000010', '图书'],
+      ]),
+    );
+    const metadataOnly = buildMeipingPreflight(parsed.rows, {
+      storeId: 'store-east-test',
+      storeCode: 'TEST-EAST',
+    });
+    expect(metadataOnly.rows[0]!.disposition).toBe('CREATE_CANDIDATE');
+    expect(metadataOnly.exceptionRows).toBe(0);
+    expect(metadataOnly.exceptionReportCsv).toContain('AUTHOR_MISSING|PUBLISHER_MISSING');
+
+    const futureError = buildMeipingPreflight(
+      parsed.rows,
+      {
+        storeId: 'store-east-test',
+        storeCode: 'TEST-EAST',
+      },
+      { missingMappedFields: ['FUTURE_ERROR_CODE'] },
+    );
+    expect(futureError.rows[0]!.disposition).toBe('REVIEW');
+    expect(futureError.rows[0]!.blockingIssues.map((item) => item.code)).toContain(
+      'FUTURE_ERROR_CODE',
+    );
   });
 
   it('keeps assumed stock explicit and isolates the selected store', () => {

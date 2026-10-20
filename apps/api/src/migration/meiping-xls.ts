@@ -224,10 +224,13 @@ export function parseMeipingWorkbook(buffer: Buffer): MeipingWorkbook {
 export function exceptionCsv(
   rows: Array<{
     sourceRowNumber: number;
-    reasonCodes: string[];
     title: string | null;
     barcode: string | null;
     category: MeipingSourceCategory;
+    disposition: string;
+    metadataWarningCodes: string[];
+    blockingIssueCodes: string[];
+    saleBlockedCodes: string[];
   }>,
 ): string {
   const escape = (value: string | number | null) => {
@@ -236,9 +239,21 @@ export function exceptionCsv(
   };
   return (
     [
-      'source_row_number,category,title,barcode,reason_codes',
+      'source_row_number,category,disposition,title,barcode,metadata_warning_codes,blocking_issue_codes,sale_blocked_codes,issue_count',
       ...rows.map((row) =>
-        [row.sourceRowNumber, row.category, row.title, row.barcode, row.reasonCodes.join('|')]
+        [
+          row.sourceRowNumber,
+          row.category,
+          row.disposition,
+          row.title,
+          row.barcode,
+          row.metadataWarningCodes.join('|'),
+          row.blockingIssueCodes.join('|'),
+          row.saleBlockedCodes.join('|'),
+          row.metadataWarningCodes.length +
+            row.blockingIssueCodes.length +
+            row.saleBlockedCodes.length,
+        ]
           .map(escape)
           .join(','),
       ),
