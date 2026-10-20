@@ -35,7 +35,7 @@ describe('Meiping review admin HTTP adapter', () => {
     expect(options.method).toBe('POST');
     expect(options.body).toBe(file);
     expect(options.headers).toMatchObject({
-      Authorization: '***',
+      Authorization: 'Bearer ' + 'staff-token',
       'content-type': 'application/vnd.ms-excel',
     });
   });
@@ -64,7 +64,7 @@ describe('Meiping review admin HTTP adapter', () => {
     expect(url).toContain(sessionId);
     expect(url).toContain('storeId=' + storeId);
     expect(url).toContain('offset=25');
-    expect(options.headers).toMatchObject({ Authorization: '***' });
+    expect(options.headers).toMatchObject({ Authorization: 'Bearer ' + 'staff-token' });
 
     fetchMock.mockResolvedValueOnce({
       ok: true,
@@ -106,7 +106,7 @@ describe('Meiping review admin HTTP adapter', () => {
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toContain('/decisions/21?');
     expect(init.method).toBe('PUT');
-    expect(init.headers).toMatchObject({ Authorization: '***' });
+    expect(init.headers).toMatchObject({ Authorization: 'Bearer ' + 'staff-token' });
     expect(JSON.parse(init.body as string)).toEqual({
       action: 'CREATE_DRAFT',
       sourceRowNumber: 21,
