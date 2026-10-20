@@ -6,6 +6,7 @@ import {
   books,
   createDatabase,
   meipingReviewDecisions,
+  meipingReviewCorrections,
   meipingReviewSessions,
   regions,
   staffAccounts,
@@ -29,6 +30,7 @@ suite('Meiping review staging PostgreSQL integration', () => {
   const review = new MeipingReviewService(database!.db);
   afterAll(async () => {
     if (!database) return;
+    await database.db.delete(meipingReviewCorrections);
     await database.db.delete(meipingReviewDecisions);
     await database.db.delete(meipingReviewSessions);
     await database.db.delete(auditLogs).where(eq(auditLogs.resourceType, 'MEIPING_REVIEW_SESSION'));
@@ -157,6 +159,82 @@ suite('Meiping review staging PostgreSQL integration', () => {
     expect(afterLast.items).toHaveLength(0);
     expect((await database!.db.select().from(books)).length).toBe(catalogBefore.length);
     expect((await database!.db.select().from(storeInventory)).length).toBe(stockBefore.length);
+  });
+
+  it('versions human correction proposals and never rewrites source rows or catalog stock', async () => {
+    const { actorId, storeId, report } = await fixture();
+    const audit = { actorStaffAccountId: actorId, requestId: randomUUID() };
+    const session = await review.createSession(report, audit);
+    const [booksBefore, stockBefore] = await Promise.all([
+      database!.db.select().from(books),
+      database!.db.select().from(storeInventory),
+    ]);
+    const first = await review.saveCorrection(session.id, storeId, 2, {
+      expectedChecksum: checksum,
+      expectedVersion: 0,
+      proposedFields: { author: '建议作者', barcode: 'PR148-NEW-001' },
+      reason: '原始数据缺少作者，建议核对纸质图书',
+    }, audit);
+    expect(first).toMatchObject({
+      sourceRowNumber: 2, version: 1, status: 'PENDING_VERIFICATION',
+      approved: false, catalogOrInventoryWritten: false,
+    });
+    await expect(review.saveCorrection(session.id, storeId, 2, {
+      expectedChecksum: checksum,
+      expectedVersion: 0,
+      proposedFields: { title: '重复写入' },
+      reason: '过期版本',
+    }, audit)).rejects.toThrow(MeipingReviewError);
+    const updated = await review.saveCorrection(session.id, storeId, 2, {
+      expectedChecksum: checksum,
+      expectedVersion: 1,
+      proposedFields: { author: '建议作者乙', priceMinor: 1234 },
+      reason: '人工重新核对',
+    }, audit);
+    expect(updated.version).toBe(2);
+    const page = await review.listRows(session.id, storeId, 0, 20);
+    expect(page.items[0]).toMatchObject({
+      sourceRowNumber: 2,
+      decision: null,
+      normalized: { author: null, priceMinor: 3200 },
+      correction: {
+        version: 2,
+        proposedFields: { author: '建议作者乙', priceMinor: 1234 },
+      },
+    });
+    const [stored] = await database!.db
+      .select().from(meipingReviewCorrections)
+      .where(eq(meipingReviewCorrections.sessionId, session.id));
+    expect(stored).toMatchObject({ sourceRowNumber: 2, version: 2 });
+    expect((await database!.db.select().from(books)).length).toBe(booksBefore.length);
+    expect((await database!.db.select().from(storeInventory)).length).toBe(stockBefore.length);
+    const events = await database!.db.select().from(auditLogs)
+      .where(eq(auditLogs.resourceId, session.id));
+    expect(events).toHaveLength(3);
+    expect(JSON.stringify(events)).not.toContain('建议作者乙');
+    expect(JSON.stringify(events)).not.toContain('PR148-NEW-001');
+  });
+
+  it('rejects foreign-store corrections, unknown rows and mismatched checksums', async () => {
+    const { actorId, storeId, report } = await fixture();
+    const audit = { actorStaffAccountId: actorId, requestId: randomUUID() };
+    const session = await review.createSession(report, audit);
+    const proposal = {
+      expectedChecksum: checksum, expectedVersion: 0,
+      proposedFields: { barcode: 'PR148-NEW-002' }, reason: '重复条码待核验',
+    };
+    await expect(review.saveCorrection(session.id, randomUUID(), 2, proposal, audit))
+      .rejects.toThrow(MeipingReviewError);
+    await expect(review.saveCorrection(session.id, storeId, 999, proposal, audit))
+      .rejects.toThrow(MeipingReviewError);
+    await expect(review.saveCorrection(session.id, storeId, 2, {
+      ...proposal, expectedChecksum: 'b'.repeat(64),
+    }, audit)).rejects.toThrow(MeipingReviewError);
+    await expect(review.saveCorrection(session.id, storeId, 2, {
+      ...proposal, proposedFields: {},
+    }, audit)).rejects.toThrow(MeipingReviewError);
+    const page = await review.listRows(session.id, storeId, 0, 5);
+    expect(page.items[0]?.correction).toBeNull();
   });
 
   it('stages by store/checksum once without modifying catalog or physical stock', async () => {

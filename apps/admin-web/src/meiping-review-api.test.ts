@@ -4,6 +4,7 @@ import {
   getMeipingReviewPage,
   listMeipingReviewSessions,
   saveMeipingReviewDecision,
+  saveMeipingReviewCorrection,
 } from './meiping-review-api';
 
 afterEach(() => vi.unstubAllGlobals());
@@ -12,6 +13,43 @@ const sessionId = '22222222-2222-4222-8222-222222222222';
 const checksum = 'a'.repeat(64);
 
 describe('Meiping review admin HTTP adapter', () => {
+  it('sends a correction proposal for a row with server-side version and checksum', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: vi.fn().mockResolvedValue({
+        sourceRowNumber: 5, version: 2, status: 'PENDING_VERIFICATION',
+        approved: false, catalogOrInventoryWritten: false,
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(saveMeipingReviewCorrection('staff-token', storeId, sessionId, 5, {
+      expectedChecksum: checksum, expectedVersion: 1,
+      proposedFields: { barcode: 'PR148-NEW-001' }, reason: '条码重复待核验',
+    })).resolves.toMatchObject({ version: 2, status: 'PENDING_VERIFICATION' });
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toContain('/corrections/5?storeId=' + storeId);
+    expect(init.method).toBe('PUT');
+    expect(init.headers).toMatchObject({ Authorization: 'Bearer ' + 'staff-token' });
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      expectedVersion: 1, expectedChecksum: checksum,
+      proposedFields: { barcode: 'PR148-NEW-001' },
+    });
+  });
+
+  it('rejects a correction response that implies formal approval or stock posting', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: vi.fn().mockResolvedValue({
+        sourceRowNumber: 5, version: 1, status: 'APPROVED',
+        approved: true, catalogOrInventoryWritten: true,
+      }),
+    }));
+    await expect(saveMeipingReviewCorrection('token', storeId, sessionId, 5, {
+      expectedChecksum: checksum, expectedVersion: 0,
+      proposedFields: { title: '待纠错' }, reason: '手工核对',
+    })).rejects.toThrow('INVALID_CORRECTION_RESPONSE');
+  });
+
   it('lists only authorized-store draft summaries without requiring Excel or leaking rows', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
