@@ -22,7 +22,8 @@
     "lint": "eslint src drizzle.config.ts",
     "test": "vitest run --passWithNoTests",
     "typecheck": "tsc --noEmit",
-    "db:status": "node --env-file-if-exists ../../.env --import tsx/esm src/migration-status.ts"
+    "db:status": "node --env-file-if-exists ../../.env --import tsx/esm src/migration-status.ts",
+    "db:seed-staging-home": "node --env-file-if-exists ../../.env --import tsx/esm src/seed-staging-home-cli.ts"
   },
   "dependencies": {
     "@xiaohai/config": "workspace:*",
