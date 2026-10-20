@@ -62,6 +62,23 @@ export function registerMeipingReviewRoutes(
     return { actorStaffAccountId: actor.staffAccountId, requestId: request.id };
   };
 
+  // This read-only list is scoped by the exact same Staff auth, RBAC and store checks
+  // as the existing review create/read/write endpoints; no file upload required.
+  app.get('/api/v1/staff/migrations/meiping/review-sessions', async (request, reply) => {
+    const query = listQuery.safeParse(request.query);
+    if (!query.success) return invalid(reply, request.id);
+    try {
+      await authorize(request, query.data.storeId);
+      return await options.review.listSessions(
+        query.data.storeId,
+        query.data.offset,
+        query.data.limit,
+      );
+    } catch (error) {
+      return fail(request, reply, error);
+    }
+  });
+
   // XLS/XLSX parser was registered by registerMeipingXlsRoutes before this function.
   app.post(
     '/api/v1/staff/migrations/meiping/review-sessions',

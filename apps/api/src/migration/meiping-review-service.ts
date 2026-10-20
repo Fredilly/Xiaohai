@@ -1,4 +1,4 @@
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import {
   auditLogs,
   meipingReviewDecisions,
@@ -90,6 +90,55 @@ export class MeipingReviewService {
       totalRows: report.totalRows,
       approved: false as const,
       catalogOrInventoryWritten: false as const,
+    };
+  }
+
+  /** Only DRAFT summaries for the authorized store; no workbook content or inventory writes. */
+  async listSessions(storeId: string, offset: number, limit: number) {
+    const rows = await this.db
+      .select({
+        id: meipingReviewSessions.id,
+        storeId: meipingReviewSessions.storeId,
+        sourceChecksum: meipingReviewSessions.sourceChecksum,
+        status: meipingReviewSessions.status,
+        report: meipingReviewSessions.report,
+        createdAt: meipingReviewSessions.createdAt,
+      })
+      .from(meipingReviewSessions)
+      .where(and(eq(meipingReviewSessions.storeId, storeId), eq(meipingReviewSessions.status, 'DRAFT')))
+      .orderBy(desc(meipingReviewSessions.createdAt), desc(meipingReviewSessions.id))
+      .limit(limit + 1)
+      .offset(offset);
+    const page = rows.slice(0, limit);
+    const ids = page.map((row) => row.id);
+    const counts =
+      ids.length > 0
+        ? await this.db
+            .select({
+              sessionId: meipingReviewDecisions.sessionId,
+              savedDecisions: sql<number>`count(*)::integer`,
+            })
+            .from(meipingReviewDecisions)
+            .where(inArray(meipingReviewDecisions.sessionId, ids))
+            .groupBy(meipingReviewDecisions.sessionId)
+        : [];
+    const decisionCounts = new Map(counts.map((row) => [row.sessionId, row.savedDecisions]));
+    return {
+      storeId,
+      offset,
+      limit,
+      hasMore: rows.length > limit,
+      items: page.map((row) => ({
+        id: row.id,
+        storeId: row.storeId,
+        sourceChecksum: row.sourceChecksum,
+        status: 'DRAFT' as const,
+        totalRows: Number(row.report.totalRows),
+        savedDecisions: decisionCounts.get(row.id) ?? 0,
+        createdAt: row.createdAt.toISOString(),
+        approved: false as const,
+        catalogOrInventoryWritten: false as const,
+      })),
     };
   }
 
