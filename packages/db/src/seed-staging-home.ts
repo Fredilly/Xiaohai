@@ -55,7 +55,10 @@ export async function seedStagingHome(db: Database) {
 
   // Seed CMS sections
   const sections = buildStagingSections(seededBooks);
-  const inserted = await db.insert(cmsSections).values(sections.map((section) => ({ ...section, pageId: page.id }))).returning({ id: cmsSections.id });
+  const inserted = await db
+    .insert(cmsSections)
+    .values(sections.map((section) => ({ ...section, pageId: page.id })))
+    .returning({ id: cmsSections.id });
 
   return {
     seeded: true as const,
