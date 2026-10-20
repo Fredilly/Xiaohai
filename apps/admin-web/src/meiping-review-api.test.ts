@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   createMeipingReviewSession,
   getMeipingReviewPage,
+  listMeipingReviewSessions,
   saveMeipingReviewDecision,
 } from './meiping-review-api';
 
@@ -11,6 +12,58 @@ const sessionId = '22222222-2222-4222-8222-222222222222';
 const checksum = 'a'.repeat(64);
 
 describe('Meiping review admin HTTP adapter', () => {
+
+  it('lists only authorized-store draft summaries without requiring Excel or leaking rows', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: vi.fn().mockResolvedValue({
+        storeId, offset: 0, limit: 20, hasMore: false,
+        items: [{
+          id: sessionId, storeId, status: 'DRAFT', sourceChecksum: checksum,
+          totalRows: 6, savedDecisions: 3, createdAt: '2026-10-20T09:00:00.000Z',
+          approved: false, catalogOrInventoryWritten: false,
+        }],
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const summary = await listMeipingReviewSessions('staff-token', storeId);
+    expect(summary.items).toHaveLength(1);
+    expect(summary.items[0]).toMatchObject({ savedDecisions: 3, totalRows: 6 });
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toContain('/review-sessions?storeId=' + storeId);
+    expect(url).toContain('offset=0');
+    expect(url).toContain('limit=20');
+    expect(init.body).toBeUndefined();
+    expect(init.headers).toMatchObject({ Authorization: 'Bearer ' + 'staff-token' });
+    expect(JSON.stringify(summary)).not.toContain('rawColumns');
+    expect(JSON.stringify(summary)).not.toContain('sourceIdentifiers');
+  });
+
+  it('fails closed on foreign-store, invalid status, or approved review summaries', async () => {
+    const safe = {
+      id: sessionId, storeId, status: 'DRAFT', sourceChecksum: checksum,
+      totalRows: 6, savedDecisions: 1, createdAt: '2026-10-20T09:00:00.000Z',
+      approved: false, catalogOrInventoryWritten: false,
+    };
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    for (const invalid of [
+      { ...safe, storeId: 'foreign-store' },
+      { ...safe, status: 'APPROVED' },
+      { ...safe, approved: true },
+      { ...safe, savedDecisions: 9 },
+    ]) {
+      fetchMock.mockResolvedValueOnce({
+        ok: true,
+        json: vi.fn().mockResolvedValue({
+          storeId, offset: 0, limit: 20, hasMore: false, items: [invalid],
+        }),
+      });
+      await expect(listMeipingReviewSessions('token', storeId))
+        .rejects.toThrow('INVALID_REVIEW_SESSION_LIST_RESPONSE');
+    }
+  });
+
   it('sends the original workbook to the server with Staff bearer auth', async () => {
     const file = new File(['test'], 'inventory.xls');
     const fetchMock = vi.fn().mockResolvedValue({
