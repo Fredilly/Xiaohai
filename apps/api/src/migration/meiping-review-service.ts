@@ -47,7 +47,7 @@ export class MeipingReviewService {
         .values({
           storeId: report.sourceStoreId,
           sourceChecksum: checksum,
-          report: report as unknown as Record<string, unknown>,
+          report,
           createdByStaffAccountId: audit.actorStaffAccountId,
         })
         .onConflictDoNothing({
