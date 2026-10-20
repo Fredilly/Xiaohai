@@ -3,6 +3,7 @@ import type { StaffMeResponse } from '@xiaohai/contracts';
 import { MEIPING_PREFLIGHT_MAX_BYTES, MEIPING_PREFLIGHT_MAX_MIB } from '@xiaohai/contracts/meiping';
 import { loadHqStores } from './hq-operations-api';
 import { MeipingReviewManager } from './meiping-review-manager';
+import { MeipingReviewResumePanel } from './meiping-review-resume-panel';
 import {
   downloadMeipingExceptions,
   MeipingPreflightApiError,
@@ -302,6 +303,14 @@ export function MeipingPreflightManager({ token, me }: { token: string; me: Staf
         )}
       </div>
 
+      {!reportIsCurrent && (
+        <MeipingReviewResumePanel
+          key={storeId}
+          token={token}
+          storeId={storeId}
+          canReview={permissions.has('inventory.stocktake')}
+        />
+      )}
       {!report ? (
         <div className="panel empty-state meiping-empty">
           <strong>等待上传 Excel</strong>

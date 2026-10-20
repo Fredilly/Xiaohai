@@ -130,21 +130,23 @@ export function MeipingReviewManager({
   file,
   report,
   canReview,
+  restoredSession,
 }: {
   token: string;
   storeId: string;
-  file: File;
-  report: MeipingPreflightReport;
   canReview: boolean;
-}) {
-  const [session, setSession] = useState<ReviewSession | null>(null);
+} & (
+  | { file: File; report: MeipingPreflightReport; restoredSession?: never }
+  | { file?: never; report?: never; restoredSession: ReviewSession }
+)) {
+  const [session, setSession] = useState<ReviewSession | null>(restoredSession ?? null);
   const [page, setPage] = useState<ReviewPage | null>(null);
   const [offset, setOffset] = useState(0);
   const [view, setView] = useState<View>('ALL');
   const [loading, setLoading] = useState(false);
   const [savingRow, setSavingRow] = useState<number | null>(null);
-  const [notice, setNotice] = useState('');
-  const checksum = report.sourceChecksum ?? '';
+  const [notice, setNotice] = useState(restoredSession ? '已恢复既有审核草稿，未修改商品或库存。' : '');
+  const checksum = restoredSession?.sourceChecksum ?? report?.sourceChecksum ?? '';
   const busy = loading || savingRow !== null;
 
   useEffect(() => {
@@ -175,7 +177,7 @@ export function MeipingReviewManager({
   const savedOnPage = page?.items.filter((item) => item.decision !== null).length ?? 0;
 
   async function createSession() {
-    if (!canReview || session || busy || !checksum || report.sourceStoreId !== storeId) return;
+    if (!canReview || !file || !report || session || busy || !checksum || report.sourceStoreId !== storeId) return;
     setLoading(true);
     setNotice('正在创建审核草稿，只有审核记录会写入数据库…');
     try {
@@ -261,7 +263,7 @@ export function MeipingReviewManager({
           </p>
           <button
             className="button-primary"
-            disabled={busy || !checksum || report.sourceStoreId !== storeId}
+            disabled={busy || !file || !report || !checksum || report.sourceStoreId !== storeId}
             onClick={() => void createSession()}
           >
             {busy ? '正在建立审核草稿…' : '建立 / 继续本文件的审核草稿'}

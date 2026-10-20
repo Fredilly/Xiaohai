@@ -47,6 +47,24 @@ export type ReviewPage = {
   limit: number;
   items: ReviewItem[];
 };
+export type ReviewSessionSummary = {
+  id: string;
+  storeId: string;
+  status: 'DRAFT';
+  sourceChecksum: string;
+  totalRows: number;
+  savedDecisions: number;
+  createdAt: string;
+  approved: false;
+  catalogOrInventoryWritten: false;
+};
+export type ReviewSessionList = {
+  storeId: string;
+  offset: number;
+  limit: number;
+  hasMore: boolean;
+  items: ReviewSessionSummary[];
+};
 export type ReviewDecisionInput =
   | {
       sourceRowNumber: number;
@@ -122,6 +140,30 @@ function assertPage(value: unknown): ReviewPage {
     throw new Error('INVALID_REVIEW_PAGE_RESPONSE');
   }
   return value as ReviewPage;
+}
+export async function listMeipingReviewSessions(
+  token: string, storeId: string, offset = 0, limit = 20,
+): Promise<ReviewSessionList> {
+  const response = await fetch(root + query(storeId, { offset: String(offset), limit: String(limit) }), {
+    headers: headers(token),
+  });
+  if (!response.ok) throw await parseError(response);
+  const result: unknown = await response.json();
+  if (!object(result) || result.storeId !== storeId || result.offset !== offset ||
+      result.limit !== limit || typeof result.hasMore !== 'boolean' ||
+      !Array.isArray(result.items)) throw new Error('INVALID_REVIEW_SESSION_LIST_RESPONSE');
+  for (const item of result.items) {
+    if (!object(item) || typeof item.id !== 'string' || item.storeId !== storeId ||
+        item.status !== 'DRAFT' || typeof item.sourceChecksum !== 'string' ||
+        !/^[a-f0-9]{64}$/i.test(item.sourceChecksum) ||
+        !Number.isSafeInteger(item.totalRows) || item.totalRows < 1 ||
+        !Number.isSafeInteger(item.savedDecisions) || item.savedDecisions < 0 ||
+        item.savedDecisions > item.totalRows || typeof item.createdAt !== 'string' ||
+        item.approved !== false || item.catalogOrInventoryWritten !== false) {
+      throw new Error('INVALID_REVIEW_SESSION_LIST_RESPONSE');
+    }
+  }
+  return result as ReviewSessionList;
 }
 export async function createMeipingReviewSession(
   token: string,
