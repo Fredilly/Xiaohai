@@ -83,9 +83,10 @@ describe('Meiping review planning gate: no database writes', () => {
   });
 
   it('allows missing author/publisher in draft only, with a physical count', () => {
-    const result = plan([row(2)], [
-      { sourceRowNumber: 2, action: 'CREATE_DRAFT', countedQuantity: 3 },
-    ]);
+    const result = plan(
+      [row(2)],
+      [{ sourceRowNumber: 2, action: 'CREATE_DRAFT', countedQuantity: 3 }],
+    );
     expect(result.status).toBe('REVIEW_INPUT_COMPLETE');
     expect(result.countedQuantityTotal).toBe(3);
     expect(result.draftCatalogRows[0]).toMatchObject({
@@ -111,9 +112,10 @@ describe('Meiping review planning gate: no database writes', () => {
       issues: [warning],
       saleBlocked: [warning],
     });
-    const result = plan([zeroPriceRow], [
-      { sourceRowNumber: 2, action: 'CREATE_DRAFT', countedQuantity: 0 },
-    ]);
+    const result = plan(
+      [zeroPriceRow],
+      [{ sourceRowNumber: 2, action: 'CREATE_DRAFT', countedQuantity: 0 }],
+    );
     expect(result.status).toBe('REVIEW_INPUT_COMPLETE');
     expect(result.draftCatalogRows[0]).toMatchObject({
       saleBlocked: true,
@@ -134,9 +136,10 @@ describe('Meiping review planning gate: no database writes', () => {
       row(2, { disposition: 'REVIEW', issues: [conflict], blockingIssues: [conflict] }),
       row(2, { issues: [future], blockingIssues: [] }),
     ]) {
-      const result = plan([candidate], [
-        { sourceRowNumber: 2, action: 'CREATE_DRAFT', countedQuantity: 1 },
-      ]);
+      const result = plan(
+        [candidate],
+        [{ sourceRowNumber: 2, action: 'CREATE_DRAFT', countedQuantity: 1 }],
+      );
       expect(result.status).toBe('NEEDS_REVIEW');
       expect(result.draftCatalogRows).toHaveLength(0);
       expect(result.issues).toContainEqual({
@@ -161,11 +164,14 @@ describe('Meiping review planning gate: no database writes', () => {
   });
 
   it('rejects missing, duplicate, and out-of-file review decisions', () => {
-    const result = plan([row(2), row(3)], [
-      { sourceRowNumber: 2, action: 'CREATE_DRAFT', countedQuantity: 1 },
-      { sourceRowNumber: 2, action: 'EXCLUDE', reason: '重复' },
-      { sourceRowNumber: 99, action: 'EXCLUDE', reason: '不存在' },
-    ]);
+    const result = plan(
+      [row(2), row(3)],
+      [
+        { sourceRowNumber: 2, action: 'CREATE_DRAFT', countedQuantity: 1 },
+        { sourceRowNumber: 2, action: 'EXCLUDE', reason: '重复' },
+        { sourceRowNumber: 99, action: 'EXCLUDE', reason: '不存在' },
+      ],
+    );
     expect(result.status).toBe('NEEDS_REVIEW');
     expect(result.countedQuantityTotal).toBeNull();
     expect(result.issues.some((issue) => issue.code === 'DECISION_REQUIRED')).toBe(true);
