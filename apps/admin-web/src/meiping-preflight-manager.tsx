@@ -309,6 +309,7 @@ export function MeipingPreflightManager({ token, me }: { token: string; me: Staf
           token={token}
           storeId={storeId}
           canReview={permissions.has('inventory.stocktake')}
+          canVerifyCorrection={permissions.has('meiping.correction.review')}
         />
       )}
       {!report ? (
@@ -430,6 +431,7 @@ export function MeipingPreflightManager({ token, me }: { token: string; me: Staf
               file={file}
               report={report}
               canReview={permissions.has('inventory.stocktake')}
+              canVerifyCorrection={permissions.has('meiping.correction.review')}
             />
           )}
           <section className="panel meiping-future">

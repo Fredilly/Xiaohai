@@ -25,6 +25,19 @@ export type ReviewCorrectionInput = {
   proposedFields: ReviewCorrection['proposedFields'];
   reason: string;
 };
+export type CorrectionReview = {
+  sourceRowNumber: number;
+  correctionVersion: number;
+  verdict: 'ACCEPTED' | 'REJECTED';
+  reason: string;
+  reviewedAt: string;
+};
+export type CorrectionReviewInput = {
+  expectedChecksum: string;
+  expectedCorrectionVersion: number;
+  verdict: CorrectionReview['verdict'];
+  reason: string;
+};
 export type ReviewItem = {
   sourceRowNumber: number;
   disposition: 'MATCHED' | 'CREATE_CANDIDATE' | 'REVIEW' | 'REJECTED' | 'DUPLICATE';
@@ -44,6 +57,7 @@ export type ReviewItem = {
   saleBlocked: boolean;
   decision: ReviewDecision | null;
   correction?: ReviewCorrection | null;
+  correctionReview?: CorrectionReview | null;
 };
 export type ReviewSession = {
   id: string;
@@ -277,6 +291,34 @@ export async function saveMeipingReviewCorrection(
     throw new Error('INVALID_CORRECTION_RESPONSE');
   }
   return { version: payload.version, status: 'PENDING_VERIFICATION' };
+}
+
+export async function saveMeipingCorrectionReview(
+  token: string,
+  storeId: string,
+  sessionId: string,
+  sourceRowNumber: number,
+  body: CorrectionReviewInput,
+): Promise<{ correctionVersion: number; verdict: CorrectionReview['verdict'] }> {
+  const response = await fetch(
+    root + '/' + encodeURIComponent(sessionId) +
+      '/corrections/' + sourceRowNumber + '/review' + query(storeId),
+    {
+      method: 'POST',
+      headers: { ...headers(token), 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    },
+  );
+  if (!response.ok) throw await parseError(response);
+  const result: unknown = await response.json();
+  if (!object(result) || result.sourceRowNumber !== sourceRowNumber ||
+      result.correctionVersion !== body.expectedCorrectionVersion ||
+      (result.verdict !== 'ACCEPTED' && result.verdict !== 'REJECTED') ||
+      result.approved !== false || result.catalogOrInventoryWritten !== false) {
+    throw new Error('INVALID_CORRECTION_REVIEW_RESPONSE');
+  }
+  return { correctionVersion: result.correctionVersion as number,
+    verdict: result.verdict as CorrectionReview['verdict'] };
 }
 
 export async function saveMeipingReviewDecision(

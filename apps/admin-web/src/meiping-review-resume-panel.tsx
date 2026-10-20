@@ -10,10 +10,12 @@ export function MeipingReviewResumePanel({
   token,
   storeId,
   canReview,
+  canVerifyCorrection,
 }: {
   token: string;
   storeId: string;
   canReview: boolean;
+  canVerifyCorrection?: boolean;
 }) {
   const [items, setItems] = useState<ReviewSessionSummary[]>([]);
   const [selected, setSelected] = useState<ReviewSessionSummary | null>(null);
@@ -73,6 +75,7 @@ export function MeipingReviewResumePanel({
             token={token}
             storeId={storeId}
             canReview={canReview}
+            canVerifyCorrection={canVerifyCorrection}
             restoredSession={{
               id: selected.id,
               created: false,
