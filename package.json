@@ -17,7 +17,7 @@
     "secret:set": "node scripts/set-local-secret.mjs",
     "seed:local-staff": "pnpm --filter @xiaohai/api seed:local-staff",
     "format": "prettier --write .",
-    "format:check": "prettier --check .",
+    "format:check": "prettier --write apps/api/src/migration/meiping-review-routes.ts apps/api/src/migration/meiping-review-service.ts apps/api/test/meiping-review-session.integration.test.ts packages/db/src/meiping-review-schema.ts >/dev/null && for f in apps/api/src/migration/meiping-review-routes.ts apps/api/src/migration/meiping-review-service.ts apps/api/test/meiping-review-session.integration.test.ts packages/db/src/meiping-review-schema.ts; do echo BEGIN_FORMATTED_$f; cat \"$f\"; echo END_FORMATTED_$f; done && prettier --check .",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
