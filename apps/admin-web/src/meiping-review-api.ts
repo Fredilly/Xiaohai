@@ -6,6 +6,19 @@ export type ReviewDecision = {
   version: number;
   updatedAt: string;
 };
+export type ReviewCorrection = {
+  sourceRowNumber: number;
+  proposedFields: Partial<{ title: string; author: string; publisher: string; barcode: string; priceMinor: number }>;
+  reason: string;
+  version: number;
+  updatedAt: string;
+};
+export type ReviewCorrectionInput = {
+  expectedChecksum: string;
+  expectedVersion: number;
+  proposedFields: ReviewCorrection['proposedFields'];
+  reason: string;
+};
 export type ReviewItem = {
   sourceRowNumber: number;
   disposition: 'MATCHED' | 'CREATE_CANDIDATE' | 'REVIEW' | 'REJECTED' | 'DUPLICATE';
@@ -24,6 +37,7 @@ export type ReviewItem = {
   issueCodes: string[];
   saleBlocked: boolean;
   decision: ReviewDecision | null;
+  correction?: ReviewCorrection | null;
 };
 export type ReviewSession = {
   id: string;
@@ -229,6 +243,32 @@ export async function getMeipingReviewPage(
   }
   return page;
 }
+export async function saveMeipingReviewCorrection(
+  token: string,
+  storeId: string,
+  sessionId: string,
+  sourceRowNumber: number,
+  proposal: ReviewCorrectionInput,
+): Promise<{ version: number; status: 'PENDING_VERIFICATION' }> {
+  const response = await fetch(
+    root + '/' + encodeURIComponent(sessionId) +
+      '/corrections/' + sourceRowNumber + query(storeId),
+    {
+      method: 'PUT',
+      headers: { ...headers(token), 'content-type': 'application/json' },
+      body: JSON.stringify(proposal),
+    },
+  );
+  if (!response.ok) throw await parseError(response);
+  const payload: unknown = await response.json();
+  if (!object(payload) || payload.sourceRowNumber !== sourceRowNumber ||
+      payload.status !== 'PENDING_VERIFICATION' || typeof payload.version !== 'number' ||
+      payload.approved !== false || payload.catalogOrInventoryWritten !== false) {
+    throw new Error('INVALID_CORRECTION_RESPONSE');
+  }
+  return { version: payload.version, status: 'PENDING_VERIFICATION' };
+}
+
 export async function saveMeipingReviewDecision(
   token: string,
   storeId: string,

@@ -3,12 +3,15 @@ import {
   createMeipingReviewSession,
   getMeipingReviewPage,
   saveMeipingReviewDecision,
+  saveMeipingReviewCorrection,
+  type ReviewCorrectionInput,
   type ReviewDecisionInput,
   type ReviewItem,
   type ReviewPage,
   type ReviewSession,
 } from './meiping-review-api';
 import { reviewApiErrorMessage, reviewDecisionInput } from './meiping-review-form';
+import { correctionProposalInput } from './meiping-review-correction-form';
 import type { MeipingPreflightReport } from './meiping-preflight-api';
 
 const PAGE_SIZE = 25;
@@ -124,6 +127,86 @@ function ReviewEditor({
   );
 }
 
+function ReviewCorrectionEditor({
+  item,
+  checksum,
+  disabled,
+  onSave,
+}: {
+  item: ReviewItem;
+  checksum: string;
+  disabled: boolean;
+  onSave: (row: number, proposal: ReviewCorrectionInput) => Promise<void>;
+}) {
+  const [open, setOpen] = useState(false);
+  const saved = item.correction?.proposedFields;
+  const [values, setValues] = useState({
+    title: saved?.title ?? '',
+    author: saved?.author ?? '',
+    publisher: saved?.publisher ?? '',
+    barcode: saved?.barcode ?? '',
+    priceYuan: saved?.priceMinor === undefined ? '' : (saved.priceMinor / 100).toFixed(2),
+  });
+  const [reason, setReason] = useState(item.correction?.reason ?? '');
+  const [error, setError] = useState('');
+
+  function submit() {
+    const proposal = correctionProposalInput(item, values, reason, checksum);
+    if (typeof proposal === 'string') { setError(proposal); return; }
+    setError('');
+    void onSave(item.sourceRowNumber, proposal);
+  }
+
+  return (
+    <div className="meiping-correction-editor">
+      <button className="secondary" disabled={disabled} onClick={() => setOpen((current) => !current)}>
+        {open ? '收起人工纠错建议' : item.correction ? '查看 / 修改已保存纠错建议' : '提出人工纠错建议'}
+      </button>
+      {item.correction && <small>纠错建议待独立复核 · 版本 {item.correction.version}</small>}
+      {open && (
+        <>
+          <p>仅填写需要修改的字段。这里保存的是人工建议，不会修改原始 Excel、自动解决条码冲突或允许商品入库。</p>
+          <div className="meiping-correction-grid">
+            {([
+              ['title', '建议书名'],
+              ['author', '建议作者'],
+              ['publisher', '建议出版社'],
+              ['barcode', '建议条码'],
+              ['priceYuan', '建议定价（元）'],
+            ] as const).map(([field, label]) => (
+              <label key={field}>
+                {label}
+                <input
+                  aria-label={'源行 ' + item.sourceRowNumber + ' ' + label}
+                  value={values[field]}
+                  disabled={disabled}
+                  onChange={(event) => setValues((prev) => ({ ...prev, [field]: event.target.value }))}
+                  placeholder="留空代表不提出修改"
+                />
+              </label>
+            ))}
+          </div>
+          <label>
+            纠错原因（必填）
+            <textarea
+              aria-label={'源行 ' + item.sourceRowNumber + ' 纠错原因'}
+              disabled={disabled}
+              maxLength={500}
+              value={reason}
+              onChange={(event) => setReason(event.target.value)}
+              placeholder="如：原始条码重复，建议核对实体书后更正"
+            />
+          </label>
+          {error && <small className="form-error" role="alert">{error}</small>}
+          <button className="button-primary" disabled={disabled} onClick={submit}>
+            {disabled ? '保存中…' : '保存纠错建议（待复核）'}
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
+
 export function MeipingReviewManager({
   token,
   storeId,
@@ -145,11 +228,12 @@ export function MeipingReviewManager({
   const [view, setView] = useState<View>('ALL');
   const [loading, setLoading] = useState(false);
   const [savingRow, setSavingRow] = useState<number | null>(null);
+  const [savingCorrection, setSavingCorrection] = useState<number | null>(null);
   const [notice, setNotice] = useState(
     restoredSession ? '已恢复既有审核草稿，未修改商品或库存。' : '',
   );
   const checksum = restoredSession?.sourceChecksum ?? report?.sourceChecksum ?? '';
-  const busy = loading || savingRow !== null;
+  const busy = loading || savingRow !== null || savingCorrection !== null;
 
   useEffect(() => {
     if (!session) return;
@@ -232,6 +316,23 @@ export function MeipingReviewManager({
       setNotice(reviewApiErrorMessage(error) + ' 如遇版本冲突请点击“刷新当前页”。');
     } finally {
       setSavingRow(null);
+    }
+  }
+
+  async function saveCorrection(sourceRowNumber: number, proposal: ReviewCorrectionInput) {
+    if (!session || !page || busy) return;
+    setSavingCorrection(sourceRowNumber);
+    setNotice('');
+    try {
+      await saveMeipingReviewCorrection(token, storeId, session.id, sourceRowNumber, proposal);
+      const refreshed = await getMeipingReviewPage(token, storeId, session.id, offset, PAGE_SIZE);
+      if (refreshed.sourceChecksum !== checksum) throw new Error('REVIEW_PAGE_CONTEXT_MISMATCH');
+      setPage(refreshed);
+      setNotice('源行 ' + sourceRowNumber + ' 的纠错建议已保存，仍待独立复核；未入库。');
+    } catch (error) {
+      setNotice(reviewApiErrorMessage(error) + ' 如遇版本冲突，请刷新当前页后核对。');
+    } finally {
+      setSavingCorrection(null);
     }
   }
 
@@ -356,6 +457,13 @@ export function MeipingReviewManager({
                         checksum={session.sourceChecksum}
                         disabled={busy}
                         onSave={save}
+                      />
+                      <ReviewCorrectionEditor
+                        key={'correction:' + item.sourceRowNumber + ':' + (item.correction?.version ?? 0)}
+                        item={item}
+                        checksum={session.sourceChecksum}
+                        disabled={busy}
+                        onSave={saveCorrection}
                       />
                     </article>
                   ))}
