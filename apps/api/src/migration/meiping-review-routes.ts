@@ -44,6 +44,13 @@ const correctionBody = z
   })
   .strict();
 
+const correctionReviewBody = z.object({
+  expectedChecksum: checksum,
+  expectedCorrectionVersion: z.number().int().positive(),
+  verdict: z.enum(['ACCEPTED', 'REJECTED']),
+  reason: z.string().trim().min(1).max(500),
+}).strict();
+
 const decisionBody = z.discriminatedUnion('action', [
   z
     .object({
@@ -79,6 +86,14 @@ export function registerMeipingReviewRoutes(
     const actor = await options.staffAuthorization.authenticate(request.headers.authorization);
     options.staffAuthorization.requirePermission(actor, inventoryPermissions.receive);
     options.staffAuthorization.requirePermission(actor, inventoryPermissions.stocktake);
+    await options.stores.getStaffStore(storeId, actor);
+    await options.inventory.requireStoreAccess(actor, storeId);
+    return { actorStaffAccountId: actor.staffAccountId, requestId: request.id };
+  };
+
+  const authorizeIndependentReviewer = async (request: FastifyRequest, storeId: string) => {
+    const actor = await options.staffAuthorization.authenticate(request.headers.authorization);
+    options.staffAuthorization.requirePermission(actor, 'meiping.correction.review');
     await options.stores.getStaffStore(storeId, actor);
     await options.inventory.requireStoreAccess(actor, storeId);
     return { actorStaffAccountId: actor.staffAccountId, requestId: request.id };
@@ -193,6 +208,25 @@ export function registerMeipingReviewRoutes(
     },
   );
 
+  app.post(
+    '/api/v1/staff/migrations/meiping/review-sessions/:id/corrections/:sourceRowNumber/review',
+    async (request, reply) => {
+      const params = rowParams.safeParse(request.params);
+      const query = storeQuery.safeParse(request.query);
+      const body = correctionReviewBody.safeParse(request.body);
+      if (!params.success || !query.success || !body.success) return invalid(reply, request.id);
+      try {
+        const reviewer = await authorizeIndependentReviewer(request, query.data.storeId);
+        return await options.review.reviewCorrection(
+          params.data.id, query.data.storeId, params.data.sourceRowNumber,
+          body.data, reviewer,
+        );
+      } catch (error) {
+        return fail(request, reply, error);
+      }
+    },
+  );
+
   app.put(
     '/api/v1/staff/migrations/meiping/review-sessions/:id/decisions/:sourceRowNumber',
     async (request, reply) => {
@@ -231,7 +265,9 @@ function fail(request: FastifyRequest, reply: FastifyReply, error: unknown) {
     });
   }
   if (error instanceof MeipingReviewError) {
-    const status = error.code === 'NOT_FOUND' ? 404 : error.code === 'CONFLICT' ? 409 : 400;
+    const status = error.code === 'NOT_FOUND' ? 404 :
+      error.code === 'SELF_REVIEW_FORBIDDEN' ? 403 :
+      error.code === 'CONFLICT' || error.code === 'BARCODE_NOT_VERIFIED' ? 409 : 400;
     return reply.status(status).send({
       error: { code: error.code, message: 'Review not accepted', requestId: request.id },
     });
