@@ -31,9 +31,10 @@ export class MeipingReviewService {
 
   /** The only side effects are isolated review staging and an auditable event. */
   async createSession(report: MeipingPreflightReport, audit: MeipingReviewAuditContext) {
+    const checksum = report.sourceChecksum;
     if (
-      !report.sourceChecksum ||
-      report.sourceChecksum.length !== 64 ||
+      !checksum ||
+      checksum.length !== 64 ||
       report.inventoryApproval !== 'PENDING_ADMIN_REVIEW' ||
       report.totalRows < 1 ||
       report.rows.length !== report.totalRows
@@ -45,7 +46,7 @@ export class MeipingReviewService {
         .insert(meipingReviewSessions)
         .values({
           storeId: report.sourceStoreId,
-          sourceChecksum: report.sourceChecksum,
+          sourceChecksum: checksum,
           report: report as unknown as Record<string, unknown>,
           createdByStaffAccountId: audit.actorStaffAccountId,
         })
@@ -62,7 +63,7 @@ export class MeipingReviewService {
           requestId: audit.requestId,
           metadata: {
             storeId: report.sourceStoreId,
-            sourceChecksum: report.sourceChecksum!,
+            sourceChecksum: checksum,
             sourceRows: report.totalRows,
           },
         });
@@ -74,7 +75,7 @@ export class MeipingReviewService {
         .where(
           and(
             eq(meipingReviewSessions.storeId, report.sourceStoreId),
-            eq(meipingReviewSessions.sourceChecksum, report.sourceChecksum!),
+            eq(meipingReviewSessions.sourceChecksum, checksum),
           ),
         )
         .limit(1);
@@ -84,7 +85,7 @@ export class MeipingReviewService {
     return {
       ...result,
       status: 'DRAFT' as const,
-      sourceChecksum: report.sourceChecksum,
+      sourceChecksum: checksum,
       storeId: report.sourceStoreId,
       totalRows: report.totalRows,
       approved: false as const,
