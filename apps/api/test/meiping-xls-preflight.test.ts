@@ -161,6 +161,53 @@ describe('Meiping workbook parser and dry-run preflight', () => {
     expect(report.rows[0]!.issues.map((item) => item.code)).toContain('DUPLICATE_BARCODE');
     expect(report.rows[2]!.issues.map((item) => item.code)).toContain('BARCODE_CONFLICT');
     expect(report.exceptionReportCsv).toContain('BARCODE_CONFLICT');
+    expect(report.rows[0]!.blockingIssues.map((item) => item.code)).toContain('DUPLICATE_BARCODE');
+    expect(report.rows[2]!.blockingIssues.map((item) => item.code)).toContain('BARCODE_CONFLICT');
+  });
+
+  it('keeps missing author and publisher as metadata warnings without blocking a candidate', () => {
+    const parsed = parseMeipingWorkbook(
+      workbookBuffer([
+        headers,
+        ['M-008', 'OWN-008', '作者待完善', '', '', '20', '690000000008', '图书'],
+      ]),
+    );
+    const report = buildMeipingPreflight(parsed.rows, {
+      storeId: 'store-east-test',
+      storeCode: 'TEST-EAST',
+    });
+    const item = report.rows[0]!;
+    expect(item.disposition).toBe('CREATE_CANDIDATE');
+    expect(item.metadataWarnings.map((issue) => issue.code)).toEqual([
+      'AUTHOR_MISSING',
+      'PUBLISHER_MISSING',
+    ]);
+    expect(item.blockingIssues).toHaveLength(0);
+    expect(report.createCandidateRows).toBe(1);
+    expect(report.metadataWarningRows).toBe(1);
+    expect(report.exceptionRows).toBe(0);
+  });
+
+  it('allows zero-price and multiple metadata issues while blocking normal sale', () => {
+    const parsed = parseMeipingWorkbook(
+      workbookBuffer([
+        headers,
+        ['M-009', 'OWN-009', '零价格待完善', '', '', '0', '690000000009', '图书'],
+      ]),
+    );
+    const report = buildMeipingPreflight(parsed.rows, {
+      storeId: 'store-east-test',
+      storeCode: 'TEST-EAST',
+    });
+    const item = report.rows[0]!;
+    expect(item.disposition).toBe('CREATE_CANDIDATE');
+    expect(item.metadataWarnings).toHaveLength(2);
+    expect(item.saleBlocked.map((issue) => issue.code)).toEqual(['ZERO_PRICE']);
+    expect(item.blockingIssues).toHaveLength(0);
+    expect(report.createCandidateRows).toBe(1);
+    expect(report.metadataWarningRows).toBe(1);
+    expect(report.saleBlockedRows).toBe(1);
+    expect(report.exceptionRows).toBe(0);
   });
 
   it('keeps assumed stock explicit and isolates the selected store', () => {

@@ -24,6 +24,13 @@ const issueLabels: Record<string, string> = {
   BARCODE_CONFLICT: '条码资料冲突',
   UNKNOWN_CATEGORY: '未知类别',
   NON_BOOK_CATEGORY: '非图书类别',
+  CATEGORY_UNKNOWN: '类别无法判断',
+  FORMULA_ROW_REVIEW: '公式商品行',
+  DUPLICATE_ROW: '重复商品记录',
+  BOOK_CODE_CONFLICT: '商品编号冲突',
+  INTERNAL_CODE_CONFLICT: '自有编号冲突',
+  MISSING_COLUMN_TITLE: '缺少书名列',
+  MISSING_COLUMN_PRICE: '缺少价格列',
 };
 
 export function filterMeipingRows(rows: MeipingPreflightRow[], filter: IssueFilter) {
@@ -307,8 +314,16 @@ export function MeipingPreflightManager({ token, me }: { token: string; me: Staf
               <span>新建候选</span>
             </div>
             <div>
-              <strong>{report.exceptionRows}</strong>
-              <span>待审核记录</span>
+              <strong>{report.blockingRows}</strong>
+              <span>需要人工审核</span>
+            </div>
+            <div>
+              <strong>{report.metadataWarningRows}</strong>
+              <span>资料待完善</span>
+            </div>
+            <div>
+              <strong>{report.saleBlockedRows}</strong>
+              <span>禁止正常销售</span>
             </div>
             <div>
               <strong>{report.assumedInventoryRows}</strong>
@@ -363,9 +378,9 @@ export function MeipingPreflightManager({ token, me }: { token: string; me: Staf
               <span>当前显示 {reportRows.length} 条</span>
             </div>
             <div className="meiping-legend">
-              <span className="meiping-severity meiping-severity-warning">警告</span>{' '}
-              可人工补充或确认 <span className="meiping-severity meiping-severity-error">严重</span>{' '}
-              需要先处理
+              建档候选不会因为作者或出版社缺失而被阻断；需要人工审核：{report.blockingRows} 条；
+              资料待完善：{report.metadataWarningRows} 条；禁止正常销售：{report.saleBlockedRows}{' '}
+              条。
             </div>
             {reportRows.length === 0 ? (
               <div className="empty-state">
@@ -435,7 +450,26 @@ function MeipingRow({ row }: { row: MeipingPreflightRow }) {
       </td>
       <td>
         {row.issues.length ? (
-          <ul className="meiping-issues">{row.issues.map(renderIssue)}</ul>
+          <div>
+            {row.blockingIssues.length > 0 && (
+              <>
+                <strong>人工审核</strong>
+                <ul className="meiping-issues">{row.blockingIssues.map(renderIssue)}</ul>
+              </>
+            )}
+            {row.metadataWarnings.length > 0 && (
+              <>
+                <strong>资料待完善</strong>
+                <ul className="meiping-issues">{row.metadataWarnings.map(renderIssue)}</ul>
+              </>
+            )}
+            {row.saleBlocked.length > 0 && (
+              <>
+                <strong>禁止正常销售</strong>
+                <ul className="meiping-issues">{row.saleBlocked.map(renderIssue)}</ul>
+              </>
+            )}
+          </div>
         ) : (
           <span className="meiping-clear">无异常</span>
         )}

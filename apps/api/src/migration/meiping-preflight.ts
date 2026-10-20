@@ -25,6 +25,9 @@ export type MeipingPreflightRow = {
   matchStatus: 'MATCHED_BY_EXPLICIT_ISBN' | 'UNMATCHED_REVIEW';
   disposition: 'MATCHED' | 'CREATE_CANDIDATE' | 'REVIEW' | 'REJECTED' | 'DUPLICATE';
   issues: MeipingPreflightIssue[];
+  metadataWarnings: MeipingPreflightIssue[];
+  blockingIssues: MeipingPreflightIssue[];
+  saleBlocked: MeipingPreflightIssue[];
 };
 
 export type MeipingPreflightReport = {
@@ -37,6 +40,9 @@ export type MeipingPreflightReport = {
   matchedRows: number;
   createCandidateRows: number;
   exceptionRows: number;
+  metadataWarningRows: number;
+  blockingRows: number;
+  saleBlockedRows: number;
   assumedInventoryRows: number;
   plannedInventoryTotal: number;
   rows: MeipingPreflightRow[];
@@ -68,10 +74,16 @@ export function buildMeipingPreflight(
 
   const resultRows = rows.map((sourceRow, index) => {
     const base = canonical.rows[index]!;
-    const issues: MeipingPreflightIssue[] = base.issues.map((item) => ({
-      ...item,
-      sourceRowNumber: sourceRow.sourceRowNumber,
-    }));
+    const issues: MeipingPreflightIssue[] = base.issues
+      .filter(
+        (item) =>
+          item.code !== 'IDENTIFIER_REVIEW' ||
+          (!sourceRow.barcode && !sourceRow.isbn && !sourceRow.bookCode && !sourceRow.internalCode),
+      )
+      .map((item) => ({
+        ...item,
+        sourceRowNumber: sourceRow.sourceRowNumber,
+      }));
     for (const code of options.missingMappedFields ?? []) {
       issues.push(issue(sourceRow.sourceRowNumber, code, 'ERROR', '缺少必要字段列，无法可靠映射'));
     }
@@ -87,7 +99,12 @@ export function buildMeipingPreflight(
     }
     if (base.normalized.priceMinor === 0) {
       issues.push(
-        issue(sourceRow.sourceRowNumber, 'ZERO_PRICE', 'ERROR', '价格为 0，需要人工确认'),
+        issue(
+          sourceRow.sourceRowNumber,
+          'ZERO_PRICE',
+          'WARNING',
+          '价格为 0，资料可暂存但禁止正常销售',
+        ),
       );
     }
     if (sourceRow.sourceCategoryType === 'NON_BOOK') {
@@ -135,19 +152,40 @@ export function buildMeipingPreflight(
         );
       }
     }
-    const hasError = issues.some((item) => item.severity === 'ERROR');
-    const hasWarning = issues.length > 0;
+    const metadataWarnings = issues.filter((item) =>
+      ['AUTHOR_MISSING', 'PUBLISHER_MISSING'].includes(item.code),
+    );
+    const saleBlocked = issues.filter((item) => item.code === 'ZERO_PRICE');
+    const blockingCodes = new Set([
+      'TITLE_REQUIRED',
+      'IDENTIFIER_REVIEW',
+      'PRICE_REQUIRED',
+      'PRICE_INVALID',
+      'INVENTORY_REQUIRED',
+      'INVENTORY_INVALID',
+      'INVENTORY_NEGATIVE',
+      'MISSING_COLUMN_TITLE',
+      'MISSING_COLUMN_PRICE',
+      'FORMULA_ROW_REVIEW',
+      'NON_BOOK_CATEGORY',
+      'CATEGORY_UNKNOWN',
+      'DUPLICATE_ROW',
+      'DUPLICATE_BARCODE',
+      'BARCODE_CONFLICT',
+      'BOOK_CODE_CONFLICT',
+      'INTERNAL_CODE_CONFLICT',
+    ]);
+    const blockingIssues = issues.filter((item) => blockingCodes.has(item.code));
+    const hasBlockingIssue = blockingIssues.length > 0;
     const disposition =
       sourceRow.sourceCategoryType !== 'BOOK'
         ? 'REVIEW'
-        : hasError
+        : hasBlockingIssue
           ? base.disposition === 'DUPLICATE'
             ? 'DUPLICATE'
-            : 'REJECTED'
-          : hasWarning || base.disposition !== 'IMPORTABLE'
-            ? base.disposition === 'DUPLICATE'
-              ? 'DUPLICATE'
-              : 'REVIEW'
+            : 'REVIEW'
+          : base.disposition === 'DUPLICATE'
+            ? 'DUPLICATE'
             : options.matchedRowNumbers?.has(sourceRow.sourceRowNumber)
               ? 'MATCHED'
               : 'CREATE_CANDIDATE';
@@ -175,10 +213,14 @@ export function buildMeipingPreflight(
         : ('UNMATCHED_REVIEW' as const),
       disposition,
       issues,
+      metadataWarnings,
+      blockingIssues,
+      saleBlocked,
     } satisfies MeipingPreflightRow;
   });
   const exceptions = resultRows.filter(
-    (row) => !['CREATE_CANDIDATE', 'MATCHED'].includes(row.disposition),
+    (row) =>
+      row.blockingIssues.length > 0 || !['CREATE_CANDIDATE', 'MATCHED'].includes(row.disposition),
   );
   return {
     sourceType: 'MEIPING_XLS',
@@ -190,6 +232,9 @@ export function buildMeipingPreflight(
     matchedRows: resultRows.filter((row) => row.disposition === 'MATCHED').length,
     createCandidateRows: resultRows.filter((row) => row.disposition === 'CREATE_CANDIDATE').length,
     exceptionRows: exceptions.length,
+    metadataWarningRows: resultRows.filter((row) => row.metadataWarnings.length > 0).length,
+    blockingRows: resultRows.filter((row) => row.blockingIssues.length > 0).length,
+    saleBlockedRows: resultRows.filter((row) => row.saleBlocked.length > 0).length,
     assumedInventoryRows: resultRows.length,
     plannedInventoryTotal: resultRows.length,
     rows: resultRows,

@@ -31,6 +31,14 @@ const row = (
   matchStatus: 'UNMATCHED_REVIEW',
   disposition: 'CREATE_CANDIDATE',
   issues,
+  metadataWarnings: issues.filter((issue) =>
+    ['MISSING_AUTHOR', 'MISSING_PUBLISHER'].includes(issue.code),
+  ),
+  blockingIssues: issues.filter(
+    (issue) => !['MISSING_AUTHOR', 'MISSING_PUBLISHER', 'ZERO_PRICE'].includes(issue.code),
+  ),
+  saleBlocked: issues.filter((issue) => issue.code === 'ZERO_PRICE'),
+  rawColumns: {},
 });
 
 describe('Meiping preflight presentation helpers', () => {
