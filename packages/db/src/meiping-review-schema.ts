@@ -1,6 +1,15 @@
 import { sql } from 'drizzle-orm';
 import {
-  check, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid,
+  check,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  primaryKey,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
 } from 'drizzle-orm/pg-core';
 import { staffAccounts } from './schema.js';
 import { stores } from './store-schema.js';
@@ -9,11 +18,15 @@ export const meipingReviewSessions = pgTable(
   'meiping_review_sessions',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    storeId: uuid('store_id').notNull().references(() => stores.id, { onDelete: 'restrict' }),
+    storeId: uuid('store_id')
+      .notNull()
+      .references(() => stores.id, { onDelete: 'restrict' }),
     sourceChecksum: text('source_checksum').notNull(),
     status: text('status').notNull().default('DRAFT'),
     report: jsonb('report').$type<Record<string, unknown>>().notNull(),
-    createdByStaffAccountId: uuid('created_by_staff_account_id').notNull().references(() => staffAccounts.id, { onDelete: 'restrict' }),
+    createdByStaffAccountId: uuid('created_by_staff_account_id')
+      .notNull()
+      .references(() => staffAccounts.id, { onDelete: 'restrict' }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
@@ -27,13 +40,17 @@ export const meipingReviewSessions = pgTable(
 export const meipingReviewDecisions = pgTable(
   'meiping_review_decisions',
   {
-    sessionId: uuid('session_id').notNull().references(() => meipingReviewSessions.id, { onDelete: 'restrict' }),
+    sessionId: uuid('session_id')
+      .notNull()
+      .references(() => meipingReviewSessions.id, { onDelete: 'restrict' }),
     sourceRowNumber: integer('source_row_number').notNull(),
     action: text('action').notNull(),
     countedQuantity: integer('counted_quantity'),
     reason: text('reason'),
     version: integer('version').notNull().default(1),
-    updatedByStaffAccountId: uuid('updated_by_staff_account_id').notNull().references(() => staffAccounts.id, { onDelete: 'restrict' }),
+    updatedByStaffAccountId: uuid('updated_by_staff_account_id')
+      .notNull()
+      .references(() => staffAccounts.id, { onDelete: 'restrict' }),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [

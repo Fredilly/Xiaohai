@@ -23,20 +23,24 @@ const listQuery = storeQuery.extend({
 });
 const checksum = z.string().regex(/^[a-f0-9]{64}$/i);
 const decisionBody = z.discriminatedUnion('action', [
-  z.object({
-    action: z.literal('CREATE_DRAFT'),
-    sourceRowNumber: z.number().int().positive(),
-    countedQuantity: z.number().int().min(0).max(2147483647),
-    expectedVersion: z.number().int().nonnegative(),
-    expectedChecksum: checksum,
-  }).strict(),
-  z.object({
-    action: z.literal('EXCLUDE'),
-    sourceRowNumber: z.number().int().positive(),
-    reason: z.string().trim().min(1).max(500),
-    expectedVersion: z.number().int().nonnegative(),
-    expectedChecksum: checksum,
-  }).strict(),
+  z
+    .object({
+      action: z.literal('CREATE_DRAFT'),
+      sourceRowNumber: z.number().int().positive(),
+      countedQuantity: z.number().int().min(0).max(2147483647),
+      expectedVersion: z.number().int().nonnegative(),
+      expectedChecksum: checksum,
+    })
+    .strict(),
+  z
+    .object({
+      action: z.literal('EXCLUDE'),
+      sourceRowNumber: z.number().int().positive(),
+      reason: z.string().trim().min(1).max(500),
+      expectedVersion: z.number().int().nonnegative(),
+      expectedChecksum: checksum,
+    })
+    .strict(),
 ]);
 
 export function registerMeipingReviewRoutes(
@@ -71,18 +75,21 @@ export function registerMeipingReviewRoutes(
         const isbns = parsed.rows
           .map((row) => row.isbn)
           .filter((isbn): isbn is string => Boolean(isbn));
-        const matches = isbns.length > 0
-          ? await options.db
-              .select({ isbn: bookEditions.isbn })
-              .from(bookEditions)
-              .innerJoin(products, eq(products.bookEditionId, bookEditions.id))
-              .innerJoin(skus, eq(skus.productId, products.id))
-              .where(and(
-                inArray(bookEditions.isbn, isbns),
-                eq(products.status, 'ACTIVE'),
-                eq(skus.status, 'ACTIVE'),
-              ))
-          : [];
+        const matches =
+          isbns.length > 0
+            ? await options.db
+                .select({ isbn: bookEditions.isbn })
+                .from(bookEditions)
+                .innerJoin(products, eq(products.bookEditionId, bookEditions.id))
+                .innerJoin(skus, eq(skus.productId, products.id))
+                .where(
+                  and(
+                    inArray(bookEditions.isbn, isbns),
+                    eq(products.status, 'ACTIVE'),
+                    eq(skus.status, 'ACTIVE'),
+                  ),
+                )
+            : [];
         const matchedIsbns = new Set(
           matches.map((row) => row.isbn).filter((isbn): isbn is string => Boolean(isbn)),
         );
@@ -91,7 +98,10 @@ export function registerMeipingReviewRoutes(
             .filter((row) => row.isbn && matchedIsbns.has(row.isbn))
             .map((row) => row.sourceRowNumber),
         );
-        const store = await options.stores.getStaffStore(query.data.storeId, await options.staffAuthorization.authenticate(request.headers.authorization));
+        const store = await options.stores.getStaffStore(
+          query.data.storeId,
+          await options.staffAuthorization.authenticate(request.headers.authorization),
+        );
         const report = buildMeipingPreflight(
           parsed.rows,
           { storeId: store.id, storeCode: store.code },
@@ -166,7 +176,9 @@ function fail(request: FastifyRequest, reply: FastifyReply, error: unknown) {
     });
   }
   if (
-    typeof error === 'object' && error !== null && 'code' in error &&
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
     (error.code === 'NOT_FOUND' || error.code === 'FORBIDDEN' || error.code === 'SCOPE_MISMATCH')
   ) {
     const status = error.code === 'NOT_FOUND' ? 404 : 403;

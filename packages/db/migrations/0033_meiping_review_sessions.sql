@@ -29,6 +29,6 @@ CREATE TABLE "meiping_review_decisions" (
   CONSTRAINT "meiping_review_decisions_source_row_positive" CHECK ("source_row_number" > 0),
   CONSTRAINT "meiping_review_decisions_version_positive" CHECK ("version" > 0),
   CONSTRAINT "meiping_review_decisions_action_check"
-    CHECK (("action" = 'CREATE_DRAFT' AND "counted_quantity" >= 0 AND "reason" IS NULL)
-      OR ("action" = 'EXCLUDE' AND "counted_quantity" IS NULL AND length(trim("reason")) > 0))
+    CHECK (("action" = 'CREATE_DRAFT' AND "counted_quantity" IS NOT NULL AND "counted_quantity" >= 0 AND "reason" IS NULL)
+      OR ("action" = 'EXCLUDE' AND "counted_quantity" IS NULL AND "reason" IS NOT NULL AND length(trim("reason")) > 0))
 );

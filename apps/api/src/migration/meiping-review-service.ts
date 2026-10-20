@@ -5,7 +5,7 @@ import {
   meipingReviewSessions,
   type createDatabase,
 } from '@xiaohai/db';
-import type { MeipingPreflightReport, MeipingPreflightRow } from './meiping-preflight.js';
+import type { MeipingPreflightReport } from './meiping-preflight.js';
 import { buildMeipingReviewPlan, type MeipingReviewDecision } from './meiping-import-readiness.js';
 
 type Database = ReturnType<typeof createDatabase>['db'];
@@ -45,7 +45,7 @@ export class MeipingReviewService {
         .insert(meipingReviewSessions)
         .values({
           storeId: report.sourceStoreId,
-          sourceChecksum: report.sourceChecksum!,
+          sourceChecksum: report.sourceChecksum,
           report: report as unknown as Record<string, unknown>,
           createdByStaffAccountId: audit.actorStaffAccountId,
         })
@@ -96,9 +96,7 @@ export class MeipingReviewService {
     const [session] = await this.db
       .select()
       .from(meipingReviewSessions)
-      .where(
-        and(eq(meipingReviewSessions.id, id), eq(meipingReviewSessions.storeId, storeId)),
-      )
+      .where(and(eq(meipingReviewSessions.id, id), eq(meipingReviewSessions.storeId, storeId)))
       .limit(1);
     if (!session) throw new MeipingReviewError('NOT_FOUND');
     const report = session.report as unknown as MeipingPreflightReport;
@@ -116,17 +114,18 @@ export class MeipingReviewService {
     const { session, report } = await this.load(id, storeId);
     const page = report.rows.slice(offset, offset + limit);
     const rowNumbers = page.map((row) => row.sourceRowNumber);
-    const saved = rowNumbers.length > 0
-      ? await this.db
-          .select()
-          .from(meipingReviewDecisions)
-          .where(
-            and(
-              eq(meipingReviewDecisions.sessionId, id),
-              inArray(meipingReviewDecisions.sourceRowNumber, rowNumbers),
-            ),
-          )
-      : [];
+    const saved =
+      rowNumbers.length > 0
+        ? await this.db
+            .select()
+            .from(meipingReviewDecisions)
+            .where(
+              and(
+                eq(meipingReviewDecisions.sessionId, id),
+                inArray(meipingReviewDecisions.sourceRowNumber, rowNumbers),
+              ),
+            )
+        : [];
     const decisionsByRow = new Map(saved.map((item) => [item.sourceRowNumber, item]));
     return {
       sessionId: id,
@@ -175,11 +174,13 @@ export class MeipingReviewService {
       const plan = buildMeipingReviewPlan(singleRowReport, {
         storeId,
         expectedChecksum: session.sourceChecksum,
-        decisions: [{
-          sourceRowNumber,
-          action: 'CREATE_DRAFT',
-          countedQuantity: input.countedQuantity,
-        }],
+        decisions: [
+          {
+            sourceRowNumber,
+            action: 'CREATE_DRAFT',
+            countedQuantity: input.countedQuantity,
+          },
+        ],
       });
       if (plan.status !== 'REVIEW_INPUT_COMPLETE') {
         throw new MeipingReviewError('CONFLICT');

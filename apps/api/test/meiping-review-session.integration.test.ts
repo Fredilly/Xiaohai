@@ -6,14 +6,19 @@ import {
   books,
   createDatabase,
   meipingReviewDecisions,
-  meipingReviewSessions,
   regions,
   staffAccounts,
   storeInventory,
   stores,
 } from '@xiaohai/db';
-import type { MeipingPreflightReport, MeipingPreflightRow } from '../src/migration/meiping-preflight.js';
-import { MeipingReviewError, MeipingReviewService } from '../src/migration/meiping-review-service.js';
+import type {
+  MeipingPreflightReport,
+  MeipingPreflightRow,
+} from '../src/migration/meiping-preflight.js';
+import {
+  MeipingReviewError,
+  MeipingReviewService,
+} from '../src/migration/meiping-review-service.js';
 
 const database = process.env.DATABASE_URL ? createDatabase(process.env) : null;
 const suite = database ? describe : describe.skip;
@@ -31,7 +36,12 @@ suite('Meiping review staging PostgreSQL integration', () => {
       .returning({ id: staffAccounts.id });
     const [region] = await database!.db
       .insert(regions)
-      .values({ code: 'REVIEW-R-' + suffix, name: 'Test Region', countryCode: 'CN', countryName: 'China' })
+      .values({
+        code: 'REVIEW-R-' + suffix,
+        name: 'Test Region',
+        countryCode: 'CN',
+        countryName: 'China',
+      })
       .returning({ id: regions.id });
     const [store] = await database!.db
       .insert(stores)
@@ -57,7 +67,7 @@ suite('Meiping review staging PostgreSQL integration', () => {
     };
     const row: MeipingPreflightRow = {
       sourceRowNumber,
-      rawColumns: { '商品名称': '测试绘本' },
+      rawColumns: { 商品名称: '测试绘本' },
       sourceCategory: '图书',
       sourceCategoryType: 'BOOK',
       sourceIdentifiers: {
@@ -142,20 +152,29 @@ suite('Meiping review staging PostgreSQL integration', () => {
     await expect(review.saveDecision(session.id, storeId, 2, initial, audit)).rejects.toThrow(
       MeipingReviewError,
     );
-    const updated = await review.saveDecision(session.id, storeId, 2, {
-      sourceRowNumber: 2,
-      action: 'EXCLUDE',
-      reason: '待确认条码',
-      expectedVersion: 1,
-      expectedChecksum: checksum,
-    }, audit);
+    const updated = await review.saveDecision(
+      session.id,
+      storeId,
+      2,
+      {
+        sourceRowNumber: 2,
+        action: 'EXCLUDE',
+        reason: '待确认条码',
+        expectedVersion: 1,
+        expectedChecksum: checksum,
+      },
+      audit,
+    );
     expect(updated.version).toBe(2);
     const [stored] = await database!.db
       .select()
       .from(meipingReviewDecisions)
       .where(eq(meipingReviewDecisions.sessionId, session.id));
     expect(stored).toMatchObject({ action: 'EXCLUDE', countedQuantity: null, version: 2 });
-    expect((await database!.db.select().from(auditLogs).where(eq(auditLogs.resourceId, session.id))).length).toBe(3);
+    expect(
+      (await database!.db.select().from(auditLogs).where(eq(auditLogs.resourceId, session.id)))
+        .length,
+    ).toBe(3);
   });
 
   it('rejects mismatched store/checksum and review-blocked items', async () => {
@@ -165,28 +184,51 @@ suite('Meiping review staging PostgreSQL integration', () => {
     await expect(review.listRows(session.id, randomUUID(), 0, 10)).rejects.toThrow(
       MeipingReviewError,
     );
-    await expect(review.saveDecision(session.id, storeId, 2, {
-      sourceRowNumber: 2,
-      action: 'CREATE_DRAFT',
-      countedQuantity: 1,
-      expectedVersion: 0,
-      expectedChecksum: 'b'.repeat(64),
-    }, audit)).rejects.toThrow(MeipingReviewError);
+    await expect(
+      review.saveDecision(
+        session.id,
+        storeId,
+        2,
+        {
+          sourceRowNumber: 2,
+          action: 'CREATE_DRAFT',
+          countedQuantity: 1,
+          expectedVersion: 0,
+          expectedChecksum: 'b'.repeat(64),
+        },
+        audit,
+      ),
+    ).rejects.toThrow(MeipingReviewError);
     const blocked = { ...report, sourceChecksum: 'c'.repeat(64) };
-    blocked.rows = [{
-      ...report.rows[0]!,
-      disposition: 'REVIEW',
-      blockingIssues: [{
-        sourceRowNumber: 2, code: 'BARCODE_CONFLICT', severity: 'ERROR', message: 'Conflict',
-      }],
-    }];
+    blocked.rows = [
+      {
+        ...report.rows[0]!,
+        disposition: 'REVIEW',
+        blockingIssues: [
+          {
+            sourceRowNumber: 2,
+            code: 'BARCODE_CONFLICT',
+            severity: 'ERROR',
+            message: 'Conflict',
+          },
+        ],
+      },
+    ];
     const blockedSession = await review.createSession(blocked, audit);
-    await expect(review.saveDecision(blockedSession.id, storeId, 2, {
-      sourceRowNumber: 2,
-      action: 'CREATE_DRAFT',
-      countedQuantity: 1,
-      expectedVersion: 0,
-      expectedChecksum: blocked.sourceChecksum!,
-    }, audit)).rejects.toThrow(MeipingReviewError);
+    await expect(
+      review.saveDecision(
+        blockedSession.id,
+        storeId,
+        2,
+        {
+          sourceRowNumber: 2,
+          action: 'CREATE_DRAFT',
+          countedQuantity: 1,
+          expectedVersion: 0,
+          expectedChecksum: blocked.sourceChecksum,
+        },
+        audit,
+      ),
+    ).rejects.toThrow(MeipingReviewError);
   });
 });
