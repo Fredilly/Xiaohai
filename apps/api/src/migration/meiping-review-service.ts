@@ -1,6 +1,7 @@
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import {
   auditLogs,
+  meipingReviewCorrections,
   meipingReviewDecisions,
   meipingReviewSessions,
   type createDatabase,
@@ -24,6 +25,21 @@ export type MeipingReviewAuditContext = {
 export type MeipingSavedDecision = MeipingReviewDecision & {
   expectedVersion: number;
   expectedChecksum: string;
+};
+
+export type MeipingCorrectionFields = Partial<{
+  title: string;
+  author: string;
+  publisher: string;
+  barcode: string;
+  priceMinor: number;
+}>;
+
+export type MeipingCorrectionInput = {
+  expectedVersion: number;
+  expectedChecksum: string;
+  proposedFields: MeipingCorrectionFields;
+  reason: string;
 };
 
 export class MeipingReviewService {
@@ -178,6 +194,21 @@ export class MeipingReviewService {
               ),
             )
         : [];
+    const corrections =
+      rowNumbers.length > 0
+        ? await this.db
+            .select()
+            .from(meipingReviewCorrections)
+            .where(
+              and(
+                eq(meipingReviewCorrections.sessionId, id),
+                inArray(meipingReviewCorrections.sourceRowNumber, rowNumbers),
+              ),
+            )
+        : [];
+    const correctionsByRow = new Map(
+      corrections.map((item) => [item.sourceRowNumber, item]),
+    );
     const decisionsByRow = new Map(saved.map((item) => [item.sourceRowNumber, item]));
     return {
       sessionId: id,
@@ -197,7 +228,108 @@ export class MeipingReviewService {
         issueCodes: row.issues.map((issue) => issue.code),
         saleBlocked: row.saleBlocked.length > 0,
         decision: decisionsByRow.get(row.sourceRowNumber) ?? null,
+        correction: correctionsByRow.get(row.sourceRowNumber) ?? null,
       })),
+    };
+  }
+
+  /**
+   * Only stores a proposed fix for later independent verification. The original
+   * report, row disposition, matching gate and formal stock are never changed.
+   */
+  async saveCorrection(
+    id: string,
+    storeId: string,
+    sourceRowNumber: number,
+    input: MeipingCorrectionInput,
+    audit: MeipingReviewAuditContext,
+  ) {
+    const { session, report } = await this.load(id, storeId);
+    if (session.status !== 'DRAFT' || session.sourceChecksum !== input.expectedChecksum) {
+      throw new MeipingReviewError('CONFLICT');
+    }
+    if (!report.rows.some((row) => row.sourceRowNumber === sourceRowNumber)) {
+      throw new MeipingReviewError('INVALID_ROW');
+    }
+    const fields = input.proposedFields;
+    const keys = Object.keys(fields);
+    const allowed = ['title', 'author', 'publisher', 'barcode', 'priceMinor'];
+    if (
+      !Number.isSafeInteger(input.expectedVersion) ||
+      input.expectedVersion < 0 ||
+      keys.length === 0 ||
+      keys.some((key) => !allowed.includes(key)) ||
+      !input.reason.trim() ||
+      input.reason.length > 500
+    ) {
+      throw new MeipingReviewError('CONFLICT');
+    }
+    const clean: Record<string, string | number> = {};
+    for (const key of keys) {
+      const value = fields[key as keyof MeipingCorrectionFields];
+      if (key === 'priceMinor') {
+        if (typeof value !== 'number' || !Number.isInteger(value) || value < 0 || value > 2147483647) {
+          throw new MeipingReviewError('CONFLICT');
+        }
+        clean[key] = value;
+      } else {
+        const limit = key === 'title' ? 200 : key === 'barcode' ? 64 : 160;
+        if (typeof value !== 'string' || !value.trim() || value.trim().length > limit) {
+          throw new MeipingReviewError('CONFLICT');
+        }
+        const trimmed = value.trim();
+        if (key === 'barcode' && !/^[A-Za-z0-9-]{4,64}$/.test(trimmed)) {
+          throw new MeipingReviewError('CONFLICT');
+        }
+        clean[key] = trimmed;
+      }
+    }
+    const updated = await this.db.transaction(async (tx) => {
+      const values = {
+        proposedFields: clean,
+        reason: input.reason.trim(),
+        updatedByStaffAccountId: audit.actorStaffAccountId,
+        updatedAt: new Date(),
+      };
+      let result: { version: number } | undefined;
+      if (input.expectedVersion === 0) {
+        [result] = await tx
+          .insert(meipingReviewCorrections)
+          .values({ sessionId: id, sourceRowNumber, ...values })
+          .onConflictDoNothing()
+          .returning({ version: meipingReviewCorrections.version });
+      } else {
+        [result] = await tx
+          .update(meipingReviewCorrections)
+          .set({ ...values, version: sql.raw('"version" + 1') })
+          .where(and(
+            eq(meipingReviewCorrections.sessionId, id),
+            eq(meipingReviewCorrections.sourceRowNumber, sourceRowNumber),
+            eq(meipingReviewCorrections.version, input.expectedVersion),
+          ))
+          .returning({ version: meipingReviewCorrections.version });
+      }
+      if (!result) throw new MeipingReviewError('CONFLICT');
+      await tx.insert(auditLogs).values({
+        actorStaffAccountId: audit.actorStaffAccountId,
+        actionKey: 'meiping.review.correction.save',
+        resourceType: 'MEIPING_REVIEW_SESSION',
+        resourceId: id,
+        requestId: audit.requestId,
+        metadata: {
+          storeId, sourceRowNumber, version: result.version,
+          proposedFieldNames: Object.keys(clean),
+          // Never log raw proposed values, barcode, or reason in audit metadata.
+        },
+      });
+      return result;
+    });
+    return {
+      sourceRowNumber,
+      version: updated.version,
+      status: 'PENDING_VERIFICATION' as const,
+      approved: false as const,
+      catalogOrInventoryWritten: false as const,
     };
   }
 
