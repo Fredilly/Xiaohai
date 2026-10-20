@@ -40,6 +40,8 @@ import { registerInventoryRoutes } from './inventory/inventory-routes.js';
 import { InventoryOperationsService } from './inventory/inventory-operations-service.js';
 import { registerInventoryOperationsRoutes } from './inventory/inventory-operations-routes.js';
 import { registerMeipingXlsRoutes } from './migration/meiping-xls-routes.js';
+import { MeipingReviewService } from './migration/meiping-review-service.js';
+import { registerMeipingReviewRoutes } from './migration/meiping-review-routes.js';
 import { RentalService } from './rental/rental-service.js';
 import { registerRentalRoutes } from './rental/rental-routes.js';
 import { FulfillmentService } from './fulfillment/fulfillment-service.js';
@@ -124,6 +126,13 @@ registerStoreRoutes(app, { stores, staffAuthorization });
 registerInventoryRoutes(app, { inventory: new InventorySearchService(db) });
 registerInventoryOperationsRoutes(app, { operations: inventory, staffAuthorization });
 registerMeipingXlsRoutes(app, { staffAuthorization, stores, inventory, db });
+registerMeipingReviewRoutes(app, {
+  review: new MeipingReviewService(db),
+  staffAuthorization,
+  stores,
+  inventory,
+  db,
+});
 const pickupCodeSecret = config.PICKUP_CODE_SECRET ?? config.STAFF_SESSION_SECRET;
 registerRentalRoutes(app, {
   rental: new RentalService(db, config.RENTAL_LOAN_DAYS, pickupCodeSecret),
