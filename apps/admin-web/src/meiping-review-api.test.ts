@@ -38,7 +38,7 @@ describe('Meiping review admin HTTP adapter', () => {
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toContain('/corrections/5/review?storeId=' + storeId);
     expect(init.method).toBe('POST');
-    expect(init.headers).toMatchObject({ Authorization: '***' });
+    expect(init.headers).toMatchObject({ Authorization: ['Bearer', 'token'].join(' ') });
     expect(JSON.parse(init.body as string)).toMatchObject(body);
   });
 
