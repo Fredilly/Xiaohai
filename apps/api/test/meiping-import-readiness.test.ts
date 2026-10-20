@@ -10,7 +10,10 @@ import type {
 
 const checksum = 'a'.repeat(64);
 
-function row(sourceRowNumber: number, overrides: Partial<MeipingPreflightRow> = {}): MeipingPreflightRow {
+function row(
+  sourceRowNumber: number,
+  overrides: Partial<MeipingPreflightRow> = {},
+): MeipingPreflightRow {
   const warning = {
     code: 'AUTHOR_MISSING',
     severity: 'WARNING' as const,
@@ -103,14 +106,14 @@ describe('Meiping review planning gate: no database writes', () => {
       sourceRowNumber: 2,
       message: '零价',
     };
-    const result = plan(
-      [row(2, {
-        normalized: { title: '绘本', author: null, publisher: null, priceMinor: 0 },
-        issues: [warning],
-        saleBlocked: [warning],
-      })],
-      [{ sourceRowNumber: 2, action: 'CREATE_DRAFT', countedQuantity: 0 }],
-    );
+    const zeroPriceRow = row(2, {
+      normalized: { title: '绘本', author: null, publisher: null, priceMinor: 0 },
+      issues: [warning],
+      saleBlocked: [warning],
+    });
+    const result = plan([zeroPriceRow], [
+      { sourceRowNumber: 2, action: 'CREATE_DRAFT', countedQuantity: 0 },
+    ]);
     expect(result.status).toBe('REVIEW_INPUT_COMPLETE');
     expect(result.draftCatalogRows[0]).toMatchObject({
       saleBlocked: true,
@@ -145,12 +148,14 @@ describe('Meiping review planning gate: no database writes', () => {
 
   it('requires a reason to exclude blocked source rows', () => {
     const blocked = row(3, { disposition: 'REVIEW' });
-    expect(plan([blocked], [
-      { sourceRowNumber: 3, action: 'EXCLUDE', reason: '' },
-    ]).status).toBe('NEEDS_REVIEW');
-    const result = plan([blocked], [
-      { sourceRowNumber: 3, action: 'EXCLUDE', reason: '待人工核对条码' },
-    ]);
+    const noReason: MeipingReviewDecision = { sourceRowNumber: 3, action: 'EXCLUDE', reason: '' };
+    expect(plan([blocked], [noReason]).status).toBe('NEEDS_REVIEW');
+    const exclusion: MeipingReviewDecision = {
+      sourceRowNumber: 3,
+      action: 'EXCLUDE',
+      reason: '待人工核对条码',
+    };
+    const result = plan([blocked], [exclusion]);
     expect(result.status).toBe('REVIEW_INPUT_COMPLETE');
     expect(result.excludedRowNumbers).toEqual([3]);
   });
@@ -163,16 +168,19 @@ describe('Meiping review planning gate: no database writes', () => {
     ]);
     expect(result.status).toBe('NEEDS_REVIEW');
     expect(result.countedQuantityTotal).toBeNull();
-    expect(result.issues.map((issue) => issue.code)).toEqual(
-      expect.arrayContaining(['DECISION_REQUIRED', 'DUPLICATE_DECISION', 'UNKNOWN_DECISION_ROW']),
-    );
+    expect(result.issues.some((issue) => issue.code === 'DECISION_REQUIRED')).toBe(true);
+    expect(result.issues.some((issue) => issue.code === 'DUPLICATE_DECISION')).toBe(true);
+    expect(result.issues.some((issue) => issue.code === 'UNKNOWN_DECISION_ROW')).toBe(true);
   });
 
   it('does not accept missing, fractional, negative or out-of-range physical counts', () => {
     for (const countedQuantity of [undefined, -1, 1.5, Number.MAX_SAFE_INTEGER]) {
-      const result = plan([row(2)], [
-        { sourceRowNumber: 2, action: 'CREATE_DRAFT', countedQuantity } as MeipingReviewDecision,
-      ]);
+      const proposed = {
+        sourceRowNumber: 2,
+        action: 'CREATE_DRAFT',
+        countedQuantity,
+      } as MeipingReviewDecision;
+      const result = plan([row(2)], [proposed]);
       expect(result.issues).toContainEqual({
         code: 'PHYSICAL_COUNT_REQUIRED',
         sourceRowNumber: 2,
@@ -187,9 +195,9 @@ describe('Meiping review planning gate: no database writes', () => {
       decisions: [{ sourceRowNumber: 2, action: 'CREATE_DRAFT', countedQuantity: 4 }],
     });
     expect(result.status).toBe('NEEDS_REVIEW');
-    expect(result.issues.map((issue) => issue.code)).toEqual(
-      expect.arrayContaining(['SOURCE_CHECKSUM_MISMATCH', 'STORE_MISMATCH', 'DUPLICATE_SOURCE_ROW']),
-    );
+    expect(result.issues.some((issue) => issue.code === 'SOURCE_CHECKSUM_MISMATCH')).toBe(true);
+    expect(result.issues.some((issue) => issue.code === 'STORE_MISMATCH')).toBe(true);
+    expect(result.issues.some((issue) => issue.code === 'DUPLICATE_SOURCE_ROW')).toBe(true);
     expect(result.countedQuantityTotal).toBeNull();
   });
 
