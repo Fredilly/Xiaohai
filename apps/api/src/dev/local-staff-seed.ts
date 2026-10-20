@@ -49,7 +49,10 @@ const permissionDefinitions: PermissionDefinition[] = [
   { key: 'inventory.receive', displayName: '采购入库' },
   { key: 'inventory.stocktake', displayName: '库存盘点' },
   { key: 'inventory.transfer', displayName: '库存调拨' },
-  { key: 'meiping.correction.review', displayName: 'Independent Meiping correction proposal review' },
+  {
+    key: 'meiping.correction.review',
+    displayName: 'Independent Meiping correction proposal review',
+  },
   { key: 'orders.read', displayName: 'Read orders' },
   { key: 'payments.read', displayName: 'Read payments' },
   { key: 'payments.reconcile', displayName: 'Reconcile payments' },

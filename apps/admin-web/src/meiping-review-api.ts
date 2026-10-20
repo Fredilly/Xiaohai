@@ -301,8 +301,13 @@ export async function saveMeipingCorrectionReview(
   body: CorrectionReviewInput,
 ): Promise<{ correctionVersion: number; verdict: CorrectionReview['verdict'] }> {
   const response = await fetch(
-    root + '/' + encodeURIComponent(sessionId) +
-      '/corrections/' + sourceRowNumber + '/review' + query(storeId),
+    root +
+      '/' +
+      encodeURIComponent(sessionId) +
+      '/corrections/' +
+      sourceRowNumber +
+      '/review' +
+      query(storeId),
     {
       method: 'POST',
       headers: { ...headers(token), 'content-type': 'application/json' },
@@ -311,14 +316,20 @@ export async function saveMeipingCorrectionReview(
   );
   if (!response.ok) throw await parseError(response);
   const result: unknown = await response.json();
-  if (!object(result) || result.sourceRowNumber !== sourceRowNumber ||
-      result.correctionVersion !== body.expectedCorrectionVersion ||
-      (result.verdict !== 'ACCEPTED' && result.verdict !== 'REJECTED') ||
-      result.approved !== false || result.catalogOrInventoryWritten !== false) {
+  if (
+    !object(result) ||
+    result.sourceRowNumber !== sourceRowNumber ||
+    result.correctionVersion !== body.expectedCorrectionVersion ||
+    (result.verdict !== 'ACCEPTED' && result.verdict !== 'REJECTED') ||
+    result.approved !== false ||
+    result.catalogOrInventoryWritten !== false
+  ) {
     throw new Error('INVALID_CORRECTION_REVIEW_RESPONSE');
   }
-  return { correctionVersion: result.correctionVersion as number,
-    verdict: result.verdict as CorrectionReview['verdict'] };
+  return {
+    correctionVersion: result.correctionVersion,
+    verdict: result.verdict,
+  };
 }
 
 export async function saveMeipingReviewDecision(

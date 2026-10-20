@@ -44,12 +44,14 @@ const correctionBody = z
   })
   .strict();
 
-const correctionReviewBody = z.object({
-  expectedChecksum: checksum,
-  expectedCorrectionVersion: z.number().int().positive(),
-  verdict: z.enum(['ACCEPTED', 'REJECTED']),
-  reason: z.string().trim().min(1).max(500),
-}).strict();
+const correctionReviewBody = z
+  .object({
+    expectedChecksum: checksum,
+    expectedCorrectionVersion: z.number().int().positive(),
+    verdict: z.enum(['ACCEPTED', 'REJECTED']),
+    reason: z.string().trim().min(1).max(500),
+  })
+  .strict();
 
 const decisionBody = z.discriminatedUnion('action', [
   z
@@ -218,8 +220,11 @@ export function registerMeipingReviewRoutes(
       try {
         const reviewer = await authorizeIndependentReviewer(request, query.data.storeId);
         return await options.review.reviewCorrection(
-          params.data.id, query.data.storeId, params.data.sourceRowNumber,
-          body.data, reviewer,
+          params.data.id,
+          query.data.storeId,
+          params.data.sourceRowNumber,
+          body.data,
+          reviewer,
         );
       } catch (error) {
         return fail(request, reply, error);
@@ -265,9 +270,14 @@ function fail(request: FastifyRequest, reply: FastifyReply, error: unknown) {
     });
   }
   if (error instanceof MeipingReviewError) {
-    const status = error.code === 'NOT_FOUND' ? 404 :
-      error.code === 'SELF_REVIEW_FORBIDDEN' ? 403 :
-      error.code === 'CONFLICT' || error.code === 'BARCODE_NOT_VERIFIED' ? 409 : 400;
+    const status =
+      error.code === 'NOT_FOUND'
+        ? 404
+        : error.code === 'SELF_REVIEW_FORBIDDEN'
+          ? 403
+          : error.code === 'CONFLICT' || error.code === 'BARCODE_NOT_VERIFIED'
+            ? 409
+            : 400;
     return reply.status(status).send({
       error: { code: error.code, message: 'Review not accepted', requestId: request.id },
     });

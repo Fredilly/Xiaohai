@@ -116,8 +116,14 @@ export const meipingCorrectionReviews = pgTable(
       name: 'meiping_correction_reviews_pk',
     }),
     check('meiping_correction_reviews_source_row_positive', sql.raw('"source_row_number" > 0')),
-    check('meiping_correction_reviews_correction_version_positive', sql.raw('"correction_version" > 0')),
-    check('meiping_correction_reviews_verdict_check', sql.raw('"verdict" IN (\'ACCEPTED\',\'REJECTED\')')),
+    check(
+      'meiping_correction_reviews_correction_version_positive',
+      sql.raw('"correction_version" > 0'),
+    ),
+    check(
+      'meiping_correction_reviews_verdict_check',
+      sql.raw("\"verdict\" IN ('ACCEPTED','REJECTED')"),
+    ),
     check('meiping_correction_reviews_reason_check', sql.raw('length(trim("reason")) > 0')),
     index('meiping_correction_reviews_session_idx').on(t.sessionId),
   ],

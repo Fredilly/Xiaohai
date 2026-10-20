@@ -254,7 +254,9 @@ function CorrectionIndependentReview({
       {item.correctionReview ? (
         <p>
           当前纠错建议版本 {item.correction.version}：
-          {item.correctionReview.verdict === 'ACCEPTED' ? '已采纳建议（待后续建档审批）' : '建议已驳回'}
+          {item.correctionReview.verdict === 'ACCEPTED'
+            ? '已采纳建议（待后续建档审批）'
+            : '建议已驳回'}
           ，复核原因：{item.correctionReview.reason}
         </p>
       ) : (
@@ -264,31 +266,49 @@ function CorrectionIndependentReview({
             <>
               <label>
                 复核结果
-                <select value={verdict} disabled={disabled}
-                  onChange={(event) => setVerdict(event.target.value as 'ACCEPTED' | 'REJECTED')}>
+                <select
+                  value={verdict}
+                  disabled={disabled}
+                  onChange={(event) => setVerdict(event.target.value as 'ACCEPTED' | 'REJECTED')}
+                >
                   <option value="REJECTED">驳回建议</option>
                   <option value="ACCEPTED">采纳建议（不入库）</option>
                 </select>
               </label>
               <label>
                 复核原因（必填）
-                <textarea value={reason} maxLength={500} disabled={disabled}
+                <textarea
+                  value={reason}
+                  maxLength={500}
+                  disabled={disabled}
                   onChange={(event) => setReason(event.target.value)}
-                  placeholder="记录实体书复核情况与条码核对依据" />
+                  placeholder="记录实体书复核情况与条码核对依据"
+                />
               </label>
-              {error && <small className="form-error" role="alert">{error}</small>}
-              <button disabled={disabled} onClick={() => {
-                const note = reason.trim();
-                if (!note || note.length > 500) {
-                  setError('请填写复核原因（1 至 500 字）。');
-                  return;
-                }
-                setError('');
-                void onSave(item.sourceRowNumber, {
-                  verdict, reason: note, expectedChecksum: checksum,
-                  expectedCorrectionVersion: item.correction!.version,
-                });
-              }}>提交独立复核结果（不可撤销）</button>
+              {error && (
+                <small className="form-error" role="alert">
+                  {error}
+                </small>
+              )}
+              <button
+                disabled={disabled}
+                onClick={() => {
+                  const note = reason.trim();
+                  if (!note || note.length > 500) {
+                    setError('请填写复核原因（1 至 500 字）。');
+                    return;
+                  }
+                  setError('');
+                  void onSave(item.sourceRowNumber, {
+                    verdict,
+                    reason: note,
+                    expectedChecksum: checksum,
+                    expectedCorrectionVersion: item.correction!.version,
+                  });
+                }}
+              >
+                提交独立复核结果（不可撤销）
+              </button>
             </>
           ) : (
             <p>当前账号没有 meiping.correction.review 独立复核权限。</p>
@@ -328,7 +348,8 @@ export function MeipingReviewManager({
     restoredSession ? '已恢复既有审核草稿，未修改商品或库存。' : '',
   );
   const checksum = restoredSession?.sourceChecksum ?? report?.sourceChecksum ?? '';
-  const busy = loading || savingRow !== null || savingCorrection !== null || reviewingCorrection !== null;
+  const busy =
+    loading || savingRow !== null || savingCorrection !== null || reviewingCorrection !== null;
 
   useEffect(() => {
     if (!session) return;
@@ -583,7 +604,12 @@ export function MeipingReviewManager({
                         onSave={saveCorrection}
                       />
                       <CorrectionIndependentReview
-                        key={'independent:' + item.sourceRowNumber + ':' + (item.correction?.version ?? 0)}
+                        key={
+                          'independent:' +
+                          item.sourceRowNumber +
+                          ':' +
+                          (item.correction?.version ?? 0)
+                        }
                         item={item}
                         checksum={session.sourceChecksum}
                         enabled={Boolean(canVerifyCorrection)}
