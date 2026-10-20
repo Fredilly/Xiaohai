@@ -105,7 +105,9 @@ export class MeipingReviewService {
         createdAt: meipingReviewSessions.createdAt,
       })
       .from(meipingReviewSessions)
-      .where(and(eq(meipingReviewSessions.storeId, storeId), eq(meipingReviewSessions.status, 'DRAFT')))
+      .where(
+        and(eq(meipingReviewSessions.storeId, storeId), eq(meipingReviewSessions.status, 'DRAFT')),
+      )
       .orderBy(desc(meipingReviewSessions.createdAt), desc(meipingReviewSessions.id))
       .limit(limit + 1)
       .offset(offset);

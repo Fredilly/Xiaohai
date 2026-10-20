@@ -12,17 +12,27 @@ const sessionId = '22222222-2222-4222-8222-222222222222';
 const checksum = 'a'.repeat(64);
 
 describe('Meiping review admin HTTP adapter', () => {
-
   it('lists only authorized-store draft summaries without requiring Excel or leaking rows', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       json: vi.fn().mockResolvedValue({
-        storeId, offset: 0, limit: 20, hasMore: false,
-        items: [{
-          id: sessionId, storeId, status: 'DRAFT', sourceChecksum: checksum,
-          totalRows: 6, savedDecisions: 3, createdAt: '2026-10-20T09:00:00.000Z',
-          approved: false, catalogOrInventoryWritten: false,
-        }],
+        storeId,
+        offset: 0,
+        limit: 20,
+        hasMore: false,
+        items: [
+          {
+            id: sessionId,
+            storeId,
+            status: 'DRAFT',
+            sourceChecksum: checksum,
+            totalRows: 6,
+            savedDecisions: 3,
+            createdAt: '2026-10-20T09:00:00.000Z',
+            approved: false,
+            catalogOrInventoryWritten: false,
+          },
+        ],
       }),
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -41,9 +51,15 @@ describe('Meiping review admin HTTP adapter', () => {
 
   it('fails closed on foreign-store, invalid status, or approved review summaries', async () => {
     const safe = {
-      id: sessionId, storeId, status: 'DRAFT', sourceChecksum: checksum,
-      totalRows: 6, savedDecisions: 1, createdAt: '2026-10-20T09:00:00.000Z',
-      approved: false, catalogOrInventoryWritten: false,
+      id: sessionId,
+      storeId,
+      status: 'DRAFT',
+      sourceChecksum: checksum,
+      totalRows: 6,
+      savedDecisions: 1,
+      createdAt: '2026-10-20T09:00:00.000Z',
+      approved: false,
+      catalogOrInventoryWritten: false,
     };
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
@@ -56,11 +72,16 @@ describe('Meiping review admin HTTP adapter', () => {
       fetchMock.mockResolvedValueOnce({
         ok: true,
         json: vi.fn().mockResolvedValue({
-          storeId, offset: 0, limit: 20, hasMore: false, items: [invalid],
+          storeId,
+          offset: 0,
+          limit: 20,
+          hasMore: false,
+          items: [invalid],
         }),
       });
-      await expect(listMeipingReviewSessions('token', storeId))
-        .rejects.toThrow('INVALID_REVIEW_SESSION_LIST_RESPONSE');
+      await expect(listMeipingReviewSessions('token', storeId)).rejects.toThrow(
+        'INVALID_REVIEW_SESSION_LIST_RESPONSE',
+      );
     }
   });
 

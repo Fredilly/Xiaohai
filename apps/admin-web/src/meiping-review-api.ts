@@ -142,24 +142,47 @@ function assertPage(value: unknown): ReviewPage {
   return value as ReviewPage;
 }
 export async function listMeipingReviewSessions(
-  token: string, storeId: string, offset = 0, limit = 20,
+  token: string,
+  storeId: string,
+  offset = 0,
+  limit = 20,
 ): Promise<ReviewSessionList> {
-  const response = await fetch(root + query(storeId, { offset: String(offset), limit: String(limit) }), {
-    headers: headers(token),
-  });
+  const response = await fetch(
+    root + query(storeId, { offset: String(offset), limit: String(limit) }),
+    {
+      headers: headers(token),
+    },
+  );
   if (!response.ok) throw await parseError(response);
   const result: unknown = await response.json();
-  if (!object(result) || result.storeId !== storeId || result.offset !== offset ||
-      result.limit !== limit || typeof result.hasMore !== 'boolean' ||
-      !Array.isArray(result.items)) throw new Error('INVALID_REVIEW_SESSION_LIST_RESPONSE');
+  if (
+    !object(result) ||
+    result.storeId !== storeId ||
+    result.offset !== offset ||
+    result.limit !== limit ||
+    typeof result.hasMore !== 'boolean' ||
+    !Array.isArray(result.items)
+  )
+    throw new Error('INVALID_REVIEW_SESSION_LIST_RESPONSE');
   for (const item of result.items) {
-    if (!object(item) || typeof item.id !== 'string' || item.storeId !== storeId ||
-        item.status !== 'DRAFT' || typeof item.sourceChecksum !== 'string' ||
-        !/^[a-f0-9]{64}$/i.test(item.sourceChecksum) ||
-        !Number.isSafeInteger(item.totalRows) || item.totalRows < 1 ||
-        !Number.isSafeInteger(item.savedDecisions) || item.savedDecisions < 0 ||
-        item.savedDecisions > item.totalRows || typeof item.createdAt !== 'string' ||
-        item.approved !== false || item.catalogOrInventoryWritten !== false) {
+    if (
+      !object(item) ||
+      typeof item.id !== 'string' ||
+      item.storeId !== storeId ||
+      item.status !== 'DRAFT' ||
+      typeof item.sourceChecksum !== 'string' ||
+      !/^[a-f0-9]{64}$/i.test(item.sourceChecksum) ||
+      typeof item.totalRows !== 'number' ||
+      !Number.isSafeInteger(item.totalRows) ||
+      item.totalRows < 1 ||
+      typeof item.savedDecisions !== 'number' ||
+      !Number.isSafeInteger(item.savedDecisions) ||
+      item.savedDecisions < 0 ||
+      item.savedDecisions > item.totalRows ||
+      typeof item.createdAt !== 'string' ||
+      item.approved !== false ||
+      item.catalogOrInventoryWritten !== false
+    ) {
       throw new Error('INVALID_REVIEW_SESSION_LIST_RESPONSE');
     }
   }

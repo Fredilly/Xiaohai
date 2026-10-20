@@ -114,7 +114,6 @@ suite('Meiping review staging PostgreSQL integration', () => {
     return { actorId: actor!.id, storeId: store!.id, report };
   }
 
-
   it('lists only current-store drafts with saved-decision counts, without workbook data or writes', async () => {
     const first = await fixture();
     const second = await fixture();
@@ -126,16 +125,29 @@ suite('Meiping review staging PostgreSQL integration', () => {
     ]);
     const a = await review.createSession(first.report, auditA);
     const b = await review.createSession(second.report, auditB);
-    await review.saveDecision(a.id, first.storeId, 2, {
-      action: 'CREATE_DRAFT', sourceRowNumber: 2, countedQuantity: 0,
-      expectedVersion: 0, expectedChecksum: checksum,
-    }, auditA);
+    await review.saveDecision(
+      a.id,
+      first.storeId,
+      2,
+      {
+        action: 'CREATE_DRAFT',
+        sourceRowNumber: 2,
+        countedQuantity: 0,
+        expectedVersion: 0,
+        expectedChecksum: checksum,
+      },
+      auditA,
+    );
     const listA = await review.listSessions(first.storeId, 0, 20);
     expect(listA).toMatchObject({ storeId: first.storeId, offset: 0, limit: 20, hasMore: false });
     expect(listA.items).toHaveLength(1);
     expect(listA.items[0]).toMatchObject({
-      id: a.id, status: 'DRAFT', savedDecisions: 1, totalRows: 1,
-      approved: false, catalogOrInventoryWritten: false,
+      id: a.id,
+      status: 'DRAFT',
+      savedDecisions: 1,
+      totalRows: 1,
+      approved: false,
+      catalogOrInventoryWritten: false,
     });
     expect(JSON.stringify(listA)).not.toContain('rawColumns');
     expect(JSON.stringify(listA)).not.toContain('测试绘本');
