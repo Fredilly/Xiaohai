@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { StaffMeResponse } from '@xiaohai/contracts';
 import { MEIPING_PREFLIGHT_MAX_BYTES, MEIPING_PREFLIGHT_MAX_MIB } from '@xiaohai/contracts/meiping';
 import { loadHqStores } from './hq-operations-api';
+import { MeipingReviewManager } from './meiping-review-manager';
 import {
   downloadMeipingExceptions,
   MeipingPreflightApiError,
@@ -412,9 +413,19 @@ export function MeipingPreflightManager({ token, me }: { token: string; me: Staf
               </div>
             )}
           </section>
+          {reportIsCurrent && file && (
+            <MeipingReviewManager
+              key={storeId + ':' + (report.sourceChecksum ?? '')}
+              token={token}
+              storeId={storeId}
+              file={file}
+              report={report}
+              canReview={permissions.has('inventory.stocktake')}
+            />
+          )}
           <section className="panel meiping-future">
-            <span className="badge">后续位置</span>
-            <h3>人工审核与正式入库</h3>
+            <span className="badge">尚未开放</span>
+            <h3>正式入库与独立审批</h3>
             <p>
               当前只生成预检查结果。管理员审核匹配、异常和实际盘点数量后，才可在后续版本进入带审计和幂等保护的
               INITIAL_MIGRATION 入库流程。
