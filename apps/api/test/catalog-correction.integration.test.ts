@@ -150,7 +150,7 @@ suite('daily catalog corrections against disposable PostgreSQL', () => {
     }
 
     const proposer = await createStaff(
-      ['stores.read', 'inventory.read', 'inventory.stocktake'],
+      ['stores.read', 'inventory.read', 'inventory.stocktake', 'catalog.correction.review'],
       storeA!.id,
     );
     const reviewer = await createStaff(['stores.read', 'catalog.correction.review'], storeA!.id);
