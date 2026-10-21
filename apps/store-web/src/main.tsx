@@ -8,6 +8,7 @@ import { loadStaffStores } from './stores-api';
 import { visibleStoreModules } from './mock-data';
 import { BookSearchPanel } from './book-search-panel';
 import { StoreCatalogPanel } from './store-catalog-panel';
+import { CatalogCorrectionPanel } from './catalog-correction-panel';
 import { InventoryPanel } from './inventory-panel';
 import { RentalPanel } from './rental-panel';
 import { FulfillmentPanel } from './fulfillment-panel';
@@ -194,6 +195,18 @@ function Shell({
               token={token}
               storeId={currentStore.id}
               storeName={currentStore.name}
+            />
+          ) : (
+            <StoreRequired />
+          )
+        ) : current === 'catalog-corrections' ? (
+          currentStore ? (
+            <CatalogCorrectionPanel
+              key={currentStore.id}
+              token={token}
+              storeId={currentStore.id}
+              storeName={currentStore.name}
+              permissions={me.permissions}
             />
           ) : (
             <StoreRequired />

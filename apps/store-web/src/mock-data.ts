@@ -3,6 +3,7 @@ export type StoreModule = {
     | 'dashboard'
     | 'books'
     | 'catalog'
+    | 'catalog-corrections'
     | 'inventory'
     | 'rental'
     | 'orders'
@@ -35,6 +36,13 @@ export const storeModules: StoreModule[] = [
     description: '查看本店已建立库存关联的图书和商品资料（只读）',
     status: '日常商品 · 门店只读',
     requiredPermission: 'inventory.read',
+  },
+  {
+    key: 'catalog-corrections',
+    label: '商品纠错申请',
+    description: '日常商品资料纠错与独立复核（采纳不生效）',
+    status: '日常商品 · 申请与复核',
+    requiredPermission: 'stores.read',
   },
   {
     key: 'inventory',
@@ -81,8 +89,12 @@ export const storeModules: StoreModule[] = [
 
 export function visibleStoreModules(permissions: readonly string[]): StoreModule[] {
   return storeModules.filter((item) =>
-    item.key === 'catalog'
-      ? permissions.includes('inventory.read') && permissions.includes('stores.read')
+    item.key === 'catalog-corrections'
+      ? permissions.includes('stores.read') &&
+        ((permissions.includes('inventory.read') && permissions.includes('inventory.stocktake')) ||
+          permissions.includes('catalog.correction.review'))
+      : item.key === 'catalog'
+        ? permissions.includes('inventory.read') && permissions.includes('stores.read')
       : item.key === 'meiping'
         ? (permissions.includes('inventory.receive') &&
             permissions.includes('inventory.stocktake')) ||
