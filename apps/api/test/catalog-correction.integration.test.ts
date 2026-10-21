@@ -41,10 +41,7 @@ suite('daily catalog corrections against disposable PostgreSQL', () => {
     'catalog-correction-isolated-test-secret-long-enough-1234',
     300,
   );
-  const auth = new StaffAuthorizationService(
-    new DrizzleStaffAuthorizationRepository(db),
-    sessions,
-  );
+  const auth = new StaffAuthorizationService(new DrizzleStaffAuthorizationRepository(db), sessions);
   const network = new StoreNetworkService(db);
   const corrections = new CatalogCorrectionService(db);
   const suffix = randomUUID().slice(0, 8);
@@ -54,62 +51,89 @@ suite('daily catalog corrections against disposable PostgreSQL', () => {
   });
 
   async function fixture() {
-    const [region] = await db.insert(regions).values({
-      code: 'CC-R-' + suffix,
-      name: 'Correction Test Region',
-      countryCode: 'CN',
-      countryName: 'China',
-    }).returning();
-
-    const [storeA, storeB] = await db.insert(stores).values(
-      ['A', 'B'].map((name) => ({
-        code: 'CC-S-' + name + '-' + suffix,
-        name: 'Correction Test Store ' + name,
-        regionId: region!.id,
+    const [region] = await db
+      .insert(regions)
+      .values({
+        code: 'CC-R-' + suffix,
+        name: 'Correction Test Region',
         countryCode: 'CN',
         countryName: 'China',
-        city: 'Chengdu',
-        timezone: 'Asia/Shanghai',
-        addressLine: name,
-        latitude: 30,
-        longitude: 104,
-      })),
-    ).returning();
+      })
+      .returning();
 
-    const [bookA, bookB] = await db.insert(books).values([
-      { title: 'Original Book A', author: 'Author A' },
-      { title: 'Original Book B', author: 'Author B' },
-    ]).returning();
-    const [editionA, editionB] = await db.insert(bookEditions).values([
-      { bookId: bookA!.id, isbn: '9780000000001', publisher: 'Publisher A' },
-      { bookId: bookB!.id, isbn: '9780000000002', publisher: 'Publisher B' },
-    ]).returning();
-    const [productA, productB] = await db.insert(products).values([
-      { bookEditionId: editionA!.id, name: 'Test Product A' },
-      { bookEditionId: editionB!.id, name: 'Test Product B' },
-    ]).returning();
-    const [skuA, skuB] = await db.insert(skus).values([
-      { productId: productA!.id, code: 'CC-A-' + suffix, name: 'A', priceMinor: 1500 },
-      { productId: productB!.id, code: 'CC-B-' + suffix, name: 'B', priceMinor: 2000 },
-    ]).returning();
+    const [storeA, storeB] = await db
+      .insert(stores)
+      .values(
+        ['A', 'B'].map((name) => ({
+          code: 'CC-S-' + name + '-' + suffix,
+          name: 'Correction Test Store ' + name,
+          regionId: region!.id,
+          countryCode: 'CN',
+          countryName: 'China',
+          city: 'Chengdu',
+          timezone: 'Asia/Shanghai',
+          addressLine: name,
+          latitude: 30,
+          longitude: 104,
+        })),
+      )
+      .returning();
+
+    const [bookA, bookB] = await db
+      .insert(books)
+      .values([
+        { title: 'Original Book A', author: 'Author A' },
+        { title: 'Original Book B', author: 'Author B' },
+      ])
+      .returning();
+    const [editionA, editionB] = await db
+      .insert(bookEditions)
+      .values([
+        { bookId: bookA!.id, isbn: '9780000000001', publisher: 'Publisher A' },
+        { bookId: bookB!.id, isbn: '9780000000002', publisher: 'Publisher B' },
+      ])
+      .returning();
+    const [productA, productB] = await db
+      .insert(products)
+      .values([
+        { bookEditionId: editionA!.id, name: 'Test Product A' },
+        { bookEditionId: editionB!.id, name: 'Test Product B' },
+      ])
+      .returning();
+    const [skuA, skuB] = await db
+      .insert(skus)
+      .values([
+        { productId: productA!.id, code: 'CC-A-' + suffix, name: 'A', priceMinor: 1500 },
+        { productId: productB!.id, code: 'CC-B-' + suffix, name: 'B', priceMinor: 2000 },
+      ])
+      .returning();
     await db.insert(storeInventory).values([
       { storeId: storeA!.id, skuId: skuA!.id, onHand: 5, version: 2 },
       { storeId: storeB!.id, skuId: skuB!.id, onHand: 1, version: 1 },
     ]);
 
     async function createStaff(keys: string[], storeId: string) {
-      const [actor] = await db.insert(staffAccounts).values({
-        loginIdentifier: 'cc-' + randomUUID() + '@example.com',
-        passwordHash: 'test-only',
-      }).returning();
-      const [role] = await db.insert(roles).values({
-        key: 'cc-' + randomUUID(),
-        displayName: 'Catalog Correction Test',
-      }).returning();
+      const [actor] = await db
+        .insert(staffAccounts)
+        .values({
+          loginIdentifier: 'cc-' + randomUUID() + '@example.com',
+          passwordHash: 'test-only',
+        })
+        .returning();
+      const [role] = await db
+        .insert(roles)
+        .values({
+          key: 'cc-' + randomUUID(),
+          displayName: 'Catalog Correction Test',
+        })
+        .returning();
       for (const key of keys) {
         await db.insert(permissions).values({ key, displayName: key }).onConflictDoNothing();
-        const [permission] = await db.select({ id: permissions.id })
-          .from(permissions).where(eq(permissions.key, key)).limit(1);
+        const [permission] = await db
+          .select({ id: permissions.id })
+          .from(permissions)
+          .where(eq(permissions.key, key))
+          .limit(1);
         await db.insert(rolePermissions).values({ roleId: role!.id, permissionId: permission!.id });
       }
       await db.insert(staffRoles).values({ staffAccountId: actor!.id, roleId: role!.id });
@@ -125,10 +149,7 @@ suite('daily catalog corrections against disposable PostgreSQL', () => {
       ['stores.read', 'inventory.read', 'inventory.stocktake'],
       storeA!.id,
     );
-    const reviewer = await createStaff(
-      ['stores.read', 'catalog.correction.review'],
-      storeA!.id,
-    );
+    const reviewer = await createStaff(['stores.read', 'catalog.correction.review'], storeA!.id);
     const foreignReviewer = await createStaff(
       ['stores.read', 'catalog.correction.review'],
       storeB!.id,
@@ -137,26 +158,21 @@ suite('daily catalog corrections against disposable PostgreSQL', () => {
     const cleanup = async () => {
       const staffIds = [proposer.id, reviewer.id, foreignReviewer.id];
       const roleIds = [proposer.roleId, reviewer.roleId, foreignReviewer.roleId];
-      await db.delete(catalogCorrectionRequests).where(inArray(
-        catalogCorrectionRequests.storeId,
-        [storeA!.id, storeB!.id],
-      ));
+      await db
+        .delete(catalogCorrectionRequests)
+        .where(inArray(catalogCorrectionRequests.storeId, [storeA!.id, storeB!.id]));
       await db.delete(auditLogs).where(inArray(auditLogs.actorStaffAccountId, staffIds));
       await db.delete(staffDataScopes).where(inArray(staffDataScopes.staffAccountId, staffIds));
       await db.delete(staffRoles).where(inArray(staffRoles.staffAccountId, staffIds));
       await db.delete(rolePermissions).where(inArray(rolePermissions.roleId, roleIds));
       await db.delete(roles).where(inArray(roles.id, roleIds));
       await db.delete(staffAccounts).where(inArray(staffAccounts.id, staffIds));
-      await db.delete(storeInventory).where(inArray(
-        storeInventory.storeId,
-        [storeA!.id, storeB!.id],
-      ));
+      await db
+        .delete(storeInventory)
+        .where(inArray(storeInventory.storeId, [storeA!.id, storeB!.id]));
       await db.delete(skus).where(inArray(skus.id, [skuA!.id, skuB!.id]));
       await db.delete(products).where(inArray(products.id, [productA!.id, productB!.id]));
-      await db.delete(bookEditions).where(inArray(
-        bookEditions.id,
-        [editionA!.id, editionB!.id],
-      ));
+      await db.delete(bookEditions).where(inArray(bookEditions.id, [editionA!.id, editionB!.id]));
       await db.delete(books).where(inArray(books.id, [bookA!.id, bookB!.id]));
       await db.delete(stores).where(inArray(stores.id, [storeA!.id, storeB!.id]));
       await db.delete(regions).where(eq(regions.id, region!.id));
@@ -260,30 +276,43 @@ suite('daily catalog corrections against disposable PostgreSQL', () => {
       });
       expect(accepted.statusCode).toBe(200);
       expect(accepted.json().status).toBe('ACCEPTED');
-      expect((await app.inject({
-        method: 'POST',
-        url: reviewerPath,
-        headers: bearer(f.reviewer.token),
-        payload: { verdict: 'ACCEPTED', reason: 'Repeat' },
-      })).statusCode).toBe(409);
+      expect(
+        (
+          await app.inject({
+            method: 'POST',
+            url: reviewerPath,
+            headers: bearer(f.reviewer.token),
+            payload: { verdict: 'ACCEPTED', reason: 'Repeat' },
+          })
+        ).statusCode,
+      ).toBe(409);
 
-      const [liveBook] = await db.select({ title: books.title })
-        .from(books).where(eq(books.id, f.bookA.id));
+      const [liveBook] = await db
+        .select({ title: books.title })
+        .from(books)
+        .where(eq(books.id, f.bookA.id));
       expect(liveBook!.title).toBe('Original Book A');
-      const [stock] = await db.select().from(storeInventory).where(
-        and(eq(storeInventory.storeId, f.storeA.id), eq(storeInventory.skuId, f.skuA.id)),
-      );
+      const [stock] = await db
+        .select()
+        .from(storeInventory)
+        .where(and(eq(storeInventory.storeId, f.storeA.id), eq(storeInventory.skuId, f.skuA.id)));
       expect(stock!.onHand).toBe(5);
       expect(stock!.version).toBe(2);
-      expect(await db.select().from(inventoryTransactions).where(
-        eq(inventoryTransactions.storeId, f.storeA.id),
-      )).toHaveLength(0);
-      const audit = await db.select().from(auditLogs).where(
-        inArray(auditLogs.actorStaffAccountId, [f.proposer.id, f.reviewer.id]),
-      );
+      expect(
+        await db
+          .select()
+          .from(inventoryTransactions)
+          .where(eq(inventoryTransactions.storeId, f.storeA.id)),
+      ).toHaveLength(0);
+      const audit = await db
+        .select()
+        .from(auditLogs)
+        .where(inArray(auditLogs.actorStaffAccountId, [f.proposer.id, f.reviewer.id]));
       expect(audit).toHaveLength(2);
       expect(JSON.stringify(audit.map((row) => row.metadata))).not.toContain('Corrected A');
-      expect(JSON.stringify(audit.map((row) => row.metadata))).not.toContain('Independently checked');
+      expect(JSON.stringify(audit.map((row) => row.metadata))).not.toContain(
+        'Independently checked',
+      );
     } finally {
       await app.close();
       await f.cleanup();
