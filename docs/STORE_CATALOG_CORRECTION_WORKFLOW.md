@@ -8,7 +8,7 @@ Stacked on Draft PR #155 (scoped read-only catalog). This workflow is **not** Me
 
 A store staff member with stores.read + inventory.read + inventory.stocktake can request a **single field** correction against a SKU already linked to that store's inventory. An independent second person, separately granted catalog.correction.review and authorized for the same store, can ACCEPT or REJECT with a reason. Acceptance means the proposed correction was reviewed **for subsequent HQ action only**. It does not apply the proposal to canonical master data and cannot change sale status, quantities, stock transactions, prices or ISBNs.
 
-Fields: product name, book title, author, publisher, ISBN and SKU price in integer minor units. ISBN / price / shared product fields have no local override; no direct store-owned mutable field exists in the present schema. A reviewer may need an HQ role or a specially granted store reviewer role; **the migration does not assign this permission to any production role**.
+Fields: product name, book title, author, publisher, ISBN and SKU price in integer minor units (0–2,147,483,647). ISBN / price / shared product fields have no local override; no direct store-owned mutable field exists in the present schema. A reviewer may need an HQ role or a specially granted store reviewer role; **the migration does not assign this permission to any production role**.
 
 ## Safety and versioning
 

@@ -221,7 +221,11 @@ export const createCatalogCorrectionSchema = z
   })
   .strict()
   .superRefine((value, ctx) => {
-    if (value.field === 'priceMinor' && !/^(0|[1-9]\d{0,9})$/.test(value.proposedValue)) {
+    if (
+      value.field === 'priceMinor' &&
+      (!/^(0|[1-9]\d{0,9})$/.test(value.proposedValue) ||
+        Number(value.proposedValue) > 2147483647)
+    ) {
       ctx.addIssue({
         code: 'custom',
         path: ['proposedValue'],

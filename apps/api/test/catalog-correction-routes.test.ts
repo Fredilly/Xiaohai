@@ -122,6 +122,22 @@ describe('daily catalog corrections remain scoped and separately authorized', ()
     expect(submit).not.toHaveBeenCalled();
   });
 
+  it('rejects SKU price proposals beyond the supported integer minor-unit range', async () => {
+    const { app, submit } = setup(['stores.read', 'inventory.read', 'inventory.stocktake']);
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/staff/stores/' + own + '/catalog-corrections',
+      headers: { authorization },
+      payload: {
+        ...createBody,
+        field: 'priceMinor',
+        proposedValue: '2147483648',
+      },
+    });
+    expect(response.statusCode).toBe(400);
+    expect(submit).not.toHaveBeenCalled();
+  });
+
   it('lets authorized independent reviewers decide scoped proposals', async () => {
     const { app, review, list } = setup(['stores.read', 'catalog.correction.review']);
     const read = await app.inject({
