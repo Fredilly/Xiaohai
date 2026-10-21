@@ -24,11 +24,11 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Apply repository Prettier format to correction workflow changes
         run: |
-          pnpm exec prettier --write             apps/api/src/commerce/catalog-correction-routes.ts             apps/api/src/commerce/catalog-correction-service.ts             apps/api/test/catalog-correction-routes.test.ts             apps/store-web/src/catalog-correction-api.ts             apps/store-web/src/catalog-correction-panel.test.tsx             apps/store-web/src/catalog-correction-panel.tsx             apps/store-web/src/mock-data.ts             apps/store-web/src/module-visibility.test.ts             packages/contracts/src/commerce.ts             packages/db/src/catalog-correction-schema.ts
+          pnpm exec prettier --write             apps/api/src/commerce/catalog-correction-routes.ts             apps/api/src/commerce/catalog-correction-service.ts             apps/api/test/catalog-correction-routes.test.ts apps/api/test/catalog-correction.integration.test.ts             apps/store-web/src/catalog-correction-api.ts             apps/store-web/src/catalog-correction-panel.test.tsx             apps/store-web/src/catalog-correction-panel.tsx             apps/store-web/src/mock-data.ts             apps/store-web/src/module-visibility.test.ts             packages/contracts/src/commerce.ts             packages/db/src/catalog-correction-schema.ts
           git config user.name 'xiaohai-format-bot'
           git config user.email 'xiaohai-format-bot@users.noreply.github.com'
           if ! git diff --quiet; then
-            git add apps/api/src/commerce/catalog-correction-* apps/api/test/catalog-correction-routes.test.ts               apps/store-web/src/catalog-correction-* apps/store-web/src/mock-data.ts               apps/store-web/src/module-visibility.test.ts packages/contracts/src/commerce.ts               packages/db/src/catalog-correction-schema.ts
+            git add apps/api/src/commerce/catalog-correction-* apps/api/test/catalog-correction-routes.test.ts apps/api/test/catalog-correction.integration.test.ts               apps/store-web/src/catalog-correction-* apps/store-web/src/mock-data.ts               apps/store-web/src/module-visibility.test.ts packages/contracts/src/commerce.ts               packages/db/src/catalog-correction-schema.ts
             git commit -m 'chore: format daily catalog correction workflow'
             git push origin HEAD:refs/heads/codex/store-catalog-correction-workflow
           fi
