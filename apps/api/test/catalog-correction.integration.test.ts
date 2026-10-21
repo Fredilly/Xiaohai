@@ -1,7 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, describe, expect, it } from 'vitest';
 import { and, eq, inArray } from 'drizzle-orm';
-import { storeCatalogResponseSchema, catalogCorrectionRecordSchema } from '@xiaohai/contracts/commerce';
+import {
+  storeCatalogResponseSchema,
+  catalogCorrectionRecordSchema,
+} from '@xiaohai/contracts/commerce';
 import {
   auditLogs,
   bookEditions,
@@ -278,7 +281,9 @@ suite('daily catalog corrections against disposable PostgreSQL', () => {
         payload: { verdict: 'ACCEPTED', reason: 'Independently checked' },
       });
       expect(accepted.statusCode).toBe(200);
-      expect(catalogCorrectionRecordSchema.parse(accepted.json() as unknown).status).toBe('ACCEPTED');
+      expect(catalogCorrectionRecordSchema.parse(accepted.json() as unknown).status).toBe(
+        'ACCEPTED',
+      );
       expect(
         (
           await app.inject({
