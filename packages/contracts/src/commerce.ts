@@ -127,6 +127,8 @@ export const adminCatalogQuerySchema = z
   .strict();
 export const adminProductInputSchema = z
   .object({
+    expectedProductVersion: z.number().int().nonnegative().optional(),
+    expectedSkuVersion: z.number().int().nonnegative().optional(),
     name: z.string().trim().min(1).max(160),
     description: z.string().trim().max(4000).nullable().optional(),
     coverUrl: z.url().max(2048).nullable().optional(),
@@ -149,7 +151,12 @@ export const adminProductInputSchema = z
     }),
   })
   .strict();
-export const adminProductSchema = adminProductInputSchema.extend({ id: z.uuid(), skuId: z.uuid() });
+export const adminProductSchema = adminProductInputSchema.extend({
+  id: z.uuid(),
+  skuId: z.uuid(),
+  productVersion: z.number().int().nonnegative(),
+  skuVersion: z.number().int().nonnegative(),
+});
 export const adminProductListResponseSchema = z.object({ products: z.array(adminProductSchema) });
 
 export type CatalogProduct = z.infer<typeof catalogProductSchema>;

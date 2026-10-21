@@ -374,6 +374,12 @@ function ProductForm({
     status: initial.status,
     book: initial.book,
     sku: initial.sku,
+    ...('productVersion' in initial
+      ? {
+          expectedProductVersion: initial.productVersion,
+          expectedSkuVersion: initial.skuVersion,
+        }
+      : {}),
   });
   const [error, setError] = useState('');
   async function submit(e: FormEvent) {

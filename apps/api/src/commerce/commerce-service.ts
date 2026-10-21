@@ -15,6 +15,7 @@ import {
   skus,
   storeInventory,
   userAddresses,
+  auditLogs,
 } from '@xiaohai/db';
 import type { createDatabase } from '@xiaohai/db';
 
@@ -440,6 +441,8 @@ export class CommerceService {
       products: rows.map(({ product, sku, book, edition }) => ({
         id: product.id,
         skuId: sku.id,
+        productVersion: product.version,
+        skuVersion: sku.version,
         name: product.name,
         description: product.description,
         coverUrl: product.coverUrl,
@@ -498,24 +501,49 @@ export class CommerceService {
       return (await this.listAdminProducts()).products.find((item) => item.id === product!.id)!;
     });
   }
-  async updateAdminProduct(id: string, input: AdminProductInput) {
+  async updateAdminProduct(
+    id: string,
+    input: AdminProductInput,
+    actorStaffAccountId: string,
+    requestId: string,
+  ) {
     const current = (await this.listAdminProducts()).products.find((item) => item.id === id);
     if (!current) throw new CommerceError('NOT_FOUND', 'Product not found');
+    const expectedProductVersion = input.expectedProductVersion ?? current.productVersion;
+    const expectedSkuVersion = input.expectedSkuVersion ?? current.skuVersion;
     await this.db.transaction(async (tx) => {
-      await tx
+      const [updatedProduct] = await tx
         .update(products)
         .set({
           name: input.name,
           description: input.description ?? null,
           coverUrl: input.coverUrl ?? null,
           status: input.status,
+          version: sql`${products.version} + 1`,
           updatedAt: new Date(),
         })
-        .where(eq(products.id, id));
-      await tx
+        .where(and(eq(products.id, id), eq(products.version, expectedProductVersion)))
+        .returning({ id: products.id });
+      if (!updatedProduct) throw new CommerceError('CONFLICT', 'Product version conflict');
+      const [updatedSku] = await tx
         .update(skus)
-        .set({ ...input.sku, updatedAt: new Date() })
-        .where(eq(skus.id, current.skuId));
+        .set({ ...input.sku, version: sql`${skus.version} + 1`, updatedAt: new Date() })
+        .where(and(eq(skus.id, current.skuId), eq(skus.version, expectedSkuVersion)))
+        .returning({ id: skus.id });
+      if (!updatedSku) throw new CommerceError('CONFLICT', 'SKU version conflict');
+      await tx.insert(auditLogs).values({
+        actorStaffAccountId,
+        actionKey: 'catalog.hq_direct_edit',
+        resourceType: 'PRODUCT',
+        resourceId: id,
+        requestId,
+        metadata: {
+          changedFields: ['product', 'sku'],
+          affectedStoreCount: 0,
+          beforeVersions: { product: current.productVersion, sku: current.skuVersion },
+          afterVersions: { product: current.productVersion + 1, sku: current.skuVersion + 1 },
+        },
+      });
     });
     return (await this.listAdminProducts()).products.find((item) => item.id === id)!;
   }
