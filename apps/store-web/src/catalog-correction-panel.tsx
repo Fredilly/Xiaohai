@@ -251,9 +251,12 @@ export function CatalogCorrectionPanel({
           </div>
           {canReview &&
             request.status === 'PENDING' &&
-            (isOwnCorrection(request.requestedByStaffAccountId, staffAccountId) ? (
+            isOwnCorrection(request.requestedByStaffAccountId, staffAccountId) && (
               <p>本人提交的建议需由另一名授权人员独立复核。</p>
-            ) : (
+            )}
+          {canReview &&
+            request.status === 'PENDING' &&
+            !isOwnCorrection(request.requestedByStaffAccountId, staffAccountId) && (
               <div>
                 <label>
                   独立复核理由
@@ -279,7 +282,7 @@ export function CatalogCorrectionPanel({
                   驳回建议
                 </button>
               </div>
-            ))}
+            )}
         </article>
       ))}
       <p role="status">{status}</p>
@@ -288,11 +291,8 @@ export function CatalogCorrectionPanel({
 }
 
 export function selectableCorrectionFields(bookTitle: string | null | undefined) {
-  return fields.filter(
-    (option) =>
-      Boolean(bookTitle) ||
-      !['bookTitle', 'author', 'publisher', 'isbn'].includes(option.key),
-  );
+  if (bookTitle) return fields;
+  return fields.filter((option) => option.key === 'productName' || option.key === 'priceMinor');
 }
 
 export function isOwnCorrection(requesterStaffAccountId: string, currentStaffAccountId: string) {

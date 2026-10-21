@@ -211,6 +211,10 @@ export const catalogCorrectionFieldSchema = z.enum([
   'priceMinor',
 ]);
 export const catalogCorrectionStatusSchema = z.enum(['PENDING', 'ACCEPTED', 'REJECTED']);
+function validPriceMinor(value: string): boolean {
+  return /^(0|[1-9]\d{0,9})$/.test(value) && Number(value) <= 2147483647;
+}
+
 export const createCatalogCorrectionSchema = z
   .object({
     skuId: z.uuid(),
@@ -221,11 +225,7 @@ export const createCatalogCorrectionSchema = z
   })
   .strict()
   .superRefine((value, ctx) => {
-    if (
-      value.field === 'priceMinor' &&
-      (!/^(0|[1-9]\d{0,9})$/.test(value.proposedValue) ||
-        Number(value.proposedValue) > 2147483647)
-    ) {
+    if (value.field === 'priceMinor' && !validPriceMinor(value.proposedValue)) {
       ctx.addIssue({
         code: 'custom',
         path: ['proposedValue'],
