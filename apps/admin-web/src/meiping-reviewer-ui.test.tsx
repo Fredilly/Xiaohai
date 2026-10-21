@@ -87,5 +87,4 @@ describe('independent correction review entrance', () => {
     );
     expect(empty).toBe('');
   });
-
 });

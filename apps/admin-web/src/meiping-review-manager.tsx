@@ -278,7 +278,9 @@ export function CorrectionProposalReadOnly({ item }: { item: ReviewItem }) {
           .map((change) => (
             <div key={change.label}>
               <dt>{change.label}</dt>
-              <dd>原始：{change.original} → 建议：{change.proposed}</dd>
+              <dd>
+                原始：{change.original} → 建议：{change.proposed}
+              </dd>
             </div>
           ))}
       </dl>
