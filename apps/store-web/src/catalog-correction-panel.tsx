@@ -255,29 +255,29 @@ export function CatalogCorrectionPanel({
               <p>本人提交的建议需由另一名授权人员独立复核。</p>
             ) : (
               <div>
-              <label>
-                独立复核理由
-                <textarea
-                  value={reviewReasons[request.id] ?? ''}
-                  rows={2}
-                  maxLength={500}
-                  onChange={(event) =>
-                    setReviewReasons((all) => ({ ...all, [request.id]: event.target.value }))
-                  }
-                />
-              </label>
-              <button
-                disabled={busy || !reviewReasons[request.id]?.trim()}
-                onClick={() => void decide(request, 'ACCEPTED')}
-              >
-                采纳建议（不改商品）
-              </button>
-              <button
-                disabled={busy || !reviewReasons[request.id]?.trim()}
-                onClick={() => void decide(request, 'REJECTED')}
-              >
-                驳回建议
-              </button>
+                <label>
+                  独立复核理由
+                  <textarea
+                    value={reviewReasons[request.id] ?? ''}
+                    rows={2}
+                    maxLength={500}
+                    onChange={(event) =>
+                      setReviewReasons((all) => ({ ...all, [request.id]: event.target.value }))
+                    }
+                  />
+                </label>
+                <button
+                  disabled={busy || !reviewReasons[request.id]?.trim()}
+                  onClick={() => void decide(request, 'ACCEPTED')}
+                >
+                  采纳建议（不改商品）
+                </button>
+                <button
+                  disabled={busy || !reviewReasons[request.id]?.trim()}
+                  onClick={() => void decide(request, 'REJECTED')}
+                >
+                  驳回建议
+                </button>
               </div>
             ))}
         </article>
