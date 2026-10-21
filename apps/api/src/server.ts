@@ -120,8 +120,8 @@ const app = buildApp({
 registerCommerceRoutes(app, { commerce, consumerSessions: sessions, staffAuthorization });
 registerStoreCatalogReadRoutes(app, {
   staffAuthorization,
-  stores: storeNetwork,
-  catalog: new StoreCatalogReadService(database.db),
+  stores,
+  catalog: new StoreCatalogReadService(db),
 });
 registerPaymentRoutes(app, {
   payments: new PaymentService(db, loadWeChatPayProvider(process.env), commission),
