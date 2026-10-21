@@ -18,6 +18,8 @@ import { CommerceService } from './commerce/commerce-service.js';
 import { registerCommerceRoutes } from './commerce/commerce-routes.js';
 import { StoreCatalogReadService } from './commerce/store-catalog-read-service.js';
 import { registerStoreCatalogReadRoutes } from './commerce/store-catalog-read-routes.js';
+import { CatalogCorrectionService } from './commerce/catalog-correction-service.js';
+import { registerCatalogCorrectionRoutes } from './commerce/catalog-correction-routes.js';
 import { loadWeChatPayProvider } from './payments/wechat-pay.js';
 import { PaymentService } from './payments/payment-service.js';
 import { registerPaymentRoutes } from './payments/payment-routes.js';
@@ -122,6 +124,11 @@ registerStoreCatalogReadRoutes(app, {
   staffAuthorization,
   stores,
   catalog: new StoreCatalogReadService(db),
+});
+registerCatalogCorrectionRoutes(app, {
+  staffAuthorization,
+  stores,
+  corrections: new CatalogCorrectionService(db),
 });
 registerPaymentRoutes(app, {
   payments: new PaymentService(db, loadWeChatPayProvider(process.env), commission),
