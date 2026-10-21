@@ -259,13 +259,13 @@ export function CatalogCorrectionPanel({
                 />
               </label>
               <button
-                disabled={busy || !Boolean(reviewReasons[request.id]?.trim())}
+                disabled={busy || !reviewReasons[request.id]?.trim()}
                 onClick={() => void decide(request, 'ACCEPTED')}
               >
                 采纳建议（不改商品）
               </button>
               <button
-                disabled={busy || !Boolean(reviewReasons[request.id]?.trim())}
+                disabled={busy || !reviewReasons[request.id]?.trim()}
                 onClick={() => void decide(request, 'REJECTED')}
               >
                 驳回建议
