@@ -228,7 +228,7 @@ function toContract(row: typeof catalogCorrectionRequests.$inferSelect) {
   });
 }
 
-function hasPgCode(error: unknown, code: string) {
+function hasPgCode(error: unknown, code: string): boolean {
   if (!error || typeof error !== 'object') return false;
   const record = error as { code?: unknown; cause?: unknown };
   return record.code === code || (record.cause !== error && hasPgCode(record.cause, code));
