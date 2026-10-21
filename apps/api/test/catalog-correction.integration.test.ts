@@ -281,9 +281,7 @@ suite('daily catalog corrections against disposable PostgreSQL', () => {
         payload: { verdict: 'ACCEPTED', reason: 'Independently checked' },
       });
       expect(accepted.statusCode).toBe(200);
-      expect(catalogCorrectionRecordSchema.parse(accepted.json()).status).toBe(
-        'ACCEPTED',
-      );
+      expect(catalogCorrectionRecordSchema.parse(accepted.json()).status).toBe('ACCEPTED');
       expect(
         (
           await app.inject({
