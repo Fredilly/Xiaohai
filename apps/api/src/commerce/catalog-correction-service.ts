@@ -1,4 +1,4 @@
-import { and, desc, eq, ne } from 'drizzle-orm';
+import { and, desc, eq, ne, sql } from 'drizzle-orm';
 import {
   auditLogs,
   bookEditions,
@@ -123,6 +123,22 @@ export class CatalogCorrectionService {
           throw new CatalogCorrectionError('CONFLICT');
         }
         if (request.field === 'isbn') {
+          // Serialize recommendation acceptance by ISBN, even across different stores.
+          // This never locks or changes the canonical SKU, edition, or inventory rows.
+          await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${request.proposedValue}))`);
+          const acceptedConflicts = await tx
+            .select({ id: catalogCorrectionRequests.id })
+            .from(catalogCorrectionRequests)
+            .where(
+              and(
+                eq(catalogCorrectionRequests.field, 'isbn'),
+                eq(catalogCorrectionRequests.status, 'ACCEPTED'),
+                eq(catalogCorrectionRequests.proposedValue, request.proposedValue),
+                ne(catalogCorrectionRequests.sourceProductId, request.sourceProductId),
+              ),
+            )
+            .limit(1);
+          if (acceptedConflicts.length) throw new CatalogCorrectionError('CONFLICT');
           const conflicts = await tx
             .select({ id: bookEditions.id })
             .from(bookEditions)
