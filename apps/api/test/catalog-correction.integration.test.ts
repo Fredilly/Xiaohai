@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, describe, expect, it } from 'vitest';
 import { and, eq, inArray } from 'drizzle-orm';
+import { storeCatalogResponseSchema, catalogCorrectionRecordSchema } from '@xiaohai/contracts/commerce';
 import {
   auditLogs,
   bookEditions,
@@ -213,8 +214,9 @@ suite('daily catalog corrections against disposable PostgreSQL', () => {
         headers: bearer(f.proposer.token),
       });
       expect(ownCatalog.statusCode).toBe(200);
-      expect(ownCatalog.json().items).toHaveLength(1);
-      expect(ownCatalog.json().items[0].skuId).toBe(f.skuA.id);
+      const catalogResponse = storeCatalogResponseSchema.parse(ownCatalog.json() as unknown);
+      expect(catalogResponse.items).toHaveLength(1);
+      expect(catalogResponse.items[0]?.skuId).toBe(f.skuA.id);
       const otherCatalog = await app.inject({
         method: 'GET',
         url: base + f.storeB.id + '/catalog',
@@ -236,8 +238,9 @@ suite('daily catalog corrections against disposable PostgreSQL', () => {
         },
       });
       expect(proposed.statusCode).toBe(201);
-      const requestId: string = proposed.json().id;
-      expect(proposed.json().status).toBe('PENDING');
+      const proposedBody = catalogCorrectionRecordSchema.parse(proposed.json() as unknown);
+      const requestId = proposedBody.id;
+      expect(proposedBody.status).toBe('PENDING');
 
       const duplicate = await app.inject({
         method: 'POST',
@@ -275,7 +278,7 @@ suite('daily catalog corrections against disposable PostgreSQL', () => {
         payload: { verdict: 'ACCEPTED', reason: 'Independently checked' },
       });
       expect(accepted.statusCode).toBe(200);
-      expect(accepted.json().status).toBe('ACCEPTED');
+      expect(catalogCorrectionRecordSchema.parse(accepted.json() as unknown).status).toBe('ACCEPTED');
       expect(
         (
           await app.inject({
