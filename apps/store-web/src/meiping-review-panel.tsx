@@ -17,7 +17,9 @@ import {
   correctionProposalInput,
   correctionVerdictInput,
   reviewApiErrorMessage,
+  reviewDecisionConfirmation,
   reviewDecisionInput,
+  reviewDecisionIsUnchanged,
 } from './meiping-review-input';
 import {
   meipingDispositionLabel,
@@ -373,6 +375,11 @@ function StoreDecisionEditor({
       setError(input);
       return;
     }
+    if (reviewDecisionIsUnchanged(item, input)) {
+      setError('处理方式及内容与已保存版本相同，无需重复保存。');
+      return;
+    }
+    if (!window.confirm(reviewDecisionConfirmation(item, input))) return;
     setError('');
     void onSubmit(input);
   }
@@ -380,6 +387,10 @@ function StoreDecisionEditor({
     <details className="meiping-store-editor">
       <summary>处理原审核决定</summary>
       <form onSubmit={submit}>
+        <p>
+          当前原审核决定：{item.decision ? '版本 ' + item.decision.version : '尚未保存'}。
+          本操作只更新历史迁移审核草稿，保存时会再次确认并生成新版本，不会正式入库。
+        </p>
         <label>
           处理方式
           <select

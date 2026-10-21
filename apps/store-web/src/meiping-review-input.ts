@@ -74,6 +74,46 @@ export function reviewDecisionInput(
   return { ...common, action, reason: trimmed };
 }
 
+
+/** A saved DRAFT decision must not receive a new version without a real field change. */
+export function reviewDecisionIsUnchanged(
+  item: ReviewItem,
+  next: ReviewDecisionInput,
+): boolean {
+  const previous = item.decision;
+  if (!previous || previous.action !== next.action) return false;
+  return next.action === 'EXCLUDE'
+    ? previous.reason === next.reason
+    : previous.countedQuantity === next.countedQuantity;
+}
+
+/** Explicitly describe what the user is changing before the versioned write. */
+export function reviewDecisionConfirmation(
+  item: ReviewItem,
+  next: ReviewDecisionInput,
+): string {
+  const previousVersion = item.decision?.version ?? 0;
+  const label = next.action === 'EXCLUDE' ? '不纳入此次迁移' : '创建草稿候选（不入库）';
+  const details =
+    next.action === 'EXCLUDE'
+      ? '排除原因：' + next.reason
+      : '人工盘点数量：' + next.countedQuantity;
+  return (
+    '请确认源行 ' +
+    item.sourceRowNumber +
+    ' 的原审核决定：\n' +
+    '处理方式：' +
+    label +
+    '\n' +
+    details +
+    '\n' +
+    (previousVersion
+      ? '将从版本 ' + previousVersion + ' 更新为版本 ' + (previousVersion + 1) + '。'
+      : '将首次保存为版本 1。') +
+    '\n保存会留下审核记录，但不会创建正式商品或改变库存。确定保存吗？'
+  );
+}
+
 export function reviewApiErrorMessage(error: unknown): string {
   if (!(error instanceof Error)) return '操作失败，请检查网络后重试。';
   if (error.message === 'SELF_REVIEW_FORBIDDEN') {

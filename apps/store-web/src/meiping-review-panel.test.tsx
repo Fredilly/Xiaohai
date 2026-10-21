@@ -9,6 +9,8 @@ import {
   correctionProposalInput,
   correctionVerdictInput,
   reviewDecisionInput,
+  reviewDecisionConfirmation,
+  reviewDecisionIsUnchanged,
 } from './meiping-review-input';
 import type { ReviewItem } from './meiping-review-api';
 
@@ -123,6 +125,40 @@ describe('Store Web Meiping review boundaries', () => {
     );
     expect(reviewer).toContain('一次性迁移');
     expect(reviewer).not.toContain('保存纠错建议');
+  });
+
+
+  it('requires an explicit confirmation with the old/new version for a changed original decision', () => {
+    const updated = reviewDecisionInput(item, 'EXCLUDE', '', '等待人工核对111', checksum);
+    expect(typeof updated).not.toBe('string');
+    if (typeof updated === 'string') throw new Error(updated);
+    expect(reviewDecisionIsUnchanged(item, updated)).toBe(false);
+    const confirmation = reviewDecisionConfirmation(item, updated);
+    expect(confirmation).toContain('源行 5');
+    expect(confirmation).toContain('版本 2 更新为版本 3');
+    expect(confirmation).toContain('等待人工核对111');
+    expect(confirmation).toContain('不会创建正式商品或改变库存');
+
+    const initial = reviewDecisionConfirmation({ ...item, decision: null }, {
+      ...updated,
+      expectedVersion: 0,
+    });
+    expect(initial).toContain('首次保存为版本 1');
+  });
+
+  it('does not submit an unchanged original decision as another version', () => {
+    const unchanged = reviewDecisionInput(item, 'EXCLUDE', '', ' 人工核对 ', checksum);
+    expect(typeof unchanged).not.toBe('string');
+    if (typeof unchanged === 'string') throw new Error(unchanged);
+    expect(reviewDecisionIsUnchanged(item, unchanged)).toBe(true);
+    const changedAction = reviewDecisionInput(
+      { ...item, disposition: 'CREATE_CANDIDATE' }, 'CREATE_DRAFT', '3', '', checksum,
+    );
+    expect(typeof changedAction).not.toBe('string');
+    if (typeof changedAction === 'string') throw new Error(changedAction);
+    expect(reviewDecisionIsUnchanged(item, changedAction)).toBe(false);
+    const uninitialized = { ...item, decision: null };
+    expect(reviewDecisionIsUnchanged(uninitialized, unchanged)).toBe(false);
   });
 
   it('never lets a blocked duplicate barcode create a draft candidate', () => {
