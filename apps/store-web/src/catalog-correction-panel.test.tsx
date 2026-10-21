@@ -30,6 +30,8 @@ describe('daily catalog correction UI safety', () => {
     expect(html).toContain('不会');
     expect(html).toContain('提交纠错建议（不改商品）');
     expect(html).not.toContain('保存商品');
+    expect(html).toContain('<table');
+    expect(html).toContain('独立复核操作');
   });
 
   it('does not present a submission form to independent reviewer without inventory permissions', () => {

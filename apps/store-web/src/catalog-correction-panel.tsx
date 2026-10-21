@@ -233,58 +233,85 @@ export function CatalogCorrectionPanel({
         </>
       )}
       <h3>本店纠错记录（最近 50 条）</h3>
-      {requests.map((request) => (
-        <article className="book-result" key={request.id}>
-          <div>
-            <strong>
-              {fieldNames[request.field]} · {correctionStatus(request.status)}
-            </strong>
-            <span>SKU：{request.skuId}</span>
-            <span>原值：{request.originalValue ?? '未填写'}</span>
-            <span>
-              建议：{request.proposedValue}
-              {request.field === 'priceMinor' ? ' 分' : ''}
-            </span>
-            <small>申请理由：{request.reason}</small>
-            <small>申请时间：{new Date(request.createdAt).toLocaleString()}</small>
-            {request.reviewReason && <small>复核理由：{request.reviewReason}</small>}
-          </div>
-          {canReview &&
-            request.status === 'PENDING' &&
-            isOwnCorrection(request.requestedByStaffAccountId, staffAccountId) && (
-              <p>本人提交的建议需由另一名授权人员独立复核。</p>
+      <div className="data-table-scroll" role="region" aria-label="本店商品纠错记录表格" tabIndex={0}>
+        <table className="data-table data-table-corrections">
+          <thead>
+            <tr>
+              <th scope="col">纠错字段 / SKU</th>
+              <th scope="col">原值</th>
+              <th scope="col">建议值</th>
+              <th scope="col">审核状态</th>
+              <th scope="col">申请时间</th>
+              <th scope="col">申请 / 复核理由</th>
+              <th scope="col">独立复核操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {requests.map((request) => (
+              <tr key={request.id}>
+                <td>
+                  <strong className="cell-title">{fieldNames[request.field]}</strong>
+                  <small className="cell-meta cell-code">{request.skuId}</small>
+                </td>
+                <td className="cell-detail">{request.originalValue ?? '未填写'}</td>
+                <td className="cell-detail">
+                  {request.proposedValue}{request.field === 'priceMinor' ? ' 分' : ''}
+                </td>
+                <td><span className="status-pill">{correctionStatus(request.status)}</span></td>
+                <td>{new Date(request.createdAt).toLocaleString()}</td>
+                <td className="cell-detail">
+                  <span>{request.reason}</span>
+                  {request.reviewReason && (
+                    <small className="cell-meta">复核：{request.reviewReason}</small>
+                  )}
+                </td>
+                <td>
+                  {canReview &&
+                    request.status === 'PENDING' &&
+                    isOwnCorrection(request.requestedByStaffAccountId, staffAccountId) && (
+                      <span className="cell-meta">本人申请需由另一名授权人员复核</span>
+                    )}
+                  {canReview &&
+                    request.status === 'PENDING' &&
+                    !isOwnCorrection(request.requestedByStaffAccountId, staffAccountId) && (
+                      <div className="cell-actions">
+                        <label>
+                          <span className="cell-meta">独立复核理由</span>
+                          <textarea
+                            value={reviewReasons[request.id] ?? ''}
+                            rows={2}
+                            maxLength={500}
+                            onChange={(event) =>
+                              setReviewReasons((all) => ({ ...all, [request.id]: event.target.value }))
+                            }
+                          />
+                        </label>
+                        <button
+                          disabled={busy || !reviewReasons[request.id]?.trim()}
+                          onClick={() => void decide(request, 'ACCEPTED')}
+                        >
+                          采纳建议（不改商品）
+                        </button>
+                        <button
+                          disabled={busy || !reviewReasons[request.id]?.trim()}
+                          onClick={() => void decide(request, 'REJECTED')}
+                        >
+                          驳回建议
+                        </button>
+                      </div>
+                    )}
+                  {(!canReview || request.status !== 'PENDING') && (
+                    <span className="cell-meta">—</span>
+                  )}
+                </td>
+              </tr>
+            ))}
+            {!requests.length && (
+              <tr><td colSpan={7} className="data-table-empty">本店暂无商品纠错申请</td></tr>
             )}
-          {canReview &&
-            request.status === 'PENDING' &&
-            !isOwnCorrection(request.requestedByStaffAccountId, staffAccountId) && (
-              <div>
-                <label>
-                  独立复核理由
-                  <textarea
-                    value={reviewReasons[request.id] ?? ''}
-                    rows={2}
-                    maxLength={500}
-                    onChange={(event) =>
-                      setReviewReasons((all) => ({ ...all, [request.id]: event.target.value }))
-                    }
-                  />
-                </label>
-                <button
-                  disabled={busy || !reviewReasons[request.id]?.trim()}
-                  onClick={() => void decide(request, 'ACCEPTED')}
-                >
-                  采纳建议（不改商品）
-                </button>
-                <button
-                  disabled={busy || !reviewReasons[request.id]?.trim()}
-                  onClick={() => void decide(request, 'REJECTED')}
-                >
-                  驳回建议
-                </button>
-              </div>
-            )}
-        </article>
-      ))}
+          </tbody>
+        </table>
+      </div>
       <p role="status">{status}</p>
     </section>
   );

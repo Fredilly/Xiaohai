@@ -74,34 +74,56 @@ export function StoreCatalogPanel({
         />
         <button>搜索本店商品</button>
       </form>
-      <div className="book-results">
-        {items.map((item) => (
-          <article className="book-result" key={item.storeId + ':' + item.skuId}>
-            <div>
-              <strong>{item.bookTitle || item.productName}</strong>
-              <span>
-                作者：{item.author || '未填写'} · 出版社：{item.publisher || '未填写'}
-              </span>
-              <small>
-                ISBN：{item.isbn || '未填写'} · SKU：{item.skuCode}
-              </small>
-              <small>
-                商品：{productStatus(item.productStatus)} · SKU：{skuStatus(item.skuStatus)}
-              </small>
-            </div>
-            <div>
-              <strong>
-                现存 {item.onHand} · 可用 {item.available}
-              </strong>
-              <span>占用：{item.reserved + item.rentalReserved}</span>
-              <small>库存版本 {item.inventoryVersion}</small>
-            </div>
-            <div>
-              <strong>¥{(item.priceMinor / 100).toFixed(2)}</strong>
-              <span>{item.availableForSale ? '可售标记：是' : '可售标记：否'}</span>
-            </div>
-          </article>
-        ))}
+      <div className="data-table-scroll" role="region" aria-label="本店商品资料表格" tabIndex={0}>
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th scope="col">商品 / SKU</th>
+              <th scope="col">作者 / 出版社</th>
+              <th scope="col">ISBN</th>
+              <th scope="col" className="numeric">售价</th>
+              <th scope="col" className="numeric">现存 / 可用</th>
+              <th scope="col" className="numeric">占用</th>
+              <th scope="col">商品 / SKU 状态</th>
+              <th scope="col" className="numeric">库存版本</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((item) => (
+              <tr key={item.storeId + ':' + item.skuId}>
+                <td>
+                  <strong className="cell-title">{item.bookTitle || item.productName}</strong>
+                  <small className="cell-meta">{item.skuCode}</small>
+                </td>
+                <td>
+                  <span>{item.author || '未填写'}</span>
+                  <small className="cell-meta">{item.publisher || '未填写'}</small>
+                </td>
+                <td className="cell-code">{item.isbn || '—'}</td>
+                <td className="numeric">
+                  <strong>¥{(item.priceMinor / 100).toFixed(2)}</strong>
+                  <small className="cell-meta">
+                    {item.availableForSale ? '可售' : '不可售'}
+                  </small>
+                </td>
+                <td className="numeric">
+                  <strong>{item.onHand} / {item.available}</strong>
+                </td>
+                <td className="numeric">{item.reserved + item.rentalReserved}</td>
+                <td>
+                  <span className="status-pill">{productStatus(item.productStatus)}</span>
+                  <small className="cell-meta">SKU：{skuStatus(item.skuStatus)}</small>
+                </td>
+                <td className="numeric">v{item.inventoryVersion}</td>
+              </tr>
+            ))}
+            {!items.length && (
+              <tr>
+                <td colSpan={8} className="data-table-empty">暂无符合条件的商品</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
       </div>
       <div className="meiping-store-actions">
         <button disabled={offset === 0} onClick={() => setOffset((n) => Math.max(0, n - limit))}>

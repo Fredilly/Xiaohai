@@ -40,29 +40,42 @@ export function BookSearchPanel({ storeId, storeName }: { storeId: string; store
         <input name="query" maxLength={120} placeholder="输入书名、作者、ISBN 或条码" />
         <button disabled={busy}>{busy ? '查询中…' : '查询库存'}</button>
       </form>
-      <div className="book-results">
-        {items.map((item) => (
-          <article key={`${item.store.id}:${item.sku.id}`} className="book-result">
-            <div>
-              <strong>{item.book.title}</strong>
-              <span>{item.book.author}</span>
-              <small>
-                ISBN {item.book.isbn ?? '—'} · {item.sku.code}
-              </small>
-            </div>
-            <div>
-              <strong>可用 {item.stock.available}</strong>
-              <span>现存 {item.stock.onHand}</span>
-              <small>
-                {item.sellAvailable ? '可售' : '不可售'} · {item.rentAvailable ? '可租' : '不可租'}
-              </small>
-            </div>
-            <div>
-              <strong>¥{(item.sku.priceMinor / 100).toFixed(2)}</strong>
-              <span>{item.store.name}</span>
-            </div>
-          </article>
-        ))}
+      <div className="data-table-scroll" role="region" aria-label="图书查询结果表格" tabIndex={0}>
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th scope="col">图书 / SKU</th>
+              <th scope="col">作者</th>
+              <th scope="col">ISBN</th>
+              <th scope="col" className="numeric">现存 / 可用</th>
+              <th scope="col" className="numeric">售价</th>
+              <th scope="col">可售 / 可租</th>
+              <th scope="col">门店</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((item) => (
+              <tr key={`${item.store.id}:${item.sku.id}`}>
+                <td>
+                  <strong className="cell-title">{item.book.title}</strong>
+                  <small className="cell-meta">{item.sku.code}</small>
+                </td>
+                <td>{item.book.author}</td>
+                <td className="cell-code">{item.book.isbn ?? '—'}</td>
+                <td className="numeric">{item.stock.onHand} / <strong>{item.stock.available}</strong></td>
+                <td className="numeric">¥{(item.sku.priceMinor / 100).toFixed(2)}</td>
+                <td>
+                  <span className="status-pill">{item.sellAvailable ? '可售' : '不可售'}</span>
+                  <small className="cell-meta">{item.rentAvailable ? '可租' : '不可租'}</small>
+                </td>
+                <td>{item.store.name}</td>
+              </tr>
+            ))}
+            {!items.length && (
+              <tr><td colSpan={7} className="data-table-empty">查询后在此显示本店图书结果</td></tr>
+            )}
+          </tbody>
+        </table>
       </div>
       <p role="status">{status}</p>
     </section>

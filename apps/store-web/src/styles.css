@@ -672,3 +672,85 @@ button:disabled {
   border: 1px solid #d5cdbf;
   border-radius: 8px;
 }
+
+/* Shared, responsive tables for store back-office datasets. */
+.data-table-scroll {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  margin: 18px 0 12px;
+  border: 1px solid #dfe6dd;
+  border-radius: 12px;
+  background: #fff;
+}
+.data-table-scroll:focus-visible {
+  outline: 2px solid #526345;
+  outline-offset: 3px;
+}
+.data-table {
+  width: 100%;
+  min-width: 950px;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 13px;
+  line-height: 1.55;
+}
+.data-table thead {
+  background: #eef2eb;
+  color: #3c513b;
+}
+.data-table th,
+.data-table td {
+  padding: 13px 14px;
+  border-bottom: 1px solid #ebeee8;
+  text-align: left;
+  vertical-align: middle;
+}
+.data-table th {
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 700;
+}
+.data-table tbody tr:last-child td { border-bottom: 0; }
+.data-table tbody tr:nth-child(even) { background: #fafbf9; }
+.data-table tbody tr:hover { background: #f2f6ef; }
+.data-table .numeric { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.data-table .cell-title { display: block; font-weight: 650; color: #2e402f; }
+.data-table .cell-meta { display: block; margin-top: 4px; color: #68736a; font-size: 12px; font-weight: 400; }
+.data-table .cell-code { overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.data-table .cell-detail { min-width: 150px; max-width: 240px; overflow-wrap: anywhere; }
+.data-table .status-pill {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: #eaf0e7;
+  color: #426040;
+  font-size: 12px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+.data-table .data-table-empty { padding: 35px 12px; text-align: center; color: #767e76; }
+.data-table-corrections { min-width: 1120px; }
+.data-table .cell-actions { display: grid; gap: 7px; min-width: 155px; }
+.data-table .cell-actions label { display: grid; gap: 4px; }
+.data-table .cell-actions textarea {
+  width: 100%;
+  min-width: 140px;
+  border: 1px solid #d5cdbf;
+  border-radius: 8px;
+  padding: 8px;
+  font: inherit;
+}
+.data-table .cell-actions button {
+  border: 0;
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: #4e5c3f;
+  color: #fff;
+  font: inherit;
+}
+.data-table .cell-actions button:disabled { opacity: .5; }
+@media (max-width: 820px) {
+  .data-table { min-width: 840px; }
+  .data-table-corrections { min-width: 1120px; }
+}
