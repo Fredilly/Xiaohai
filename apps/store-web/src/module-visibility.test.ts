@@ -5,7 +5,7 @@ describe('Store Web module visibility', () => {
   it('shows only modules backed by the current Staff permissions', () => {
     const visible = visibleStoreModules(['stores.read', 'inventory.read']).map((item) => item.key);
 
-    expect(visible).toEqual(['dashboard', 'books', 'inventory', 'operations']);
+    expect(visible).toEqual(['dashboard', 'books', 'catalog', 'inventory', 'operations']);
     expect(visible).toContain('catalog');
     expect(visible).not.toContain('rental');
     expect(visible).not.toContain('orders');
