@@ -217,7 +217,7 @@ suite('daily catalog corrections against disposable PostgreSQL', () => {
         headers: bearer(f.proposer.token),
       });
       expect(ownCatalog.statusCode).toBe(200);
-      const catalogResponse = storeCatalogResponseSchema.parse(ownCatalog.json() as unknown);
+      const catalogResponse = storeCatalogResponseSchema.parse(ownCatalog.json());
       expect(catalogResponse.items).toHaveLength(1);
       expect(catalogResponse.items[0]?.skuId).toBe(f.skuA.id);
       const otherCatalog = await app.inject({
@@ -241,7 +241,7 @@ suite('daily catalog corrections against disposable PostgreSQL', () => {
         },
       });
       expect(proposed.statusCode).toBe(201);
-      const proposedBody = catalogCorrectionRecordSchema.parse(proposed.json() as unknown);
+      const proposedBody = catalogCorrectionRecordSchema.parse(proposed.json());
       const requestId = proposedBody.id;
       expect(proposedBody.status).toBe('PENDING');
 
@@ -281,7 +281,7 @@ suite('daily catalog corrections against disposable PostgreSQL', () => {
         payload: { verdict: 'ACCEPTED', reason: 'Independently checked' },
       });
       expect(accepted.statusCode).toBe(200);
-      expect(catalogCorrectionRecordSchema.parse(accepted.json() as unknown).status).toBe(
+      expect(catalogCorrectionRecordSchema.parse(accepted.json()).status).toBe(
         'ACCEPTED',
       );
       expect(
