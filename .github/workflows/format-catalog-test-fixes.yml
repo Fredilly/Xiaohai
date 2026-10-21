@@ -1,0 +1,28 @@
+name: Format catalog correction test fixes
+on:
+  push:
+    branches:
+      - codex/store-catalog-correction-workflow
+permissions:
+  contents: write
+jobs:
+  format:
+    if: github.repository == 'Fredilly/Xiaohai'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: |
+          pnpm exec prettier --write apps/api/test/catalog-correction-routes.test.ts apps/api/test/catalog-correction.integration.test.ts
+          git config user.name 'xiaohai-format-bot'
+          git config user.email 'xiaohai-format-bot@users.noreply.github.com'
+          if ! git diff --quiet; then
+            git add apps/api/test/catalog-correction-routes.test.ts apps/api/test/catalog-correction.integration.test.ts
+            git commit -m 'chore: format catalog correction test fixes'
+            git push origin HEAD:refs/heads/codex/store-catalog-correction-workflow
+          fi
