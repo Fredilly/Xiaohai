@@ -27,3 +27,44 @@ The Meiping Excel migration is an **one-time historical import**, not the source
 - Store Review API adapter tests: same Staff endpoints as HQ, auth/response validation, 401/403 error mapping.
 - Store panel tests: explicit no-default verdict, required reason, immutable reviewed record, source/proposal comparison, stale-version safety, original duplicate blocked from CREATE_DRAFT.
 - Run full CI, build and disposable integration. Mac browser UAT of Store Web remains pending; no Mac database writes authorized/performed by this branch.
+
+## Store operator roles for browser UAT / 门店岗位验收
+
+The existing local seed defines a `LOCAL_STORE_MANAGER` role with
+`stores.read`, `inventory.receive` and `inventory.stocktake` among its
+store-operations permissions. It is **not** an independent correction reviewer,
+because it lacks `meiping.correction.review`. Do not automatically add that
+permission to all store managers; the separation must remain deliberate.
+
+Use two distinct Staff identities when testing the workflow in a disposable
+database:
+
+1. **Store editor (店长或指定店员)**: `stores.read`,
+   `inventory.receive`, `inventory.stocktake`, and **STORE-only scope** for
+   the virtual test store. Can save source decisions and versioned corrections.
+   These legacy permissions are coarse-grained; a narrower dedicated migration
+   editor permission is a future RBAC refinement, not implicitly introduced here.
+2. **Independent store reviewer (另一名授权店员或店长)**:
+   `stores.read` and `meiping.correction.review`, **STORE-only scope** for the
+   same virtual store. Can read and approve/reject another employee's proposal
+   but cannot edit it. The existing API enforces no self-review.
+3. **HQ Staff administrator**: uses existing Staff account management UI/API to
+   create/disable accounts and assign roles/scopes. HQ does **not** have to log
+   into the Store Web to correct individual migration rows.
+
+For a fresh isolated UAT, provision these roles/accounts via the already
+implemented HQ IAM API or UI, **only on an explicitly verified test database**;
+use a password set interactively by the tester, never save passwords or tokens
+to Git. Do not re-run `seedLocalStaff` against the existing PR153 dataset: it
+can reassign seeded roles/scopes. Do not alter the real store or production DB.
+
+**UAT acceptance:** Store editor sees only its own test store and can open
+correction/decision forms; reviewer sees original/proposed metadata and reasons,
+cannot edit the original decision or correction, cannot self-review, and must
+explicitly choose a verdict; account outside store scope cannot retrieve this
+store's session even with a manually supplied store ID; none of the operations
+creates a formal book/product/SKU or alters inventory balances/ledger.
+
+This role provisioning and UAT is **pending**. Existing PR154 browser evidence
+uses `hq.admin` as an editor substitute, so do not describe that evidence as
+a real store-manager acceptance test.
