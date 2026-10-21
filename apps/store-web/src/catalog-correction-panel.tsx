@@ -233,7 +233,12 @@ export function CatalogCorrectionPanel({
         </>
       )}
       <h3>本店纠错记录（最近 50 条）</h3>
-      <div className="data-table-scroll" role="region" aria-label="本店商品纠错记录表格" tabIndex={0}>
+      <div
+        className="data-table-scroll"
+        role="region"
+        aria-label="本店商品纠错记录表格"
+        tabIndex={0}
+      >
         <table className="data-table data-table-corrections">
           <thead>
             <tr>
@@ -255,9 +260,12 @@ export function CatalogCorrectionPanel({
                 </td>
                 <td className="cell-detail">{request.originalValue ?? '未填写'}</td>
                 <td className="cell-detail">
-                  {request.proposedValue}{request.field === 'priceMinor' ? ' 分' : ''}
+                  {request.proposedValue}
+                  {request.field === 'priceMinor' ? ' 分' : ''}
                 </td>
-                <td><span className="status-pill">{correctionStatus(request.status)}</span></td>
+                <td>
+                  <span className="status-pill">{correctionStatus(request.status)}</span>
+                </td>
                 <td>{new Date(request.createdAt).toLocaleString()}</td>
                 <td className="cell-detail">
                   <span>{request.reason}</span>
@@ -282,7 +290,10 @@ export function CatalogCorrectionPanel({
                             rows={2}
                             maxLength={500}
                             onChange={(event) =>
-                              setReviewReasons((all) => ({ ...all, [request.id]: event.target.value }))
+                              setReviewReasons((all) => ({
+                                ...all,
+                                [request.id]: event.target.value,
+                              }))
                             }
                           />
                         </label>
@@ -307,7 +318,11 @@ export function CatalogCorrectionPanel({
               </tr>
             ))}
             {!requests.length && (
-              <tr><td colSpan={7} className="data-table-empty">本店暂无商品纠错申请</td></tr>
+              <tr>
+                <td colSpan={7} className="data-table-empty">
+                  本店暂无商品纠错申请
+                </td>
+              </tr>
             )}
           </tbody>
         </table>

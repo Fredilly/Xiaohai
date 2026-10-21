@@ -47,8 +47,12 @@ export function BookSearchPanel({ storeId, storeName }: { storeId: string; store
               <th scope="col">图书 / SKU</th>
               <th scope="col">作者</th>
               <th scope="col">ISBN</th>
-              <th scope="col" className="numeric">现存 / 可用</th>
-              <th scope="col" className="numeric">售价</th>
+              <th scope="col" className="numeric">
+                现存 / 可用
+              </th>
+              <th scope="col" className="numeric">
+                售价
+              </th>
               <th scope="col">可售 / 可租</th>
               <th scope="col">门店</th>
             </tr>
@@ -62,7 +66,9 @@ export function BookSearchPanel({ storeId, storeName }: { storeId: string; store
                 </td>
                 <td>{item.book.author}</td>
                 <td className="cell-code">{item.book.isbn ?? '—'}</td>
-                <td className="numeric">{item.stock.onHand} / <strong>{item.stock.available}</strong></td>
+                <td className="numeric">
+                  {item.stock.onHand} / <strong>{item.stock.available}</strong>
+                </td>
                 <td className="numeric">¥{(item.sku.priceMinor / 100).toFixed(2)}</td>
                 <td>
                   <span className="status-pill">{item.sellAvailable ? '可售' : '不可售'}</span>
@@ -72,7 +78,11 @@ export function BookSearchPanel({ storeId, storeName }: { storeId: string; store
               </tr>
             ))}
             {!items.length && (
-              <tr><td colSpan={7} className="data-table-empty">查询后在此显示本店图书结果</td></tr>
+              <tr>
+                <td colSpan={7} className="data-table-empty">
+                  查询后在此显示本店图书结果
+                </td>
+              </tr>
             )}
           </tbody>
         </table>

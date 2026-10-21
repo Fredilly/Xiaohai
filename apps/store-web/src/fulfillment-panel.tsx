@@ -102,7 +102,9 @@ export function FulfillmentPanel({ token, storeId }: { token: string; storeId: s
           <thead>
             <tr>
               <th scope="col">订单号 / 门店</th>
-              <th scope="col" className="numeric">订单金额</th>
+              <th scope="col" className="numeric">
+                订单金额
+              </th>
               <th scope="col">履约方式</th>
               <th scope="col">订单状态</th>
               <th scope="col">操作</th>
@@ -117,73 +119,84 @@ export function FulfillmentPanel({ token, storeId }: { token: string; storeId: s
                 </td>
                 <td className="numeric">¥{(item.totalMinor / 100).toFixed(2)}</td>
                 <td>{item.method === 'PICKUP' ? '到店自提' : '同城配送'}</td>
-                <td><span className="status-pill">{item.orderStatus}</span></td>
-                <td><div className="inline-actions">
-              {item.method === 'PICKUP' && item.orderStatus === 'PAID' && (
-                <button
-                  disabled={busy === item.orderId}
-                  onClick={() => void run(item.orderId, () => markPickupReady(token, item.orderId))}
-                >
-                  标记可取
-                </button>
-              )}
-              {item.method === 'PICKUP' && item.orderStatus === 'PICKUP_READY' && (
-                <>
-                  <input
-                    inputMode="numeric"
-                    maxLength={6}
-                    placeholder="6 位取货码"
-                    value={pickupCodes[item.orderId] ?? ''}
-                    onChange={(event) =>
-                      setPickupCodes((current) => ({
-                        ...current,
-                        [item.orderId]: event.target.value.replace(/\D/g, '').slice(0, 6),
-                      }))
-                    }
-                  />
-                  <button
-                    disabled={
-                      busy === item.orderId || !/^\d{6}$/.test(pickupCodes[item.orderId] ?? '')
-                    }
-                    onClick={() =>
-                      void run(item.orderId, () =>
-                        verifyPickup(token, item.orderId, pickupCodes[item.orderId] ?? ''),
-                      )
-                    }
-                  >
-                    核销
-                  </button>
-                </>
-              )}
-              {item.method === 'DELIVERY' &&
-                item.orderStatus === 'PAID' &&
-                item.delivery?.status === 'PENDING' && (
-                  <button
-                    disabled={busy === item.orderId}
-                    onClick={() =>
-                      void run(item.orderId, () => dispatchDelivery(token, item.orderId))
-                    }
-                  >
-                    确认出库配送
-                  </button>
-                )}
-              {item.method === 'DELIVERY' &&
-                item.orderStatus === 'DELIVERING' &&
-                item.delivery?.status === 'DISPATCHED' && (
-                  <button
-                    disabled={busy === item.orderId}
-                    onClick={() =>
-                      void run(item.orderId, () => completeDelivery(token, item.orderId))
-                    }
-                  >
-                    确认送达
-                  </button>
-                )}
-                </div></td>
+                <td>
+                  <span className="status-pill">{item.orderStatus}</span>
+                </td>
+                <td>
+                  <div className="inline-actions">
+                    {item.method === 'PICKUP' && item.orderStatus === 'PAID' && (
+                      <button
+                        disabled={busy === item.orderId}
+                        onClick={() =>
+                          void run(item.orderId, () => markPickupReady(token, item.orderId))
+                        }
+                      >
+                        标记可取
+                      </button>
+                    )}
+                    {item.method === 'PICKUP' && item.orderStatus === 'PICKUP_READY' && (
+                      <>
+                        <input
+                          inputMode="numeric"
+                          maxLength={6}
+                          placeholder="6 位取货码"
+                          value={pickupCodes[item.orderId] ?? ''}
+                          onChange={(event) =>
+                            setPickupCodes((current) => ({
+                              ...current,
+                              [item.orderId]: event.target.value.replace(/\D/g, '').slice(0, 6),
+                            }))
+                          }
+                        />
+                        <button
+                          disabled={
+                            busy === item.orderId ||
+                            !/^\d{6}$/.test(pickupCodes[item.orderId] ?? '')
+                          }
+                          onClick={() =>
+                            void run(item.orderId, () =>
+                              verifyPickup(token, item.orderId, pickupCodes[item.orderId] ?? ''),
+                            )
+                          }
+                        >
+                          核销
+                        </button>
+                      </>
+                    )}
+                    {item.method === 'DELIVERY' &&
+                      item.orderStatus === 'PAID' &&
+                      item.delivery?.status === 'PENDING' && (
+                        <button
+                          disabled={busy === item.orderId}
+                          onClick={() =>
+                            void run(item.orderId, () => dispatchDelivery(token, item.orderId))
+                          }
+                        >
+                          确认出库配送
+                        </button>
+                      )}
+                    {item.method === 'DELIVERY' &&
+                      item.orderStatus === 'DELIVERING' &&
+                      item.delivery?.status === 'DISPATCHED' && (
+                        <button
+                          disabled={busy === item.orderId}
+                          onClick={() =>
+                            void run(item.orderId, () => completeDelivery(token, item.orderId))
+                          }
+                        >
+                          确认送达
+                        </button>
+                      )}
+                  </div>
+                </td>
               </tr>
             ))}
             {!items.length && (
-              <tr><td colSpan={5} className="data-table-empty">当前门店暂无待履约订单</td></tr>
+              <tr>
+                <td colSpan={5} className="data-table-empty">
+                  当前门店暂无待履约订单
+                </td>
+              </tr>
             )}
           </tbody>
         </table>
@@ -204,21 +217,31 @@ export function FulfillmentPanel({ token, storeId }: { token: string; storeId: s
             <tr>
               <th scope="col">配送区域</th>
               <th scope="col">覆盖位置</th>
-              <th scope="col" className="numeric">配送费</th>
+              <th scope="col" className="numeric">
+                配送费
+              </th>
               <th scope="col">配送方式</th>
             </tr>
           </thead>
           <tbody>
             {zones.map((zone) => (
               <tr key={zone.id}>
-                <td><strong className="cell-title">{zone.name}</strong></td>
-                <td>{zone.region} {zone.city} {zone.district ?? '全市兜底'}</td>
+                <td>
+                  <strong className="cell-title">{zone.name}</strong>
+                </td>
+                <td>
+                  {zone.region} {zone.city} {zone.district ?? '全市兜底'}
+                </td>
                 <td className="numeric">¥{(zone.feeMinor / 100).toFixed(2)}</td>
                 <td>{zone.providerKey}</td>
               </tr>
             ))}
             {!zones.length && (
-              <tr><td colSpan={4} className="data-table-empty">当前门店暂无配送区域</td></tr>
+              <tr>
+                <td colSpan={4} className="data-table-empty">
+                  当前门店暂无配送区域
+                </td>
+              </tr>
             )}
           </tbody>
         </table>

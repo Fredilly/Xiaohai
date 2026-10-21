@@ -81,11 +81,19 @@ export function StoreCatalogPanel({
               <th scope="col">商品 / SKU</th>
               <th scope="col">作者 / 出版社</th>
               <th scope="col">ISBN</th>
-              <th scope="col" className="numeric">售价</th>
-              <th scope="col" className="numeric">现存 / 可用</th>
-              <th scope="col" className="numeric">占用</th>
+              <th scope="col" className="numeric">
+                售价
+              </th>
+              <th scope="col" className="numeric">
+                现存 / 可用
+              </th>
+              <th scope="col" className="numeric">
+                占用
+              </th>
               <th scope="col">商品 / SKU 状态</th>
-              <th scope="col" className="numeric">库存版本</th>
+              <th scope="col" className="numeric">
+                库存版本
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -102,12 +110,12 @@ export function StoreCatalogPanel({
                 <td className="cell-code">{item.isbn || '—'}</td>
                 <td className="numeric">
                   <strong>¥{(item.priceMinor / 100).toFixed(2)}</strong>
-                  <small className="cell-meta">
-                    {item.availableForSale ? '可售' : '不可售'}
-                  </small>
+                  <small className="cell-meta">{item.availableForSale ? '可售' : '不可售'}</small>
                 </td>
                 <td className="numeric">
-                  <strong>{item.onHand} / {item.available}</strong>
+                  <strong>
+                    {item.onHand} / {item.available}
+                  </strong>
                 </td>
                 <td className="numeric">{item.reserved + item.rentalReserved}</td>
                 <td>
@@ -119,7 +127,9 @@ export function StoreCatalogPanel({
             ))}
             {!items.length && (
               <tr>
-                <td colSpan={8} className="data-table-empty">暂无符合条件的商品</td>
+                <td colSpan={8} className="data-table-empty">
+                  暂无符合条件的商品
+                </td>
               </tr>
             )}
           </tbody>

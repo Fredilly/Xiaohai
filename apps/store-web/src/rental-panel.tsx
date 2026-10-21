@@ -75,7 +75,9 @@ export function RentalPanel({ token, storeId }: { token: string; storeId: string
                   <strong className="cell-title">{item.rentalNumber}</strong>
                   <small className="cell-meta">{item.storeName}</small>
                 </td>
-                <td><span className="status-pill">{labels[item.status] ?? item.status}</span></td>
+                <td>
+                  <span className="status-pill">{labels[item.status] ?? item.status}</span>
+                </td>
                 <td>{item.dueAt ? new Date(item.dueAt).toLocaleString() : '—'}</td>
                 <td>
                   <div className="inline-actions">
@@ -93,13 +95,19 @@ export function RentalPanel({ token, storeId }: { token: string; storeId: string
                             }))
                           }
                         />
-                        <button disabled={busy === item.id} onClick={() => void act(item.id, 'borrow')}>
+                        <button
+                          disabled={busy === item.id}
+                          onClick={() => void act(item.id, 'borrow')}
+                        >
                           核验并借出
                         </button>
                       </>
                     )}
                     {(item.status === 'BORROWED' || item.status === 'OVERDUE') && (
-                      <button disabled={busy === item.id} onClick={() => void act(item.id, 'return')}>
+                      <button
+                        disabled={busy === item.id}
+                        onClick={() => void act(item.id, 'return')}
+                      >
                         确认归还
                       </button>
                     )}
@@ -108,7 +116,11 @@ export function RentalPanel({ token, storeId }: { token: string; storeId: string
               </tr>
             ))}
             {!items.length && (
-              <tr><td colSpan={4} className="data-table-empty">当前门店暂无租借记录</td></tr>
+              <tr>
+                <td colSpan={4} className="data-table-empty">
+                  当前门店暂无租借记录
+                </td>
+              </tr>
             )}
           </tbody>
         </table>

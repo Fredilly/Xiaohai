@@ -77,8 +77,12 @@ export function InventoryPanel({ token, storeId }: { token: string; storeId: str
           <thead>
             <tr>
               <th scope="col">商品 / SKU</th>
-              <th scope="col" className="numeric">现存 / 可用</th>
-              <th scope="col" className="numeric">库存版本</th>
+              <th scope="col" className="numeric">
+                现存 / 可用
+              </th>
+              <th scope="col" className="numeric">
+                库存版本
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -88,12 +92,18 @@ export function InventoryPanel({ token, storeId }: { token: string; storeId: str
                   <strong className="cell-title">{item.skuName}</strong>
                   <small className="cell-meta">{item.skuCode}</small>
                 </td>
-                <td className="numeric">{item.onHand} / <strong>{item.available}</strong></td>
+                <td className="numeric">
+                  {item.onHand} / <strong>{item.available}</strong>
+                </td>
                 <td className="numeric">v{item.version}</td>
               </tr>
             ))}
             {!items.length && (
-              <tr><td colSpan={3} className="data-table-empty">当前门店暂无库存记录</td></tr>
+              <tr>
+                <td colSpan={3} className="data-table-empty">
+                  当前门店暂无库存记录
+                </td>
+              </tr>
             )}
           </tbody>
         </table>
