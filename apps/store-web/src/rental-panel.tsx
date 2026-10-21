@@ -58,50 +58,60 @@ export function RentalPanel({ token, storeId }: { token: string; storeId: string
         当前只加载工作台选中的门店。取书码只由顾客端显示；员工现场输入 6
         位码，服务端再次校验门店范围、库存与状态。
       </p>
-      <div className="inventory-table">
-        <div className="inventory-row heading">
-          <span>租借</span>
-          <span>状态 / 到期</span>
-          <span>操作</span>
-        </div>
-        {items.map((item) => (
-          <div className="inventory-row" key={item.id}>
-            <span>
-              <strong>{item.rentalNumber}</strong>
-              <small>{item.storeName}</small>
-            </span>
-            <span>
-              {labels[item.status] ?? item.status}
-              <small>{item.dueAt ? new Date(item.dueAt).toLocaleString() : '—'}</small>
-            </span>
-            <span className="inline-actions">
-              {item.status === 'RESERVED' && (
-                <>
-                  <input
-                    inputMode="numeric"
-                    maxLength={6}
-                    placeholder="6 位取书码"
-                    value={pickupCodes[item.id] ?? ''}
-                    onChange={(event) =>
-                      setPickupCodes((current) => ({
-                        ...current,
-                        [item.id]: event.target.value.replace(/\D/g, '').slice(0, 6),
-                      }))
-                    }
-                  />
-                  <button disabled={busy === item.id} onClick={() => void act(item.id, 'borrow')}>
-                    核验并借出
-                  </button>
-                </>
-              )}
-              {(item.status === 'BORROWED' || item.status === 'OVERDUE') && (
-                <button disabled={busy === item.id} onClick={() => void act(item.id, 'return')}>
-                  确认归还
-                </button>
-              )}
-            </span>
-          </div>
-        ))}
+      <div className="data-table-scroll" role="region" aria-label="门店租借记录表格" tabIndex={0}>
+        <table className="data-table data-table-compact">
+          <thead>
+            <tr>
+              <th scope="col">租借单号 / 门店</th>
+              <th scope="col">状态</th>
+              <th scope="col">到期时间</th>
+              <th scope="col">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((item) => (
+              <tr key={item.id}>
+                <td>
+                  <strong className="cell-title">{item.rentalNumber}</strong>
+                  <small className="cell-meta">{item.storeName}</small>
+                </td>
+                <td><span className="status-pill">{labels[item.status] ?? item.status}</span></td>
+                <td>{item.dueAt ? new Date(item.dueAt).toLocaleString() : '—'}</td>
+                <td>
+                  <div className="inline-actions">
+                    {item.status === 'RESERVED' && (
+                      <>
+                        <input
+                          inputMode="numeric"
+                          maxLength={6}
+                          placeholder="6 位取书码"
+                          value={pickupCodes[item.id] ?? ''}
+                          onChange={(event) =>
+                            setPickupCodes((current) => ({
+                              ...current,
+                              [item.id]: event.target.value.replace(/\D/g, '').slice(0, 6),
+                            }))
+                          }
+                        />
+                        <button disabled={busy === item.id} onClick={() => void act(item.id, 'borrow')}>
+                          核验并借出
+                        </button>
+                      </>
+                    )}
+                    {(item.status === 'BORROWED' || item.status === 'OVERDUE') && (
+                      <button disabled={busy === item.id} onClick={() => void act(item.id, 'return')}>
+                        确认归还
+                      </button>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            ))}
+            {!items.length && (
+              <tr><td colSpan={4} className="data-table-empty">当前门店暂无租借记录</td></tr>
+            )}
+          </tbody>
+        </table>
       </div>
       <p role="status">{status}</p>
     </section>

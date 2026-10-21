@@ -754,3 +754,6 @@ button:disabled {
   .data-table { min-width: 840px; }
   .data-table-corrections { min-width: 1120px; }
 }
+
+.data-table-compact { min-width: 640px; }
+.data-table .inline-actions { min-width: 160px; }

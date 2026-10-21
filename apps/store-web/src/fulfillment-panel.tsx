@@ -97,24 +97,28 @@ export function FulfillmentPanel({ token, storeId }: { token: string; storeId: s
         adapter 代表人工同城配送。
       </p>
 
-      <div className="inventory-table">
-        <div className="inventory-row heading">
-          <span>订单</span>
-          <span>方式 / 状态</span>
-          <span>操作</span>
-        </div>
-        {items.map((item) => (
-          <div className="inventory-row" key={item.orderId}>
-            <span>
-              <strong>{item.orderNumber}</strong>
-              <small>{item.store.name}</small>
-              <small>¥{(item.totalMinor / 100).toFixed(2)}</small>
-            </span>
-            <span>
-              {item.method === 'PICKUP' ? '到店自提' : '同城配送'}
-              <small>{item.orderStatus}</small>
-            </span>
-            <span className="inline-actions">
+      <div className="data-table-scroll" role="region" aria-label="门店订单履约表格" tabIndex={0}>
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th scope="col">订单号 / 门店</th>
+              <th scope="col" className="numeric">订单金额</th>
+              <th scope="col">履约方式</th>
+              <th scope="col">订单状态</th>
+              <th scope="col">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((item) => (
+              <tr key={item.orderId}>
+                <td>
+                  <strong className="cell-title">{item.orderNumber}</strong>
+                  <small className="cell-meta">{item.store.name}</small>
+                </td>
+                <td className="numeric">¥{(item.totalMinor / 100).toFixed(2)}</td>
+                <td>{item.method === 'PICKUP' ? '到店自提' : '同城配送'}</td>
+                <td><span className="status-pill">{item.orderStatus}</span></td>
+                <td><div className="inline-actions">
               {item.method === 'PICKUP' && item.orderStatus === 'PAID' && (
                 <button
                   disabled={busy === item.orderId}
@@ -175,9 +179,14 @@ export function FulfillmentPanel({ token, storeId }: { token: string; storeId: s
                     确认送达
                   </button>
                 )}
-            </span>
-          </div>
-        ))}
+                </div></td>
+              </tr>
+            ))}
+            {!items.length && (
+              <tr><td colSpan={5} className="data-table-empty">当前门店暂无待履约订单</td></tr>
+            )}
+          </tbody>
+        </table>
       </div>
 
       <h3>配送区域与费用</h3>
@@ -189,18 +198,30 @@ export function FulfillmentPanel({ token, storeId }: { token: string; storeId: s
         <input name="feeMinor" type="number" min="0" step="1" placeholder="配送费（分）" required />
         <button type="submit">新增区域</button>
       </form>
-      <div className="zone-list">
-        {zones.map((zone) => (
-          <div className="zone-row" key={zone.id}>
-            <strong>{zone.name}</strong>
-            <span>
-              {zone.region} {zone.city} {zone.district ?? '全市兜底'}
-            </span>
-            <span>
-              ¥{(zone.feeMinor / 100).toFixed(2)} · {zone.providerKey}
-            </span>
-          </div>
-        ))}
+      <div className="data-table-scroll" role="region" aria-label="门店配送区域表格" tabIndex={0}>
+        <table className="data-table data-table-compact">
+          <thead>
+            <tr>
+              <th scope="col">配送区域</th>
+              <th scope="col">覆盖位置</th>
+              <th scope="col" className="numeric">配送费</th>
+              <th scope="col">配送方式</th>
+            </tr>
+          </thead>
+          <tbody>
+            {zones.map((zone) => (
+              <tr key={zone.id}>
+                <td><strong className="cell-title">{zone.name}</strong></td>
+                <td>{zone.region} {zone.city} {zone.district ?? '全市兜底'}</td>
+                <td className="numeric">¥{(zone.feeMinor / 100).toFixed(2)}</td>
+                <td>{zone.providerKey}</td>
+              </tr>
+            ))}
+            {!zones.length && (
+              <tr><td colSpan={4} className="data-table-empty">当前门店暂无配送区域</td></tr>
+            )}
+          </tbody>
+        </table>
       </div>
       <p role="status">{status}</p>
     </section>
