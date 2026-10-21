@@ -207,6 +207,7 @@ function Shell({
               storeId={currentStore.id}
               storeName={currentStore.name}
               permissions={me.permissions}
+              staffAccountId={me.staff.id}
             />
           ) : (
             <StoreRequired />

@@ -24,11 +24,13 @@ export function CatalogCorrectionPanel({
   storeId,
   storeName,
   permissions,
+  staffAccountId,
 }: {
   token: string;
   storeId: string;
   storeName: string;
   permissions: readonly string[];
+  staffAccountId: string;
 }) {
   const canSubmit =
     permissions.includes('stores.read') &&
@@ -41,7 +43,7 @@ export function CatalogCorrectionPanel({
   const [searchText, setSearchText] = useState('');
   const [appliedSearch, setAppliedSearch] = useState('');
   const [skuId, setSkuId] = useState('');
-  const [field, setField] = useState<Field>('bookTitle');
+  const [field, setField] = useState<Field>('productName');
   const [proposedValue, setProposedValue] = useState('');
   const [reason, setReason] = useState('');
   const [reviewReasons, setReviewReasons] = useState<Record<string, string>>({});
@@ -177,7 +179,15 @@ export function CatalogCorrectionPanel({
           <form className="catalog-correction-form" onSubmit={(event) => void submit(event)}>
             <label>
               选择商品
-              <select required value={skuId} onChange={(event) => setSkuId(event.target.value)}>
+              <select
+                required
+                value={skuId}
+                onChange={(event) => {
+                  setSkuId(event.target.value);
+                  setField('productName');
+                  setProposedValue('');
+                }}
+              >
                 <option value="">请选择</option>
                 {items.map((item) => (
                   <option value={item.skuId} key={item.skuId}>
@@ -189,17 +199,11 @@ export function CatalogCorrectionPanel({
             <label>
               拟更正字段
               <select value={field} onChange={(event) => setField(event.target.value as Field)}>
-                {fields
-                  .filter(
-                    (option) =>
-                      selected?.bookTitle ||
-                      !['bookTitle', 'author', 'publisher', 'isbn'].includes(option.key),
-                  )
-                  .map((option) => (
-                    <option value={option.key} key={option.key}>
-                      {option.label}
-                    </option>
-                  ))}
+                {selectableCorrectionFields(selected?.bookTitle).map((option) => (
+                  <option value={option.key} key={option.key}>
+                    {option.label}
+                  </option>
+                ))}
               </select>
             </label>
             <label>
@@ -245,8 +249,12 @@ export function CatalogCorrectionPanel({
             <small>申请时间：{new Date(request.createdAt).toLocaleString()}</small>
             {request.reviewReason && <small>复核理由：{request.reviewReason}</small>}
           </div>
-          {canReview && request.status === 'PENDING' && (
-            <div>
+          {canReview &&
+            request.status === 'PENDING' &&
+            (isOwnCorrection(request.requestedByStaffAccountId, staffAccountId) ? (
+              <p>本人提交的建议需由另一名授权人员独立复核。</p>
+            ) : (
+              <div>
               <label>
                 独立复核理由
                 <textarea
@@ -270,13 +278,25 @@ export function CatalogCorrectionPanel({
               >
                 驳回建议
               </button>
-            </div>
-          )}
+              </div>
+            ))}
         </article>
       ))}
       <p role="status">{status}</p>
     </section>
   );
+}
+
+export function selectableCorrectionFields(bookTitle: string | null | undefined) {
+  return fields.filter(
+    (option) =>
+      Boolean(bookTitle) ||
+      !['bookTitle', 'author', 'publisher', 'isbn'].includes(option.key),
+  );
+}
+
+export function isOwnCorrection(requesterStaffAccountId: string, currentStaffAccountId: string) {
+  return requesterStaffAccountId === currentStaffAccountId;
 }
 
 export function correctionStatus(value: Correction['status']) {
