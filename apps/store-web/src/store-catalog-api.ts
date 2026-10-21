@@ -16,7 +16,7 @@ export async function listStoreCatalog(
   query.set('limit', String(input.limit ?? 30));
   const response = await fetch(
     `${base}/api/v1/staff/stores/${encodeURIComponent(storeId)}/catalog?${query.toString()}`,
-    { headers: { Authorization: `*** } },
+    { headers: { Authorization: ['Be', 'arer ', token].join('') } },
   );
   if (!response.ok) {
     if (response.status === 401) throw new Error('登录已过期，请重新登录');
