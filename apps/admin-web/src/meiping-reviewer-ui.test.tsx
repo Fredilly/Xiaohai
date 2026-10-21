@@ -33,8 +33,7 @@ describe('independent correction review entrance', () => {
   });
 
   it('hides the Meiping navigation and refuses access without read or edit privileges', () => {
-    expect(visibleAdminModules(['stores.read']).map((item) => item.key))
-      .not.toContain('meiping');
+    expect(visibleAdminModules(['stores.read']).map((item) => item.key)).not.toContain('meiping');
     expect(render(['stores.read'])).toContain('权限不足');
   });
 });

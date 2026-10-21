@@ -276,33 +276,37 @@ export function MeipingPreflightManager({ token, me }: { token: string; me: Staf
               ))}
             </select>
           </label>
-          {canPreflight && <label>
-            {meipingMaxFileSizeLabel()}
-            <input
-              ref={inputRef}
-              type="file"
-              accept=".xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-              disabled={busy}
-              onChange={(event) => chooseFile(event.target.files?.[0])}
-            />
-          </label>}
+          {canPreflight && (
+            <label>
+              {meipingMaxFileSizeLabel()}
+              <input
+                ref={inputRef}
+                type="file"
+                accept=".xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                disabled={busy}
+                onChange={(event) => chooseFile(event.target.files?.[0])}
+              />
+            </label>
+          )}
         </div>
         <div className="meiping-upload-actions">
           <span>
             {selectedStore ? `当前门店：${selectedStore.name}` : '仅可使用服务端返回的授权门店'}
           </span>
-          {canPreflight && <div className="button-row">
-            <button disabled={busy || !file || !storeId} onClick={() => void submit()}>
-              {busy ? '处理中…' : '开始只读预检查'}
-            </button>
-            <button
-              className="secondary"
-              disabled={busy || !reportIsCurrent}
-              onClick={() => void downloadCsv()}
-            >
-              下载问题明细 CSV
-            </button>
-          </div>}
+          {canPreflight && (
+            <div className="button-row">
+              <button disabled={busy || !file || !storeId} onClick={() => void submit()}>
+                {busy ? '处理中…' : '开始只读预检查'}
+              </button>
+              <button
+                className="secondary"
+                disabled={busy || !reportIsCurrent}
+                onClick={() => void downloadCsv()}
+              >
+                下载问题明细 CSV
+              </button>
+            </div>
+          )}
         </div>
         {status && (
           <p className="meiping-status" role="alert">
