@@ -1,5 +1,13 @@
 export type StoreModule = {
-  key: 'dashboard' | 'books' | 'inventory' | 'rental' | 'orders' | 'operations' | 'manager' | 'meiping';
+  key:
+    | 'dashboard'
+    | 'books'
+    | 'inventory'
+    | 'rental'
+    | 'orders'
+    | 'operations'
+    | 'manager'
+    | 'meiping';
   label: string;
   description: string;
   status: string;
@@ -64,12 +72,11 @@ export const storeModules: StoreModule[] = [
 ];
 
 export function visibleStoreModules(permissions: readonly string[]): StoreModule[] {
-  return storeModules.filter(
-    (item) =>
-      item.key === 'meiping'
-        ? (permissions.includes('inventory.receive') &&
-            permissions.includes('inventory.stocktake')) ||
-          permissions.includes('meiping.correction.review')
-        : !item.requiredPermission || permissions.includes(item.requiredPermission),
+  return storeModules.filter((item) =>
+    item.key === 'meiping'
+      ? (permissions.includes('inventory.receive') &&
+          permissions.includes('inventory.stocktake')) ||
+        permissions.includes('meiping.correction.review')
+      : !item.requiredPermission || permissions.includes(item.requiredPermission),
   );
 }

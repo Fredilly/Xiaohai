@@ -1,4 +1,4 @@
-import type { ReviewCorrectionInput, ReviewDecisionInput, ReviewItem } from './meiping-review-api';
+import type { ReviewCorrectionInput, ReviewDecisionInput, CorrectionReviewInput, ReviewItem } from './meiping-review-api';
 
 /** A proposed fix is separate from the original Excel record and never activates sale/import. */
 export function correctionProposalInput(
@@ -95,7 +95,7 @@ export function correctionVerdictInput(
   expectedCorrectionVersion: number,
   verdict: '' | 'ACCEPTED' | 'REJECTED',
   reason: string,
-): import('./meiping-review-api').CorrectionReviewInput | string {
+): CorrectionReviewInput | string {
   if (!/^[a-f0-9]{64}$/i.test(expectedChecksum)) return '源文件校验值无效。';
   if (!Number.isSafeInteger(expectedCorrectionVersion) || expectedCorrectionVersion < 1) {
     return '纠错建议版本无效，请刷新后重试。';

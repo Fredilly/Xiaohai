@@ -16,17 +16,29 @@ const checksum = 'a'.repeat(64);
 const item: ReviewItem = {
   sourceRowNumber: 5,
   disposition: 'DUPLICATE',
-  sourceIdentifiers: { bookCode: 'BOOK-5', internalCode: null, barcode: 'PR148-DUP-001', isbn: null },
+  sourceIdentifiers: {
+    bookCode: 'BOOK-5',
+    internalCode: null,
+    barcode: 'PR148-DUP-001',
+    isbn: null,
+  },
   normalized: { title: '重复条码甲', author: '作者甲', publisher: '测试出版社', priceMinor: 3300 },
   issueCodes: ['DUPLICATE_BARCODE'],
   saleBlocked: true,
   decision: {
-    sourceRowNumber: 5, action: 'EXCLUDE', countedQuantity: null,
-    reason: '人工核对', version: 2, updatedAt: '2026-10-21T00:00:00Z',
+    sourceRowNumber: 5,
+    action: 'EXCLUDE',
+    countedQuantity: null,
+    reason: '人工核对',
+    version: 2,
+    updatedAt: '2026-10-21T00:00:00Z',
   },
   correction: {
-    sourceRowNumber: 5, proposedFields: { barcode: 'PR153-NEW-004' },
-    reason: '门店提出条码更正', version: 4, updatedAt: '2026-10-21T00:00:00Z',
+    sourceRowNumber: 5,
+    proposedFields: { barcode: 'PR153-NEW-004' },
+    reason: '门店提出条码更正',
+    version: 4,
+    updatedAt: '2026-10-21T00:00:00Z',
   },
   correctionReview: null,
 };
@@ -34,13 +46,19 @@ const item: ReviewItem = {
 describe('Store Web Meiping review boundaries', () => {
   it('separates original editor rights, dedicated reviewer rights and visibility', () => {
     expect(meipingStorePermissions(['meiping.correction.review'])).toEqual({
-      canRead: true, canEdit: false, canReview: true,
+      canRead: true,
+      canEdit: false,
+      canReview: true,
     });
     expect(meipingStorePermissions(['inventory.receive', 'inventory.stocktake'])).toEqual({
-      canRead: true, canEdit: true, canReview: false,
+      canRead: true,
+      canEdit: true,
+      canReview: false,
     });
     expect(meipingStorePermissions(['inventory.receive'])).toEqual({
-      canRead: false, canEdit: false, canReview: false,
+      canRead: false,
+      canEdit: false,
+      canReview: false,
     });
   });
 
@@ -48,15 +66,23 @@ describe('Store Web Meiping review boundaries', () => {
     expect(correctionVerdictInput(checksum, 4, '', '理由')).toMatch('请主动选择');
     expect(correctionVerdictInput(checksum, 4, 'REJECTED', '')).toMatch('请填写');
     expect(correctionVerdictInput(checksum, 4, 'ACCEPTED', '  人工核验完成  ')).toEqual({
-      expectedChecksum: checksum, expectedCorrectionVersion: 4,
-      verdict: 'ACCEPTED', reason: '人工核验完成',
+      expectedChecksum: checksum,
+      expectedCorrectionVersion: 4,
+      verdict: 'ACCEPTED',
+      reason: '人工核验完成',
     });
     expect(correctionVerdictInput(checksum, 0, 'ACCEPTED', '理由')).toMatch('版本无效');
   });
 
   it('shows original and proposed fields before an irreversible verdict without defaulting to reject', () => {
     const html = renderToStaticMarkup(
-      <StoreIndependentReview item={item} checksum={checksum} enabled disabled={false} onSubmit={() => Promise.resolve()} />,
+      <StoreIndependentReview
+        item={item}
+        checksum={checksum}
+        enabled
+        disabled={false}
+        onSubmit={() => Promise.resolve()}
+      />,
     );
     expect(html).toContain('版本 4');
     expect(html).toContain('PR148-DUP-001');
@@ -89,7 +115,11 @@ describe('Store Web Meiping review boundaries', () => {
     expect(existing).toContain('驳回建议');
     expect(existing).not.toContain('<select');
     const reviewer = renderToStaticMarkup(
-      <MeipingReviewPanel token="mock-session" storeId="11111111-1111-4111-8111-111111111111" permissions={['stores.read', 'meiping.correction.review']} />,
+      <MeipingReviewPanel
+        token="mock-session"
+        storeId="11111111-1111-4111-8111-111111111111"
+        permissions={['stores.read', 'meiping.correction.review']}
+      />,
     );
     expect(reviewer).toContain('一次性迁移');
     expect(reviewer).not.toContain('保存纠错建议');
@@ -97,11 +127,21 @@ describe('Store Web Meiping review boundaries', () => {
 
   it('never lets a blocked duplicate barcode create a draft candidate', () => {
     expect(reviewDecisionInput(item, 'CREATE_DRAFT', '3', '', checksum)).toMatch('不能直接');
-    const proposed = correctionProposalInput(item, {
-      title: '', author: '', publisher: '', barcode: 'PR153-NEW-004', priceYuan: '',
-    }, '检查源行', checksum);
+    const proposed = correctionProposalInput(
+      item,
+      {
+        title: '',
+        author: '',
+        publisher: '',
+        barcode: 'PR153-NEW-004',
+        priceYuan: '',
+      },
+      '检查源行',
+      checksum,
+    );
     expect(proposed).toMatchObject({
-      expectedVersion: 4, proposedFields: { barcode: 'PR153-NEW-004' },
+      expectedVersion: 4,
+      proposedFields: { barcode: 'PR153-NEW-004' },
     });
   });
 });
