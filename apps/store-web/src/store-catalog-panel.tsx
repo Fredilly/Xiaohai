@@ -62,7 +62,7 @@ export function StoreCatalogPanel({
       </p>
       <p>
         图书书名、ISBN、出版社及 SKU
-        可能被多家门店共用。店长暂不能直接在这里修改全局商品资料；后续将单独开发提交纠错申请和授权复核。
+        可能被多家门店共用。店长不能直接在这里修改全局商品资料。如需更正，请进入「商品纠错申请」提交建议，由另一名授权人员独立复核；即使采纳也不会自动修改正式商品或库存。
       </p>
       <form className="book-search-form" onSubmit={search}>
         <input

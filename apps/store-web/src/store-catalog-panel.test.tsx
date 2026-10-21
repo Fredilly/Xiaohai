@@ -13,6 +13,9 @@ describe('Store catalog read-only module', () => {
     expect(html).toContain('虚拟门店');
     expect(html).toContain('门店只读');
     expect(html).toContain('不能直接在这里修改全局商品资料');
+    expect(html).toContain('「商品纠错申请」');
+    expect(html).toContain('不会自动修改正式商品或库存');
+    expect(html).not.toContain('后续将单独开发');
     expect(html).not.toContain('保存商品');
   });
   it('shows understandable product and SKU statuses', () => {
