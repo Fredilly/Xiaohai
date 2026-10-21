@@ -84,9 +84,9 @@ export function visibleStoreModules(permissions: readonly string[]): StoreModule
     item.key === 'catalog'
       ? permissions.includes('inventory.read') && permissions.includes('stores.read')
       : item.key === 'meiping'
-      ? (permissions.includes('inventory.receive') &&
-          permissions.includes('inventory.stocktake')) ||
-        permissions.includes('meiping.correction.review')
-      : !item.requiredPermission || permissions.includes(item.requiredPermission),
+        ? (permissions.includes('inventory.receive') &&
+            permissions.includes('inventory.stocktake')) ||
+          permissions.includes('meiping.correction.review')
+        : !item.requiredPermission || permissions.includes(item.requiredPermission),
   );
 }

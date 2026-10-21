@@ -29,7 +29,11 @@ export function StoreCatalogPanel({
         if (page.storeId !== storeId) throw new Error('门店商品资料上下文不一致');
         setItems(page.items);
         setMore(page.hasMore);
-        setStatus(page.items.length ? '展示本店已建立库存记录的商品资料（只读）' : '本店暂无关联库存的正式商品资料');
+        setStatus(
+          page.items.length
+            ? '展示本店已建立库存记录的商品资料（只读）'
+            : '本店暂无关联库存的正式商品资料',
+        );
       })
       .catch((error: unknown) => {
         if (!active) return;
@@ -37,7 +41,9 @@ export function StoreCatalogPanel({
         setMore(false);
         setStatus(error instanceof Error ? error.message : '读取商品资料失败');
       });
-    return () => { active = false; };
+    return () => {
+      active = false;
+    };
   }, [token, storeId, applied, offset]);
 
   function search(event: FormEvent<HTMLFormElement>) {
@@ -50,10 +56,22 @@ export function StoreCatalogPanel({
     <section className="panel store-catalog-panel">
       <span className="tag">日常商品资料 · 门店只读</span>
       <h2>本店商品资料</h2>
-      <p>当前门店：{storeName}。仅显示与本店库存记录关联的商品及其基础资料，包括暂停销售或草稿状态的项目。</p>
-      <p>图书书名、ISBN、出版社及 SKU 可能被多家门店共用。店长暂不能直接在这里修改全局商品资料；后续将单独开发提交纠错申请和授权复核。</p>
+      <p>
+        当前门店：{storeName}
+        。仅显示与本店库存记录关联的商品及其基础资料，包括暂停销售或草稿状态的项目。
+      </p>
+      <p>
+        图书书名、ISBN、出版社及 SKU
+        可能被多家门店共用。店长暂不能直接在这里修改全局商品资料；后续将单独开发提交纠错申请和授权复核。
+      </p>
       <form className="book-search-form" onSubmit={search}>
-        <input aria-label="搜索本店商品资料" maxLength={120} value={query} onChange={(e) => setQuery(e.target.value)} placeholder="书名、作者、ISBN、出版社、SKU" />
+        <input
+          aria-label="搜索本店商品资料"
+          maxLength={120}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="书名、作者、ISBN、出版社、SKU"
+        />
         <button>搜索本店商品</button>
       </form>
       <div className="book-results">
@@ -61,12 +79,20 @@ export function StoreCatalogPanel({
           <article className="book-result" key={item.storeId + ':' + item.skuId}>
             <div>
               <strong>{item.bookTitle || item.productName}</strong>
-              <span>作者：{item.author || '未填写'} · 出版社：{item.publisher || '未填写'}</span>
-              <small>ISBN：{item.isbn || '未填写'} · SKU：{item.skuCode}</small>
-              <small>商品：{productStatus(item.productStatus)} · SKU：{skuStatus(item.skuStatus)}</small>
+              <span>
+                作者：{item.author || '未填写'} · 出版社：{item.publisher || '未填写'}
+              </span>
+              <small>
+                ISBN：{item.isbn || '未填写'} · SKU：{item.skuCode}
+              </small>
+              <small>
+                商品：{productStatus(item.productStatus)} · SKU：{skuStatus(item.skuStatus)}
+              </small>
             </div>
             <div>
-              <strong>现存 {item.onHand} · 可用 {item.available}</strong>
+              <strong>
+                现存 {item.onHand} · 可用 {item.available}
+              </strong>
               <span>占用：{item.reserved + item.rentalReserved}</span>
               <small>库存版本 {item.inventoryVersion}</small>
             </div>
@@ -78,9 +104,13 @@ export function StoreCatalogPanel({
         ))}
       </div>
       <div className="meiping-store-actions">
-        <button disabled={offset === 0} onClick={() => setOffset((n) => Math.max(0, n - limit))}>上一页</button>
+        <button disabled={offset === 0} onClick={() => setOffset((n) => Math.max(0, n - limit))}>
+          上一页
+        </button>
         <span>第 {Math.floor(offset / limit) + 1} 页</span>
-        <button disabled={!more} onClick={() => setOffset((n) => n + limit)}>下一页</button>
+        <button disabled={!more} onClick={() => setOffset((n) => n + limit)}>
+          下一页
+        </button>
       </div>
       <p role="status">{status}</p>
     </section>

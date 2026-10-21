@@ -1,5 +1,12 @@
 import { and, asc, eq, ilike, or } from 'drizzle-orm';
-import { bookEditions, books, products, skus, storeInventory, type createDatabase } from '@xiaohai/db';
+import {
+  bookEditions,
+  books,
+  products,
+  skus,
+  storeInventory,
+  type createDatabase,
+} from '@xiaohai/db';
 import { storeCatalogResponseSchema } from '@xiaohai/contracts/commerce';
 
 type Db = ReturnType<typeof createDatabase>['db'];

@@ -161,11 +161,13 @@ export type AdminProductInput = z.infer<typeof adminProductInputSchema>;
 export type CommerceErrorCode = z.infer<typeof commerceErrorCodeSchema>;
 
 /** Authenticated Staff read-model: only SKU rows linked to the scoped store's inventory. */
-export const storeCatalogQuerySchema = z.object({
-  q: z.string().trim().max(120).optional(),
-  offset: z.coerce.number().int().min(0).max(100000).default(0),
-  limit: z.coerce.number().int().min(1).max(100).default(30),
-}).strict();
+export const storeCatalogQuerySchema = z
+  .object({
+    q: z.string().trim().max(120).optional(),
+    offset: z.coerce.number().int().min(0).max(100000).default(0),
+    limit: z.coerce.number().int().min(1).max(100).default(30),
+  })
+  .strict();
 
 export const storeCatalogItemSchema = z.object({
   storeId: z.uuid(),

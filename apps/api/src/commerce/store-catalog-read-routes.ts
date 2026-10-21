@@ -48,6 +48,15 @@ function fail(request: FastifyRequest, reply: FastifyReply, error: unknown) {
   }
   request.log.warn({ requestId: request.id, errorCode: code }, 'Store catalog read failed');
   return reply.status(status).send({
-    error: { code, message: status === 403 ? 'Access forbidden' : status === 401 ? 'Authentication required' : 'Request failed', requestId: request.id },
+    error: {
+      code,
+      message:
+        status === 403
+          ? 'Access forbidden'
+          : status === 401
+            ? 'Authentication required'
+            : 'Request failed',
+      requestId: request.id,
+    },
   });
 }

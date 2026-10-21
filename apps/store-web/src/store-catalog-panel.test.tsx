@@ -4,7 +4,11 @@ import { StoreCatalogPanel, productStatus, skuStatus } from './store-catalog-pan
 describe('Store catalog read-only module', () => {
   it('describes store-scoped product data and no direct writes', () => {
     const html = renderToStaticMarkup(
-      <StoreCatalogPanel token="mock" storeId="11111111-1111-4111-8111-111111111111" storeName="虚拟门店" />,
+      <StoreCatalogPanel
+        token="mock"
+        storeId="11111111-1111-4111-8111-111111111111"
+        storeName="虚拟门店"
+      />,
     );
     expect(html).toContain('虚拟门店');
     expect(html).toContain('门店只读');

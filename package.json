@@ -17,7 +17,7 @@
     "secret:set": "node scripts/set-local-secret.mjs",
     "seed:local-staff": "pnpm --filter @xiaohai/api seed:local-staff",
     "format": "prettier --write .",
-    "format:check": "prettier --write apps/api/src/commerce/store-catalog-read-routes.ts apps/api/src/commerce/store-catalog-read-service.ts apps/api/test/store-catalog-read-routes.test.ts apps/store-web/src/mock-data.ts apps/store-web/src/module-visibility.test.ts apps/store-web/src/store-catalog-api.test.ts apps/store-web/src/store-catalog-api.ts apps/store-web/src/store-catalog-panel.test.tsx apps/store-web/src/store-catalog-panel.tsx packages/contracts/src/commerce.ts >/dev/null && for f in apps/api/src/commerce/store-catalog-read-routes.ts apps/api/src/commerce/store-catalog-read-service.ts apps/api/test/store-catalog-read-routes.test.ts apps/store-web/src/mock-data.ts apps/store-web/src/module-visibility.test.ts apps/store-web/src/store-catalog-api.test.ts apps/store-web/src/store-catalog-api.ts apps/store-web/src/store-catalog-panel.test.tsx apps/store-web/src/store-catalog-panel.tsx packages/contracts/src/commerce.ts; do echo PR155_BEGIN_$f; cat \"$f\"; echo PR155_END_$f; done && prettier --check .",
+    "format:check": "prettier --check .",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",

@@ -16,19 +16,25 @@ const context = {
   dataScopes: [{ type: 'STORE' as const, id: own }],
 };
 const apps: ReturnType<typeof Fastify>[] = [];
-afterEach(async () => { await Promise.all(apps.splice(0).map((app) => app.close())); });
+afterEach(async () => {
+  await Promise.all(apps.splice(0).map((app) => app.close()));
+});
 
 function setup(perms = context.permissions) {
   const app = Fastify();
   apps.push(app);
   const list = vi.fn(async (storeId: string) => ({
-    storeId, offset: 0, limit: 30, hasMore: false, items: [],
+    storeId,
+    offset: 0,
+    limit: 30,
+    hasMore: false,
+    items: [],
   }));
   const scoped = { ...context, permissions: perms };
   registerStoreCatalogReadRoutes(app, {
     staffAuthorization: {
       authenticate: async (authorization: string | undefined) => {
-        if (authorization !== 'Bearer fake-staff-session') {
+        if (authorization !== '***') {
           throw new ConsumerAuthError('STAFF_AUTHENTICATION_REQUIRED', 401);
         }
         return scoped;
@@ -59,8 +65,9 @@ describe('authenticated store-scoped daily catalog read endpoint', () => {
   it('does not allow a real Staff identity scoped to a different store', async () => {
     const { app, list } = setup();
     const r = await app.inject({
-      method: 'GET', url: `/api/v1/staff/stores/${foreign}/catalog`,
-      headers: { authorization: 'Bearer fake-staff-session' },
+      method: 'GET',
+      url: `/api/v1/staff/stores/${foreign}/catalog`,
+      headers: { authorization: '***' },
     });
     expect(r.statusCode).toBe(403);
     expect(JSON.parse(r.body).error.code).toBe('STAFF_FORBIDDEN');
@@ -70,8 +77,9 @@ describe('authenticated store-scoped daily catalog read endpoint', () => {
   it('requires both stores.read and inventory.read', async () => {
     const { app, list } = setup(['stores.read']);
     const r = await app.inject({
-      method: 'GET', url: `/api/v1/staff/stores/${own}/catalog`,
-      headers: { authorization: 'Bearer fake-staff-session' },
+      method: 'GET',
+      url: `/api/v1/staff/stores/${own}/catalog`,
+      headers: { authorization: '***' },
     });
     expect(r.statusCode).toBe(403);
     expect(list).not.toHaveBeenCalled();
@@ -82,7 +90,7 @@ describe('authenticated store-scoped daily catalog read endpoint', () => {
     const r = await app.inject({
       method: 'GET',
       url: `/api/v1/staff/stores/${own}/catalog?q=%E7%BB%98%E6%9C%AC&offset=0&limit=30`,
-      headers: { authorization: 'Bearer fake-staff-session' },
+      headers: { authorization: '***' },
     });
     expect(r.statusCode).toBe(200);
     expect(list).toHaveBeenCalledWith(own, { q: '绘本', offset: 0, limit: 30 });
@@ -92,8 +100,9 @@ describe('authenticated store-scoped daily catalog read endpoint', () => {
   it('rejects invalid pagination without querying the database', async () => {
     const { app, list } = setup();
     const r = await app.inject({
-      method: 'GET', url: `/api/v1/staff/stores/${own}/catalog?limit=1000`,
-      headers: { authorization: 'Bearer fake-staff-session' },
+      method: 'GET',
+      url: `/api/v1/staff/stores/${own}/catalog?limit=1000`,
+      headers: { authorization: '***' },
     });
     expect(r.statusCode).toBe(400);
     expect(list).not.toHaveBeenCalled();

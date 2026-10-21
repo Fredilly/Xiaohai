@@ -14,9 +14,13 @@ describe('Store Web module visibility', () => {
   });
 
   it('hides store catalog from migration-only reviewers and inventory-read-only without stores.read', () => {
-    expect(visibleStoreModules(['meiping.correction.review']).map((v) => v.key)).not.toContain('catalog');
+    expect(visibleStoreModules(['meiping.correction.review']).map((v) => v.key)).not.toContain(
+      'catalog',
+    );
     expect(visibleStoreModules(['inventory.read']).map((v) => v.key)).not.toContain('catalog');
-    expect(visibleStoreModules(['inventory.read', 'stores.read']).map((v) => v.key)).toContain('catalog');
+    expect(visibleStoreModules(['inventory.read', 'stores.read']).map((v) => v.key)).toContain(
+      'catalog',
+    );
   });
 
   it('lets a reviewer open the migration draft without inventory write permissions', () => {
