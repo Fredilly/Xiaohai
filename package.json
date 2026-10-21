@@ -17,7 +17,7 @@
     "secret:set": "node scripts/set-local-secret.mjs",
     "seed:local-staff": "pnpm --filter @xiaohai/api seed:local-staff",
     "format": "prettier --write .",
-    "format:check": "prettier --write apps/store-web/src/meiping-review-panel.tsx >/dev/null && echo PR154_BEGIN_PRETTIER && cat apps/store-web/src/meiping-review-panel.tsx && echo PR154_END_PRETTIER && prettier --check .",
+    "format:check": "prettier --check .",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",

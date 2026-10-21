@@ -160,7 +160,8 @@ export function MeipingReviewPanel({ token, storeId, permissions }: Props) {
                 <div>
                   <strong>{item.totalRows} 条来源商品</strong>
                   <small>
-                    已保存审核决定 {item.savedDecisions} 条 · {meipingSessionStatusLabel(item.status)}
+                    已保存审核决定 {item.savedDecisions} 条 ·{' '}
+                    {meipingSessionStatusLabel(item.status)}
                   </small>
                 </div>
                 <button
@@ -223,8 +224,9 @@ export function MeipingReviewPanel({ token, storeId, permissions }: Props) {
                       源行 {item.sourceRowNumber} · {item.normalized.title ?? '未填写书名'}
                     </h3>
                     <p>
-                      状态：{meipingDispositionLabel(item.disposition)} · {item.saleBlocked ? '禁止销售' : '仅供审核'} ·
-                      原条码：{item.sourceIdentifiers.barcode || '无'}
+                      状态：{meipingDispositionLabel(item.disposition)} ·{' '}
+                      {item.saleBlocked ? '禁止销售' : '仅供审核'} · 原条码：
+                      {item.sourceIdentifiers.barcode || '无'}
                     </p>
                     <p>
                       原审核决定：
