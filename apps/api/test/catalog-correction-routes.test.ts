@@ -27,16 +27,16 @@ function setup(permissions: string[]) {
     permissions,
     dataScopes: [{ type: 'STORE' as const, id: own }],
   };
-  const submit = vi.fn(async () => ({ id: correctionId, status: 'PENDING' }));
-  const review = vi.fn(async () => ({ id: correctionId, status: 'ACCEPTED' }));
-  const list = vi.fn(async () => ({ requests: [] }));
+  const submit = vi.fn(() => Promise.resolve({ id: correctionId, status: 'PENDING' }));
+  const review = vi.fn(() => Promise.resolve({ id: correctionId, status: 'ACCEPTED' }));
+  const list = vi.fn(() => Promise.resolve({ requests: [] }));
   registerCatalogCorrectionRoutes(app, {
     staffAuthorization: {
-      authenticate: async (header: string | undefined) => {
+      authenticate: (header: string | undefined) => {
         if (header !== authorization) {
-          throw new ConsumerAuthError('STAFF_AUTHENTICATION_REQUIRED', 401);
+          return Promise.reject(new ConsumerAuthError('STAFF_AUTHENTICATION_REQUIRED', 401));
         }
-        return context;
+        return Promise.resolve(context);
       },
       requirePermission: (staff: typeof context, key: string) => {
         if (!staff.permissions.includes(key)) throw new ConsumerAuthError('STAFF_FORBIDDEN', 403);
@@ -44,9 +44,9 @@ function setup(permissions: string[]) {
       hasPermission: (staff: typeof context, key: string) => staff.permissions.includes(key),
     } as unknown as StaffAuthorizationService,
     stores: {
-      getStaffStore: async (id: string) => {
-        if (id !== own) throw new StoreNetworkError('SCOPE_MISMATCH');
-        return { id };
+      getStaffStore: (id: string) => {
+        if (id !== own) return Promise.reject(new StoreNetworkError('SCOPE_MISMATCH'));
+        return Promise.resolve({ id });
       },
     } as unknown as StoreNetworkService,
     corrections: { submit, review, list } as unknown as CatalogCorrectionService,
