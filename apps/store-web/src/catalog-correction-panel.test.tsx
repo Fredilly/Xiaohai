@@ -8,8 +8,15 @@ describe('daily catalog correction UI safety', () => {
   it('uses explicit non-application wording for both review and creation', () => {
     const html = renderToStaticMarkup(
       <CatalogCorrectionPanel
-        token="mock" storeId={storeId} storeName="虚拟门店"
-        permissions={['stores.read', 'inventory.read', 'inventory.stocktake', 'catalog.correction.review']}
+        token="mock"
+        storeId={storeId}
+        storeName="虚拟门店"
+        permissions={[
+          'stores.read',
+          'inventory.read',
+          'inventory.stocktake',
+          'catalog.correction.review',
+        ]}
       />,
     );
     expect(html).toContain('虚拟门店');
@@ -20,8 +27,12 @@ describe('daily catalog correction UI safety', () => {
 
   it('does not present a submission form to independent reviewer without inventory permissions', () => {
     const html = renderToStaticMarkup(
-      <CatalogCorrectionPanel token="mock" storeId={storeId}
-        storeName="复核门店" permissions={['stores.read', 'catalog.correction.review']} />,
+      <CatalogCorrectionPanel
+        token="mock"
+        storeId={storeId}
+        storeName="复核门店"
+        permissions={['stores.read', 'catalog.correction.review']}
+      />,
     );
     expect(html).not.toContain('提交纠错建议（不改商品）');
   });

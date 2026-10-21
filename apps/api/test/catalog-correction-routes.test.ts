@@ -66,7 +66,8 @@ describe('daily catalog corrections remain scoped and separately authorized', ()
   it('does not accept an unauthenticated submission', async () => {
     const { app, submit } = setup(['stores.read', 'inventory.read', 'inventory.stocktake']);
     const response = await app.inject({
-      method: 'POST', url: '/api/v1/staff/stores/' + own + '/catalog-corrections',
+      method: 'POST',
+      url: '/api/v1/staff/stores/' + own + '/catalog-corrections',
       payload: createBody,
     });
     expect(response.statusCode).toBe(401);
@@ -76,8 +77,10 @@ describe('daily catalog corrections remain scoped and separately authorized', ()
   it('rejects unauthorized store without calling proposal writes', async () => {
     const { app, submit } = setup(['stores.read', 'inventory.read', 'inventory.stocktake']);
     const response = await app.inject({
-      method: 'POST', url: '/api/v1/staff/stores/' + other + '/catalog-corrections',
-      headers: { authorization }, payload: createBody,
+      method: 'POST',
+      url: '/api/v1/staff/stores/' + other + '/catalog-corrections',
+      headers: { authorization },
+      payload: createBody,
     });
     expect(response.statusCode).toBe(403);
     expect(submit).not.toHaveBeenCalled();
@@ -86,8 +89,10 @@ describe('daily catalog corrections remain scoped and separately authorized', ()
   it('does not give review access to ordinary inventory managers', async () => {
     const { app, review } = setup(['stores.read', 'inventory.read', 'inventory.stocktake']);
     const response = await app.inject({
-      method: 'POST', url: '/api/v1/staff/stores/' + own + '/catalog-corrections/' + correctionId + '/review',
-      headers: { authorization }, payload: { verdict: 'ACCEPTED', reason: '复核确认' },
+      method: 'POST',
+      url: '/api/v1/staff/stores/' + own + '/catalog-corrections/' + correctionId + '/review',
+      headers: { authorization },
+      payload: { verdict: 'ACCEPTED', reason: '复核确认' },
     });
     expect(response.statusCode).toBe(403);
     expect(review).not.toHaveBeenCalled();
@@ -96,8 +101,10 @@ describe('daily catalog corrections remain scoped and separately authorized', ()
   it('allows scoped managers to submit a validated proposal, never direct catalog update', async () => {
     const { app, submit } = setup(['stores.read', 'inventory.read', 'inventory.stocktake']);
     const response = await app.inject({
-      method: 'POST', url: '/api/v1/staff/stores/' + own + '/catalog-corrections',
-      headers: { authorization }, payload: createBody,
+      method: 'POST',
+      url: '/api/v1/staff/stores/' + own + '/catalog-corrections',
+      headers: { authorization },
+      payload: createBody,
     });
     expect(response.statusCode).toBe(201);
     expect(submit).toHaveBeenCalledWith(own, actor, expect.any(String), createBody);
@@ -106,8 +113,10 @@ describe('daily catalog corrections remain scoped and separately authorized', ()
   it('rejects invalid proposed minor-unit price', async () => {
     const { app, submit } = setup(['stores.read', 'inventory.read', 'inventory.stocktake']);
     const response = await app.inject({
-      method: 'POST', url: '/api/v1/staff/stores/' + own + '/catalog-corrections',
-      headers: { authorization }, payload: { ...createBody, field: 'priceMinor', proposedValue: '-100' },
+      method: 'POST',
+      url: '/api/v1/staff/stores/' + own + '/catalog-corrections',
+      headers: { authorization },
+      payload: { ...createBody, field: 'priceMinor', proposedValue: '-100' },
     });
     expect(response.statusCode).toBe(400);
     expect(submit).not.toHaveBeenCalled();
@@ -116,18 +125,22 @@ describe('daily catalog corrections remain scoped and separately authorized', ()
   it('lets authorized independent reviewers decide scoped proposals', async () => {
     const { app, review, list } = setup(['stores.read', 'catalog.correction.review']);
     const read = await app.inject({
-      method: 'GET', url: '/api/v1/staff/stores/' + own + '/catalog-corrections',
+      method: 'GET',
+      url: '/api/v1/staff/stores/' + own + '/catalog-corrections',
       headers: { authorization },
     });
     expect(read.statusCode).toBe(200);
     expect(list).toHaveBeenCalledWith(own);
     const response = await app.inject({
-      method: 'POST', url: '/api/v1/staff/stores/' + own + '/catalog-corrections/' + correctionId + '/review',
-      headers: { authorization }, payload: { verdict: 'ACCEPTED', reason: '复核确认' },
+      method: 'POST',
+      url: '/api/v1/staff/stores/' + own + '/catalog-corrections/' + correctionId + '/review',
+      headers: { authorization },
+      payload: { verdict: 'ACCEPTED', reason: '复核确认' },
     });
     expect(response.statusCode).toBe(200);
-    expect(review).toHaveBeenCalledWith(
-      own, correctionId, actor, expect.any(String), { verdict: 'ACCEPTED', reason: '复核确认' },
-    );
+    expect(review).toHaveBeenCalledWith(own, correctionId, actor, expect.any(String), {
+      verdict: 'ACCEPTED',
+      reason: '复核确认',
+    });
   });
 });

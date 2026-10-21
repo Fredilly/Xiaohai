@@ -30,10 +30,12 @@ export function CatalogCorrectionPanel({
   storeName: string;
   permissions: readonly string[];
 }) {
-  const canSubmit = permissions.includes('stores.read') &&
-    permissions.includes('inventory.read') && permissions.includes('inventory.stocktake');
-  const canReview = permissions.includes('stores.read') &&
-    permissions.includes('catalog.correction.review');
+  const canSubmit =
+    permissions.includes('stores.read') &&
+    permissions.includes('inventory.read') &&
+    permissions.includes('inventory.stocktake');
+  const canReview =
+    permissions.includes('stores.read') && permissions.includes('catalog.correction.review');
   const [requests, setRequests] = useState<Correction[]>([]);
   const [items, setItems] = useState<StoreCatalogItem[]>([]);
   const [searchText, setSearchText] = useState('');
@@ -53,14 +55,18 @@ export function CatalogCorrectionPanel({
       .then((result) => {
         if (!active) return;
         setRequests(result.requests);
-        setStatus(result.requests.length ? '仅为建议记录，不改变正式商品' : '当前门店暂无商品纠错申请');
+        setStatus(
+          result.requests.length ? '仅为建议记录，不改变正式商品' : '当前门店暂无商品纠错申请',
+        );
       })
       .catch((error: unknown) => {
         if (!active) return;
         setRequests([]);
         setStatus(error instanceof Error ? error.message : '读取纠错申请失败');
       });
-    return () => { active = false; };
+    return () => {
+      active = false;
+    };
   }, [token, storeId, refresh]);
 
   useEffect(() => {
@@ -70,7 +76,7 @@ export function CatalogCorrectionPanel({
       .then((page) => {
         if (!active) return;
         setItems(page.items);
-        setSkuId((current) => page.items.some((item) => item.skuId === current) ? current : '');
+        setSkuId((current) => (page.items.some((item) => item.skuId === current) ? current : ''));
         if (page.hasMore) setStatus('只显示前 100 条，请用搜索缩小商品范围');
       })
       .catch((error: unknown) => {
@@ -79,7 +85,9 @@ export function CatalogCorrectionPanel({
         setSkuId('');
         setStatus(error instanceof Error ? error.message : '加载商品失败');
       });
-    return () => { active = false; };
+    return () => {
+      active = false;
+    };
   }, [token, storeId, appliedSearch, canSubmit, refresh]);
 
   const selected = items.find((item) => item.skuId === skuId);
@@ -119,7 +127,12 @@ export function CatalogCorrectionPanel({
       setStatus('请先填写独立复核理由');
       return;
     }
-    if (!window.confirm('确认' + (verdict === 'ACCEPTED' ? '采纳建议' : '驳回建议') + '？这不会修改正式商品。')) return;
+    if (
+      !window.confirm(
+        '确认' + (verdict === 'ACCEPTED' ? '采纳建议' : '驳回建议') + '？这不会修改正式商品。',
+      )
+    )
+      return;
     setBusy(true);
     try {
       await reviewCatalogCorrection(token, storeId, request.id, { verdict, reason });
@@ -138,20 +151,32 @@ export function CatalogCorrectionPanel({
       <span className="tag">日常商品管理 · 仅纠错申请与复核</span>
       <h2>商品资料纠错</h2>
       <p>当前门店：{storeName}。本功能与一次性美萍迁移分开。</p>
-      <p>所有书名、作者、出版社、ISBN 和 SKU 价格都是共享商品资料。采纳仅代表建议复核通过，不能直接改价、改书目或更改库存；正式生效需要后续总部流程。</p>
+      <p>
+        所有书名、作者、出版社、ISBN 和 SKU
+        价格都是共享商品资料。采纳仅代表建议复核通过，不能直接改价、改书目或更改库存；正式生效需要后续总部流程。
+      </p>
       {canSubmit && (
         <>
           <h3>提交纠错申请</h3>
-          <form className="book-search-form" onSubmit={(event) => {
-            event.preventDefault();
-            setAppliedSearch(searchText.trim());
-          }}>
-            <input aria-label="搜索待纠错商品" value={searchText} maxLength={120}
-              onChange={(event) => setSearchText(event.target.value)} placeholder="书名、作者、ISBN、SKU" />
+          <form
+            className="book-search-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              setAppliedSearch(searchText.trim());
+            }}
+          >
+            <input
+              aria-label="搜索待纠错商品"
+              value={searchText}
+              maxLength={120}
+              onChange={(event) => setSearchText(event.target.value)}
+              placeholder="书名、作者、ISBN、SKU"
+            />
             <button>搜索本店商品</button>
           </form>
           <form className="catalog-correction-form" onSubmit={(event) => void submit(event)}>
-            <label>选择商品
+            <label>
+              选择商品
               <select required value={skuId} onChange={(event) => setSkuId(event.target.value)}>
                 <option value="">请选择</option>
                 {items.map((item) => (
@@ -161,20 +186,41 @@ export function CatalogCorrectionPanel({
                 ))}
               </select>
             </label>
-            <label>拟更正字段
+            <label>
+              拟更正字段
               <select value={field} onChange={(event) => setField(event.target.value as Field)}>
-                {fields.filter((option) => selected?.bookTitle || !['bookTitle', 'author', 'publisher', 'isbn'].includes(option.key))
-                  .map((option) => <option value={option.key} key={option.key}>{option.label}</option>)}
+                {fields
+                  .filter(
+                    (option) =>
+                      selected?.bookTitle ||
+                      !['bookTitle', 'author', 'publisher', 'isbn'].includes(option.key),
+                  )
+                  .map((option) => (
+                    <option value={option.key} key={option.key}>
+                      {option.label}
+                    </option>
+                  ))}
               </select>
             </label>
-            <label>建议内容
-              <input required value={proposedValue} maxLength={200}
+            <label>
+              建议内容
+              <input
+                required
+                value={proposedValue}
+                maxLength={200}
                 onChange={(event) => setProposedValue(event.target.value)}
-                placeholder={field === 'priceMinor' ? '例如 28.50 元' : '填写更正后的内容'} />
+                placeholder={field === 'priceMinor' ? '例如 28.50 元' : '填写更正后的内容'}
+              />
             </label>
-            <label>依据 / 纠错理由
-              <textarea required rows={2} maxLength={500} value={reason}
-                onChange={(event) => setReason(event.target.value)} />
+            <label>
+              依据 / 纠错理由
+              <textarea
+                required
+                rows={2}
+                maxLength={500}
+                value={reason}
+                onChange={(event) => setReason(event.target.value)}
+              />
             </label>
             <button disabled={busy || !selected || !reason.trim() || !proposedValue.trim()}>
               {busy ? '处理中…' : '提交纠错建议（不改商品）'}
@@ -186,24 +232,44 @@ export function CatalogCorrectionPanel({
       {requests.map((request) => (
         <article className="book-result" key={request.id}>
           <div>
-            <strong>{fieldNames[request.field]} · {correctionStatus(request.status)}</strong>
+            <strong>
+              {fieldNames[request.field]} · {correctionStatus(request.status)}
+            </strong>
             <span>SKU：{request.skuId}</span>
             <span>原值：{request.originalValue ?? '未填写'}</span>
-            <span>建议：{request.proposedValue}{request.field === 'priceMinor' ? ' 分' : ''}</span>
+            <span>
+              建议：{request.proposedValue}
+              {request.field === 'priceMinor' ? ' 分' : ''}
+            </span>
             <small>申请理由：{request.reason}</small>
             <small>申请时间：{new Date(request.createdAt).toLocaleString()}</small>
             {request.reviewReason && <small>复核理由：{request.reviewReason}</small>}
           </div>
           {canReview && request.status === 'PENDING' && (
             <div>
-              <label>独立复核理由
-                <textarea value={reviewReasons[request.id] ?? ''} rows={2} maxLength={500}
-                  onChange={(event) => setReviewReasons((all) => ({ ...all, [request.id]: event.target.value }))} />
+              <label>
+                独立复核理由
+                <textarea
+                  value={reviewReasons[request.id] ?? ''}
+                  rows={2}
+                  maxLength={500}
+                  onChange={(event) =>
+                    setReviewReasons((all) => ({ ...all, [request.id]: event.target.value }))
+                  }
+                />
               </label>
-              <button disabled={busy || !Boolean(reviewReasons[request.id]?.trim())}
-                onClick={() => void decide(request, 'ACCEPTED')}>采纳建议（不改商品）</button>
-              <button disabled={busy || !Boolean(reviewReasons[request.id]?.trim())}
-                onClick={() => void decide(request, 'REJECTED')}>驳回建议</button>
+              <button
+                disabled={busy || !Boolean(reviewReasons[request.id]?.trim())}
+                onClick={() => void decide(request, 'ACCEPTED')}
+              >
+                采纳建议（不改商品）
+              </button>
+              <button
+                disabled={busy || !Boolean(reviewReasons[request.id]?.trim())}
+                onClick={() => void decide(request, 'REJECTED')}
+              >
+                驳回建议
+              </button>
             </div>
           )}
         </article>

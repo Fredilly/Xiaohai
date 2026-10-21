@@ -39,12 +39,17 @@ describe('Store Web module visibility', () => {
   });
 
   it('exposes independent daily corrections to scoped reviewers without store mutation permissions', () => {
-    expect(visibleStoreModules(['stores.read', 'catalog.correction.review']).map((v) => v.key))
-      .toContain('catalog-corrections');
-    expect(visibleStoreModules(['stores.read', 'inventory.read']).map((v) => v.key))
-      .not.toContain('catalog-corrections');
-    expect(visibleStoreModules(['stores.read', 'inventory.read', 'inventory.stocktake']).map((v) => v.key))
-      .toContain('catalog-corrections');
+    expect(
+      visibleStoreModules(['stores.read', 'catalog.correction.review']).map((v) => v.key),
+    ).toContain('catalog-corrections');
+    expect(visibleStoreModules(['stores.read', 'inventory.read']).map((v) => v.key)).not.toContain(
+      'catalog-corrections',
+    );
+    expect(
+      visibleStoreModules(['stores.read', 'inventory.read', 'inventory.stocktake']).map(
+        (v) => v.key,
+      ),
+    ).toContain('catalog-corrections');
   });
 
   it('shows rental, fulfillment, and manager modules only after their permissions are granted', () => {

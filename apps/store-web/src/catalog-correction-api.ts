@@ -6,8 +6,8 @@ import {
 } from '@xiaohai/contracts/commerce';
 
 const env = import.meta.env as { readonly VITE_API_BASE_URL?: unknown };
-const base = typeof env.VITE_API_BASE_URL === 'string'
-  ? env.VITE_API_BASE_URL : 'http://127.0.0.1:3000';
+const base =
+  typeof env.VITE_API_BASE_URL === 'string' ? env.VITE_API_BASE_URL : 'http://127.0.0.1:3000';
 
 function endpoint(storeId: string) {
   return base + '/api/v1/staff/stores/' + encodeURIComponent(storeId) + '/catalog-corrections';
@@ -29,7 +29,9 @@ export async function listCatalogCorrections(token: string, storeId: string) {
 }
 
 export async function createCatalogCorrection(
-  token: string, storeId: string, input: CreateCatalogCorrection,
+  token: string,
+  storeId: string,
+  input: CreateCatalogCorrection,
 ) {
   const response = await fetch(endpoint(storeId), {
     method: 'POST',
@@ -40,12 +42,18 @@ export async function createCatalogCorrection(
 }
 
 export async function reviewCatalogCorrection(
-  token: string, storeId: string, correctionId: string, input: ReviewCatalogCorrection,
+  token: string,
+  storeId: string,
+  correctionId: string,
+  input: ReviewCatalogCorrection,
 ) {
-  const response = await fetch(endpoint(storeId) + '/' + encodeURIComponent(correctionId) + '/review', {
-    method: 'POST',
-    headers: { Authorization: 'Bearer ' + token, 'content-type': 'application/json' },
-    body: JSON.stringify(input),
-  });
+  const response = await fetch(
+    endpoint(storeId) + '/' + encodeURIComponent(correctionId) + '/review',
+    {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + token, 'content-type': 'application/json' },
+      body: JSON.stringify(input),
+    },
+  );
   return catalogCorrectionRecordSchema.parse(await checked(response));
 }

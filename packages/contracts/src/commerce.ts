@@ -221,11 +221,12 @@ export const createCatalogCorrectionSchema = z
   })
   .strict()
   .superRefine((value, ctx) => {
-    if (
-      value.field === 'priceMinor' &&
-      !/^(0|[1-9]\d{0,9})$/.test(value.proposedValue)
-    ) {
-      ctx.addIssue({ code: 'custom', path: ['proposedValue'], message: 'Invalid minor-unit price' });
+    if (value.field === 'priceMinor' && !/^(0|[1-9]\d{0,9})$/.test(value.proposedValue)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['proposedValue'],
+        message: 'Invalid minor-unit price',
+      });
     }
     if (value.field === 'isbn' && !/^[0-9Xx-]{10,20}$/.test(value.proposedValue)) {
       ctx.addIssue({ code: 'custom', path: ['proposedValue'], message: 'Invalid ISBN' });

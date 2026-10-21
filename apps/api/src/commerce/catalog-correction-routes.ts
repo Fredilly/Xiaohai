@@ -7,7 +7,10 @@ import {
 import { ConsumerAuthError } from '../auth/errors.js';
 import type { StaffAuthorizationService } from '../auth/staff-authorization.js';
 import { StoreNetworkError, type StoreNetworkService } from '../stores/store-service.js';
-import { CatalogCorrectionError, type CatalogCorrectionService } from './catalog-correction-service.js';
+import {
+  CatalogCorrectionError,
+  type CatalogCorrectionService,
+} from './catalog-correction-service.js';
 
 const storeParam = z.object({ id: z.uuid() });
 const reviewParams = z.object({ id: z.uuid(), correctionId: z.uuid() });
@@ -20,7 +23,11 @@ export function registerCatalogCorrectionRoutes(
     corrections: CatalogCorrectionService;
   },
 ) {
-  const authorize = async (request: FastifyRequest, storeId: string, intent: 'read' | 'submit' | 'review') => {
+  const authorize = async (
+    request: FastifyRequest,
+    storeId: string,
+    intent: 'read' | 'submit' | 'review',
+  ) => {
     const actor = await options.staffAuthorization.authenticate(request.headers.authorization);
     options.staffAuthorization.requirePermission(actor, 'stores.read');
     if (intent === 'submit') {
@@ -29,7 +36,8 @@ export function registerCatalogCorrectionRoutes(
     } else if (intent === 'review') {
       options.staffAuthorization.requirePermission(actor, 'catalog.correction.review');
     } else {
-      const canRead = options.staffAuthorization.hasPermission(actor, 'catalog.correction.review') ||
+      const canRead =
+        options.staffAuthorization.hasPermission(actor, 'catalog.correction.review') ||
         (options.staffAuthorization.hasPermission(actor, 'inventory.read') &&
           options.staffAuthorization.hasPermission(actor, 'inventory.stocktake'));
       if (!canRead) throw new ConsumerAuthError('STAFF_FORBIDDEN', 403);
@@ -55,27 +63,34 @@ export function registerCatalogCorrectionRoutes(
     if (!params.success || !body.success) return invalid(reply, request.id);
     try {
       const actorId = await authorize(request, params.data.id, 'submit');
-      return reply.status(201).send(
-        await options.corrections.submit(params.data.id, actorId, request.id, body.data),
-      );
+      return reply
+        .status(201)
+        .send(await options.corrections.submit(params.data.id, actorId, request.id, body.data));
     } catch (error) {
       return fail(request, reply, error);
     }
   });
 
-  app.post('/api/v1/staff/stores/:id/catalog-corrections/:correctionId/review', async (request, reply) => {
-    const params = reviewParams.safeParse(request.params);
-    const body = reviewCatalogCorrectionSchema.safeParse(request.body);
-    if (!params.success || !body.success) return invalid(reply, request.id);
-    try {
-      const actorId = await authorize(request, params.data.id, 'review');
-      return await options.corrections.review(
-        params.data.id, params.data.correctionId, actorId, request.id, body.data,
-      );
-    } catch (error) {
-      return fail(request, reply, error);
-    }
-  });
+  app.post(
+    '/api/v1/staff/stores/:id/catalog-corrections/:correctionId/review',
+    async (request, reply) => {
+      const params = reviewParams.safeParse(request.params);
+      const body = reviewCatalogCorrectionSchema.safeParse(request.body);
+      if (!params.success || !body.success) return invalid(reply, request.id);
+      try {
+        const actorId = await authorize(request, params.data.id, 'review');
+        return await options.corrections.review(
+          params.data.id,
+          params.data.correctionId,
+          actorId,
+          request.id,
+          body.data,
+        );
+      } catch (error) {
+        return fail(request, reply, error);
+      }
+    },
+  );
 }
 
 function invalid(reply: FastifyReply, requestId: string) {
@@ -101,7 +116,12 @@ function fail(request: FastifyRequest, reply: FastifyReply, error: unknown) {
   return reply.status(status).send({
     error: {
       code,
-      message: status === 403 ? 'Access forbidden' : status === 401 ? 'Authentication required' : 'Request failed',
+      message:
+        status === 403
+          ? 'Access forbidden'
+          : status === 401
+            ? 'Authentication required'
+            : 'Request failed',
       requestId: request.id,
     },
   });
