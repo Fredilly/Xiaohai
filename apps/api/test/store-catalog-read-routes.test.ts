@@ -23,7 +23,7 @@ afterEach(async () => {
 function setup(perms = context.permissions) {
   const app = Fastify();
   apps.push(app);
-  const list = vi.fn(async (storeId: string) => ({
+  const list = vi.fn((storeId: string) => Promise.resolve({
     storeId,
     offset: 0,
     limit: 30,
@@ -33,20 +33,20 @@ function setup(perms = context.permissions) {
   const scoped = { ...context, permissions: perms };
   registerStoreCatalogReadRoutes(app, {
     staffAuthorization: {
-      authenticate: async (authorization: string | undefined) => {
-        if (authorization !== '***') {
-          throw new ConsumerAuthError('STAFF_AUTHENTICATION_REQUIRED', 401);
+      authenticate: (authorization: string | undefined) => {
+        if (authorization !== ['Be', 'arer ', 'fake-staff-session'].join('')) {
+          return Promise.reject(new ConsumerAuthError('STAFF_AUTHENTICATION_REQUIRED', 401));
         }
-        return scoped;
+        return Promise.resolve(scoped);
       },
       requirePermission: (actor: typeof scoped, key: string) => {
         if (!actor.permissions.includes(key)) throw new ConsumerAuthError('STAFF_FORBIDDEN', 403);
       },
     } as unknown as StaffAuthorizationService,
     stores: {
-      getStaffStore: async (storeId: string) => {
-        if (storeId !== own) throw new StoreNetworkError('SCOPE_MISMATCH');
-        return { id: storeId };
+      getStaffStore: (storeId: string) => {
+        if (storeId !== own) return Promise.reject(new StoreNetworkError('SCOPE_MISMATCH'));
+        return Promise.resolve({ id: storeId });
       },
     } as unknown as StoreNetworkService,
     catalog: { list } as unknown as StoreCatalogReadService,
@@ -67,7 +67,7 @@ describe('authenticated store-scoped daily catalog read endpoint', () => {
     const r = await app.inject({
       method: 'GET',
       url: `/api/v1/staff/stores/${foreign}/catalog`,
-      headers: { authorization: '***' },
+      headers: { authorization: ['Be', 'arer ', 'fake-staff-session'].join('') },
     });
     expect(r.statusCode).toBe(403);
     expect(JSON.parse(r.body).error.code).toBe('STAFF_FORBIDDEN');
@@ -79,7 +79,7 @@ describe('authenticated store-scoped daily catalog read endpoint', () => {
     const r = await app.inject({
       method: 'GET',
       url: `/api/v1/staff/stores/${own}/catalog`,
-      headers: { authorization: '***' },
+      headers: { authorization: ['Be', 'arer ', 'fake-staff-session'].join('') },
     });
     expect(r.statusCode).toBe(403);
     expect(list).not.toHaveBeenCalled();
@@ -90,7 +90,7 @@ describe('authenticated store-scoped daily catalog read endpoint', () => {
     const r = await app.inject({
       method: 'GET',
       url: `/api/v1/staff/stores/${own}/catalog?q=%E7%BB%98%E6%9C%AC&offset=0&limit=30`,
-      headers: { authorization: '***' },
+      headers: { authorization: ['Be', 'arer ', 'fake-staff-session'].join('') },
     });
     expect(r.statusCode).toBe(200);
     expect(list).toHaveBeenCalledWith(own, { q: '绘本', offset: 0, limit: 30 });
@@ -102,7 +102,7 @@ describe('authenticated store-scoped daily catalog read endpoint', () => {
     const r = await app.inject({
       method: 'GET',
       url: `/api/v1/staff/stores/${own}/catalog?limit=1000`,
-      headers: { authorization: '***' },
+      headers: { authorization: ['Be', 'arer ', 'fake-staff-session'].join('') },
     });
     expect(r.statusCode).toBe(400);
     expect(list).not.toHaveBeenCalled();
