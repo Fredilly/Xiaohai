@@ -74,12 +74,8 @@ export function reviewDecisionInput(
   return { ...common, action, reason: trimmed };
 }
 
-
 /** A saved DRAFT decision must not receive a new version without a real field change. */
-export function reviewDecisionIsUnchanged(
-  item: ReviewItem,
-  next: ReviewDecisionInput,
-): boolean {
+export function reviewDecisionIsUnchanged(item: ReviewItem, next: ReviewDecisionInput): boolean {
   const previous = item.decision;
   if (!previous || previous.action !== next.action) return false;
   return next.action === 'EXCLUDE'
@@ -88,10 +84,7 @@ export function reviewDecisionIsUnchanged(
 }
 
 /** Explicitly describe what the user is changing before the versioned write. */
-export function reviewDecisionConfirmation(
-  item: ReviewItem,
-  next: ReviewDecisionInput,
-): string {
+export function reviewDecisionConfirmation(item: ReviewItem, next: ReviewDecisionInput): string {
   const previousVersion = item.decision?.version ?? 0;
   const label = next.action === 'EXCLUDE' ? '不纳入此次迁移' : '创建草稿候选（不入库）';
   const details =
