@@ -231,6 +231,62 @@ function ReviewCorrectionEditor({
   );
 }
 
+/** A second reviewer must be able to inspect exact proposed values before giving a verdict. */
+export function CorrectionProposalReadOnly({ item }: { item: ReviewItem }) {
+  const correction = item.correction;
+  if (!correction) return null;
+
+  const price = (value: number | null) =>
+    value === null ? '（未填写）' : '¥' + (value / 100).toFixed(2);
+  const changes: { label: string; original: string; proposed: string | null }[] = [
+    {
+      label: '书名',
+      original: item.normalized.title ?? '（未填写）',
+      proposed: correction.proposedFields.title ?? null,
+    },
+    {
+      label: '作者',
+      original: item.normalized.author ?? '（未填写）',
+      proposed: correction.proposedFields.author ?? null,
+    },
+    {
+      label: '出版社',
+      original: item.normalized.publisher ?? '（未填写）',
+      proposed: correction.proposedFields.publisher ?? null,
+    },
+    {
+      label: '条码',
+      original: item.sourceIdentifiers.barcode ?? '（未填写）',
+      proposed: correction.proposedFields.barcode ?? null,
+    },
+    {
+      label: '定价',
+      original: price(item.normalized.priceMinor),
+      proposed:
+        correction.proposedFields.priceMinor === undefined
+          ? null
+          : price(correction.proposedFields.priceMinor),
+    },
+  ];
+  return (
+    <div className="meiping-correction-preview" aria-label="待复核纠错建议详情">
+      <strong>待复核建议内容 · 版本 {correction.version}（只读）</strong>
+      <p>请核对原始值和建议值，再决定采纳或驳回。采纳建议不代表消除源文件冲突或正式入库。</p>
+      <dl>
+        {changes
+          .filter((change) => change.proposed !== null)
+          .map((change) => (
+            <div key={change.label}>
+              <dt>{change.label}</dt>
+              <dd>原始：{change.original} → 建议：{change.proposed}</dd>
+            </div>
+          ))}
+      </dl>
+      <p>提交人填写的纠错原因：{correction.reason}</p>
+    </div>
+  );
+}
+
 function CorrectionIndependentReview({
   item,
   checksum,
@@ -251,6 +307,7 @@ function CorrectionIndependentReview({
   return (
     <div className="meiping-independent-review">
       <strong>独立纠错复核（不等于正式入库）</strong>
+      <CorrectionProposalReadOnly item={item} />
       {item.correctionReview ? (
         <p>
           当前纠错建议版本 {item.correction.version}：
