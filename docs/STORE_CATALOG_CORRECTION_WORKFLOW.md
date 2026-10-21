@@ -14,7 +14,7 @@ Fields: product name, book title, author, publisher, ISBN and SKU price in integ
 
 - Staff identity, granular permissions and store scope are enforced server-side. The requested SKU must be linked to that store in store_inventory.
 - The submission includes an expected inventory version from the store catalog read model, and records the current field value. Duplicate pending store/SKU/field requests are blocked.
-- The reviewer cannot review their own request. Only PENDING entries can be decided and concurrent decisions use an atomic conditional update. Accepted requests must match current master data at review time; conflicting ISBN proposals cannot be accepted.
+- The reviewer cannot review their own request. Only PENDING entries can be decided and concurrent decisions use an atomic conditional update. Accepted requests must match current master data at review time. ISBN recommendation acceptance serializes by proposed ISBN and rejects conflicts with live editions or previously accepted proposals for different products, even across stores.
 - Writes are limited to a dedicated requests table and sanitized audit_logs records. Audit metadata contains field names, record identifiers and verdict, not free-text values or reasons.
 - Production/staging data or permissions must not be seeded or modified merely for testing. Use a fresh disposable PostgreSQL DB with at least two virtual stores, separate applicant/reviewer accounts and purpose-built SKUs.
 
