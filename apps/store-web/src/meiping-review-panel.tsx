@@ -234,7 +234,8 @@ export function MeipingReviewPanel({ token, storeId, permissions }: Props) {
                           item.decision.version
                         : '尚未决定'}
                     </p>
-                    {item.issueCodes.length > 0 && <p>
+                    {item.issueCodes.length > 0 && (
+                      <p>
                         原始问题：
                         {item.issueCodes.map((code, index) => (
                           <span key={code + ':' + index} title={'内部代码：' + code}>
@@ -242,7 +243,8 @@ export function MeipingReviewPanel({ token, storeId, permissions }: Props) {
                             {meipingIssueLabel(code)}
                           </span>
                         ))}
-                      </p>}
+                      </p>
+                    )}
                   </div>
                   {canEdit && (
                     <>
