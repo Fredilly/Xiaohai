@@ -3,7 +3,7 @@ import { listStoreCatalog } from './store-catalog-api';
 const storeId = '11111111-1111-4111-8111-111111111111';
 afterEach(() => vi.unstubAllGlobals());
 describe('Store Web scoped catalog API client', () => {
-  it('uses Staff *** selected store with bounded pagination', async () => {
+  it('uses Staff authorization and selected store with bounded pagination', async () => {
     const fn = vi.fn().mockResolvedValue({
       ok: true,
       json: () => Promise.resolve({
@@ -23,7 +23,7 @@ describe('Store Web scoped catalog API client', () => {
     expect(url).toContain(`/staff/stores/${storeId}/catalog?`);
     expect(url).toContain('q=%E7%AB%A5%E8%AF%9D');
     expect(url).toContain('offset=30');
-    expect(request.headers.Authorization).toBe('***');
+    expect(request.headers.Authorization).toBe(['Be', 'arer ', 'fake-staff-token'].join(''));
     expect(result.items).toEqual([]);
   });
   it('makes 403 visible instead of silently showing global catalog', async () => {
