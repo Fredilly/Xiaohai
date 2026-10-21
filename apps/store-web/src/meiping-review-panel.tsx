@@ -19,6 +19,11 @@ import {
   reviewApiErrorMessage,
   reviewDecisionInput,
 } from './meiping-review-input';
+import {
+  meipingDispositionLabel,
+  meipingIssueLabel,
+  meipingSessionStatusLabel,
+} from './meiping-review-display';
 
 const PAGE_SIZE = 20;
 type Props = { token: string; storeId: string; permissions: readonly string[] };
@@ -146,7 +151,7 @@ export function MeipingReviewPanel({ token, storeId, permissions }: Props) {
       )}
       {!selected ? (
         <>
-          <h3>已有 DRAFT 审核草稿</h3>
+          <h3>已有待处理审核草稿</h3>
           {busy && <p>正在读取草稿…</p>}
           {!busy && !sessions.length && <p>当前门店暂无待审核迁移草稿。不会自动创建商品或库存。</p>}
           <div className="meiping-store-list">
@@ -155,7 +160,7 @@ export function MeipingReviewPanel({ token, storeId, permissions }: Props) {
                 <div>
                   <strong>{item.totalRows} 条来源商品</strong>
                   <small>
-                    已保存审核决定 {item.savedDecisions} 条 · {item.status}
+                    已保存审核决定 {item.savedDecisions} 条 · {meipingSessionStatusLabel(item.status)}
                   </small>
                 </div>
                 <button
@@ -205,7 +210,7 @@ export function MeipingReviewPanel({ token, storeId, permissions }: Props) {
               刷新当前草稿
             </button>
             <span>
-              {selected.totalRows} 条来源记录 · {selected.status}
+              {selected.totalRows} 条来源记录 · {meipingSessionStatusLabel(selected.status)}
             </span>
           </div>
           {busy && !page && <p>正在读取审核明细…</p>}
@@ -218,7 +223,7 @@ export function MeipingReviewPanel({ token, storeId, permissions }: Props) {
                       源行 {item.sourceRowNumber} · {item.normalized.title ?? '未填写书名'}
                     </h3>
                     <p>
-                      状态：{item.disposition} · {item.saleBlocked ? '禁止销售' : '仅供审核'} ·
+                      状态：{meipingDispositionLabel(item.disposition)} · {item.saleBlocked ? '禁止销售' : '仅供审核'} ·
                       原条码：{item.sourceIdentifiers.barcode || '无'}
                     </p>
                     <p>
@@ -229,7 +234,15 @@ export function MeipingReviewPanel({ token, storeId, permissions }: Props) {
                           item.decision.version
                         : '尚未决定'}
                     </p>
-                    {item.issueCodes.length > 0 && <p>原始问题：{item.issueCodes.join('、')}</p>}
+                    {item.issueCodes.length > 0 && <p>
+                        原始问题：
+                        {item.issueCodes.map((code, index) => (
+                          <span key={code + ':' + index} title={'内部代码：' + code}>
+                            {index > 0 ? '、' : ''}
+                            {meipingIssueLabel(code)}
+                          </span>
+                        ))}
+                      </p>}
                   </div>
                   {canEdit && (
                     <>
