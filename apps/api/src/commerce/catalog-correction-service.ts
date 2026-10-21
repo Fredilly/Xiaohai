@@ -165,7 +165,7 @@ export class CatalogCorrectionService {
     });
   }
 
-  private async loadSource(storeId: string, skuId: string) {
+  async loadSource(storeId: string, skuId: string) {
     const [row] = await this.db
       .select({
         productId: products.id,

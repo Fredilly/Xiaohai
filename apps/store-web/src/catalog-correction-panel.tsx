@@ -200,9 +200,9 @@ export function CatalogCorrectionPanel({
                 <textarea value={reviewReasons[request.id] ?? ''} rows={2} maxLength={500}
                   onChange={(event) => setReviewReasons((all) => ({ ...all, [request.id]: event.target.value }))} />
               </label>
-              <button disabled={busy || !reviewReasons[request.id]?.trim()}
+              <button disabled={busy || !Boolean(reviewReasons[request.id]?.trim())}
                 onClick={() => void decide(request, 'ACCEPTED')}>采纳建议（不改商品）</button>
-              <button disabled={busy || !reviewReasons[request.id]?.trim()}
+              <button disabled={busy || !Boolean(reviewReasons[request.id]?.trim())}
                 onClick={() => void decide(request, 'REJECTED')}>驳回建议</button>
             </div>
           )}
