@@ -158,10 +158,14 @@ suite('daily catalog corrections against disposable PostgreSQL', () => {
       ['stores.read', 'catalog.correction.review'],
       storeB!.id,
     );
+    const foreignProposer = await createStaff(
+      ['stores.read', 'inventory.read', 'inventory.stocktake'],
+      storeB!.id,
+    );
 
     const cleanup = async () => {
-      const staffIds = [proposer.id, reviewer.id, foreignReviewer.id];
-      const roleIds = [proposer.roleId, reviewer.roleId, foreignReviewer.roleId];
+      const staffIds = [proposer.id, reviewer.id, foreignReviewer.id, foreignProposer.id];
+      const roleIds = [proposer.roleId, reviewer.roleId, foreignReviewer.roleId, foreignProposer.roleId];
       await db
         .delete(catalogCorrectionRequests)
         .where(inArray(catalogCorrectionRequests.storeId, [storeA!.id, storeB!.id]));
@@ -190,6 +194,7 @@ suite('daily catalog corrections against disposable PostgreSQL', () => {
       proposer,
       reviewer,
       foreignReviewer,
+      foreignProposer,
       cleanup,
     };
   }
@@ -319,6 +324,59 @@ suite('daily catalog corrections against disposable PostgreSQL', () => {
       expect(JSON.stringify(audit.map((row) => row.metadata))).not.toContain(
         'Independently checked',
       );
+
+      // A recommendation does not reserve a canonical ISBN, but independent reviewers
+      // must not accept that same new ISBN for two different catalog products.
+      const proposedIsbn = '9780000000003';
+      const foreignPath = base + f.storeB.id + '/catalog-corrections';
+      const firstIsbn = await app.inject({
+        method: 'POST',
+        url: foreignPath,
+        headers: bearer(f.foreignProposer.token),
+        payload: {
+          skuId: f.skuB.id,
+          expectedInventoryVersion: 1,
+          field: 'isbn',
+          proposedValue: proposedIsbn,
+          reason: 'Checked a physical sample for store B',
+        },
+      });
+      expect(firstIsbn.statusCode).toBe(201);
+      const firstId = catalogCorrectionRecordSchema.parse(firstIsbn.json()).id;
+      const firstVerdict = await app.inject({
+        method: 'POST',
+        url: foreignPath + '/' + firstId + '/review',
+        headers: bearer(f.foreignReviewer.token),
+        payload: { verdict: 'ACCEPTED', reason: 'Independent catalog verification' },
+      });
+      expect(firstVerdict.statusCode).toBe(200);
+
+      const secondIsbn = await app.inject({
+        method: 'POST',
+        url: path,
+        headers: bearer(f.proposer.token),
+        payload: {
+          skuId: f.skuA.id,
+          expectedInventoryVersion: 2,
+          field: 'isbn',
+          proposedValue: proposedIsbn,
+          reason: 'Conflicting catalog recommendation for store A',
+        },
+      });
+      expect(secondIsbn.statusCode).toBe(201);
+      const secondId = catalogCorrectionRecordSchema.parse(secondIsbn.json()).id;
+      const secondVerdict = await app.inject({
+        method: 'POST',
+        url: path + '/' + secondId + '/review',
+        headers: bearer(f.reviewer.token),
+        payload: { verdict: 'ACCEPTED', reason: 'Should be blocked by ISBN conflict' },
+      });
+      expect(secondVerdict.statusCode).toBe(409);
+      const unchanged = await db
+        .select({ isbn: bookEditions.isbn })
+        .from(bookEditions)
+        .where(inArray(bookEditions.isbn, ['9780000000001', '9780000000002']));
+      expect(unchanged).toHaveLength(2);
     } finally {
       await app.close();
       await f.cleanup();
