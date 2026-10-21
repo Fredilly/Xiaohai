@@ -7,6 +7,7 @@ import { getStaffMe, loginStaff } from './staff-auth';
 import { loadStaffStores } from './stores-api';
 import { visibleStoreModules } from './mock-data';
 import { BookSearchPanel } from './book-search-panel';
+import { StoreCatalogPanel } from './store-catalog-panel';
 import { InventoryPanel } from './inventory-panel';
 import { RentalPanel } from './rental-panel';
 import { FulfillmentPanel } from './fulfillment-panel';
@@ -183,6 +184,17 @@ function Shell({
         ) : current === 'books' ? (
           currentStore ? (
             <BookSearchPanel storeId={currentStore.id} storeName={currentStore.name} />
+          ) : (
+            <StoreRequired />
+          )
+        ) : current === 'catalog' ? (
+          currentStore ? (
+            <StoreCatalogPanel
+              key={currentStore.id}
+              token={token}
+              storeId={currentStore.id}
+              storeName={currentStore.name}
+            />
           ) : (
             <StoreRequired />
           )
