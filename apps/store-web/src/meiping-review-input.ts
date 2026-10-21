@@ -1,4 +1,4 @@
-import type { ReviewCorrectionInput, ReviewItem } from './meiping-review-api';
+import type { ReviewCorrectionInput, ReviewDecisionInput, ReviewItem } from './meiping-review-api';
 
 /** A proposed fix is separate from the original Excel record and never activates sale/import. */
 export function correctionProposalInput(
