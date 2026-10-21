@@ -165,7 +165,12 @@ suite('daily catalog corrections against disposable PostgreSQL', () => {
 
     const cleanup = async () => {
       const staffIds = [proposer.id, reviewer.id, foreignReviewer.id, foreignProposer.id];
-      const roleIds = [proposer.roleId, reviewer.roleId, foreignReviewer.roleId, foreignProposer.roleId];
+      const roleIds = [
+        proposer.roleId,
+        reviewer.roleId,
+        foreignReviewer.roleId,
+        foreignProposer.roleId,
+      ];
       await db
         .delete(catalogCorrectionRequests)
         .where(inArray(catalogCorrectionRequests.storeId, [storeA!.id, storeB!.id]));
