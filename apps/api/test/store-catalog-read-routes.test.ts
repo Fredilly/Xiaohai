@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import Fastify from 'fastify';
+import Fastify, { type FastifyInstance } from 'fastify';
 import { ConsumerAuthError } from '../src/auth/errors.js';
 import { StoreNetworkError } from '../src/stores/store-service.js';
 import { registerStoreCatalogReadRoutes } from '../src/commerce/store-catalog-read-routes.js';
@@ -15,7 +15,7 @@ const context = {
   permissions: ['stores.read', 'inventory.read'],
   dataScopes: [{ type: 'STORE' as const, id: own }],
 };
-const apps: ReturnType<typeof Fastify>[] = [];
+const apps: FastifyInstance[] = [];
 afterEach(async () => {
   await Promise.all(apps.splice(0).map((app) => app.close()));
 });
@@ -23,13 +23,15 @@ afterEach(async () => {
 function setup(perms = context.permissions) {
   const app = Fastify();
   apps.push(app);
-  const list = vi.fn((storeId: string) => Promise.resolve({
-    storeId,
-    offset: 0,
-    limit: 30,
-    hasMore: false,
-    items: [],
-  }));
+  const list = vi.fn((storeId: string) =>
+    Promise.resolve({
+      storeId,
+      offset: 0,
+      limit: 30,
+      hasMore: false,
+      items: [],
+    }),
+  );
   const scoped = { ...context, permissions: perms };
   registerStoreCatalogReadRoutes(app, {
     staffAuthorization: {
@@ -70,7 +72,8 @@ describe('authenticated store-scoped daily catalog read endpoint', () => {
       headers: { authorization: ['Be', 'arer ', 'fake-staff-session'].join('') },
     });
     expect(r.statusCode).toBe(403);
-    expect(JSON.parse(r.body).error.code).toBe('STAFF_FORBIDDEN');
+    const result: unknown = JSON.parse(r.body);
+    expect(result).toMatchObject({ error: { code: 'STAFF_FORBIDDEN' } });
     expect(list).not.toHaveBeenCalled();
   });
 
@@ -94,7 +97,8 @@ describe('authenticated store-scoped daily catalog read endpoint', () => {
     });
     expect(r.statusCode).toBe(200);
     expect(list).toHaveBeenCalledWith(own, { q: '绘本', offset: 0, limit: 30 });
-    expect(JSON.parse(r.body).items).toEqual([]);
+    const result: unknown = JSON.parse(r.body);
+    expect(result).toMatchObject({ items: [] });
   });
 
   it('rejects invalid pagination without querying the database', async () => {

@@ -6,13 +6,14 @@ describe('Store Web scoped catalog API client', () => {
   it('uses Staff authorization and selected store with bounded pagination', async () => {
     const fn = vi.fn().mockResolvedValue({
       ok: true,
-      json: () => Promise.resolve({
-        storeId,
-        offset: 30,
-        limit: 30,
-        hasMore: false,
-        items: [],
-      }),
+      json: () =>
+        Promise.resolve({
+          storeId,
+          offset: 30,
+          limit: 30,
+          hasMore: false,
+          items: [],
+        }),
     });
     vi.stubGlobal('fetch', fn);
     const result = await listStoreCatalog('fake-staff-token', storeId, {

@@ -17,7 +17,7 @@
     "secret:set": "node scripts/set-local-secret.mjs",
     "seed:local-staff": "pnpm --filter @xiaohai/api seed:local-staff",
     "format": "prettier --write .",
-    "format:check": "prettier --write apps/api/test/store-catalog-read-routes.test.ts apps/store-web/src/store-catalog-api.test.ts >/dev/null && for f in apps/api/test/store-catalog-read-routes.test.ts apps/store-web/src/store-catalog-api.test.ts; do echo PR155FIX_BEGIN_$f; cat \"$f\"; echo PR155FIX_END_$f; done && prettier --check .",
+    "format:check": "prettier --check .",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
