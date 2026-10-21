@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { StoreCatalogPanel, productStatus, skuStatus } from './store-catalog-panel';
-describe('Store catalog read-only module', () => {
-  it('describes store-scoped product data and no direct writes', () => {
+describe('Store catalog direct-edit module', () => {
+  it('describes store-scoped product data and guarded direct writes', () => {
     const html = renderToStaticMarkup(
       <StoreCatalogPanel
         token="mock"
@@ -11,10 +11,10 @@ describe('Store catalog read-only module', () => {
       />,
     );
     expect(html).toContain('虚拟门店');
-    expect(html).toContain('门店只读');
-    expect(html).toContain('不能直接在这里修改全局商品资料');
-    expect(html).toContain('「商品纠错申请」');
-    expect(html).toContain('不会自动修改正式商品或库存');
+    expect(html).toContain('店铺账号可编辑');
+    expect(html).toContain('库存数量仍须通过库存盘点或调整流程变更');
+    expect(html).toContain('保存共享资料前，系统会显示影响门店范围并要求确认');
+    expect(html).toContain('操作');
     expect(html).not.toContain('后续将单独开发');
     expect(html).not.toContain('保存商品');
     expect(html).toContain('<table');

@@ -33,9 +33,9 @@ export const storeModules: StoreModule[] = [
   {
     key: 'catalog',
     label: '本店商品资料',
-    description: '查看本店已建立库存关联的图书和商品资料（只读）',
-    status: '日常商品 · 门店只读',
-    requiredPermission: 'inventory.read',
+    description: '维护本店已建立库存关联的图书和商品资料',
+    status: '日常商品 · 店铺账号可编辑',
+    requiredPermission: 'catalog.edit',
   },
   {
     key: 'catalog-corrections',
@@ -78,13 +78,6 @@ export const storeModules: StoreModule[] = [
     description: '门店内审核美萍历史迁移草稿、纠错建议和独立复核',
     status: '一次性历史数据迁移 · 不入库',
   },
-  {
-    key: 'manager',
-    label: '店长视图',
-    description: '实时运营报表、当前 Staff 权限与门店授权范围',
-    status: 'M19 店长能力',
-    requiredPermission: 'stores.manage',
-  },
 ];
 
 export function visibleStoreModules(permissions: readonly string[]): StoreModule[] {
@@ -94,7 +87,7 @@ export function visibleStoreModules(permissions: readonly string[]): StoreModule
         ((permissions.includes('inventory.read') && permissions.includes('inventory.stocktake')) ||
           permissions.includes('catalog.correction.review'))
       : item.key === 'catalog'
-        ? permissions.includes('inventory.read') && permissions.includes('stores.read')
+        ? permissions.includes('catalog.edit') && permissions.includes('stores.read')
         : item.key === 'meiping'
           ? (permissions.includes('inventory.receive') &&
               permissions.includes('inventory.stocktake')) ||

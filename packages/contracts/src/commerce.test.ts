@@ -4,6 +4,7 @@ import {
   adminProductInputSchema,
   createOrderRequestSchema,
   orderStatusSchema,
+  storeCatalogEditRequestSchema,
 } from './commerce.js';
 describe('M5 commerce contracts', () => {
   it('rejects invalid cart quantities', () => {
@@ -42,5 +43,22 @@ describe('M5 commerce contracts', () => {
         sku: { code: 'A', name: 'A', priceMinor: 12.5, status: 'ACTIVE', availableForSale: true },
       }).success,
     ).toBe(false);
+  });
+
+  it('requires optimistic-lock versions and validates direct catalog edits', () => {
+    const base = {
+      expectedProductVersion: 0,
+      expectedBookVersion: 0,
+      expectedEditionVersion: 0,
+      expectedSkuVersion: 0,
+      expectedLocalVersion: 0,
+    };
+    expect(storeCatalogEditRequestSchema.safeParse({ ...base, storeNote: 'Shelf A' }).success).toBe(
+      true,
+    );
+    expect(storeCatalogEditRequestSchema.safeParse({ ...base, priceMinor: 1.5 }).success).toBe(
+      false,
+    );
+    expect(storeCatalogEditRequestSchema.safeParse(base).success).toBe(false);
   });
 });

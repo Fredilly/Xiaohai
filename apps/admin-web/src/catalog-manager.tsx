@@ -1,12 +1,21 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import type { AdminProductInput } from '@xiaohai/contracts/commerce';
+import type {
+  AdminProductInput,
+  StoreCatalogEditRequest,
+  StoreCatalogItem,
+} from '@xiaohai/contracts/commerce';
+import type { StaffStore } from '@xiaohai/contracts/stores';
 import { displayStatus, money } from './display';
 import {
   CatalogApiError,
   createAdminProduct,
   listAdminProducts,
   updateAdminProduct,
+  listHqStoreCatalog,
+  previewHqStoreCatalogEdit,
+  updateHqStoreCatalog,
 } from './catalog-api';
+import { loadHqStores } from './hq-operations-api';
 type Product = Awaited<ReturnType<typeof listAdminProducts>>['products'][number];
 const blank: AdminProductInput = {
   name: '',
@@ -118,7 +127,235 @@ export function CatalogManager({ token }: { token: string }) {
           }}
         />
       )}
+      <HqStoreCatalogEditor token={token} />
     </section>
+  );
+}
+
+function HqStoreCatalogEditor({ token }: { token: string }) {
+  const [stores, setStores] = useState<StaffStore[]>([]);
+  const [storeId, setStoreId] = useState('');
+  const [items, setItems] = useState<StoreCatalogItem[]>([]);
+  const [editing, setEditing] = useState<StoreCatalogItem | null>(null);
+  const [status, setStatus] = useState('加载总部可管理门店…');
+  const [reloadNonce, setReloadNonce] = useState(0);
+
+  useEffect(() => {
+    void loadHqStores(token)
+      .then((result) => {
+        setStores(result.stores);
+        setStoreId((current) => current || result.stores[0]?.id || '');
+      })
+      .catch(() => setStatus('无法读取总部门店范围'));
+  }, [token]);
+
+  useEffect(() => {
+    if (!storeId) return;
+    setStatus('加载门店商品资料…');
+    void listHqStoreCatalog(token, storeId)
+      .then((result) => {
+        setItems(result.items);
+        setStatus(
+          result.hasMore ? '仅显示前 30 条，请使用门店端分页继续查看' : '已加载当前门店商品资料',
+        );
+      })
+      .catch(() => {
+        setItems([]);
+        setStatus('无法读取门店商品资料');
+      });
+  }, [token, storeId, reloadNonce]);
+
+  return (
+    <section className="panel">
+      <h2>总部跨门店商品资料</h2>
+      <p className="muted">
+        总部可编辑共享商品资料及指定门店的货架、备注和陈列信息。保存共享字段前会显示影响范围。
+      </p>
+      <label>
+        管理门店
+        <select value={storeId} onChange={(event) => setStoreId(event.target.value)}>
+          {stores.map((store) => (
+            <option key={store.id} value={store.id}>
+              {store.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      {status && <p role="status">{status}</p>}
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>商品</th>
+              <th>ISBN / SKU</th>
+              <th>价格</th>
+              <th>本店备注</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((item) => (
+              <tr key={item.skuId}>
+                <td>{item.bookTitle ?? item.productName}</td>
+                <td>
+                  {item.isbn ?? '—'} / {item.skuCode}
+                </td>
+                <td>¥{(item.priceMinor / 100).toFixed(2)}</td>
+                <td>{item.storeNote ?? '—'}</td>
+                <td>
+                  <button type="button" onClick={() => setEditing(item)}>
+                    编辑
+                  </button>
+                </td>
+              </tr>
+            ))}
+            {!items.length && (
+              <tr>
+                <td colSpan={5}>当前门店暂无库存关联商品</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+      {editing && (
+        <HqStoreCatalogForm
+          token={token}
+          storeId={storeId}
+          item={editing}
+          onCancel={() => setEditing(null)}
+          onSaved={() => {
+            setEditing(null);
+            setReloadNonce((value) => value + 1);
+          }}
+        />
+      )}
+    </section>
+  );
+}
+
+function HqStoreCatalogForm({
+  token,
+  storeId,
+  item,
+  onCancel,
+  onSaved,
+}: {
+  token: string;
+  storeId: string;
+  item: StoreCatalogItem;
+  onCancel: () => void;
+  onSaved: () => void;
+}) {
+  const [draft, setDraft] = useState<StoreCatalogEditRequest>({
+    expectedProductVersion: item.productVersion,
+    expectedBookVersion: item.bookTitle ? item.bookVersion : undefined,
+    expectedEditionVersion: item.bookTitle ? item.editionVersion : undefined,
+    expectedSkuVersion: item.skuVersion,
+    expectedLocalVersion: item.localVersion,
+    productName: item.productName,
+    bookTitle: item.bookTitle ?? undefined,
+    author: item.author ?? undefined,
+    publisher: item.publisher,
+    isbn: item.isbn,
+    priceMinor: item.priceMinor,
+    shelfLocation: item.shelfLocation,
+    storeNote: item.storeNote,
+    displayInfo: item.displayInfo,
+  });
+  const [status, setStatus] = useState('请核对原值和新值');
+  const setText = (key: keyof StoreCatalogEditRequest, value: string) =>
+    setDraft((current) => ({ ...current, [key]: value || null }));
+
+  async function save(event: FormEvent) {
+    event.preventDefault();
+    try {
+      const impact = await previewHqStoreCatalogEdit(token, storeId, item.skuId, draft);
+      if (
+        impact.impact.sharedFields.length &&
+        !window.confirm(`共享资料将影响 ${impact.impact.affectedStoreCount} 家门店，确认保存？`)
+      )
+        return;
+      await updateHqStoreCatalog(token, storeId, item.skuId, draft);
+      onSaved();
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : '保存失败，可能发生版本冲突');
+    }
+  }
+
+  return (
+    <form className="cms-form" onSubmit={(event) => void save(event)}>
+      <h3>总部编辑：{item.bookTitle ?? item.productName}</h3>
+      <label>
+        商品名称
+        <input
+          value={draft.productName ?? ''}
+          onChange={(event) => setText('productName', event.target.value)}
+        />
+      </label>
+      {item.bookTitle && (
+        <>
+          <label>
+            书名
+            <input
+              value={draft.bookTitle ?? ''}
+              onChange={(event) => setText('bookTitle', event.target.value)}
+            />
+          </label>
+          <label>
+            作者
+            <input
+              value={draft.author ?? ''}
+              onChange={(event) => setText('author', event.target.value)}
+            />
+          </label>
+          <label>
+            出版社
+            <input
+              value={draft.publisher ?? ''}
+              onChange={(event) => setText('publisher', event.target.value)}
+            />
+          </label>
+          <label>
+            ISBN
+            <input
+              value={draft.isbn ?? ''}
+              onChange={(event) => setText('isbn', event.target.value)}
+            />
+          </label>
+        </>
+      )}
+      <label>
+        价格（分）
+        <input
+          type="number"
+          min="0"
+          max="2147483647"
+          value={draft.priceMinor ?? item.priceMinor}
+          onChange={(event) =>
+            setDraft((current) => ({ ...current, priceMinor: Number(event.target.value) }))
+          }
+        />
+      </label>
+      <label>
+        本店货架位置
+        <input
+          value={draft.shelfLocation ?? ''}
+          onChange={(event) => setText('shelfLocation', event.target.value)}
+        />
+      </label>
+      <label>
+        本店备注
+        <textarea
+          value={draft.storeNote ?? ''}
+          onChange={(event) => setText('storeNote', event.target.value)}
+        />
+      </label>
+      <p role="status">{status}</p>
+      <button type="submit">保存正式资料</button>{' '}
+      <button type="button" onClick={onCancel}>
+        取消
+      </button>
+    </form>
   );
 }
 function ProductForm({

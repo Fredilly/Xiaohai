@@ -25,6 +25,7 @@ const permissionDefinitions: PermissionDefinition[] = [
   { key: 'ai.manage', displayName: 'Manage AI jobs' },
   { key: 'audit.read', displayName: 'Read audit logs' },
   { key: 'catalog.manage', displayName: 'Manage catalog' },
+  { key: 'catalog.edit', displayName: 'Edit authorized store catalog' },
   { key: 'cms.home.manage', displayName: 'Manage home CMS' },
   { key: 'commission.read', displayName: 'Read commission operations' },
   { key: 'commission.rules.manage', displayName: 'Manage commission rules' },
@@ -71,7 +72,7 @@ const permissionDefinitions: PermissionDefinition[] = [
 
 const storePermissionKeys = [
   'stores.read',
-  'stores.manage',
+  'catalog.edit',
   'inventory.read',
   'inventory.issue',
   'inventory.adjust',
@@ -92,7 +93,7 @@ const storePermissionKeys = [
 const HQ_LOGIN = 'hq.admin';
 const STORE_LOGIN = 'store.manager';
 const HQ_ROLE_KEY = 'LOCAL_HQ_ADMIN';
-const STORE_ROLE_KEY = 'LOCAL_STORE_MANAGER';
+const STORE_ROLE_KEY = 'LOCAL_STORE_ACCOUNT';
 const DEFAULT_STORE_NAME = '胖竹书店南门店';
 
 export interface LocalStaffSeedResult {
@@ -158,7 +159,7 @@ export async function seedLocalStaff(
       }
 
       const hqRole = await upsertLocalRole(tx, HQ_ROLE_KEY, 'Local HQ Admin');
-      const storeRole = await upsertLocalRole(tx, STORE_ROLE_KEY, 'Local Store Manager');
+      const storeRole = await upsertLocalRole(tx, STORE_ROLE_KEY, 'Local Store Account');
       const hqAccount = await upsertLocalAccount(tx, HQ_LOGIN, hqPasswordHash);
       const storeAccount = await upsertLocalAccount(tx, STORE_LOGIN, storePasswordHash);
 

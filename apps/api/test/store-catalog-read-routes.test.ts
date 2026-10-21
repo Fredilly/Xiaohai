@@ -2,7 +2,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { ConsumerAuthError } from '../src/auth/errors.js';
 import { StoreNetworkError } from '../src/stores/store-service.js';
-import { registerStoreCatalogReadRoutes } from '../src/commerce/store-catalog-read-routes.js';
+import {
+  registerStoreCatalogEditRoutes,
+  registerStoreCatalogReadRoutes,
+} from '../src/commerce/store-catalog-read-routes.js';
 import type { StaffAuthorizationService } from '../src/auth/staff-authorization.js';
 import type { StoreNetworkService } from '../src/stores/store-service.js';
 import type { StoreCatalogReadService } from '../src/commerce/store-catalog-read-service.js';
@@ -32,6 +35,52 @@ function setup(perms = context.permissions) {
       items: [],
     }),
   );
+  const preview = vi.fn(() =>
+    Promise.resolve({
+      sharedFields: ['bookTitle'],
+      affectedStoreCount: 2,
+      affectedStoreIds: [own, foreign],
+    }),
+  );
+  const update = vi.fn(() =>
+    Promise.resolve({
+      item: {
+        storeId: own,
+        productId: own,
+        productName: 'Book',
+        productStatus: 'ACTIVE',
+        coverUrl: null,
+        bookTitle: 'Book',
+        author: 'Author',
+        isbn: null,
+        publisher: null,
+        skuId: own,
+        skuCode: 'SKU',
+        skuName: 'Standard',
+        skuStatus: 'ACTIVE',
+        priceMinor: 100,
+        availableForSale: true,
+        onHand: 1,
+        reserved: 0,
+        rentalReserved: 0,
+        available: 1,
+        inventoryVersion: 0,
+        productVersion: 0,
+        bookVersion: 0,
+        editionVersion: 0,
+        skuVersion: 0,
+        localVersion: 0,
+        shelfLocation: null,
+        storeNote: null,
+        displayInfo: null,
+      },
+      impact: {
+        sharedFields: ['bookTitle'],
+        affectedStoreCount: 2,
+        affectedStoreIds: [own, foreign],
+      },
+    }),
+  );
   const scoped = { ...context, permissions: perms };
   registerStoreCatalogReadRoutes(app, {
     staffAuthorization: {
@@ -53,7 +102,27 @@ function setup(perms = context.permissions) {
     } as unknown as StoreNetworkService,
     catalog: { list } as unknown as StoreCatalogReadService,
   });
-  return { app, list };
+  registerStoreCatalogEditRoutes(app, {
+    staffAuthorization: {
+      authenticate: (authorization: string | undefined) => {
+        if (authorization !== ['Be', 'arer ', 'fake-staff-session'].join('')) {
+          return Promise.reject(new ConsumerAuthError('STAFF_AUTHENTICATION_REQUIRED', 401));
+        }
+        return Promise.resolve(scoped);
+      },
+      requirePermission: (actor: typeof scoped, key: string) => {
+        if (!actor.permissions.includes(key)) throw new ConsumerAuthError('STAFF_FORBIDDEN', 403);
+      },
+    } as unknown as StaffAuthorizationService,
+    stores: {
+      getStaffStore: (storeId: string) => {
+        if (storeId !== own) return Promise.reject(new StoreNetworkError('SCOPE_MISMATCH'));
+        return Promise.resolve({ id: storeId });
+      },
+    } as unknown as StoreNetworkService,
+    catalog: { preview, update } as never,
+  });
+  return { app, list, preview, update };
 }
 
 describe('authenticated store-scoped daily catalog read endpoint', () => {
@@ -110,5 +179,62 @@ describe('authenticated store-scoped daily catalog read endpoint', () => {
     });
     expect(r.statusCode).toBe(400);
     expect(list).not.toHaveBeenCalled();
+  });
+});
+
+describe('authorized direct catalog editing', () => {
+  const body = {
+    expectedProductVersion: 0,
+    expectedBookVersion: 0,
+    expectedEditionVersion: 0,
+    expectedSkuVersion: 0,
+    expectedLocalVersion: 0,
+    bookTitle: 'Updated title',
+  };
+
+  it('requires the unified catalog.edit permission', async () => {
+    const { app, update } = setup(['stores.read']);
+    const response = await app.inject({
+      method: 'PATCH',
+      url: `/api/v1/staff/stores/${own}/catalog/${own}`,
+      headers: { authorization: ['Be', 'arer ', 'fake-staff-session'].join('') },
+      payload: body,
+    });
+    expect(response.statusCode).toBe(403);
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it('allows a scoped store account to preview and save without catalog.manage', async () => {
+    const { app, preview, update } = setup(['stores.read', 'catalog.edit']);
+    const headers = { authorization: ['Be', 'arer ', 'fake-staff-session'].join('') };
+    const previewResponse = await app.inject({
+      method: 'POST',
+      url: `/api/v1/staff/stores/${own}/catalog/${own}/preview`,
+      headers,
+      payload: body,
+    });
+    expect(previewResponse.statusCode).toBe(200);
+    expect(preview).toHaveBeenCalledWith(own, own, body);
+
+    const updateResponse = await app.inject({
+      method: 'PATCH',
+      url: `/api/v1/staff/stores/${own}/catalog/${own}`,
+      headers,
+      payload: body,
+    });
+    expect(updateResponse.statusCode).toBe(200);
+    expect(update).toHaveBeenCalledWith(own, own, context.staffAccountId, expect.any(String), body);
+  });
+
+  it('rejects an authorized identity outside its store scope', async () => {
+    const { app, update } = setup(['stores.read', 'catalog.edit']);
+    const response = await app.inject({
+      method: 'PATCH',
+      url: `/api/v1/staff/stores/${foreign}/catalog/${own}`,
+      headers: { authorization: ['Be', 'arer ', 'fake-staff-session'].join('') },
+      payload: body,
+    });
+    expect(response.statusCode).toBe(403);
+    expect(update).not.toHaveBeenCalled();
   });
 });

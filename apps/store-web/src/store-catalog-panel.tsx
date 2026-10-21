@@ -1,8 +1,9 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import type { StoreCatalogItem } from '@xiaohai/contracts/commerce';
-import { listStoreCatalog } from './store-catalog-api';
+import type { StoreCatalogEditRequest, StoreCatalogItem } from '@xiaohai/contracts/commerce';
+import { listStoreCatalog, previewStoreCatalogEdit, updateStoreCatalog } from './store-catalog-api';
 
 const limit = 30;
+
 export function StoreCatalogPanel({
   token,
   storeId,
@@ -18,6 +19,8 @@ export function StoreCatalogPanel({
   const [items, setItems] = useState<StoreCatalogItem[]>([]);
   const [more, setMore] = useState(false);
   const [status, setStatus] = useState('正在读取门店商品资料…');
+  const [editing, setEditing] = useState<StoreCatalogItem | null>(null);
+  const [reloadNonce, setReloadNonce] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -30,9 +33,7 @@ export function StoreCatalogPanel({
         setItems(page.items);
         setMore(page.hasMore);
         setStatus(
-          page.items.length
-            ? '展示本店已建立库存记录的商品资料（只读）'
-            : '本店暂无关联库存的正式商品资料',
+          page.items.length ? '展示本店已建立库存记录的商品资料' : '本店暂无关联库存的正式商品资料',
         );
       })
       .catch((error: unknown) => {
@@ -44,7 +45,7 @@ export function StoreCatalogPanel({
     return () => {
       active = false;
     };
-  }, [token, storeId, applied, offset]);
+  }, [token, storeId, applied, offset, reloadNonce]);
 
   function search(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -54,15 +55,15 @@ export function StoreCatalogPanel({
 
   return (
     <section className="panel store-catalog-panel">
-      <span className="tag">日常商品资料 · 门店只读</span>
+      <span className="tag">日常商品资料 · 店铺账号可编辑</span>
       <h2>本店商品资料</h2>
       <p>
         当前门店：{storeName}
-        。仅显示与本店库存记录关联的商品及其基础资料，包括暂停销售或草稿状态的项目。
+        。仅显示与本店库存记录关联的商品及其基础资料。库存数量仍须通过库存盘点或调整流程变更。
       </p>
       <p>
-        图书书名、ISBN、出版社及 SKU
-        可能被多家门店共用。店长不能直接在这里修改全局商品资料。如需更正，请进入「商品纠错申请」提交建议，由另一名授权人员独立复核；即使采纳也不会自动修改正式商品或库存。
+        书名、作者、出版社、ISBN 及 SKU
+        价格可能被多家门店共用。保存共享资料前，系统会显示影响门店范围并要求确认；历史商品纠错记录仍可单独查看。
       </p>
       <form className="book-search-form" onSubmit={search}>
         <input
@@ -94,6 +95,7 @@ export function StoreCatalogPanel({
               <th scope="col" className="numeric">
                 库存版本
               </th>
+              <th scope="col">操作</th>
             </tr>
           </thead>
           <tbody>
@@ -123,11 +125,16 @@ export function StoreCatalogPanel({
                   <small className="cell-meta">SKU：{skuStatus(item.skuStatus)}</small>
                 </td>
                 <td className="numeric">v{item.inventoryVersion}</td>
+                <td>
+                  <button type="button" onClick={() => setEditing(item)}>
+                    编辑商品资料
+                  </button>
+                </td>
               </tr>
             ))}
             {!items.length && (
               <tr>
-                <td colSpan={8} className="data-table-empty">
+                <td colSpan={9} className="data-table-empty">
                   暂无符合条件的商品
                 </td>
               </tr>
@@ -145,7 +152,176 @@ export function StoreCatalogPanel({
         </button>
       </div>
       <p role="status">{status}</p>
+      {editing && (
+        <StoreCatalogEditForm
+          token={token}
+          storeId={storeId}
+          item={editing}
+          onCancel={() => setEditing(null)}
+          onSaved={() => {
+            setEditing(null);
+            setReloadNonce((value) => value + 1);
+          }}
+        />
+      )}
     </section>
+  );
+}
+
+function draftFor(item: StoreCatalogItem): StoreCatalogEditRequest {
+  return {
+    expectedProductVersion: item.productVersion,
+    expectedBookVersion: item.bookTitle === null ? undefined : item.bookVersion,
+    expectedEditionVersion: item.bookTitle === null ? undefined : item.editionVersion,
+    expectedSkuVersion: item.skuVersion,
+    expectedLocalVersion: item.localVersion,
+    productName: item.productName,
+    ...(item.bookTitle === null
+      ? {}
+      : {
+          bookTitle: item.bookTitle,
+          author: item.author ?? '',
+          publisher: item.publisher,
+          isbn: item.isbn,
+        }),
+    priceMinor: item.priceMinor,
+    shelfLocation: item.shelfLocation,
+    storeNote: item.storeNote,
+    displayInfo: item.displayInfo,
+  };
+}
+
+function StoreCatalogEditForm({
+  token,
+  storeId,
+  item,
+  onCancel,
+  onSaved,
+}: {
+  token: string;
+  storeId: string;
+  item: StoreCatalogItem;
+  onCancel: () => void;
+  onSaved: () => void;
+}) {
+  const [draft, setDraft] = useState(() => draftFor(item));
+  const [impact, setImpact] = useState<
+    Awaited<ReturnType<typeof previewStoreCatalogEdit>>['impact'] | null
+  >(null);
+  const [status, setStatus] = useState('请核对原值和新值。');
+  const sharedKeys = [
+    'productName',
+    'bookTitle',
+    'author',
+    'publisher',
+    'isbn',
+    'priceMinor',
+  ] as const;
+  const hasSharedChanges = sharedKeys.some((key) => {
+    const original =
+      key === 'productName'
+        ? item.productName
+        : key === 'bookTitle'
+          ? item.bookTitle
+          : key === 'author'
+            ? item.author
+            : key === 'publisher'
+              ? item.publisher
+              : key === 'isbn'
+                ? item.isbn
+                : item.priceMinor;
+    return draft[key] !== original;
+  });
+
+  async function calculateImpact() {
+    setStatus('正在计算影响门店…');
+    try {
+      const result = await previewStoreCatalogEdit(token, storeId, item.skuId, draft);
+      setImpact(result.impact);
+      setStatus(`预计影响 ${result.impact.affectedStoreCount} 家门店。`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : '影响范围计算失败');
+    }
+  }
+
+  async function save(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (hasSharedChanges && !impact) {
+      setStatus('请先计算共享资料影响范围。');
+      return;
+    }
+    if (
+      hasSharedChanges &&
+      !window.confirm(`共享资料将影响 ${impact?.affectedStoreCount ?? 0} 家门店，确认保存？`)
+    )
+      return;
+    setStatus('正在保存…');
+    try {
+      await updateStoreCatalog(token, storeId, item.skuId, draft);
+      onSaved();
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : '保存失败');
+    }
+  }
+
+  const textField = (
+    label: string,
+    key: keyof StoreCatalogEditRequest,
+    original: string | null,
+  ) => (
+    <label>
+      {label}（原值：{original ?? '未填写'}）
+      <input
+        value={typeof draft[key] === 'string' ? draft[key] : ''}
+        onChange={(event) =>
+          setDraft((current) => ({ ...current, [key]: event.target.value || null }))
+        }
+      />
+    </label>
+  );
+
+  return (
+    <form className="catalog-correction-form" onSubmit={(event) => void save(event)}>
+      <h3>编辑商品资料：{item.bookTitle ?? item.productName}</h3>
+      {textField('商品名称', 'productName', item.productName)}
+      {item.bookTitle !== null && (
+        <>
+          {textField('书名', 'bookTitle', item.bookTitle)}
+          {textField('作者', 'author', item.author)}
+          {textField('出版社', 'publisher', item.publisher)}
+          {textField('ISBN', 'isbn', item.isbn)}
+        </>
+      )}
+      <label>
+        SKU 价格（原值：¥{(item.priceMinor / 100).toFixed(2)}）
+        <input
+          type="number"
+          min="0"
+          max="2147483647"
+          value={String(draft.priceMinor ?? item.priceMinor)}
+          onChange={(event) =>
+            setDraft((current) => ({ ...current, priceMinor: Number(event.target.value) }))
+          }
+        />
+      </label>
+      {textField('货架位置', 'shelfLocation', item.shelfLocation)}
+      {textField('本店备注', 'storeNote', item.storeNote)}
+      {textField('陈列信息', 'displayInfo', item.displayInfo)}
+      <p className="dashboard-status" role="status">
+        {status}
+      </p>
+      <div className="meiping-store-actions">
+        {hasSharedChanges && (
+          <button type="button" onClick={() => void calculateImpact()}>
+            计算共享影响范围
+          </button>
+        )}
+        <button type="submit">保存正式商品资料</button>
+        <button type="button" onClick={onCancel}>
+          取消
+        </button>
+      </div>
+    </form>
   );
 }
 
