@@ -14,7 +14,7 @@ import {
   storeInventory,
   stores,
 } from '@xiaohai/db';
-import { CatalogEditError, CatalogEditService } from '../src/commerce/catalog-edit-service.js';
+import { CatalogEditService, type CatalogEditError } from '../src/commerce/catalog-edit-service.js';
 import { StoreCatalogReadService } from '../src/commerce/store-catalog-read-service.js';
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -152,12 +152,14 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
       });
     } finally {
       await db.delete(auditLogs).where(eq(auditLogs.actorStaffAccountId, actor!.id));
-      await db.delete(storeCatalogMetadata).where(
-        and(
-          eq(storeCatalogMetadata.storeId, storeA!.id),
-          eq(storeCatalogMetadata.skuId, sku!.id),
-        ),
-      );
+      await db
+        .delete(storeCatalogMetadata)
+        .where(
+          and(
+            eq(storeCatalogMetadata.storeId, storeA!.id),
+            eq(storeCatalogMetadata.skuId, sku!.id),
+          ),
+        );
       await db.delete(storeInventory).where(eq(storeInventory.skuId, sku!.id));
       await db.delete(skus).where(eq(skus.id, sku!.id));
       await db.delete(products).where(eq(products.id, product!.id));
