@@ -57,11 +57,7 @@ suite('HQ catalog create and optimistic update on disposable PostgreSQL', () => 
         },
       };
       const createRequestId = randomUUID();
-      const created = await commerce.createAdminProduct(
-        input,
-        actor!.id,
-        createRequestId,
-      );
+      const created = await commerce.createAdminProduct(input, actor!.id, createRequestId);
       createdId = created.id;
       expect(created.id).toBeTruthy();
       expect(created.productVersion).toBe(0);
@@ -69,8 +65,9 @@ suite('HQ catalog create and optimistic update on disposable PostgreSQL', () => 
       expect(created.book?.title).toBe(input.book.title);
       expect(created.sku.priceMinor).toBe(2500);
 
-      const persisted = (await commerce.listAdminProducts())
-        .products.find((product) => product.id === created.id);
+      const persisted = (await commerce.listAdminProducts()).products.find(
+        (product) => product.id === created.id,
+      );
       expect(persisted).toEqual(created);
 
       const [creationAudit] = await db
