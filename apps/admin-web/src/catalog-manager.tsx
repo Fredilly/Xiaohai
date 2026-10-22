@@ -31,6 +31,18 @@ export function CatalogManager({ token }: { token: string }) {
   const [q, setQ] = useState('');
   const [editing, setEditing] = useState<Product | null>(null);
   const [creating, setCreating] = useState(false);
+  useEffect(() => {
+    if (!creating && !editing) return;
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setCreating(false);
+        setEditing(null);
+      }
+    }
+    window.addEventListener('keydown', handleEscape);
+    return () => window.removeEventListener('keydown', handleEscape);
+  }, [creating, editing]);
+
   async function load() {
     setState('loading');
     try {
@@ -112,20 +124,49 @@ export function CatalogManager({ token }: { token: string }) {
         </div>
       )}
       {(creating || editing) && (
-        <ProductForm
-          initial={editing ?? blank}
-          onCancel={() => {
-            setCreating(false);
-            setEditing(null);
+        <div
+          className="catalog-editor-overlay"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setCreating(false);
+              setEditing(null);
+            }
           }}
-          onSave={async (input) => {
-            if (editing) await updateAdminProduct(token, editing.id, input);
-            else await createAdminProduct(token, input);
-            setCreating(false);
-            setEditing(null);
-            await load();
-          }}
-        />
+        >
+          <div
+            className="catalog-editor-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-label={editing ? '总部编辑商品' : '总部新增商品'}
+          >
+            <button
+              className="catalog-editor-close"
+              type="button"
+              aria-label="关闭总部商品表单"
+              onClick={() => {
+                setCreating(false);
+                setEditing(null);
+              }}
+            >
+              ×
+            </button>
+            <ProductForm
+              initial={editing ?? blank}
+              onCancel={() => {
+                setCreating(false);
+                setEditing(null);
+              }}
+              onSave={async (input) => {
+                if (editing) await updateAdminProduct(token, editing.id, input);
+                else await createAdminProduct(token, input);
+                setCreating(false);
+                setEditing(null);
+                await load();
+              }}
+            />
+          </div>
+        </div>
       )}
       <HqStoreCatalogEditor token={token} />
     </section>
