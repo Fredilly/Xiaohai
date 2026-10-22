@@ -8,6 +8,8 @@ import {
   meipingReviewDecisions,
   meipingReviewCorrections,
   meipingCorrectionReviews,
+  meipingReviewCorrectionHistory,
+  meipingReviewDecisionHistory,
   meipingReviewSessions,
   regions,
   staffAccounts,
@@ -32,7 +34,9 @@ suite('Meiping review staging PostgreSQL integration', () => {
   afterAll(async () => {
     if (!database) return;
     await database.db.delete(meipingCorrectionReviews);
+    await database.db.delete(meipingReviewCorrectionHistory);
     await database.db.delete(meipingReviewCorrections);
+    await database.db.delete(meipingReviewDecisionHistory);
     await database.db.delete(meipingReviewDecisions);
     await database.db.delete(meipingReviewSessions);
     await database.db.delete(auditLogs).where(eq(auditLogs.resourceType, 'MEIPING_REVIEW_SESSION'));
@@ -387,12 +391,22 @@ suite('Meiping review staging PostgreSQL integration', () => {
         version: 2,
         proposedFields: { author: '建议作者乙', priceMinor: 1234 },
       },
+      correctionHistory: [
+        { version: 1, proposedFields: { author: '建议作者', barcode: 'PR148-NEW-001' } },
+        { version: 2, proposedFields: { author: '建议作者乙', priceMinor: 1234 } },
+      ],
     });
     const [stored] = await database!.db
       .select()
       .from(meipingReviewCorrections)
       .where(eq(meipingReviewCorrections.sessionId, session.id));
     expect(stored).toMatchObject({ sourceRowNumber: 2, version: 2 });
+    expect(
+      await database!.db
+        .select()
+        .from(meipingReviewCorrectionHistory)
+        .where(eq(meipingReviewCorrectionHistory.sessionId, session.id)),
+    ).toHaveLength(2);
     expect((await database!.db.select().from(books)).length).toBe(booksBefore.length);
     expect((await database!.db.select().from(storeInventory)).length).toBe(stockBefore.length);
     const events = await database!.db
@@ -512,6 +526,16 @@ suite('Meiping review staging PostgreSQL integration', () => {
       .from(meipingReviewDecisions)
       .where(eq(meipingReviewDecisions.sessionId, session.id));
     expect(stored).toMatchObject({ action: 'EXCLUDE', countedQuantity: null, version: 2 });
+    const decisionHistory = await database!.db
+      .select()
+      .from(meipingReviewDecisionHistory)
+      .where(eq(meipingReviewDecisionHistory.sessionId, session.id));
+    expect(decisionHistory).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ version: 1, action: 'CREATE_DRAFT', countedQuantity: 3 }),
+        expect.objectContaining({ version: 2, action: 'EXCLUDE', reason: '待确认条码' }),
+      ]),
+    );
     expect(
       (await database!.db.select().from(auditLogs).where(eq(auditLogs.resourceId, session.id)))
         .length,
