@@ -131,7 +131,7 @@ suite('HQ catalog create and optimistic update on disposable PostgreSQL', () => 
         })),
       );
 
-      const revisedIsbn = '978' + suffix.replace(/\\D/g, '').slice(0, 10).padEnd(10, '0');
+      const revisedIsbn = '978' + suffix.replace(/\D/g, '').slice(0, 10).padEnd(10, '0');
       const revisedBook = {
         ...input.book,
         title: 'HQ revised title ' + suffix,
@@ -203,6 +203,23 @@ suite('HQ catalog create and optimistic update on disposable PostgreSQL', () => 
         .from(books)
         .where(eq(books.title, revisedBook.title));
       expect(bookVersion?.version).toBe(1);
+      await expect(
+        commerce.updateAdminProduct(
+          created.id,
+          {
+            ...input,
+            name: 'Updated HQ catalog fixture',
+            book: { ...revisedBook, title: 'Stale title must be refused' },
+            expectedProductVersion: 1,
+            expectedSkuId: created.skuId,
+            expectedBookVersion: 0,
+            expectedEditionVersion: 0,
+            expectedSkuVersion: 1,
+          },
+          actor!.id,
+          randomUUID(),
+        ),
+      ).rejects.toMatchObject({ code: 'CONFLICT' });
 
       const audit = await db
         .select({ actionKey: auditLogs.actionKey })
@@ -215,8 +232,13 @@ suite('HQ catalog create and optimistic update on disposable PostgreSQL', () => 
     } finally {
       await db.delete(auditLogs).where(eq(auditLogs.actorStaffAccountId, actor!.id));
       if (createdId) {
-        await db.delete(storeInventory).where(eq(storeInventory.skuId, (await db
-          .select({ id: skus.id }).from(skus).where(eq(skus.productId, createdId)))[0]!.id));
+        const ownedSkus = await db
+          .select({ id: skus.id })
+          .from(skus)
+          .where(eq(skus.productId, createdId));
+        for (const sku of ownedSkus) {
+          await db.delete(storeInventory).where(eq(storeInventory.skuId, sku.id));
+        }
         for (const id of storeIds) await db.delete(stores).where(eq(stores.id, id));
         if (regionId) await db.delete(regions).where(eq(regions.id, regionId));
         const [product] = await db
