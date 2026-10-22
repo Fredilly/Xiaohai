@@ -215,6 +215,23 @@ function HqStoreCatalogEditor({ token }: { token: string }) {
       });
   }, [token, storeId, reloadNonce]);
 
+  async function openLatest(item: StoreCatalogItem) {
+    setStatus('正在读取商品最新版本…');
+    try {
+      const result = await listHqStoreCatalog(token, storeId);
+      const current = result.items.find((candidate) => candidate.skuId === item.skuId);
+      if (!current) {
+        setStatus('商品已不在当前门店列表中，请重新加载。');
+        return;
+      }
+      setItems(result.items);
+      setEditing(current);
+      setStatus('已读取商品最新版本，可开始编辑。');
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : '读取最新资料失败');
+    }
+  }
+
   return (
     <section className="panel">
       <h2>总部跨门店商品资料</h2>
@@ -259,7 +276,7 @@ function HqStoreCatalogEditor({ token }: { token: string }) {
                 <td>¥{(item.priceMinor / 100).toFixed(2)}</td>
                 <td>{item.storeNote ?? '—'}</td>
                 <td>
-                  <button type="button" onClick={() => setEditing(item)}>
+                  <button type="button" onClick={() => void openLatest(item)}>
                     编辑
                   </button>
                 </td>
