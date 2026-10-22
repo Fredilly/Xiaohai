@@ -75,11 +75,6 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Workspace, Mini Program and secret checks
         run: pnpm check:workspace && pnpm check:miniapp && pnpm check:secrets
-      - name: Inspect exact formatting diff for HQ book editor fix
-        run: |
-          pnpm exec prettier --write apps/api/src/commerce/commerce-service.ts
-          git diff -- apps/api/src/commerce/commerce-service.ts
-          git checkout -- apps/api/src/commerce/commerce-service.ts
       - name: Format, lint and typecheck
         run: pnpm format:check && pnpm lint && pnpm typecheck
       - name: Unit tests

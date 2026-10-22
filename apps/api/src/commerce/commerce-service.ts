@@ -560,15 +560,13 @@ export class CommerceService {
     }
     const bookChanged = Boolean(
       current.book &&
-        input.book &&
-        (input.book.title !== current.book.title ||
-          input.book.author !== current.book.author),
+      input.book &&
+      (input.book.title !== current.book.title || input.book.author !== current.book.author),
     );
     const editionChanged = Boolean(
       current.book &&
-        input.book &&
-        (input.book.isbn !== current.book.isbn ||
-          input.book.publisher !== current.book.publisher),
+      input.book &&
+      (input.book.isbn !== current.book.isbn || input.book.publisher !== current.book.publisher),
     );
 
     await this.db.transaction(async (tx) => {
