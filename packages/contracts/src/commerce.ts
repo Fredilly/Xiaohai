@@ -183,6 +183,8 @@ export const adminProductInputSchema = adminProductCreateInputSchema;
 export const adminProductSchema = adminProductCreateInputSchema.extend({
   id: z.uuid(),
   skuId: z.uuid(),
+  bookId: z.uuid().nullable(),
+  editionId: z.uuid().nullable(),
   productVersion: z.number().int().nonnegative(),
   bookVersion: z.number().int().nonnegative().nullable(),
   editionVersion: z.number().int().nonnegative().nullable(),

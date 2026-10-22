@@ -518,7 +518,6 @@ function ProductForm({
   onSave: (input: AdminProductCreateInput | AdminProductUpdateInput) => Promise<void>;
 }) {
   const editingExisting = 'productVersion' in initial;
-  const hasBookFields = !editingExisting || initial.book !== null;
   const [v, setV] = useState<AdminProductInput>({
     name: initial.name,
     description: initial.description,
@@ -538,6 +537,7 @@ function ProductForm({
         }
       : {}),
   });
+  const [isBook, setIsBook] = useState(initial.book !== null);
   const [error, setError] = useState('');
   const [stale, setStale] = useState(false);
   async function submit(e: FormEvent) {
@@ -558,9 +558,9 @@ function ProductForm({
       return;
     }
     try {
-      if (editingExisting && initial.book === null) {
+      if (!isBook) {
         const nonBook = { ...v };
-        delete nonBook.book;
+        nonBook.book = null;
         delete nonBook.expectedBookVersion;
         delete nonBook.expectedEditionVersion;
         await onSave(nonBook);
@@ -619,7 +619,27 @@ function ProductForm({
           <option>INACTIVE</option>
         </select>
       </label>
-      {hasBookFields && (
+      {!editingExisting && (
+        <label>
+          <input
+            type="checkbox"
+            checked={isBook}
+            onChange={(event) => {
+              const next = event.target.checked;
+              setIsBook(next);
+              if (!next) setV((current) => ({ ...current, book: null }));
+              else if (v.book === null) {
+                setV((current) => ({
+                  ...current,
+                  book: { title: '', author: '', isbn: null, publisher: null },
+                }));
+              }
+            }}
+          />
+          图书商品
+        </label>
+      )}
+      {isBook && (
         <>
           <label>
             书名
