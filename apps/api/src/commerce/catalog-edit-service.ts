@@ -192,7 +192,7 @@ export class CatalogEditService {
         ),
       )
       .where(and(eq(storeInventory.storeId, storeId), eq(storeInventory.skuId, skuId)))
-      .for('update')
+      .for('update', { of: storeInventory })
       .limit(1);
     if (!row) return null;
     return { ...row, localVersion: row.localVersion ?? 0 };
