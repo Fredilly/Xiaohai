@@ -3,14 +3,7 @@
 import pg from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
-import {
-  copyFileSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -45,7 +38,10 @@ try {
   mkdirSync(join(folder, 'meta'));
   const journal = JSON.parse(readFileSync(join(source, 'meta/_journal.json'), 'utf8'));
   const initial = journal.entries.filter((entry) => entry.idx <= 36);
-  if (initial.length !== 37 || journal.entries[38]?.tag !== '0038_store_catalog_direct_edit_upgrade_repair') {
+  if (
+    initial.length !== 37 ||
+    journal.entries[38]?.tag !== '0038_store_catalog_direct_edit_upgrade_repair'
+  ) {
     throw new Error('UNEXPECTED_MIGRATION_CHAIN');
   }
   writeFileSync(
@@ -100,7 +96,9 @@ try {
   if (same.rows[0]?.count !== 38) {
     throw new Error('UPGRADE_MIGRATION_RERAN_UNEXPECTEDLY');
   }
-  console.log('PASS: disposable 0036→0038 upgrade repaired all direct-edit schema/permissions; rerun did not reapply migrations.');
+  console.log(
+    'PASS: disposable 0036→0038 upgrade repaired all direct-edit schema/permissions; rerun did not reapply migrations.',
+  );
 } finally {
   if (targetPool) await targetPool.end();
   if (databaseCreated) {

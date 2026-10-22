@@ -54,4 +54,6 @@ for (const required of [
 ]) {
   if (!repairSql.includes(required)) fail(`repair lacks required idempotence marker: ${required}`);
 }
-console.log(`Migration journal/SQL correspondence passed: ${entries.length} files; 0038 repairs legacy 0037 ordering.`);
+console.log(
+  `Migration journal/SQL correspondence passed: ${entries.length} files; 0038 repairs legacy 0037 ordering.`,
+);

@@ -75,11 +75,6 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Workspace, Mini Program and secret checks
         run: pnpm check:workspace && pnpm check:miniapp && pnpm check:secrets
-      - name: Output migration script Prettier diff for follow-up code fix
-        run: |
-          pnpm exec prettier --write scripts/check-migration-chain.mjs packages/db/test/stacked-upgrade.integration.mjs
-          git diff -- scripts/check-migration-chain.mjs packages/db/test/stacked-upgrade.integration.mjs
-          git checkout -- scripts/check-migration-chain.mjs packages/db/test/stacked-upgrade.integration.mjs
       - name: Format, lint and typecheck
         run: pnpm format:check && pnpm lint && pnpm typecheck
       - name: Unit tests
