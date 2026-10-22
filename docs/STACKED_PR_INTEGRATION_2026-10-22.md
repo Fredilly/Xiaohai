@@ -34,11 +34,11 @@ The CI `migration journal guard` detects missing journal/SQL entries, duplicate/
 ## Remaining integration acceptance before merging anything
 
 1. On a freshly created **disposable** DB, run 0000→0038. Confirm `catalog.edit`, version columns, local metadata table and audit paths; run all relevant integration tests.
-2. On another **disposable DB** with migrations only through 0036, run the current migrator. Verify that 0038 repairs a skipped 0037; compare schema and permissions to fresh install. Do not run the upgrade experiment against the existing PR153/PR156/PR157 UAT databases or real stores.
+2. In CI, `packages/db/test/stacked-upgrade.integration.mjs` creates a **separate disposable DB**, migrates to 0036, then executes the full journal to 0038. It checks that version fields, nonnegative constraints, local metadata and the `catalog.edit` permission exist, and confirms a repeat migrate does not rerun applied SQL. Verify that this job passed on the current PR commit. Do **not** run it against existing PR153/PR156/PR157 UAT or real databases.
 3. Verify store-owned metadata stays scoped while shared title/ISBN/price propagates; cross-store write/read 403 after scope revocation; staff deactivation session invalidation; Meiping DRAFT reviews never alter canonical catalog.
 4. Record status of **each** upstream Draft PR's head CI, including migrations and the stacked base chain. Passing only tail PR CI is not proof that every predecessor has been reviewed.
 5. Verify that existing staging/production database migration state is known and deployment/backups/rollback approach reviewed by the owner. No unattended cutover, merge or seed.
 
 ## Not yet proven
 
-The CI migration-chain check and fresh PostgreSQL tests cannot prove an **incremental 0036→0038 upgrade** without the separate disposable upgrade rehearsal. Production release readiness remains blocked until that dry run and owner-approved merge/release plan.
+The separate disposable **CI rehearsal** is now implemented, but does not prove the state of any existing production/staging database. Production release readiness remains blocked until environment-specific migration inventory, backups and owner-approved merge/release plan.
