@@ -10,6 +10,7 @@ import {
   resetStaffPassword,
   setStaffEnabled,
 } from './staff-admin-api';
+import { loadHqStores } from './hq-operations-api';
 
 type StaffList = Awaited<ReturnType<typeof loadStaffAccounts>>;
 type StaffDetail = Awaited<ReturnType<typeof loadStaffAccount>>;
@@ -31,6 +32,8 @@ export function StaffAdminManager({
   const [permissions, setPermissions] = useState<PermissionList['items']>([]);
   const [detail, setDetail] = useState<StaffDetail | null>(null);
   const [status, setStatus] = useState('');
+  const [scopeStatus, setScopeStatus] = useState('');
+  const [manageableStores, setManageableStores] = useState<Array<{ id: string; name: string }>>([]);
 
   const refresh = async (filters: { q?: string; enabled?: boolean } = {}) => {
     try {
@@ -55,6 +58,21 @@ export function StaffAdminManager({
     void refresh();
   }, [token]);
 
+  useEffect(() => {
+    if (!canManage) return;
+    let active = true;
+    void loadHqStores(token)
+      .then((result) => {
+        if (active) setManageableStores(result.stores.map((store) => ({ id: store.id, name: store.name })));
+      })
+      .catch(() => {
+        if (active) setScopeStatus('无法加载门店列表，请刷新后重试。');
+      });
+    return () => {
+      active = false;
+    };
+  }, [token, canManage]);
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
@@ -68,6 +86,7 @@ export function StaffAdminManager({
 
   async function open(id: string) {
     try {
+      setScopeStatus('');
       setDetail(await loadStaffAccount(token, id));
     } catch (error) {
       setStatus(error instanceof Error ? `详情加载失败：${error.message}` : '详情加载失败');
@@ -155,14 +174,24 @@ export function StaffAdminManager({
     event.preventDefault();
     if (!detail) return;
     try {
-      const dataScopes = parseScopes(text(new FormData(event.currentTarget), 'dataScopes'));
-      setStatus('正在更新授权范围…');
+      const form = new FormData(event.currentTarget);
+      const isStoreAccount = detail.roles.some((role) => role.key === 'PR157_STORE_ACCOUNT');
+      const dataScopes: StaffScope[] = isStoreAccount
+        ? form.getAll('storeId').map((id) => ({ type: 'STORE', id: String(id) }))
+        : parseScopes(text(form, 'dataScopes'));
+      if (isStoreAccount && !dataScopes.length) {
+        throw new Error('请至少选择一家门店');
+      }
+      setScopeStatus('正在更新授权范围…');
       const updated = await replaceStaffDataScopes(token, detail.id, { dataScopes });
       setDetail(updated);
       await refresh();
+      setScopeStatus('授权范围已更新，新的门店范围将在该账号下次登录时生效。');
       setStatus('授权范围已更新。');
     } catch (error) {
-      setStatus(error instanceof Error ? `Scope 更新失败：${error.message}` : 'Scope 更新失败');
+      const message = error instanceof Error ? error.message : '请求失败';
+      setScopeStatus(`授权范围更新失败：${message}`);
+      setStatus('授权范围更新失败，请检查员工详情中的提示。');
     }
   }
 
@@ -307,17 +336,48 @@ export function StaffAdminManager({
                 className="ops-form"
                 onSubmit={(event) => void saveScopes(event)}
               >
-                <label>
-                  授权范围（每行一个）
-                  <textarea
-                    name="dataScopes"
-                    defaultValue={scopeLines(detail.dataScopes)}
-                    disabled={detail.id === currentStaffId}
-                    placeholder={'GLOBAL\nSTORE:00000000-0000-4000-8000-000000000000'}
-                  />
-                </label>
-                <small>全部数据权限必须单独填写；指定区域、加盟商或门店时需填写其真实编号。</small>
-                <button disabled={detail.id === currentStaffId}>更新授权范围</button>
+                {detail.roles.some((role) => role.key === 'PR157_STORE_ACCOUNT') ? (
+                  <fieldset>
+                    <legend>选择店铺账号可以管理的门店</legend>
+                    <p className="muted">勾选后点击保存；无需填写门店编号。仅总部可修改。</p>
+                    {manageableStores.map((store) => (
+                      <label key={store.id}>
+                        <input
+                          type="checkbox"
+                          name="storeId"
+                          value={store.id}
+                          defaultChecked={detail.dataScopes.some(
+                            (scope) => scope.type === 'STORE' && scope.id === store.id,
+                          )}
+                          disabled={detail.id === currentStaffId}
+                        />
+                        {store.name}
+                      </label>
+                    ))}
+                    {!manageableStores.length && <p>暂无可选择的门店，请刷新后重试。</p>}
+                  </fieldset>
+                ) : (
+                  <label>
+                    高级授权范围（每行一个）
+                    <textarea
+                      name="dataScopes"
+                      defaultValue={scopeLines(detail.dataScopes)}
+                      disabled={detail.id === currentStaffId}
+                      placeholder={'GLOBAL\nSTORE:00000000-0000-4000-8000-000000000000'}
+                    />
+                    <small>总部或特殊角色使用。GLOBAL 单独填写；其他范围需要有效编号。</small>
+                  </label>
+                )}
+                {scopeStatus && <p role="status">{scopeStatus}</p>}
+                <button
+                  disabled={
+                    detail.id === currentStaffId ||
+                    (detail.roles.some((role) => role.key === 'PR157_STORE_ACCOUNT') &&
+                      !manageableStores.length)
+                  }
+                >
+                  保存授权范围
+                </button>
               </form>
             </>
           )}
