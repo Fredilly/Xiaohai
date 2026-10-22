@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, describe, expect, it } from 'vitest';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import {
   auditLogs,
   bookEditions,
@@ -265,6 +265,67 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
       } finally {
         await app.close();
       }
+
+      // More than 1,000 linked SKU rows must not make direct lookup or a
+      // successful edit return NOT_FOUND just because its SKU sorts last.
+      // Restrict this heavier regression to the disposable CI-only database.
+      if (new URL(databaseUrl!).pathname === '/xiaohai_test') {
+        const filler = await db
+          .insert(skus)
+          .values(
+            Array.from({ length: 1001 }, (_, index) => ({
+              productId: product!.id,
+              code: `DCE-FILL-${suffix}-${String(index).padStart(4, '0')}`,
+              name: 'Extra edition',
+              priceMinor: 900,
+            })),
+          )
+          .returning({ id: skus.id });
+        const [lastSku] = await db
+          .insert(skus)
+          .values({
+            productId: product!.id,
+            code: 'ZZZ-DCE-' + suffix,
+            name: 'Last edition',
+            priceMinor: 900,
+          })
+          .returning({ id: skus.id });
+        await db.insert(storeInventory).values(
+          [...filler, lastSku!].map((entry) => ({
+            storeId: storeA!.id,
+            skuId: entry.id,
+            onHand: 1,
+          })),
+        );
+
+        const firstPage = await reader.list(storeA!.id, { offset: 0, limit: 1000 });
+        expect(firstPage.hasMore).toBe(true);
+        expect(firstPage.items.some((item) => item.skuId === lastSku!.id)).toBe(false);
+        expect(await reader.get(storeA!.id, lastSku!.id)).toMatchObject({
+          skuId: lastSku!.id,
+          skuCode: 'ZZZ-DCE-' + suffix,
+          priceMinor: 900,
+        });
+        expect(await reader.get(storeB!.id, lastSku!.id)).toBeNull();
+
+        const lastUpdated = await editor.update(
+          storeA!.id,
+          lastSku!.id,
+          actor!.id,
+          randomUUID(),
+          {
+            expectedProductVersion: 0,
+            expectedSkuVersion: 0,
+            expectedLocalVersion: 0,
+            priceMinor: 950,
+          },
+        );
+        expect(lastUpdated.item).toMatchObject({
+          skuId: lastSku!.id,
+          priceMinor: 950,
+          skuVersion: 1,
+        });
+      }
     } finally {
       await db.delete(auditLogs).where(eq(auditLogs.actorStaffAccountId, actor!.id));
       await db.delete(staffDataScopes).where(eq(staffDataScopes.staffAccountId, actor!.id));
@@ -279,8 +340,14 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
             eq(storeCatalogMetadata.skuId, sku!.id),
           ),
         );
-      await db.delete(storeInventory).where(eq(storeInventory.skuId, sku!.id));
-      await db.delete(skus).where(eq(skus.id, sku!.id));
+      const fixtureSkuIds = await db
+        .select({ id: skus.id })
+        .from(skus)
+        .where(eq(skus.productId, product!.id));
+      await db.delete(storeInventory).where(
+        inArray(storeInventory.skuId, fixtureSkuIds.map((item) => item.id)),
+      );
+      await db.delete(skus).where(eq(skus.productId, product!.id));
       await db.delete(products).where(eq(products.id, product!.id));
       await db.delete(bookEditions).where(eq(bookEditions.id, edition!.id));
       await db.delete(books).where(eq(books.id, book!.id));
