@@ -35,7 +35,7 @@ import {
 
 const databaseUrl = process.env.DATABASE_URL;
 const disposableDatabase =
-  databaseUrl && /^xiaohai_(test|pr160_uat)$/.test(new URL(databaseUrl).pathname.slice(1))
+  databaseUrl && /^xiaohai_(test|pr160_uat|pr161_uat)$/.test(new URL(databaseUrl).pathname.slice(1))
     ? createDatabase(process.env)
     : null;
 const suite = disposableDatabase ? describe : describe.skip;
@@ -269,7 +269,7 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
       // More than 1,000 linked SKU rows must not make direct lookup or a
       // successful edit return NOT_FOUND just because its SKU sorts last.
       // Restrict this heavier regression to the disposable CI-only database.
-      if (new URL(databaseUrl!).pathname === '/xiaohai_test') {
+      if (/^\/xiaohai_(test|pr161_uat)$/.test(new URL(databaseUrl!).pathname)) {
         const filler = await db
           .insert(skus)
           .values(

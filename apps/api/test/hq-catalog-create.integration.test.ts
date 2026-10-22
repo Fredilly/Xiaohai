@@ -18,7 +18,7 @@ import { StoreCatalogReadService } from '../src/commerce/store-catalog-read-serv
 
 const databaseUrl = process.env.DATABASE_URL;
 const disposableDatabase =
-  databaseUrl && /^\/xiaohai_(test|pr160_uat)$/.test(new URL(databaseUrl).pathname)
+  databaseUrl && /^\/xiaohai_(test|pr160_uat|pr161_uat)$/.test(new URL(databaseUrl).pathname)
     ? createDatabase(process.env)
     : null;
 const suite = disposableDatabase ? describe : describe.skip;
