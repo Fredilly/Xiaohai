@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import type { StoreCatalogEditRequest, StoreCatalogItem } from '@xiaohai/contracts/commerce';
 import { listStoreCatalog, previewStoreCatalogEdit, updateStoreCatalog } from './store-catalog-api';
 
@@ -246,7 +246,14 @@ function draftFor(item: StoreCatalogItem): StoreCatalogEditRequest {
   };
 }
 
-function StoreCatalogEditForm({
+type StoreCatalogImpact = Awaited<ReturnType<typeof previewStoreCatalogEdit>>['impact'];
+type StoreCatalogImpactPreview = { snapshot: string; impact: StoreCatalogImpact };
+
+function draftSnapshot(draft: StoreCatalogEditRequest): string {
+  return JSON.stringify(draft);
+}
+
+export function StoreCatalogEditForm({
   token,
   storeId,
   item,
@@ -263,9 +270,8 @@ function StoreCatalogEditForm({
     priceMinor: number;
   };
   const [draft, setDraft] = useState(() => draftFor(item));
-  const [impact, setImpact] = useState<
-    Awaited<ReturnType<typeof previewStoreCatalogEdit>>['impact'] | null
-  >(null);
+  const [impactPreview, setImpactPreview] = useState<StoreCatalogImpactPreview | null>(null);
+  const previewSequence = useRef(0);
   const [priceYuan, setPriceYuan] = useState(() => (item.priceMinor / 100).toFixed(2));
   const [status, setStatus] = useState('请核对原值和新值。');
   const sharedKeys = [
@@ -300,7 +306,8 @@ function StoreCatalogEditForm({
     key: Key,
     value: StoreCatalogEditRequest[Key],
   ) {
-    setImpact(null);
+    previewSequence.current += 1;
+    setImpactPreview(null);
     setDraft((current) => ({ ...current, [key]: value }));
   }
 
@@ -316,12 +323,17 @@ function StoreCatalogEditForm({
       setStatus('价格请填写非负元金额，最多两位小数，且不得超过系统上限。');
       return;
     }
+    const snapshot = draftSnapshot(nextDraft);
+    const sequence = ++previewSequence.current;
+    setImpactPreview(null);
     setStatus('正在计算影响门店…');
     try {
       const result = await previewStoreCatalogEdit(token, storeId, item.skuId, nextDraft);
-      setImpact(result.impact);
+      if (sequence !== previewSequence.current) return;
+      setImpactPreview({ snapshot, impact: result.impact });
       setStatus(`预计影响 ${result.impact.affectedStoreCount} 家门店。`);
     } catch (error) {
+      if (sequence !== previewSequence.current) return;
       setStatus(error instanceof Error ? error.message : '影响范围计算失败');
     }
   }
@@ -333,7 +345,8 @@ function StoreCatalogEditForm({
       setStatus('价格请填写非负元金额，最多两位小数，且不得超过系统上限。');
       return;
     }
-    if (hasSharedChanges && !impact) {
+    const snapshot = draftSnapshot(nextDraft);
+    if (hasSharedChanges && impactPreview?.snapshot !== snapshot) {
       setStatus('请先计算共享资料影响范围。');
       return;
     }
@@ -343,7 +356,7 @@ function StoreCatalogEditForm({
         sharedImpactConfirmation(
           item.priceMinor,
           nextDraft.priceMinor,
-          impact?.affectedStoreCount ?? 0,
+          impactPreview?.impact.affectedStoreCount ?? 0,
         ),
       )
     )
@@ -392,7 +405,8 @@ function StoreCatalogEditForm({
           aria-label="SKU 价格（元）"
           value={priceYuan}
           onChange={(event) => {
-            setImpact(null);
+            previewSequence.current += 1;
+            setImpactPreview(null);
             setPriceYuan(event.target.value);
           }}
         />
