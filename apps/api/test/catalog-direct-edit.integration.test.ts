@@ -187,7 +187,10 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
       });
 
       // Real signed Staff session + DB-backed role/scope; no user password or token is read.
-      const sessions = new StaffSessionService('isolated-direct-catalog-scope-test-secret-123456', 300);
+      const sessions = new StaffSessionService(
+        'isolated-direct-catalog-scope-test-secret-123456',
+        300,
+      );
       const authorization = new StaffAuthorizationService(
         new DrizzleStaffAuthorizationRepository(db),
         sessions,
@@ -255,9 +258,7 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
           payload: foreignEditPayload,
         });
         expect(revokedEdit.statusCode).toBe(403);
-        expect((await app.inject({ method: 'GET', url: ownUrl, headers })).statusCode).toBe(
-          200,
-        );
+        expect((await app.inject({ method: 'GET', url: ownUrl, headers })).statusCode).toBe(200);
       } finally {
         await app.close();
       }
