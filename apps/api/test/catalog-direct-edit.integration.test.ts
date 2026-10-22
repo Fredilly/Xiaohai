@@ -33,11 +33,16 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
     await disposableDatabase!.pool.end();
   });
 
-  it('updates shared fields in two stores, keeps local fields scoped, and records audit without stock writes', async () => {
+  it('updates shared fields without changing another store\'s local metadata or stock', async () => {
     const suffix = randomUUID().slice(0, 8);
     const [region] = await db
       .insert(regions)
-      .values({ code: 'DCE-R-' + suffix, name: 'Direct Catalog Test Region', countryCode: 'CN', countryName: 'China' })
+      .values({
+        code: 'DCE-R-' + suffix,
+        name: 'Direct Catalog Test Region',
+        countryCode: 'CN',
+        countryName: 'China',
+      })
       .returning();
     const [storeA, storeB] = await db
       .insert(stores)
@@ -66,11 +71,20 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
       .returning();
     const [product] = await db
       .insert(products)
-      .values({ bookEditionId: edition!.id, name: 'Original Direct Edit Product', status: 'ACTIVE' })
+      .values({
+        bookEditionId: edition!.id,
+        name: 'Original Direct Edit Product',
+        status: 'ACTIVE',
+      })
       .returning();
     const [sku] = await db
       .insert(skus)
-      .values({ productId: product!.id, code: 'DCE-SKU-' + suffix, name: 'Edition', priceMinor: 1000 })
+      .values({
+        productId: product!.id,
+        code: 'DCE-SKU-' + suffix,
+        name: 'Edition',
+        priceMinor: 1000,
+      })
       .returning();
     await db.insert(storeInventory).values([
       { storeId: storeA!.id, skuId: sku!.id, onHand: 6 },
@@ -78,7 +92,10 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
     ]);
     const [actor] = await db
       .insert(staffAccounts)
-      .values({ loginIdentifier: 'dce-' + randomUUID() + '@example.com', passwordHash: 'test-only' })
+      .values({
+        loginIdentifier: 'dce-' + randomUUID() + '@example.com',
+        passwordHash: 'test-only',
+      })
       .returning();
 
     try {
@@ -111,9 +128,9 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
       expect(otherStore?.priceMinor).toBe(1200);
       expect(otherStore?.shelfLocation).toBeNull();
 
-      await expect(editor.update(storeA!.id, sku!.id, actor!.id, randomUUID(), input)).rejects.toMatchObject({
-        code: 'CONFLICT',
-      } satisfies Partial<CatalogEditError>);
+      await expect(
+        editor.update(storeA!.id, sku!.id, actor!.id, randomUUID(), input),
+      ).rejects.toMatchObject({ code: 'CONFLICT' } satisfies Partial<CatalogEditError>);
 
       const balances = await db
         .select({ storeId: storeInventory.storeId, onHand: storeInventory.onHand })
@@ -123,7 +140,10 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
       expect(balances.find((row) => row.storeId === storeA!.id)?.onHand).toBe(6);
       expect(balances.find((row) => row.storeId === storeB!.id)?.onHand).toBe(4);
 
-      const audit = await db.select().from(auditLogs).where(eq(auditLogs.actorStaffAccountId, actor!.id));
+      const audit = await db
+        .select()
+        .from(auditLogs)
+        .where(eq(auditLogs.actorStaffAccountId, actor!.id));
       expect(audit).toHaveLength(1);
       expect(audit[0]?.actionKey).toBe('catalog.direct_edit');
       expect(audit[0]?.metadata).toMatchObject({
@@ -134,7 +154,12 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
       await db.delete(auditLogs).where(eq(auditLogs.actorStaffAccountId, actor!.id));
       await db
         .delete(storeCatalogMetadata)
-        .where(and(eq(storeCatalogMetadata.storeId, storeA!.id), eq(storeCatalogMetadata.skuId, sku!.id)));
+        .where(
+          and(
+            eq(storeCatalogMetadata.storeId, storeA!.id),
+            eq(storeCatalogMetadata.skuId, sku!.id),
+          ),
+        );
       await db.delete(storeInventory).where(eq(storeInventory.skuId, sku!.id));
       await db.delete(skus).where(eq(skus.id, sku!.id));
       await db.delete(products).where(eq(products.id, product!.id));
