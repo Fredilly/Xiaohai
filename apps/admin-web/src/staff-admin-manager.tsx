@@ -179,7 +179,10 @@ export function StaffAdminManager({
       const form = new FormData(event.currentTarget);
       const isStoreAccount = detail.roles.some((role) => role.key === 'PR157_STORE_ACCOUNT');
       const dataScopes: StaffScope[] = isStoreAccount
-        ? form.getAll('storeId').map((id) => ({ type: 'STORE', id: String(id) }))
+        ? form
+            .getAll('storeId')
+            .filter((id): id is string => typeof id === 'string')
+            .map((id) => ({ type: 'STORE', id }))
         : parseScopes(text(form, 'dataScopes'));
       if (isStoreAccount && !dataScopes.length) {
         throw new Error('请至少选择一家门店');
