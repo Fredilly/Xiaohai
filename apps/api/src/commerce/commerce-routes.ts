@@ -4,7 +4,8 @@ import {
   addCartItemRequestSchema,
   addressInputSchema,
   adminCatalogQuerySchema,
-  adminProductInputSchema,
+  adminProductCreateInputSchema,
+  adminProductUpdateInputSchema,
   catalogListResponseSchema,
   catalogProductSchema,
   catalogQuerySchema,
@@ -214,7 +215,7 @@ export function registerCommerceRoutes(
     }
   });
   app.post('/api/v1/staff/catalog/products', async (request, reply) => {
-    const input = adminProductInputSchema.safeParse(request.body);
+    const input = adminProductCreateInputSchema.safeParse(request.body);
     if (!input.success) return invalid(reply, request.id);
     try {
       const actor = await staff(request);
@@ -229,7 +230,7 @@ export function registerCommerceRoutes(
   });
   app.put('/api/v1/staff/catalog/products/:id', async (request, reply) => {
     const params = z.object({ id: z.uuid() }).safeParse(request.params);
-    const input = adminProductInputSchema.safeParse(request.body);
+    const input = adminProductUpdateInputSchema.safeParse(request.body);
     if (!params.success || !input.success) return invalid(reply, request.id);
     try {
       const actor = await staff(request);

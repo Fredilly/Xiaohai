@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   addCartItemRequestSchema,
+  adminProductUpdateInputSchema,
   adminProductInputSchema,
   createOrderRequestSchema,
   orderStatusSchema,
@@ -43,6 +44,35 @@ describe('M5 commerce contracts', () => {
         sku: { code: 'A', name: 'A', priceMinor: 12.5, status: 'ACTIVE', availableForSale: true },
       }).success,
     ).toBe(false);
+  });
+
+  it('separates create and update version contracts', () => {
+    const base = {
+      name: 'Book',
+      status: 'ACTIVE' as const,
+      book: null,
+      sku: {
+        code: 'A',
+        name: 'A',
+        priceMinor: 1200,
+        status: 'ACTIVE' as const,
+        availableForSale: true,
+      },
+    };
+    expect(adminProductUpdateInputSchema.safeParse(base).success).toBe(false);
+    expect(
+      adminProductUpdateInputSchema.safeParse({ ...base, expectedProductVersion: 0 }).success,
+    ).toBe(false);
+    expect(
+      adminProductUpdateInputSchema.safeParse({ ...base, expectedSkuVersion: 0 }).success,
+    ).toBe(false);
+    expect(
+      adminProductUpdateInputSchema.safeParse({
+        ...base,
+        expectedProductVersion: 0,
+        expectedSkuVersion: 0,
+      }).success,
+    ).toBe(true);
   });
 
   it('requires optimistic-lock versions and validates direct catalog edits', () => {

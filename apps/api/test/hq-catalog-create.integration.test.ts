@@ -18,7 +18,7 @@ import { StoreCatalogReadService } from '../src/commerce/store-catalog-read-serv
 
 const databaseUrl = process.env.DATABASE_URL;
 const disposableDatabase =
-  databaseUrl && new URL(databaseUrl).pathname === '/xiaohai_test'
+  databaseUrl && /^\/xiaohai_(test|pr160_uat)$/.test(new URL(databaseUrl).pathname)
     ? createDatabase(process.env)
     : null;
 const suite = disposableDatabase ? describe : describe.skip;
@@ -41,6 +41,7 @@ suite('HQ catalog create and optimistic update on disposable PostgreSQL', () => 
       })
       .returning({ id: staffAccounts.id });
     let createdId: string | null = null;
+    let nonBookId: string | null = null;
     let regionId: string | null = null;
     const storeIds: string[] = [];
     try {
@@ -222,20 +223,108 @@ suite('HQ catalog create and optimistic update on disposable PostgreSQL', () => 
       ).rejects.toMatchObject({ code: 'CONFLICT' });
 
       const audit = await db
-        .select({ actionKey: auditLogs.actionKey })
+        .select({ actionKey: auditLogs.actionKey, metadata: auditLogs.metadata })
         .from(auditLogs)
         .where(eq(auditLogs.actorStaffAccountId, actor!.id));
       expect(audit.map((row) => row.actionKey).sort()).toEqual([
         'catalog.hq_create',
         'catalog.hq_direct_edit',
       ]);
+      const editAudit = audit.find((row) => row.actionKey === 'catalog.hq_direct_edit');
+      expect(editAudit?.metadata).toMatchObject({
+        productId: created.id,
+        skuId: created.skuId,
+        bookId: created.bookId,
+        editionId: created.editionId,
+      });
+
+      const nonBookInput = {
+        name: 'HQ Non-book Integration ' + suffix,
+        description: 'Isolated non-book fixture',
+        status: 'ACTIVE' as const,
+        book: null,
+        sku: {
+          code: 'HQ-NONBOOK-SKU-' + suffix,
+          name: 'Non-book Standard',
+          priceMinor: 900,
+          status: 'ACTIVE' as const,
+          availableForSale: true,
+        },
+      };
+      const nonBook = await commerce.createAdminProduct(nonBookInput, actor!.id, randomUUID());
+      nonBookId = nonBook.id;
+      expect(nonBook.book).toBeNull();
+      const updatedNonBook = await commerce.updateAdminProduct(
+        nonBook.id,
+        {
+          ...nonBookInput,
+          name: 'Updated non-book fixture',
+          sku: { ...nonBookInput.sku, priceMinor: 1000 },
+          expectedProductVersion: 0,
+          expectedSkuId: nonBook.skuId,
+          expectedBookVersion: undefined,
+          expectedEditionVersion: undefined,
+          expectedSkuVersion: 0,
+        },
+        actor!.id,
+        randomUUID(),
+      );
+      expect(updatedNonBook.name).toBe('Updated non-book fixture');
+      expect(updatedNonBook.sku.priceMinor).toBe(1000);
+      expect(updatedNonBook.book).toBeNull();
+      await expect(
+        commerce.updateAdminProduct(
+          nonBook.id,
+          {
+            ...nonBookInput,
+            name: 'Stale non-book overwrite',
+            expectedProductVersion: 0,
+            expectedSkuId: nonBook.skuId,
+            expectedBookVersion: undefined,
+            expectedEditionVersion: undefined,
+            expectedSkuVersion: 0,
+          },
+          actor!.id,
+          randomUUID(),
+        ),
+      ).rejects.toMatchObject({ code: 'CONFLICT' });
+      const [persistedNonBook] = await db
+        .select({ name: products.name, version: products.version })
+        .from(products)
+        .where(eq(products.id, nonBook.id));
+      expect(persistedNonBook).toMatchObject({
+        name: 'Updated non-book fixture',
+        version: 1,
+      });
+
+      const allAudits = await db
+        .select({ actionKey: auditLogs.actionKey, metadata: auditLogs.metadata })
+        .from(auditLogs)
+        .where(eq(auditLogs.actorStaffAccountId, actor!.id));
+      expect(allAudits.map((row) => row.actionKey).sort()).toEqual([
+        'catalog.hq_create',
+        'catalog.hq_create',
+        'catalog.hq_direct_edit',
+        'catalog.hq_direct_edit',
+      ]);
+      const nonBookEditAudit = allAudits.find(
+        (row) =>
+          row.actionKey === 'catalog.hq_direct_edit' &&
+          (row.metadata as { productId?: string }).productId === nonBook.id,
+      );
+      expect(nonBookEditAudit?.metadata).toMatchObject({
+        productId: nonBook.id,
+        skuId: nonBook.skuId,
+        bookId: null,
+        editionId: null,
+      });
     } finally {
       await db.delete(auditLogs).where(eq(auditLogs.actorStaffAccountId, actor!.id));
-      if (createdId) {
+      for (const productId of [createdId, nonBookId].filter((id): id is string => Boolean(id))) {
         const ownedSkus = await db
           .select({ id: skus.id })
           .from(skus)
-          .where(eq(skus.productId, createdId));
+          .where(eq(skus.productId, productId));
         for (const sku of ownedSkus) {
           await db.delete(storeInventory).where(eq(storeInventory.skuId, sku.id));
         }
@@ -244,9 +333,9 @@ suite('HQ catalog create and optimistic update on disposable PostgreSQL', () => 
         const [product] = await db
           .select({ bookEditionId: products.bookEditionId })
           .from(products)
-          .where(eq(products.id, createdId));
-        await db.delete(skus).where(eq(skus.productId, createdId));
-        await db.delete(products).where(eq(products.id, createdId));
+          .where(eq(products.id, productId));
+        await db.delete(skus).where(eq(skus.productId, productId));
+        await db.delete(products).where(eq(products.id, productId));
         if (product?.bookEditionId) {
           const [edition] = await db
             .select({ bookId: bookEditions.bookId })
