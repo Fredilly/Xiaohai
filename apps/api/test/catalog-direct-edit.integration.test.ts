@@ -33,7 +33,7 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
     await disposableDatabase!.pool.end();
   });
 
-  it('updates shared fields without changing another store\'s local metadata or stock', async () => {
+  it('updates shared fields and keeps store-local metadata and stock unchanged', async () => {
     const suffix = randomUUID().slice(0, 8);
     const [region] = await db
       .insert(regions)
@@ -152,14 +152,12 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
       });
     } finally {
       await db.delete(auditLogs).where(eq(auditLogs.actorStaffAccountId, actor!.id));
-      await db
-        .delete(storeCatalogMetadata)
-        .where(
-          and(
-            eq(storeCatalogMetadata.storeId, storeA!.id),
-            eq(storeCatalogMetadata.skuId, sku!.id),
-          ),
-        );
+      await db.delete(storeCatalogMetadata).where(
+        and(
+          eq(storeCatalogMetadata.storeId, storeA!.id),
+          eq(storeCatalogMetadata.skuId, sku!.id),
+        ),
+      );
       await db.delete(storeInventory).where(eq(storeInventory.skuId, sku!.id));
       await db.delete(skus).where(eq(skus.id, sku!.id));
       await db.delete(products).where(eq(products.id, product!.id));
