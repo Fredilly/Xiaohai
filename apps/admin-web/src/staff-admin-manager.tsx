@@ -63,7 +63,9 @@ export function StaffAdminManager({
     let active = true;
     void loadHqStores(token)
       .then((result) => {
-        if (active) setManageableStores(result.stores.map((store) => ({ id: store.id, name: store.name })));
+        if (active) {
+          setManageableStores(result.stores.map((store) => ({ id: store.id, name: store.name })));
+        }
       })
       .catch(() => {
         if (active) setScopeStatus('无法加载门店列表，请刷新后重试。');

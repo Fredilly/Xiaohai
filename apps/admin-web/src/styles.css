@@ -1042,7 +1042,10 @@ textarea {
   padding: 24px;
   box-shadow: 0 20px 65px rgba(0, 0, 0, 0.24);
 }
-.catalog-editor-dialog .cms-form { margin: 0; max-width: none; }
+.catalog-editor-dialog .cms-form {
+  margin: 0;
+  max-width: none;
+}
 .catalog-editor-close {
   position: sticky;
   top: 0;
@@ -1055,6 +1058,11 @@ textarea {
   cursor: pointer;
 }
 @media (max-width: 640px) {
-  .catalog-editor-overlay { padding: 10px; }
-  .catalog-editor-dialog { padding: 16px; max-height: calc(100dvh - 20px); }
+  .catalog-editor-overlay {
+    padding: 10px;
+  }
+  .catalog-editor-dialog {
+    padding: 16px;
+    max-height: calc(100dvh - 20px);
+  }
 }

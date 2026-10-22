@@ -845,6 +845,11 @@ button:disabled {
   cursor: pointer;
 }
 @media (max-width: 640px) {
-  .catalog-editor-overlay { padding: 10px; }
-  .catalog-editor-dialog { padding: 16px; max-height: calc(100dvh - 20px); }
+  .catalog-editor-overlay {
+    padding: 10px;
+  }
+  .catalog-editor-dialog {
+    padding: 16px;
+    max-height: calc(100dvh - 20px);
+  }
 }
