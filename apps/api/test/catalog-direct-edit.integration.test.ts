@@ -217,7 +217,8 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
       try {
         const ownRead = await app.inject({ method: 'GET', url: ownUrl, headers });
         expect(ownRead.statusCode).toBe(200);
-        expect(ownRead.json().items).toHaveLength(1);
+        const ownReadBody = ownRead.json<{ items: unknown[] }>();
+        expect(ownReadBody.items).toHaveLength(1);
 
         const deniedRead = await app.inject({ method: 'GET', url: foreignUrl, headers });
         expect(deniedRead.statusCode).toBe(403);
@@ -242,13 +243,15 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
         });
         expect(newlyAuthorizedRead.statusCode).toBe(200);
 
-        await db.delete(staffDataScopes).where(
-          and(
-            eq(staffDataScopes.staffAccountId, actor!.id),
-            eq(staffDataScopes.scopeType, 'STORE'),
-            eq(staffDataScopes.scopeId, storeB!.id),
-          ),
-        );
+        await db
+          .delete(staffDataScopes)
+          .where(
+            and(
+              eq(staffDataScopes.staffAccountId, actor!.id),
+              eq(staffDataScopes.scopeType, 'STORE'),
+              eq(staffDataScopes.scopeId, storeB!.id),
+            ),
+          );
         const revokedRead = await app.inject({ method: 'GET', url: foreignUrl, headers });
         expect(revokedRead.statusCode).toBe(403);
         const revokedEdit = await app.inject({
