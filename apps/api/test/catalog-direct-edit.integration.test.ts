@@ -8,14 +8,30 @@ import {
   createDatabase,
   products,
   regions,
+  rolePermissions,
+  roles,
+  permissions,
   skus,
   staffAccounts,
+  staffDataScopes,
+  staffRoles,
   storeCatalogMetadata,
   storeInventory,
   stores,
 } from '@xiaohai/db';
 import { CatalogEditService, type CatalogEditError } from '../src/commerce/catalog-edit-service.js';
 import { StoreCatalogReadService } from '../src/commerce/store-catalog-read-service.js';
+import { buildApp } from '../src/app.js';
+import {
+  DrizzleStaffAuthorizationRepository,
+  StaffAuthorizationService,
+} from '../src/auth/staff-authorization.js';
+import { StaffSessionService } from '../src/auth/staff-session.js';
+import { StoreNetworkService } from '../src/stores/store-service.js';
+import {
+  registerStoreCatalogEditRoutes,
+  registerStoreCatalogReadRoutes,
+} from '../src/commerce/store-catalog-read-routes.js';
 
 const databaseUrl = process.env.DATABASE_URL;
 const disposableDatabase =
@@ -97,6 +113,25 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
         passwordHash: 'test-only',
       })
       .returning();
+    const [role] = await db
+      .insert(roles)
+      .values({ key: 'dce-' + randomUUID(), displayName: 'Isolated Catalog Edit Tester' })
+      .returning();
+    for (const key of ['stores.read', 'inventory.read', 'catalog.edit']) {
+      await db.insert(permissions).values({ key, displayName: key }).onConflictDoNothing();
+      const [permission] = await db
+        .select({ id: permissions.id })
+        .from(permissions)
+        .where(eq(permissions.key, key))
+        .limit(1);
+      await db.insert(rolePermissions).values({ roleId: role!.id, permissionId: permission!.id });
+    }
+    await db.insert(staffRoles).values({ staffAccountId: actor!.id, roleId: role!.id });
+    await db.insert(staffDataScopes).values({
+      staffAccountId: actor!.id,
+      scopeType: 'STORE',
+      scopeId: storeA!.id,
+    });
 
     try {
       const input = {
@@ -150,8 +185,88 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
         affectedStoreCount: 2,
         changedFields: ['bookTitle', 'priceMinor', 'shelfLocation'],
       });
+
+      // Real signed Staff session + DB-backed role/scope; no user password or token is read.
+      const sessions = new StaffSessionService('isolated-direct-catalog-scope-test-secret-123456', 300);
+      const authorization = new StaffAuthorizationService(
+        new DrizzleStaffAuthorizationRepository(db),
+        sessions,
+      );
+      const app = buildApp({ logger: false });
+      const options = {
+        staffAuthorization: authorization,
+        stores: new StoreNetworkService(db),
+      };
+      registerStoreCatalogReadRoutes(app, { ...options, catalog: reader });
+      registerStoreCatalogEditRoutes(app, { ...options, catalog: editor });
+      const headers = { authorization: 'Bearer ' + sessions.issue(actor!.id).token };
+      const ownUrl = `/api/v1/staff/stores/${storeA!.id}/catalog`;
+      const foreignUrl = `/api/v1/staff/stores/${storeB!.id}/catalog`;
+      const foreignEditUrl = `${foreignUrl}/${sku!.id}`;
+      const foreignEditPayload = {
+        expectedProductVersion: 1,
+        expectedBookVersion: 1,
+        expectedEditionVersion: 0,
+        expectedSkuVersion: 1,
+        expectedLocalVersion: 0,
+        storeNote: 'Should never be saved',
+      };
+      try {
+        const ownRead = await app.inject({ method: 'GET', url: ownUrl, headers });
+        expect(ownRead.statusCode).toBe(200);
+        expect(ownRead.json().items).toHaveLength(1);
+
+        const deniedRead = await app.inject({ method: 'GET', url: foreignUrl, headers });
+        expect(deniedRead.statusCode).toBe(403);
+        const deniedEdit = await app.inject({
+          method: 'PATCH',
+          url: foreignEditUrl,
+          headers,
+          payload: foreignEditPayload,
+        });
+        expect(deniedEdit.statusCode).toBe(403);
+
+        // Grant and revoke the second store while retaining the same signed session.
+        await db.insert(staffDataScopes).values({
+          staffAccountId: actor!.id,
+          scopeType: 'STORE',
+          scopeId: storeB!.id,
+        });
+        const newlyAuthorizedRead = await app.inject({
+          method: 'GET',
+          url: foreignUrl,
+          headers,
+        });
+        expect(newlyAuthorizedRead.statusCode).toBe(200);
+
+        await db.delete(staffDataScopes).where(
+          and(
+            eq(staffDataScopes.staffAccountId, actor!.id),
+            eq(staffDataScopes.scopeType, 'STORE'),
+            eq(staffDataScopes.scopeId, storeB!.id),
+          ),
+        );
+        const revokedRead = await app.inject({ method: 'GET', url: foreignUrl, headers });
+        expect(revokedRead.statusCode).toBe(403);
+        const revokedEdit = await app.inject({
+          method: 'PATCH',
+          url: foreignEditUrl,
+          headers,
+          payload: foreignEditPayload,
+        });
+        expect(revokedEdit.statusCode).toBe(403);
+        expect((await app.inject({ method: 'GET', url: ownUrl, headers })).statusCode).toBe(
+          200,
+        );
+      } finally {
+        await app.close();
+      }
     } finally {
       await db.delete(auditLogs).where(eq(auditLogs.actorStaffAccountId, actor!.id));
+      await db.delete(staffDataScopes).where(eq(staffDataScopes.staffAccountId, actor!.id));
+      await db.delete(staffRoles).where(eq(staffRoles.staffAccountId, actor!.id));
+      await db.delete(rolePermissions).where(eq(rolePermissions.roleId, role!.id));
+      await db.delete(roles).where(eq(roles.id, role!.id));
       await db
         .delete(storeCatalogMetadata)
         .where(
