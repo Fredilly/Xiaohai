@@ -465,8 +465,14 @@ export class CommerceService {
       })),
     };
   }
-  async createAdminProduct(input: AdminProductInput) {
-    return this.db.transaction(async (tx) => {
+  async createAdminProduct(
+    input: AdminProductInput,
+    actorStaffAccountId: string,
+    requestId: string,
+  ) {
+    // Never read a newly inserted product through this.db inside the transaction:
+    // that uses a different pooled connection and cannot see uncommitted rows.
+    const createdId = await this.db.transaction(async (tx) => {
       let editionId: string | null = null;
       if (input.book) {
         const [book] = await tx
@@ -498,8 +504,25 @@ export class CommerceService {
         })
         .returning({ id: products.id });
       await tx.insert(skus).values({ productId: product!.id, ...input.sku });
-      return (await this.listAdminProducts()).products.find((item) => item.id === product!.id)!;
+      await tx.insert(auditLogs).values({
+        actorStaffAccountId,
+        actionKey: 'catalog.hq_create',
+        resourceType: 'PRODUCT',
+        resourceId: product!.id,
+        requestId,
+        metadata: {
+          changedFields: input.book ? ['product', 'book', 'edition', 'sku'] : ['product', 'sku'],
+          skuCount: 1,
+        },
+      });
+      return product!.id;
     });
+
+    // Read only after the transaction has committed, so the API never reports
+    // failure or an empty response after persisting a new catalog product.
+    const created = (await this.listAdminProducts()).products.find((item) => item.id === createdId);
+    if (!created) throw new CommerceError('NOT_FOUND', 'Newly created product not found');
+    return created;
   }
   async updateAdminProduct(
     id: string,

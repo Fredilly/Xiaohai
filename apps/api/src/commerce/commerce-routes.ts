@@ -217,8 +217,14 @@ export function registerCommerceRoutes(
     const input = adminProductInputSchema.safeParse(request.body);
     if (!input.success) return invalid(reply, request.id);
     try {
-      await staff(request);
-      return reply.status(201).send(await options.commerce.createAdminProduct(input.data));
+      const actor = await staff(request);
+      return reply.status(201).send(
+        await options.commerce.createAdminProduct(
+          input.data,
+          actor.staffAccountId,
+          request.id,
+        ),
+      );
     } catch (error) {
       return fail(request, reply, error);
     }
