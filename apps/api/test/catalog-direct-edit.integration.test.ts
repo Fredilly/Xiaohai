@@ -308,18 +308,12 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
         });
         expect(await reader.get(storeB!.id, lastSku!.id)).toBeNull();
 
-        const lastUpdated = await editor.update(
-          storeA!.id,
-          lastSku!.id,
-          actor!.id,
-          randomUUID(),
-          {
-            expectedProductVersion: 0,
-            expectedSkuVersion: 0,
-            expectedLocalVersion: 0,
-            priceMinor: 950,
-          },
-        );
+        const lastUpdated = await editor.update(storeA!.id, lastSku!.id, actor!.id, randomUUID(), {
+          expectedProductVersion: 0,
+          expectedSkuVersion: 0,
+          expectedLocalVersion: 0,
+          priceMinor: 950,
+        });
         expect(lastUpdated.item).toMatchObject({
           skuId: lastSku!.id,
           priceMinor: 950,
@@ -345,7 +339,10 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
         .from(skus)
         .where(eq(skus.productId, product!.id));
       await db.delete(storeInventory).where(
-        inArray(storeInventory.skuId, fixtureSkuIds.map((item) => item.id)),
+        inArray(
+          storeInventory.skuId,
+          fixtureSkuIds.map((item) => item.id),
+        ),
       );
       await db.delete(skus).where(eq(skus.productId, product!.id));
       await db.delete(products).where(eq(products.id, product!.id));

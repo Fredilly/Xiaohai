@@ -8,10 +8,7 @@ import {
   storeInventory,
   type createDatabase,
 } from '@xiaohai/db';
-import {
-  storeCatalogItemSchema,
-  storeCatalogResponseSchema,
-} from '@xiaohai/contracts/commerce';
+import { storeCatalogItemSchema, storeCatalogResponseSchema } from '@xiaohai/contracts/commerce';
 
 type Db = ReturnType<typeof createDatabase>['db'];
 
