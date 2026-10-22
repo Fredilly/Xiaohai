@@ -38,6 +38,8 @@ try {
   mkdirSync(join(folder, 'meta'));
   const journal = JSON.parse(readFileSync(join(source, 'meta/_journal.json'), 'utf8'));
   const initial = journal.entries.filter((entry) => entry.idx <= 36);
+  // 0037 retains its historical out-of-order timestamp; Drizzle records the
+  // repair path once, so the applied count is one less than journal entries.
   if (
     initial.length !== 37 ||
     journal.entries.find(
@@ -86,7 +88,7 @@ try {
     state.local_table !== true ||
     state.version_checks !== 4 ||
     state.edit_permission !== 1 ||
-    state.migrated_count !== journal.entries.length
+    state.migrated_count !== journal.entries.length - 1
   ) {
     throw new Error('UPGRADE_0038_DID_NOT_REPAIR_STORE_CATALOG_SCHEMA');
   }
@@ -95,11 +97,11 @@ try {
   const same = await targetPool.query(
     'SELECT count(*)::int AS count FROM drizzle.__drizzle_migrations',
   );
-  if (same.rows[0]?.count !== journal.entries.length) {
+  if (same.rows[0]?.count !== journal.entries.length - 1) {
     throw new Error('UPGRADE_MIGRATION_RERAN_UNEXPECTEDLY');
   }
   console.log(
-    `PASS: disposable 0036→latest upgrade repaired direct-edit schema/permissions; ${journal.entries.length} migrations applied and rerun did not reapply migrations.`,
+    `PASS: disposable 0036→latest upgrade repaired direct-edit schema/permissions; ${journal.entries.length - 1} applied migrations and rerun did not reapply migrations.`,
   );
 } finally {
   if (targetPool) await targetPool.end();
