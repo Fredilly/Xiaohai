@@ -23,6 +23,7 @@ export const commerceErrorCodeSchema = z.enum([
   'CONFLICT',
   'NOT_PURCHASABLE',
   'INVALID_ORDER_STATE',
+  'INVALID_INPUT',
   'INTERNAL_ERROR',
 ]);
 export const commerceErrorResponseSchema = z.object({
@@ -177,6 +178,7 @@ export type CartResponse = z.infer<typeof cartResponseSchema>;
 export type AddressInput = z.infer<typeof addressInputSchema>;
 export type Address = z.infer<typeof addressSchema>;
 export type Order = z.infer<typeof orderSchema>;
+export type AdminProductCreateInput = z.infer<typeof adminProductCreateInputSchema>;
 export type AdminProductInput = z.infer<typeof adminProductInputSchema>;
 export type AdminProductUpdateInput = z.infer<typeof adminProductUpdateInputSchema>;
 export type CommerceErrorCode = z.infer<typeof commerceErrorCodeSchema>;

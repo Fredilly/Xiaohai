@@ -31,7 +31,8 @@ export interface ReferralAttributionWriter {
 }
 export class CommerceError extends Error {
   constructor(
-    readonly code: 'NOT_FOUND' | 'CONFLICT' | 'NOT_PURCHASABLE' | 'INVALID_ORDER_STATE',
+    readonly code:
+      'NOT_FOUND' | 'CONFLICT' | 'NOT_PURCHASABLE' | 'INVALID_ORDER_STATE' | 'INVALID_INPUT',
     message: string,
   ) {
     super(message);
@@ -566,7 +567,10 @@ export class CommerceService {
         throw new CommerceError('CONFLICT', 'Book or edition version conflict');
       }
     } else if (input.book) {
-      throw new CommerceError('CONFLICT', 'Cannot attach book through catalog update');
+      throw new CommerceError(
+        'INVALID_INPUT',
+        'Cannot attach book fields to a product without an existing book edition',
+      );
     }
     const bookChanged = Boolean(
       current.book &&

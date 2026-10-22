@@ -1,6 +1,8 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import type {
+  AdminProductCreateInput,
   AdminProductInput,
+  AdminProductUpdateInput,
   StoreCatalogEditRequest,
   StoreCatalogItem,
 } from '@xiaohai/contracts/commerce';
@@ -164,7 +166,8 @@ export function CatalogManager({ token }: { token: string }) {
                 void load();
               }}
               onSave={async (input) => {
-                if (editing) await updateAdminProduct(token, editing.id, input);
+                if (editing)
+                  await updateAdminProduct(token, editing.id, input as AdminProductUpdateInput);
                 else await createAdminProduct(token, input);
                 setCreating(false);
                 setEditing(null);
@@ -489,8 +492,10 @@ function ProductForm({
   initial: Product | AdminProductInput;
   onCancel: () => void;
   onReload: () => void;
-  onSave: (input: AdminProductInput) => Promise<void>;
+  onSave: (input: AdminProductCreateInput | AdminProductUpdateInput) => Promise<void>;
 }) {
+  const editingExisting = 'productVersion' in initial;
+  const hasBookFields = !editingExisting || initial.book !== null;
   const [v, setV] = useState<AdminProductInput>({
     name: initial.name,
     description: initial.description,
@@ -530,7 +535,15 @@ function ProductForm({
       return;
     }
     try {
-      await onSave(v);
+      if (editingExisting && initial.book === null) {
+        const nonBook = { ...v };
+        delete nonBook.book;
+        delete nonBook.expectedBookVersion;
+        delete nonBook.expectedEditionVersion;
+        await onSave(nonBook);
+      } else {
+        await onSave(v);
+      }
     } catch (reason) {
       if (reason instanceof CatalogApiError && reason.status === 409) {
         setStale(true);
@@ -583,76 +596,80 @@ function ProductForm({
           <option>INACTIVE</option>
         </select>
       </label>
-      <label>
-        书名
-        <input
-          required
-          value={v.book?.title ?? ''}
-          onChange={(e) =>
-            setV({
-              ...v,
-              book: {
-                title: e.target.value,
-                author: v.book?.author ?? '',
-                isbn: v.book?.isbn ?? null,
-                publisher: v.book?.publisher ?? null,
-              },
-            })
-          }
-        />
-      </label>
-      <label>
-        作者
-        <input
-          required
-          value={v.book?.author ?? ''}
-          onChange={(e) =>
-            setV({
-              ...v,
-              book: {
-                title: v.book?.title ?? '',
-                author: e.target.value,
-                isbn: v.book?.isbn ?? null,
-                publisher: v.book?.publisher ?? null,
-              },
-            })
-          }
-        />
-      </label>
-      <label>
-        ISBN
-        <input
-          value={v.book?.isbn ?? ''}
-          onChange={(e) =>
-            setV({
-              ...v,
-              book: {
-                title: v.book?.title ?? '',
-                author: v.book?.author ?? '',
-                isbn: e.target.value || null,
-                publisher: v.book?.publisher ?? null,
-              },
-            })
-          }
-        />
-      </label>
-      <label>
-        出版社
-        <input
-          value={v.book?.publisher ?? ''}
-          onChange={(e) =>
-            setV({
-              ...v,
-              book: {
-                title: v.book?.title ?? '',
-                author: v.book?.author ?? '',
-                isbn: v.book?.isbn ?? null,
-                publisher: e.target.value || null,
-              },
-            })
-          }
-        />
-      </label>
+      {hasBookFields && (
+        <>
+          <label>
+            书名
+            <input
+              required
+              value={v.book?.title ?? ''}
+              onChange={(e) =>
+                setV({
+                  ...v,
+                  book: {
+                    title: e.target.value,
+                    author: v.book?.author ?? '',
+                    isbn: v.book?.isbn ?? null,
+                    publisher: v.book?.publisher ?? null,
+                  },
+                })
+              }
+            />
+          </label>
+          <label>
+            作者
+            <input
+              required
+              value={v.book?.author ?? ''}
+              onChange={(e) =>
+                setV({
+                  ...v,
+                  book: {
+                    title: v.book?.title ?? '',
+                    author: e.target.value,
+                    isbn: v.book?.isbn ?? null,
+                    publisher: v.book?.publisher ?? null,
+                  },
+                })
+              }
+            />
+          </label>
+          <label>
+            ISBN
+            <input
+              value={v.book?.isbn ?? ''}
+              onChange={(e) =>
+                setV({
+                  ...v,
+                  book: {
+                    title: v.book?.title ?? '',
+                    author: v.book?.author ?? '',
+                    isbn: e.target.value || null,
+                    publisher: v.book?.publisher ?? null,
+                  },
+                })
+              }
+            />
+          </label>
+          <label>
+            出版社
+            <input
+              value={v.book?.publisher ?? ''}
+              onChange={(e) =>
+                setV({
+                  ...v,
+                  book: {
+                    title: v.book?.title ?? '',
+                    author: v.book?.author ?? '',
+                    isbn: v.book?.isbn ?? null,
+                    publisher: e.target.value || null,
+                  },
+                })
+              }
+            />
+          </label>
+        </>
+      )}
       <label>
         SKU 编码
         <input

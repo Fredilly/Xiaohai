@@ -263,6 +263,7 @@ function fail(request: FastifyRequest, reply: FastifyReply, error: unknown) {
     | 'CONFLICT'
     | 'NOT_PURCHASABLE'
     | 'INVALID_ORDER_STATE'
+    | 'INVALID_INPUT'
     | 'INTERNAL_ERROR' = 'INTERNAL_ERROR';
   if (error instanceof CommerceAuthError) {
     status = 401;
@@ -284,7 +285,9 @@ function fail(request: FastifyRequest, reply: FastifyReply, error: unknown) {
           ? 409
           : code === 'INVALID_ORDER_STATE'
             ? 409
-            : 409;
+            : code === 'INVALID_INPUT'
+              ? 400
+              : 409;
   }
   request.log.warn({ requestId: request.id, errorCode: code }, 'Commerce request failed');
   return reply.status(status).send(
@@ -309,6 +312,8 @@ function publicMessage(code: string) {
       return 'SKU is not purchasable';
     case 'INVALID_ORDER_STATE':
       return 'Order state does not allow this action';
+    case 'INVALID_INPUT':
+      return 'Invalid catalog update';
     default:
       return 'Internal server error';
   }

@@ -1,10 +1,12 @@
 import {
-  adminProductInputSchema,
+  adminProductCreateInputSchema,
+  adminProductUpdateInputSchema,
   adminProductListResponseSchema,
   adminProductSchema,
   storeCatalogEditRequestSchema,
   storeCatalogResponseSchema,
-  type AdminProductInput,
+  type AdminProductCreateInput,
+  type AdminProductUpdateInput,
   type StoreCatalogEditRequest,
 } from '@xiaohai/contracts/commerce';
 
@@ -34,23 +36,27 @@ export const listAdminProducts = async (token: string, q = '') =>
     await call(`/api/v1/staff/catalog/products${q ? `?q=${encodeURIComponent(q)}` : ''}`, token),
   );
 
-export const createAdminProduct = async (token: string, input: AdminProductInput) =>
+export const createAdminProduct = async (token: string, input: AdminProductCreateInput) =>
   adminProductSchema.parse(
     await call(
       '/api/v1/staff/catalog/products',
       token,
       'POST',
-      adminProductInputSchema.parse(input),
+      adminProductCreateInputSchema.parse(input),
     ),
   );
 
-export const updateAdminProduct = async (token: string, id: string, input: AdminProductInput) =>
+export const updateAdminProduct = async (
+  token: string,
+  id: string,
+  input: AdminProductUpdateInput,
+) =>
   adminProductSchema.parse(
     await call(
       `/api/v1/staff/catalog/products/${id}`,
       token,
       'PUT',
-      adminProductInputSchema.parse(input),
+      adminProductUpdateInputSchema.parse(input),
     ),
   );
 

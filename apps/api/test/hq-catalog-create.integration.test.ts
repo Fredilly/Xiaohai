@@ -272,6 +272,46 @@ suite('HQ catalog create and optimistic update on disposable PostgreSQL', () => 
       expect(updatedNonBook.name).toBe('Updated non-book fixture');
       expect(updatedNonBook.sku.priceMinor).toBe(1000);
       expect(updatedNonBook.book).toBeNull();
+      const auditCountBeforeInvalidBook = (
+        await db
+          .select({ id: auditLogs.id })
+          .from(auditLogs)
+          .where(eq(auditLogs.actorStaffAccountId, actor!.id))
+      ).length;
+      await expect(
+        commerce.updateAdminProduct(
+          nonBook.id,
+          {
+            ...nonBookInput,
+            book: {
+              title: 'Must not attach',
+              author: 'Invalid fixture',
+              isbn: null,
+              publisher: null,
+            },
+            expectedProductVersion: 1,
+            expectedSkuId: nonBook.skuId,
+            expectedSkuVersion: 1,
+          },
+          actor!.id,
+          randomUUID(),
+        ),
+      ).rejects.toMatchObject({
+        code: 'INVALID_INPUT',
+        message: 'Cannot attach book fields to a product without an existing book edition',
+      });
+      const [afterInvalidBook] = await db
+        .select({ name: products.name, version: products.version })
+        .from(products)
+        .where(eq(products.id, nonBook.id));
+      expect(afterInvalidBook).toMatchObject({ name: 'Updated non-book fixture', version: 1 });
+      const auditCountAfterInvalidBook = (
+        await db
+          .select({ id: auditLogs.id })
+          .from(auditLogs)
+          .where(eq(auditLogs.actorStaffAccountId, actor!.id))
+      ).length;
+      expect(auditCountAfterInvalidBook).toBe(auditCountBeforeInvalidBook);
       await expect(
         commerce.updateAdminProduct(
           nonBook.id,
