@@ -1,6 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, ilike, or, sql } from 'drizzle-orm';
-import type { AddressInput, AdminProductInput, CartResponse } from '@xiaohai/contracts/commerce';
+import type {
+  AddressInput,
+  AdminProductInput,
+  AdminProductUpdateInput,
+  CartResponse,
+} from '@xiaohai/contracts/commerce';
 import {
   bookEditions,
   books,
@@ -441,6 +446,8 @@ export class CommerceService {
       products: rows.map(({ product, sku, book, edition }) => ({
         id: product.id,
         skuId: sku.id,
+        bookId: book?.id ?? null,
+        editionId: edition?.id ?? null,
         productVersion: product.version,
         bookVersion: book?.version ?? null,
         editionVersion: edition?.version ?? null,
@@ -528,7 +535,7 @@ export class CommerceService {
   }
   async updateAdminProduct(
     id: string,
-    input: AdminProductInput,
+    input: AdminProductUpdateInput,
     actorStaffAccountId: string,
     requestId: string,
   ) {
@@ -542,8 +549,11 @@ export class CommerceService {
       ? matches.find((item) => item.skuId === input.expectedSkuId)
       : matches[0];
     if (!current) throw new CommerceError('CONFLICT', 'SKU reference changed');
-    const expectedProductVersion = input.expectedProductVersion ?? current.productVersion;
-    const expectedSkuVersion = input.expectedSkuVersion ?? current.skuVersion;
+    if (input.expectedProductVersion === undefined || input.expectedSkuVersion === undefined) {
+      throw new CommerceError('CONFLICT', 'Product and SKU versions are required');
+    }
+    const expectedProductVersion = input.expectedProductVersion;
+    const expectedSkuVersion = input.expectedSkuVersion;
 
     if (current.book) {
       if (
@@ -640,6 +650,10 @@ export class CommerceService {
         resourceId: id,
         requestId,
         metadata: {
+          productId: id,
+          skuId: current.skuId,
+          bookId: current.bookId,
+          editionId: current.editionId,
           changedFields: [
             'product',
             'sku',
@@ -651,6 +665,12 @@ export class CommerceService {
             sku: current.skuVersion,
             book: current.bookVersion,
             edition: current.editionVersion,
+          },
+          entityIds: {
+            productId: id,
+            skuId: current.skuId,
+            bookId: current.bookId,
+            editionId: current.editionId,
           },
           afterVersions: {
             product: current.productVersion + 1,
