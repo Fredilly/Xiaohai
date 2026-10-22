@@ -31,6 +31,8 @@ export function CatalogManager({ token }: { token: string }) {
   const [products, setProducts] = useState<Product[]>([]);
   const [state, setState] = useState('loading');
   const [q, setQ] = useState('');
+  const [offset, setOffset] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
   const [creating, setCreating] = useState(false);
   useEffect(() => {
@@ -48,7 +50,9 @@ export function CatalogManager({ token }: { token: string }) {
   async function load() {
     setState('loading');
     try {
-      setProducts((await listAdminProducts(token, q)).products);
+      const page = await listAdminProducts(token, q, offset, 30);
+      setProducts(page.products);
+      setHasMore(page.hasMore);
       setState('ready');
     } catch (e) {
       setState(
@@ -62,7 +66,7 @@ export function CatalogManager({ token }: { token: string }) {
   }
   useEffect(() => {
     void load();
-  }, [token]);
+  }, [token, offset]);
   if (state === 'forbidden') return <section className="panel">当前账号没有商品管理权限。</section>;
   if (state === 'unauthorized')
     return <section className="panel">登录状态已失效，请重新登录。</section>;
@@ -71,7 +75,14 @@ export function CatalogManager({ token }: { token: string }) {
       <h2>图书与商品</h2>
       <div className="section-toolbar">
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="搜索商品" />
-        <button onClick={() => void load()}>搜索</button>
+        <button
+          onClick={() => {
+            setOffset(0);
+            if (offset === 0) void load();
+          }}
+        >
+          搜索
+        </button>
         <button onClick={() => setCreating(true)}>新增商品</button>
       </div>
       {state === 'loading' ? (
@@ -125,6 +136,18 @@ export function CatalogManager({ token }: { token: string }) {
           </table>
         </div>
       )}
+      <div className="pagination" aria-label="总部商品分页">
+        <button
+          disabled={offset === 0 || state === 'loading'}
+          onClick={() => setOffset(Math.max(0, offset - 30))}
+        >
+          上一页
+        </button>
+        <span>第 {Math.floor(offset / 30) + 1} 页</span>
+        <button disabled={!hasMore || state === 'loading'} onClick={() => setOffset(offset + 30)}>
+          下一页
+        </button>
+      </div>
       {(creating || editing) && (
         <div
           className="catalog-editor-overlay"

@@ -6,6 +6,7 @@ import type {
   AdminProductUpdateInput,
   CartResponse,
 } from '@xiaohai/contracts/commerce';
+import { isValidIsbn, normalizeIsbn } from '@xiaohai/contracts/commerce';
 import {
   bookEditions,
   books,
@@ -430,7 +431,13 @@ export class CommerceService {
     return this.getOrder(consumerUserId, id);
   }
 
-  async listAdminProducts(q?: string, status?: 'DRAFT' | 'ACTIVE' | 'INACTIVE') {
+  async listAdminProducts(
+    q?: string,
+    status?: 'DRAFT' | 'ACTIVE' | 'INACTIVE',
+    offset = 0,
+    limit = 30,
+    productId?: string,
+  ) {
     const rows = await this.db
       .select({ product: products, sku: skus, book: books, edition: bookEditions })
       .from(products)
@@ -440,11 +447,28 @@ export class CommerceService {
       .where(
         and(
           status ? eq(products.status, status) : undefined,
-          q ? ilike(products.name, `%${q}%`) : undefined,
+          productId ? eq(products.id, productId) : undefined,
+          q
+            ? or(
+                ilike(products.name, `%${q}%`),
+                ilike(skus.code, `%${q}%`),
+                ilike(skus.name, `%${q}%`),
+                ilike(books.title, `%${q}%`),
+                ilike(books.author, `%${q}%`),
+                ilike(bookEditions.isbn, `%${q}%`),
+              )
+            : undefined,
         ),
-      );
+      )
+      .orderBy(asc(products.name), asc(skus.code), asc(skus.id))
+      .limit(limit + 1)
+      .offset(offset);
+    const page = rows.slice(0, limit);
     return {
-      products: rows.map(({ product, sku, book, edition }) => ({
+      offset,
+      limit,
+      hasMore: rows.length > limit,
+      products: page.map(({ product, sku, book, edition }) => ({
         id: product.id,
         skuId: sku.id,
         bookId: book?.id ?? null,
@@ -480,6 +504,13 @@ export class CommerceService {
     actorStaffAccountId: string,
     requestId: string,
   ) {
+    if (
+      input.book?.isbn !== undefined &&
+      input.book.isbn !== null &&
+      !isValidIsbn(normalizeIsbn(input.book.isbn))
+    ) {
+      throw new CommerceError('INVALID_INPUT', 'Invalid ISBN');
+    }
     // Never read a newly inserted product through this.db inside the transaction:
     // that uses a different pooled connection and cannot see uncommitted rows.
     const createdId = await this.db.transaction(async (tx) => {
@@ -497,7 +528,7 @@ export class CommerceService {
           .insert(bookEditions)
           .values({
             bookId: book!.id,
-            isbn: input.book.isbn ?? null,
+            isbn: normalizeIsbn(input.book.isbn) ?? null,
             publisher: input.book.publisher ?? null,
           })
           .returning({ id: bookEditions.id });
@@ -530,7 +561,9 @@ export class CommerceService {
 
     // Read only after the transaction has committed, so the API never reports
     // failure or an empty response after persisting a new catalog product.
-    const created = (await this.listAdminProducts()).products.find((item) => item.id === createdId);
+    const created = (
+      await this.listAdminProducts(undefined, undefined, 0, Number.MAX_SAFE_INTEGER, createdId)
+    ).products.find((item) => item.id === createdId);
     if (!created) throw new CommerceError('NOT_FOUND', 'Newly created product not found');
     return created;
   }
@@ -540,7 +573,9 @@ export class CommerceService {
     actorStaffAccountId: string,
     requestId: string,
   ) {
-    const matches = (await this.listAdminProducts()).products.filter((item) => item.id === id);
+    const matches = (
+      await this.listAdminProducts(undefined, undefined, 0, Number.MAX_SAFE_INTEGER, id)
+    ).products.filter((item) => item.id === id);
     if (matches.length === 0) throw new CommerceError('NOT_FOUND', 'Product not found');
     // A product may have multiple SKUs: never update an arbitrary first SKU.
     if (!input.expectedSkuId && matches.length > 1) {
@@ -572,15 +607,29 @@ export class CommerceService {
         'Cannot attach book fields to a product without an existing book edition',
       );
     }
+    const normalizedBook = input.book
+      ? { ...input.book, isbn: normalizeIsbn(input.book.isbn) }
+      : input.book;
+    if (
+      current.book &&
+      normalizedBook?.isbn !== undefined &&
+      normalizedBook.isbn !== current.book.isbn &&
+      !isValidIsbn(normalizedBook?.isbn)
+    ) {
+      throw new CommerceError('INVALID_INPUT', 'Invalid ISBN');
+    }
     const bookChanged = Boolean(
       current.book &&
-      input.book &&
-      (input.book.title !== current.book.title || input.book.author !== current.book.author),
+      normalizedBook &&
+      (normalizedBook.title !== current.book.title ||
+        normalizedBook.author !== current.book.author),
     );
     const editionChanged = Boolean(
       current.book &&
-      input.book &&
-      (input.book.isbn !== current.book.isbn || input.book.publisher !== current.book.publisher),
+      normalizedBook &&
+      ((normalizedBook.isbn !== undefined && normalizedBook.isbn !== current.book.isbn) ||
+        (normalizedBook.publisher !== undefined &&
+          normalizedBook.publisher !== current.book.publisher)),
     );
 
     await this.db.transaction(async (tx) => {
@@ -614,8 +663,8 @@ export class CommerceService {
           const [updated] = await tx
             .update(books)
             .set({
-              title: input.book!.title,
-              author: input.book!.author,
+              title: normalizedBook!.title,
+              author: normalizedBook!.author,
               version: sql`${books.version} + 1`,
               updatedAt: new Date(),
             })
@@ -627,8 +676,10 @@ export class CommerceService {
           const [updated] = await tx
             .update(bookEditions)
             .set({
-              isbn: input.book!.isbn ?? null,
-              publisher: input.book!.publisher ?? null,
+              ...(normalizedBook!.isbn !== undefined ? { isbn: normalizedBook!.isbn } : {}),
+              ...(normalizedBook!.publisher !== undefined
+                ? { publisher: normalizedBook!.publisher }
+                : {}),
               version: sql`${bookEditions.version} + 1`,
             })
             .where(
@@ -688,9 +739,9 @@ export class CommerceService {
         },
       });
     });
-    const updated = (await this.listAdminProducts()).products.find(
-      (item) => item.id === id && item.skuId === current.skuId,
-    );
+    const updated = (
+      await this.listAdminProducts(undefined, undefined, 0, Number.MAX_SAFE_INTEGER, id)
+    ).products.find((item) => item.id === id && item.skuId === current.skuId);
     if (!updated) throw new CommerceError('NOT_FOUND', 'Updated product not found');
     return updated;
   }

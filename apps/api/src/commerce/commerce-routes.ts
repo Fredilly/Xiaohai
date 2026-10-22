@@ -209,7 +209,12 @@ export function registerCommerceRoutes(
     if (!input.success) return invalid(reply, request.id);
     try {
       await staff(request);
-      return await options.commerce.listAdminProducts(input.data.q, input.data.status);
+      return await options.commerce.listAdminProducts(
+        input.data.q,
+        input.data.status,
+        input.data.offset,
+        input.data.limit,
+      );
     } catch (error) {
       return fail(request, reply, error);
     }

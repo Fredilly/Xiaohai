@@ -44,6 +44,7 @@ suite('HQ catalog create and optimistic update on disposable PostgreSQL', () => 
     let nonBookId: string | null = null;
     let regionId: string | null = null;
     const storeIds: string[] = [];
+    const pagedProductIds: string[] = [];
     try {
       const input = {
         name: 'HQ Catalog Integration ' + suffix,
@@ -358,6 +359,57 @@ suite('HQ catalog create and optimistic update on disposable PostgreSQL', () => 
         bookId: null,
         editionId: null,
       });
+
+      const pageProducts = await db
+        .insert(products)
+        .values(
+          Array.from({ length: 31 }, (_, index) => ({
+            name: `HQ Page Fixture ${String(index + 1).padStart(2, '0')} ${suffix}`,
+            status: 'ACTIVE' as const,
+          })),
+        )
+        .returning({ id: products.id });
+      pagedProductIds.push(...pageProducts.map((item) => item.id));
+      await db.insert(skus).values(
+        pageProducts.map((product, index) => ({
+          productId: product.id,
+          code: `HQ-PAGE-SKU-${suffix}-${String(index + 1).padStart(2, '0')}`,
+          name: 'Standard',
+          priceMinor: 100 + index,
+        })),
+      );
+      const firstPage = await commerce.listAdminProducts(undefined, undefined, 0, 30);
+      const secondPage = await commerce.listAdminProducts(undefined, undefined, 30, 30);
+      expect(firstPage.products).toHaveLength(30);
+      expect(firstPage.hasMore).toBe(true);
+      expect(secondPage.products.some((item) => item.name.includes('HQ Page Fixture 31'))).toBe(
+        true,
+      );
+      const searched = await commerce.listAdminProducts(
+        'HQ Page Fixture 31 ' + suffix,
+        undefined,
+        0,
+        30,
+      );
+      expect(searched.products).toHaveLength(1);
+      const target = searched.products[0]!;
+      const editedTarget = await commerce.updateAdminProduct(
+        target.id,
+        {
+          name: target.name + ' edited',
+          description: target.description,
+          coverUrl: target.coverUrl,
+          status: target.status,
+          book: undefined,
+          sku: target.sku,
+          expectedProductVersion: target.productVersion,
+          expectedSkuId: target.skuId,
+          expectedSkuVersion: target.skuVersion,
+        },
+        actor!.id,
+        randomUUID(),
+      );
+      expect(editedTarget.name).toContain('edited');
     } finally {
       await db.delete(auditLogs).where(eq(auditLogs.actorStaffAccountId, actor!.id));
       for (const productId of [createdId, nonBookId].filter((id): id is string => Boolean(id))) {
@@ -386,6 +438,10 @@ suite('HQ catalog create and optimistic update on disposable PostgreSQL', () => 
             await db.delete(books).where(eq(books.id, edition.bookId));
           }
         }
+      }
+      for (const productId of pagedProductIds) {
+        await db.delete(skus).where(eq(skus.productId, productId));
+        await db.delete(products).where(eq(products.id, productId));
       }
       await db.delete(staffAccounts).where(eq(staffAccounts.id, actor!.id));
     }

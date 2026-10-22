@@ -60,10 +60,10 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
         countryName: 'China',
       })
       .returning();
-    const [storeA, storeB] = await db
+    const [storeA, storeB, storeC] = await db
       .insert(stores)
       .values(
-        ['A', 'B'].map((letter) => ({
+        ['A', 'B', 'C'].map((letter) => ({
           code: 'DCE-S-' + letter + '-' + suffix,
           name: 'Direct Catalog Store ' + letter,
           regionId: region!.id,
@@ -106,6 +106,18 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
       { storeId: storeA!.id, skuId: sku!.id, onHand: 6 },
       { storeId: storeB!.id, skuId: sku!.id, onHand: 4 },
     ]);
+    const [siblingSku] = await db
+      .insert(skus)
+      .values({
+        productId: product!.id,
+        code: 'DCE-SIBLING-' + suffix,
+        name: 'Alternate edition',
+        priceMinor: 1500,
+      })
+      .returning();
+    await db
+      .insert(storeInventory)
+      .values({ storeId: storeC!.id, skuId: siblingSku!.id, onHand: 3 });
     const [actor] = await db
       .insert(staffAccounts)
       .values({
@@ -145,9 +157,23 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
         shelfLocation: 'Shelf A-01',
       };
 
+      const pricePreview = await editor.preview(storeA!.id, sku!.id, {
+        ...input,
+        bookTitle: undefined,
+        priceMinor: 1300,
+      });
+      expect(pricePreview.affectedStoreCount).toBe(2);
+      const productNamePreview = await editor.preview(storeA!.id, sku!.id, {
+        ...input,
+        bookTitle: undefined,
+        priceMinor: undefined,
+        productName: 'Renamed Direct Edit Product',
+      });
+      expect(productNamePreview.affectedStoreCount).toBe(3);
+
       const preview = await editor.preview(storeA!.id, sku!.id, input);
       expect(preview.sharedFields).toEqual(['bookTitle', 'priceMinor']);
-      expect(preview.affectedStoreCount).toBe(2);
+      expect(preview.affectedStoreCount).toBe(3);
 
       const updated = await editor.update(storeA!.id, sku!.id, actor!.id, randomUUID(), input);
       expect(updated.item.bookTitle).toBe('Edited Direct Edit Book');
@@ -156,12 +182,29 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
       expect(updated.item.bookVersion).toBe(1);
       expect(updated.item.skuVersion).toBe(1);
       expect(updated.item.localVersion).toBe(1);
-      expect(updated.impact.affectedStoreCount).toBe(2);
+      expect(updated.impact.affectedStoreCount).toBe(3);
 
       const otherStore = await reader.get(storeB!.id, sku!.id);
       expect(otherStore?.bookTitle).toBe('Edited Direct Edit Book');
       expect(otherStore?.priceMinor).toBe(1200);
       expect(otherStore?.shelfLocation).toBeNull();
+      expect(await reader.get(storeC!.id, siblingSku!.id)).toMatchObject({
+        bookTitle: 'Edited Direct Edit Book',
+        priceMinor: 1500,
+      });
+
+      await expect(
+        editor.update(storeA!.id, sku!.id, actor!.id, randomUUID(), {
+          expectedProductVersion: 0,
+          expectedBookVersion: 1,
+          expectedEditionVersion: 0,
+          expectedSkuVersion: 1,
+          expectedLocalVersion: 1,
+          isbn: 'not-an-isbn',
+          storeNote: 'Must not write with invalid ISBN',
+        }),
+      ).rejects.toMatchObject({ code: 'INVALID_REFERENCE' } satisfies Partial<CatalogEditError>);
+      expect((await reader.get(storeA!.id, sku!.id))?.storeNote).toBeNull();
 
       await expect(
         editor.update(storeA!.id, sku!.id, actor!.id, randomUUID(), input),
@@ -182,7 +225,7 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
       expect(audit).toHaveLength(1);
       expect(audit[0]?.actionKey).toBe('catalog.direct_edit');
       expect(audit[0]?.metadata).toMatchObject({
-        affectedStoreCount: 2,
+        affectedStoreCount: 3,
         changedFields: ['bookTitle', 'priceMinor', 'shelfLocation'],
       });
 
@@ -350,6 +393,7 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
       await db.delete(books).where(eq(books.id, book!.id));
       await db.delete(stores).where(eq(stores.id, storeA!.id));
       await db.delete(stores).where(eq(stores.id, storeB!.id));
+      await db.delete(stores).where(eq(stores.id, storeC!.id));
       await db.delete(regions).where(eq(regions.id, region!.id));
       await db.delete(staffAccounts).where(eq(staffAccounts.id, actor!.id));
     }

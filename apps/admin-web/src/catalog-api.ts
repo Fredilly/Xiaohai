@@ -31,9 +31,16 @@ async function call(path: string, token: string, method = 'GET', body?: object):
   return payload;
 }
 
-export const listAdminProducts = async (token: string, q = '') =>
+export const listAdminProducts = async (token: string, q = '', offset = 0, limit = 30) =>
   adminProductListResponseSchema.parse(
-    await call(`/api/v1/staff/catalog/products${q ? `?q=${encodeURIComponent(q)}` : ''}`, token),
+    await call(
+      `/api/v1/staff/catalog/products?${new URLSearchParams({
+        ...(q ? { q } : {}),
+        offset: String(offset),
+        limit: String(limit),
+      })}`,
+      token,
+    ),
   );
 
 export const createAdminProduct = async (token: string, input: AdminProductCreateInput) =>
