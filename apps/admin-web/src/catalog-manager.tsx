@@ -93,7 +93,7 @@ export function CatalogManager({ token }: { token: string }) {
             </thead>
             <tbody>
               {products.map((p) => (
-                <tr key={p.id}>
+                <tr key={p.skuId}>
                   <td className="product-cell">
                     {p.coverUrl ? (
                       <img src={p.coverUrl} alt="" />
@@ -493,6 +493,11 @@ function ProductForm({
     ...('productVersion' in initial
       ? {
           expectedProductVersion: initial.productVersion,
+          expectedSkuId: initial.skuId,
+          ...(initial.bookVersion === null ? {} : { expectedBookVersion: initial.bookVersion }),
+          ...(initial.editionVersion === null
+            ? {}
+            : { expectedEditionVersion: initial.editionVersion }),
           expectedSkuVersion: initial.skuVersion,
         }
       : {}),

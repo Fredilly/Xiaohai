@@ -128,6 +128,9 @@ export const adminCatalogQuerySchema = z
 export const adminProductInputSchema = z
   .object({
     expectedProductVersion: z.number().int().nonnegative().optional(),
+    expectedSkuId: z.uuid().optional(),
+    expectedBookVersion: z.number().int().nonnegative().optional(),
+    expectedEditionVersion: z.number().int().nonnegative().optional(),
     expectedSkuVersion: z.number().int().nonnegative().optional(),
     name: z.string().trim().min(1).max(160),
     description: z.string().trim().max(4000).nullable().optional(),
@@ -155,6 +158,8 @@ export const adminProductSchema = adminProductInputSchema.extend({
   id: z.uuid(),
   skuId: z.uuid(),
   productVersion: z.number().int().nonnegative(),
+  bookVersion: z.number().int().nonnegative().nullable(),
+  editionVersion: z.number().int().nonnegative().nullable(),
   skuVersion: z.number().int().nonnegative(),
 });
 export const adminProductListResponseSchema = z.object({ products: z.array(adminProductSchema) });
