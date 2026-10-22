@@ -47,6 +47,15 @@ export function StoreCatalogPanel({
     };
   }, [token, storeId, applied, offset, reloadNonce]);
 
+  useEffect(() => {
+    if (!editing) return;
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === 'Escape') setEditing(null);
+    }
+    window.addEventListener('keydown', handleEscape);
+    return () => window.removeEventListener('keydown', handleEscape);
+  }, [editing]);
+
   function search(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setOffset(0);
@@ -153,16 +162,40 @@ export function StoreCatalogPanel({
       </div>
       <p role="status">{status}</p>
       {editing && (
-        <StoreCatalogEditForm
-          token={token}
-          storeId={storeId}
-          item={editing}
-          onCancel={() => setEditing(null)}
-          onSaved={() => {
-            setEditing(null);
-            setReloadNonce((value) => value + 1);
+        <div
+          className="catalog-editor-overlay"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setEditing(null);
           }}
-        />
+        >
+          <div
+            className="catalog-editor-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-label={`编辑商品资料：${editing.bookTitle ?? editing.productName}`}
+          >
+            <button
+              className="catalog-editor-close"
+              type="button"
+              aria-label="关闭商品编辑"
+              onClick={() => setEditing(null)}
+            >
+              ×
+            </button>
+            <StoreCatalogEditForm
+              key={editing.skuId}
+              token={token}
+              storeId={storeId}
+              item={editing}
+              onCancel={() => setEditing(null)}
+              onSaved={() => {
+                setEditing(null);
+                setReloadNonce((value) => value + 1);
+              }}
+            />
+          </div>
+        </div>
       )}
     </section>
   );

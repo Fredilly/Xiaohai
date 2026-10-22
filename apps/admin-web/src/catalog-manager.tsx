@@ -150,6 +150,15 @@ function HqStoreCatalogEditor({ token }: { token: string }) {
   }, [token]);
 
   useEffect(() => {
+    if (!editing) return;
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === 'Escape') setEditing(null);
+    }
+    window.addEventListener('keydown', handleEscape);
+    return () => window.removeEventListener('keydown', handleEscape);
+  }, [editing]);
+
+  useEffect(() => {
     if (!storeId) return;
     setStatus('加载门店商品资料…');
     void listHqStoreCatalog(token, storeId)
@@ -173,7 +182,13 @@ function HqStoreCatalogEditor({ token }: { token: string }) {
       </p>
       <label>
         管理门店
-        <select value={storeId} onChange={(event) => setStoreId(event.target.value)}>
+        <select
+          value={storeId}
+          onChange={(event) => {
+            setStoreId(event.target.value);
+            setEditing(null);
+          }}
+        >
           {stores.map((store) => (
             <option key={store.id} value={store.id}>
               {store.name}
@@ -218,16 +233,44 @@ function HqStoreCatalogEditor({ token }: { token: string }) {
         </table>
       </div>
       {editing && (
-        <HqStoreCatalogForm
-          token={token}
-          storeId={storeId}
-          item={editing}
-          onCancel={() => setEditing(null)}
-          onSaved={() => {
-            setEditing(null);
-            setReloadNonce((value) => value + 1);
+        <div
+          className="catalog-editor-overlay"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setEditing(null);
           }}
-        />
+        >
+          <div
+            className="catalog-editor-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-label={`总部编辑商品：${editing.bookTitle ?? editing.productName}`}
+          >
+            <button
+              className="catalog-editor-close"
+              type="button"
+              aria-label="关闭总部商品编辑"
+              onClick={() => setEditing(null)}
+            >
+              ×
+            </button>
+            <HqStoreCatalogForm
+              key={editing.skuId}
+              token={token}
+              storeId={storeId}
+              item={editing}
+              onCancel={() => setEditing(null)}
+              onReload={() => {
+                setEditing(null);
+                setReloadNonce((value) => value + 1);
+              }}
+              onSaved={() => {
+                setEditing(null);
+                setReloadNonce((value) => value + 1);
+              }}
+            />
+          </div>
+        </div>
       )}
     </section>
   );
@@ -238,12 +281,14 @@ function HqStoreCatalogForm({
   storeId,
   item,
   onCancel,
+  onReload,
   onSaved,
 }: {
   token: string;
   storeId: string;
   item: StoreCatalogItem;
   onCancel: () => void;
+  onReload: () => void;
   onSaved: () => void;
 }) {
   const [draft, setDraft] = useState<StoreCatalogEditRequest>({
@@ -263,6 +308,7 @@ function HqStoreCatalogForm({
     displayInfo: item.displayInfo,
   });
   const [status, setStatus] = useState('请核对原值和新值');
+  const [stale, setStale] = useState(false);
   const setText = (key: keyof StoreCatalogEditRequest, value: string) =>
     setDraft((current) => ({ ...current, [key]: value || null }));
 
@@ -278,7 +324,12 @@ function HqStoreCatalogForm({
       await updateHqStoreCatalog(token, storeId, item.skuId, draft);
       onSaved();
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : '保存失败，可能发生版本冲突');
+      if (error instanceof CatalogApiError && error.status === 409) {
+        setStale(true);
+        setStatus('保存冲突：商品资料已被其他账号修改，请重新加载最新版本后再编辑。');
+      } else {
+        setStatus(error instanceof Error ? error.message : '保存失败，请检查网络及权限。');
+      }
     }
   }
 
@@ -351,7 +402,14 @@ function HqStoreCatalogForm({
         />
       </label>
       <p role="status">{status}</p>
-      <button type="submit">保存正式资料</button>{' '}
+      {stale && (
+        <button type="button" onClick={onReload}>
+          放弃本次编辑，重新加载最新资料
+        </button>
+      )}
+      <button type="submit" disabled={stale}>
+        保存正式资料
+      </button>{' '}
       <button type="button" onClick={onCancel}>
         取消
       </button>

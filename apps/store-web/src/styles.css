@@ -807,3 +807,44 @@ button:disabled {
 .data-table .inline-actions {
   min-width: 160px;
 }
+
+/* Modal workspace for editing catalog rows without moving the list scroll position. */
+.catalog-editor-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 20px;
+  background: rgba(17, 30, 20, 0.5);
+}
+.catalog-editor-dialog {
+  position: relative;
+  width: min(760px, 100%);
+  max-height: calc(100dvh - 40px);
+  overflow-y: auto;
+  border-radius: 16px;
+  background: #fff;
+  padding: 28px;
+  box-shadow: 0 20px 65px rgba(0, 0, 0, 0.24);
+}
+.catalog-editor-dialog .catalog-correction-form {
+  margin: 0;
+  max-width: none;
+}
+.catalog-editor-close {
+  position: sticky;
+  top: 0;
+  float: right;
+  z-index: 1;
+  border: 1px solid #d9e0d6;
+  border-radius: 8px;
+  padding: 5px 12px;
+  background: #fff;
+  cursor: pointer;
+}
+@media (max-width: 640px) {
+  .catalog-editor-overlay { padding: 10px; }
+  .catalog-editor-dialog { padding: 16px; max-height: calc(100dvh - 20px); }
+}
