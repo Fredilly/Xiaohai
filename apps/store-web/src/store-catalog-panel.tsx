@@ -3,6 +3,28 @@ import type { StoreCatalogEditRequest, StoreCatalogItem } from '@xiaohai/contrac
 import { listStoreCatalog, previewStoreCatalogEdit, updateStoreCatalog } from './store-catalog-api';
 
 const limit = 30;
+const maxMoneyMinor = 2_147_483_647n;
+
+export function yuanToMinor(value: string): number | null {
+  const text = value.trim();
+  if (!/^\d+(?:\.\d{1,2})?$/.test(text)) return null;
+  const [yuan, cents] = text.split('.');
+  if (yuan === undefined) return null;
+  const minor = BigInt(yuan) * 100n + BigInt((cents ?? '').padEnd(2, '0'));
+  return minor > maxMoneyMinor ? null : Number(minor);
+}
+
+export function formatYuan(priceMinor: number): string {
+  return `¥${(priceMinor / 100).toFixed(2)}`;
+}
+
+export function sharedImpactConfirmation(
+  originalPriceMinor: number,
+  nextPriceMinor: number,
+  affectedStoreCount: number,
+): string {
+  return `共享价格：${formatYuan(originalPriceMinor)} → ${formatYuan(nextPriceMinor)}；将影响 ${affectedStoreCount} 家门店，确认保存？`;
+}
 
 export function StoreCatalogPanel({
   token,
@@ -120,7 +142,7 @@ export function StoreCatalogPanel({
                 </td>
                 <td className="cell-code">{item.isbn || '—'}</td>
                 <td className="numeric">
-                  <strong>¥{(item.priceMinor / 100).toFixed(2)}</strong>
+                  <strong>{formatYuan(item.priceMinor)}</strong>
                   <small className="cell-meta">{item.availableForSale ? '可售' : '不可售'}</small>
                 </td>
                 <td className="numeric">
@@ -237,10 +259,14 @@ function StoreCatalogEditForm({
   onCancel: () => void;
   onSaved: () => void;
 }) {
+  type NormalizedEditRequest = Omit<StoreCatalogEditRequest, 'priceMinor'> & {
+    priceMinor: number;
+  };
   const [draft, setDraft] = useState(() => draftFor(item));
   const [impact, setImpact] = useState<
     Awaited<ReturnType<typeof previewStoreCatalogEdit>>['impact'] | null
   >(null);
+  const [priceYuan, setPriceYuan] = useState(() => (item.priceMinor / 100).toFixed(2));
   const [status, setStatus] = useState('请核对原值和新值。');
   const sharedKeys = [
     'productName',
@@ -263,13 +289,36 @@ function StoreCatalogEditForm({
               : key === 'isbn'
                 ? item.isbn
                 : item.priceMinor;
+    if (key === 'priceMinor') {
+      const parsedPrice = yuanToMinor(priceYuan);
+      return parsedPrice === null || parsedPrice !== original;
+    }
     return draft[key] !== original;
   });
 
+  function setDraftField<Key extends keyof StoreCatalogEditRequest>(
+    key: Key,
+    value: StoreCatalogEditRequest[Key],
+  ) {
+    setImpact(null);
+    setDraft((current) => ({ ...current, [key]: value }));
+  }
+
+  function normalizedDraft(): NormalizedEditRequest | null {
+    const parsedPrice = yuanToMinor(priceYuan);
+    if (parsedPrice === null) return null;
+    return { ...draft, priceMinor: parsedPrice };
+  }
+
   async function calculateImpact() {
+    const nextDraft = normalizedDraft();
+    if (!nextDraft) {
+      setStatus('价格请填写非负元金额，最多两位小数，且不得超过系统上限。');
+      return;
+    }
     setStatus('正在计算影响门店…');
     try {
-      const result = await previewStoreCatalogEdit(token, storeId, item.skuId, draft);
+      const result = await previewStoreCatalogEdit(token, storeId, item.skuId, nextDraft);
       setImpact(result.impact);
       setStatus(`预计影响 ${result.impact.affectedStoreCount} 家门店。`);
     } catch (error) {
@@ -279,18 +328,29 @@ function StoreCatalogEditForm({
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const nextDraft = normalizedDraft();
+    if (!nextDraft) {
+      setStatus('价格请填写非负元金额，最多两位小数，且不得超过系统上限。');
+      return;
+    }
     if (hasSharedChanges && !impact) {
       setStatus('请先计算共享资料影响范围。');
       return;
     }
     if (
       hasSharedChanges &&
-      !window.confirm(`共享资料将影响 ${impact?.affectedStoreCount ?? 0} 家门店，确认保存？`)
+      !window.confirm(
+        sharedImpactConfirmation(
+          item.priceMinor,
+          nextDraft.priceMinor,
+          impact?.affectedStoreCount ?? 0,
+        ),
+      )
     )
       return;
     setStatus('正在保存…');
     try {
-      await updateStoreCatalog(token, storeId, item.skuId, draft);
+      await updateStoreCatalog(token, storeId, item.skuId, nextDraft);
       onSaved();
     } catch (error) {
       setStatus(error instanceof Error ? error.message : '保存失败');
@@ -306,9 +366,7 @@ function StoreCatalogEditForm({
       {label}（原值：{original ?? '未填写'}）
       <input
         value={typeof draft[key] === 'string' ? draft[key] : ''}
-        onChange={(event) =>
-          setDraft((current) => ({ ...current, [key]: event.target.value || null }))
-        }
+        onChange={(event) => setDraftField(key, event.target.value || null)}
       />
     </label>
   );
@@ -326,15 +384,17 @@ function StoreCatalogEditForm({
         </>
       )}
       <label>
-        SKU 价格（原值：¥{(item.priceMinor / 100).toFixed(2)}）
+        SKU 价格（元，原值：{formatYuan(item.priceMinor)}）
         <input
-          type="number"
+          type="text"
+          inputMode="decimal"
           min="0"
-          max="2147483647"
-          value={String(draft.priceMinor ?? item.priceMinor)}
-          onChange={(event) =>
-            setDraft((current) => ({ ...current, priceMinor: Number(event.target.value) }))
-          }
+          aria-label="SKU 价格（元）"
+          value={priceYuan}
+          onChange={(event) => {
+            setImpact(null);
+            setPriceYuan(event.target.value);
+          }}
         />
       </label>
       {textField('货架位置', 'shelfLocation', item.shelfLocation)}
