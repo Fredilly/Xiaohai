@@ -75,6 +75,11 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Workspace, Mini Program and secret checks
         run: pnpm check:workspace && pnpm check:miniapp && pnpm check:secrets
+      - name: Inspect formatting of HQ catalog regression changes
+        run: |
+          pnpm exec prettier --write apps/api/src/commerce/commerce-routes.ts apps/api/test/hq-catalog-create.integration.test.ts
+          git diff -- apps/api/src/commerce/commerce-routes.ts apps/api/test/hq-catalog-create.integration.test.ts
+          git checkout -- apps/api/src/commerce/commerce-routes.ts apps/api/test/hq-catalog-create.integration.test.ts
       - name: Format, lint and typecheck
         run: pnpm format:check && pnpm lint && pnpm typecheck
       - name: Unit tests
