@@ -343,6 +343,16 @@ export type MeipingImportPlan = {
   includedRows: number;
   excludedRows: number;
   conflicts: Array<{ sourceRowNumber: number; code: string }>;
+  counts?: {
+    newBooks: number;
+    reusedBooks: number;
+    newProducts: number;
+    reusedProducts: number;
+    newSkus: number;
+    reusedSkus: number;
+    inventoryConflicts: number;
+    duplicateRisks: number;
+  };
   rows: Array<{
     sourceRowNumber: number;
     title: string;
@@ -353,12 +363,17 @@ export type MeipingImportPlan = {
     priceMinor: number | null;
     countedQuantity: number;
     acceptedCorrectionVersion: number | null;
+    resolution?: {
+      book: 'CREATE' | 'REUSE';
+      product: 'CREATE' | 'REUSE';
+      sku: 'CREATE' | 'REUSE';
+    };
   }>;
 };
 export type MeipingImportPreview = {
   batchId: string;
   created: boolean;
-  status: 'PREVIEW';
+  status: 'PREVIEW' | 'APPROVED' | 'SUCCEEDED';
   plan: MeipingImportPlan;
   canExecute: boolean;
 };

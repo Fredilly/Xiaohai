@@ -29,6 +29,7 @@ export class MeipingApplyError extends Error {
   constructor(
     readonly code:
       | 'NOT_FOUND'
+      | 'STORE_SCOPE_FORBIDDEN'
       | 'CONFLICT'
       | 'DECISION_REQUIRED'
       | 'CORRECTION_NOT_ACCEPTED'
@@ -59,6 +60,26 @@ type ApplyPlanRow = {
   action: 'CREATE_DRAFT';
   acceptedCorrectionVersion: number | null;
   acceptedFields: Record<string, string | number>;
+  resolution?: {
+    book: 'CREATE' | 'REUSE';
+    product: 'CREATE' | 'REUSE';
+    sku: 'CREATE' | 'REUSE';
+    bookId?: string;
+    bookEditionId?: string;
+    productId?: string;
+    skuId?: string;
+  };
+};
+
+type ApplyPlanCounts = {
+  newBooks: number;
+  reusedBooks: number;
+  newProducts: number;
+  reusedProducts: number;
+  newSkus: number;
+  reusedSkus: number;
+  inventoryConflicts: number;
+  duplicateRisks: number;
 };
 
 type ApplyPlan = {
@@ -69,6 +90,7 @@ type ApplyPlan = {
   excludedRows: number;
   conflicts: Array<{ sourceRowNumber: number; code: string }>;
   rows: ApplyPlanRow[];
+  counts?: ApplyPlanCounts;
 };
 
 export class MeipingApplyService {
@@ -82,9 +104,10 @@ export class MeipingApplyService {
       sessionId,
       storeId,
     );
-    const plan = this.buildPlan(session, report, decisions, corrections, reviews);
+    let plan = this.buildPlan(session, report, decisions, corrections, reviews);
     const idempotencyKey = `meiping:${session.id}:${session.sourceChecksum}`;
     const result = await this.db.transaction(async (tx) => {
+      plan = await this.inspectPlan(plan, tx);
       const [created] = await tx
         .insert(meipingImportBatches)
         .values({
@@ -174,7 +197,7 @@ export class MeipingApplyService {
     const result = await this.db.transaction(async (tx) => {
       const batch = await this.lockBatch(tx, batchId);
       if (!batch) throw new MeipingApplyError('NOT_FOUND');
-      if (batch.storeId !== storeId) throw new MeipingApplyError('NOT_FOUND');
+      if (batch.storeId !== storeId) throw new MeipingApplyError('STORE_SCOPE_FORBIDDEN');
       if (batch.createdByStaffAccountId === audit.actorStaffAccountId) {
         throw new MeipingApplyError('APPROVAL_SEPARATION_REQUIRED');
       }
@@ -189,7 +212,11 @@ export class MeipingApplyService {
         current.corrections,
         current.reviews,
       );
-      if (currentPlan.conflicts.length > 0 || stableJson(savedPlan) !== stableJson(currentPlan)) {
+      const inspectedCurrentPlan = await this.inspectPlan(currentPlan, tx);
+      if (
+        inspectedCurrentPlan.conflicts.length > 0 ||
+        stableJson(savedPlan) !== stableJson(inspectedCurrentPlan)
+      ) {
         throw new MeipingApplyError('CONFLICT');
       }
       const [updated] = await tx
@@ -219,15 +246,15 @@ export class MeipingApplyService {
   }
 
   async execute(batchId: string, storeId: string, audit: MeipingApplyAuditContext) {
-    if (!this.executionEnabled) throw new MeipingApplyError('EXECUTION_DISABLED');
     try {
       return await this.db.transaction(async (tx) => {
         const batch = await this.lockBatch(tx, batchId);
         if (!batch) throw new MeipingApplyError('NOT_FOUND');
-        if (batch.storeId !== storeId) throw new MeipingApplyError('NOT_FOUND');
+        if (batch.storeId !== storeId) throw new MeipingApplyError('STORE_SCOPE_FORBIDDEN');
         if (batch.status === 'SUCCEEDED') {
           return { batchId, status: 'SUCCEEDED' as const, result: batch.result };
         }
+        if (!this.executionEnabled) throw new MeipingApplyError('EXECUTION_DISABLED');
         if (batch.status !== 'APPROVED') throw new MeipingApplyError('APPROVAL_REQUIRED');
         const { session, report, decisions, corrections, reviews } = await this.loadReview(
           batch.reviewSessionId,
@@ -236,7 +263,10 @@ export class MeipingApplyService {
         );
         if (session.sourceChecksum !== batch.sourceChecksum)
           throw new MeipingApplyError('INVALID_SOURCE');
-        const plan = this.buildPlan(session, report, decisions, corrections, reviews);
+        const plan = await this.inspectPlan(
+          this.buildPlan(session, report, decisions, corrections, reviews),
+          tx,
+        );
         if (plan.conflicts.length > 0) throw new MeipingApplyError('CONFLICT');
         if (stableJson(batch.plan) !== stableJson(plan)) {
           throw new MeipingApplyError('CONFLICT');
@@ -293,9 +323,10 @@ export class MeipingApplyService {
     const [batch] = await this.db
       .select()
       .from(meipingImportBatches)
-      .where(and(eq(meipingImportBatches.id, batchId), eq(meipingImportBatches.storeId, storeId)))
+      .where(eq(meipingImportBatches.id, batchId))
       .limit(1);
     if (!batch) throw new MeipingApplyError('NOT_FOUND');
+    if (batch.storeId !== storeId) throw new MeipingApplyError('STORE_SCOPE_FORBIDDEN');
     const rows = await this.db
       .select()
       .from(meipingImportResults)
@@ -438,6 +469,184 @@ export class MeipingApplyService {
       excludedRows,
       conflicts,
       rows,
+    };
+  }
+
+  private async inspectPlan(plan: ApplyPlan, database: Database | Transaction): Promise<ApplyPlan> {
+    const conflicts = [...plan.conflicts];
+    const rows = plan.rows.map((row) => ({ ...row }));
+    const counts: ApplyPlanCounts = {
+      newBooks: 0,
+      reusedBooks: 0,
+      newProducts: 0,
+      reusedProducts: 0,
+      newSkus: 0,
+      reusedSkus: 0,
+      inventoryConflicts: 0,
+      duplicateRisks: 0,
+    };
+    const seenSourceMatches = new Set<string>();
+    const seenSourceIsbns = new Set<string>();
+    const seenSourceSkuCodes = new Set<string>();
+    const addConflict = (sourceRowNumber: number, code: string) => {
+      if (
+        !conflicts.some((item) => item.sourceRowNumber === sourceRowNumber && item.code === code)
+      ) {
+        conflicts.push({ sourceRowNumber, code });
+      }
+    };
+
+    for (const row of rows) {
+      const sourceMatchKey = `${row.isbn ?? ''}|${row.sourceSkuCode ?? ''}`;
+      if (sourceMatchKey !== '|') {
+        if (seenSourceMatches.has(sourceMatchKey)) {
+          addConflict(row.sourceRowNumber, 'DUPLICATE_SOURCE_MATCH');
+          counts.duplicateRisks += 1;
+          continue;
+        }
+        seenSourceMatches.add(sourceMatchKey);
+      }
+      if (row.isbn && seenSourceIsbns.has(row.isbn)) {
+        addConflict(row.sourceRowNumber, 'DUPLICATE_ISBN_SOURCE');
+        counts.duplicateRisks += 1;
+        continue;
+      }
+      if (row.isbn) seenSourceIsbns.add(row.isbn);
+      if (row.sourceSkuCode && seenSourceSkuCodes.has(row.sourceSkuCode)) {
+        addConflict(row.sourceRowNumber, 'DUPLICATE_SOURCE_SKU');
+        counts.duplicateRisks += 1;
+        continue;
+      }
+      if (row.sourceSkuCode) seenSourceSkuCodes.add(row.sourceSkuCode);
+
+      const editions = row.isbn
+        ? await database
+            .select()
+            .from(bookEditions)
+            .where(sql`regexp_replace(${bookEditions.isbn}, '[-[:space:]]', '', 'g') = ${row.isbn}`)
+        : [];
+      if (editions.length > 1) {
+        addConflict(row.sourceRowNumber, 'DUPLICATE_ISBN_MATCH');
+        counts.duplicateRisks += 1;
+        continue;
+      }
+      const edition = editions[0];
+      if (!edition) {
+        row.resolution = { book: 'CREATE', product: 'CREATE', sku: 'CREATE' };
+        counts.newBooks += 1;
+        counts.newProducts += 1;
+        counts.newSkus += 1;
+        continue;
+      }
+      const [book] = await database.select().from(books).where(eq(books.id, edition.bookId));
+      const existingProducts = await database
+        .select()
+        .from(products)
+        .where(eq(products.bookEditionId, edition.id));
+      if (existingProducts.length > 1) {
+        addConflict(row.sourceRowNumber, 'MULTIPLE_PRODUCTS_FOR_EDITION');
+        counts.duplicateRisks += 1;
+        continue;
+      }
+      const product = existingProducts[0];
+      if (!product) {
+        row.resolution = {
+          book: 'REUSE',
+          product: 'CREATE',
+          sku: 'CREATE',
+          bookId: edition.bookId,
+          bookEditionId: edition.id,
+        };
+        counts.reusedBooks += 1;
+        counts.newProducts += 1;
+        counts.newSkus += 1;
+        continue;
+      }
+      const existingSkus = await database.select().from(skus).where(eq(skus.productId, product.id));
+      const matchingSkus = row.sourceSkuCode
+        ? existingSkus.filter((sku) => sku.code === row.sourceSkuCode)
+        : existingSkus;
+      if (row.sourceSkuCode && matchingSkus.length === 0) {
+        addConflict(row.sourceRowNumber, 'SKU_MATCH_NOT_FOUND');
+        counts.duplicateRisks += 1;
+        continue;
+      }
+      if (matchingSkus.length > 1 || (!row.sourceSkuCode && existingSkus.length > 1)) {
+        addConflict(row.sourceRowNumber, 'AMBIGUOUS_SKU_MATCH');
+        counts.duplicateRisks += 1;
+        continue;
+      }
+      const sku = matchingSkus[0];
+      row.resolution = {
+        book: 'REUSE',
+        product: 'REUSE',
+        sku: sku ? 'REUSE' : 'CREATE',
+        bookId: edition.bookId,
+        bookEditionId: edition.id,
+        productId: product.id,
+        ...(sku ? { skuId: sku.id } : {}),
+      };
+      counts.reusedBooks += 1;
+      counts.reusedProducts += 1;
+      if (sku) counts.reusedSkus += 1;
+      else counts.newSkus += 1;
+      const sharedChanged =
+        (typeof row.acceptedFields.title === 'string' &&
+          row.acceptedFields.title !== book?.title) ||
+        (typeof row.acceptedFields.author === 'string' &&
+          row.acceptedFields.author !== book?.author) ||
+        (typeof row.acceptedFields.publisher === 'string' &&
+          row.acceptedFields.publisher !== edition.publisher) ||
+        (typeof row.acceptedFields.priceMinor === 'number' &&
+          row.acceptedFields.priceMinor !== sku?.priceMinor);
+      if (sharedChanged) addConflict(row.sourceRowNumber, 'SHARED_CATALOG_CHANGE_REQUIRES_REVIEW');
+      if (sku) {
+        const [inventory] = await database
+          .select({ skuId: storeInventory.skuId })
+          .from(storeInventory)
+          .where(and(eq(storeInventory.storeId, plan.storeId), eq(storeInventory.skuId, sku.id)))
+          .limit(1);
+        const [history] = await database
+          .select({ id: inventoryTransactions.id })
+          .from(inventoryTransactions)
+          .where(
+            and(
+              eq(inventoryTransactions.storeId, plan.storeId),
+              eq(inventoryTransactions.skuId, sku.id),
+            ),
+          )
+          .limit(1);
+        const [previousImport] = await database
+          .select({ id: meipingImportResults.id })
+          .from(meipingImportResults)
+          .innerJoin(
+            meipingImportBatches,
+            eq(meipingImportBatches.id, meipingImportResults.batchId),
+          )
+          .where(
+            and(
+              eq(meipingImportResults.skuId, sku.id),
+              eq(meipingImportBatches.storeId, plan.storeId),
+            ),
+          )
+          .limit(1);
+        if (inventory || history || previousImport) {
+          addConflict(
+            row.sourceRowNumber,
+            previousImport ? 'EXISTING_IMPORT' : 'EXISTING_INVENTORY',
+          );
+          counts.inventoryConflicts += 1;
+        }
+      }
+    }
+    return {
+      ...plan,
+      conflicts,
+      includedRows: rows.filter(
+        (row) => !conflicts.some((item) => item.sourceRowNumber === row.sourceRowNumber),
+      ).length,
+      rows,
+      counts,
     };
   }
 

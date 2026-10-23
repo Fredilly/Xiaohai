@@ -119,13 +119,16 @@ function fail(request: FastifyRequest, reply: FastifyReply, error: unknown) {
     const status =
       error.code === 'NOT_FOUND'
         ? 404
-        : error.code === 'APPROVAL_REQUIRED' ||
-            error.code === 'APPROVAL_SEPARATION_REQUIRED' ||
-            error.code === 'EXECUTION_DISABLED'
-          ? 409
-          : 400;
+        : error.code === 'STORE_SCOPE_FORBIDDEN'
+          ? 403
+          : error.code === 'APPROVAL_REQUIRED' ||
+              error.code === 'APPROVAL_SEPARATION_REQUIRED' ||
+              error.code === 'EXECUTION_DISABLED'
+            ? 409
+            : 400;
     const messages: Record<MeipingApplyError['code'], string> = {
       NOT_FOUND: 'Import batch not found',
+      STORE_SCOPE_FORBIDDEN: 'You are not authorized for this store import batch',
       CONFLICT: 'Import review is stale or has unresolved conflicts',
       DECISION_REQUIRED: 'Every source row requires a final review decision',
       CORRECTION_NOT_ACCEPTED: 'Only independently accepted corrections may be applied',

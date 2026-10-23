@@ -92,6 +92,34 @@ export function MeipingImportApprovalPanel({
           <span>人工盘点数量</span>
         </div>
       </div>
+      {preview?.plan.counts && (
+        <div className="meiping-summary" aria-label="实际数据库解析结果">
+          <div>
+            <strong>{preview.plan.counts.newBooks}</strong>
+            <span>新增图书</span>
+          </div>
+          <div>
+            <strong>{preview.plan.counts.reusedBooks}</strong>
+            <span>复用图书</span>
+          </div>
+          <div>
+            <strong>{preview.plan.counts.newSkus}</strong>
+            <span>新增 SKU</span>
+          </div>
+          <div>
+            <strong>{preview.plan.counts.reusedSkus}</strong>
+            <span>复用 SKU</span>
+          </div>
+          <div>
+            <strong>{preview.plan.counts.inventoryConflicts}</strong>
+            <span>库存冲突</span>
+          </div>
+          <div>
+            <strong>{preview.plan.counts.duplicateRisks}</strong>
+            <span>重复匹配风险</span>
+          </div>
+        </div>
+      )}
       {preview?.plan.conflicts.length ? (
         <p className="form-error">
           存在 {preview.plan.conflicts.length} 条冲突，必须人工处理后重新预览。

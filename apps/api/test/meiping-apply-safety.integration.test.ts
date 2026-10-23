@@ -252,15 +252,15 @@ suite('Meiping guarded apply safety boundaries PostgreSQL integration', () => {
         actorStaffAccountId: fixtureData.approver,
         requestId: randomUUID(),
       }),
-    ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    ).rejects.toMatchObject({ code: 'STORE_SCOPE_FORBIDDEN' });
     await expect(
       apply.execute(preview.batchId, fixtureData.storeB, {
         actorStaffAccountId: fixtureData.approver,
         requestId: randomUUID(),
       }),
-    ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    ).rejects.toMatchObject({ code: 'STORE_SCOPE_FORBIDDEN' });
     await expect(apply.getBatch(preview.batchId, fixtureData.storeB)).rejects.toMatchObject({
-      code: 'NOT_FOUND',
+      code: 'STORE_SCOPE_FORBIDDEN',
     });
   });
 
@@ -314,16 +314,16 @@ suite('Meiping guarded apply safety boundaries PostgreSQL integration', () => {
       actorStaffAccountId: fixtureData.actor,
       requestId: randomUUID(),
     });
-    await apply.approve(ambiguousPreview.batchId, fixtureData.storeA, {
-      actorStaffAccountId: fixtureData.approver,
-      requestId: randomUUID(),
+    expect(ambiguousPreview.plan.conflicts).toContainEqual({
+      sourceRowNumber: 2,
+      code: 'AMBIGUOUS_SKU_MATCH',
     });
     await expect(
-      apply.execute(ambiguousPreview.batchId, fixtureData.storeA, {
+      apply.approve(ambiguousPreview.batchId, fixtureData.storeA, {
         actorStaffAccountId: fixtureData.approver,
         requestId: randomUUID(),
       }),
-    ).rejects.toMatchObject({ code: 'AMBIGUOUS_SKU_MATCH' });
+    ).rejects.toMatchObject({ code: 'CONFLICT' });
 
     const historicalSession = await createSession(
       fixtureData.storeB,
@@ -353,16 +353,12 @@ suite('Meiping guarded apply safety boundaries PostgreSQL integration', () => {
       actorStaffAccountId: fixtureData.actor,
       requestId: randomUUID(),
     });
-    await apply.approve(historicalPreview.batchId, fixtureData.storeB, {
-      actorStaffAccountId: fixtureData.approver,
-      requestId: randomUUID(),
-    });
     await expect(
-      apply.execute(historicalPreview.batchId, fixtureData.storeB, {
+      apply.approve(historicalPreview.batchId, fixtureData.storeB, {
         actorStaffAccountId: fixtureData.approver,
         requestId: randomUUID(),
       }),
-    ).rejects.toMatchObject({ code: 'EXISTING_INVENTORY' });
+    ).rejects.toMatchObject({ code: 'CONFLICT' });
 
     const invalidSession = await createSession(
       fixtureData.storeA,
@@ -406,16 +402,16 @@ suite('Meiping guarded apply safety boundaries PostgreSQL integration', () => {
       actorStaffAccountId: fixtureData.actor,
       requestId: randomUUID(),
     });
-    await apply.approve(sharedPreview.batchId, fixtureData.storeA, {
-      actorStaffAccountId: fixtureData.approver,
-      requestId: randomUUID(),
+    expect(sharedPreview.plan.conflicts).toContainEqual({
+      sourceRowNumber: 2,
+      code: 'SHARED_CATALOG_CHANGE_REQUIRES_REVIEW',
     });
     await expect(
-      apply.execute(sharedPreview.batchId, fixtureData.storeA, {
+      apply.approve(sharedPreview.batchId, fixtureData.storeA, {
         actorStaffAccountId: fixtureData.approver,
         requestId: randomUUID(),
       }),
-    ).rejects.toMatchObject({ code: 'SHARED_CATALOG_CHANGE_REQUIRES_REVIEW' });
+    ).rejects.toMatchObject({ code: 'CONFLICT' });
     const [unchanged] = await database!.db.select().from(books).where(eq(books.id, book!.id));
     expect(unchanged?.title).toBe('既有主数据');
   });
