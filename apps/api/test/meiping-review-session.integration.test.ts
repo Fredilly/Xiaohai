@@ -316,9 +316,16 @@ suite('Meiping review staging PostgreSQL integration', () => {
       }),
       expect.objectContaining({
         previous: { action: 'CREATE_DRAFT', countedQuantity: 7, reason: null, version: 4 },
-        next: expect.objectContaining({ action: 'CREATE_DRAFT', version: 5 }),
       }),
     ]);
+    const lastDecision = revisions[4]!.metadata.next as {
+      action: string;
+      countedQuantity: number;
+      reason: string | null;
+      version: number;
+    };
+    expect(lastDecision).toMatchObject({ action: 'CREATE_DRAFT', reason: null, version: 5 });
+    expect([8, 9]).toContain(lastDecision.countedQuantity);
     for (const { event, metadata } of revisions) {
       expect(event.actorStaffAccountId).toBe(actorId);
       expect(event.requestId).toBeTruthy();
