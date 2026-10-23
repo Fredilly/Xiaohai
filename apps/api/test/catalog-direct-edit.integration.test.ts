@@ -141,9 +141,7 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
         priceMinor: 2000,
       })
       .returning();
-    await db
-      .insert(storeInventory)
-      .values({ storeId: storeD!.id, skuId: otherSku!.id, onHand: 2 });
+    await db.insert(storeInventory).values({ storeId: storeD!.id, skuId: otherSku!.id, onHand: 2 });
     const [actor] = await db
       .insert(staffAccounts)
       .values({
