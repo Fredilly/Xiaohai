@@ -1,0 +1,39 @@
+name: Validate staging containers
+on:
+  pull_request:
+    paths:
+      - 'deploy/**'
+      - '.dockerignore'
+      - '.github/workflows/staging-deploy.yml'
+      - '.github/workflows/staging-validation.yml'
+      - 'apps/api/**'
+      - 'apps/worker/**'
+      - 'packages/**'
+      - 'pnpm-lock.yaml'
+      - 'package.json'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build-and-compose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Compose with dummy non-secret values
+        env:
+          POSTGRES_DB: xiaohai_staging_test
+          POSTGRES_USER: xiaohai_test
+          POSTGRES_PASSWORD: test_only_not_a_real_credential
+          REVISION: test
+        run: |
+          touch deploy/staging.env
+          docker compose -f deploy/staging.compose.yml config --quiet
+      - name: Build API container
+        run: docker build --file deploy/Dockerfile --build-arg SERVICE=api --tag xiaohai-api:check .
+      - name: Build worker container
+        run: docker build --file deploy/Dockerfile --build-arg SERVICE=worker --tag xiaohai-worker:check .
+      - name: Verify container processes start
+        run: |
+          docker run --rm --entrypoint sh xiaohai-api:check -c 'test -f apps/api/dist/server.js'
+          docker run --rm --entrypoint sh xiaohai-worker:check -c 'test -f apps/worker/dist/index.js'
