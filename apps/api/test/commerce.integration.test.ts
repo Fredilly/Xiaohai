@@ -15,6 +15,7 @@ import {
   skus,
   storeInventory,
   userAddresses,
+  works,
 } from '@xiaohai/db';
 import { CommerceService } from '../src/commerce/commerce-service.js';
 import { CommissionService } from '../src/commission/commission-service.js';
@@ -36,6 +37,7 @@ suite('M5 Commerce PostgreSQL integration', () => {
     await database!.db.delete(bookEditions);
     await database!.db.delete(books);
     await database!.db.delete(referralLinks);
+    await database!.db.delete(works);
     await database!.db.delete(consumerUsers);
   });
   afterAll(async () => database?.pool.end());
