@@ -256,7 +256,7 @@ export function MeipingPreflightManager({ token, me }: { token: string; me: Staf
             </select>
           </label>
           <label>
-            Excel 文件（最大 20 MB）
+            Excel 文件（最大 {MEIPING_PREFLIGHT_MAX_BYTES / (1024 * 1024)} MiB）
             <input
               ref={inputRef}
               type="file"
