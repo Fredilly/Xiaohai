@@ -235,7 +235,10 @@ export function exceptionCsv(
 ): string {
   const escape = (value: string | number | null) => {
     const textValue = value === null ? '' : String(value);
-    return /[",\n]/.test(textValue) ? `"${textValue.replaceAll('"', '""')}"` : textValue;
+    // Excel can evaluate CSV fields beginning with formula characters, even
+    // after whitespace or control characters. Keep source/JSON data untouched.
+    const safeValue = /^[\s\p{Cc}\p{Cf}]*[=+\-@]/u.test(textValue) ? `'${textValue}` : textValue;
+    return /[",\r\n]/.test(safeValue) ? `"${safeValue.replaceAll('"', '""')}"` : safeValue;
   };
   return (
     [
