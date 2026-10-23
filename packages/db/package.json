@@ -18,6 +18,7 @@
     "test:reliability-integration": "node --test test/reliability-scan.integration.test.mjs",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node --env-file-if-exists ../../.env --import tsx/esm src/migrate.ts",
+    "db:seed-staging-home": "node --env-file-if-exists ../../.env --import tsx/esm src/seed-staging-home-cli.ts",
     "db:seed-local-home": "node --env-file-if-exists ../../.env --import tsx/esm src/seed-local-home-cli.ts",
     "lint": "eslint src drizzle.config.ts",
     "test": "vitest run --passWithNoTests",

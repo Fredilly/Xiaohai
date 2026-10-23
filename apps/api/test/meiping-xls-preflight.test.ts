@@ -292,6 +292,21 @@ describe('Meiping workbook parser and dry-run preflight', () => {
     expect(rows[0]!.title).toBe(maliciousTitle);
     expect(rows[0]!.barcode).toBe(maliciousBarcode);
     expect(csv).toContain('BARCODE_CONFLICT');
+
+    const parsed = parseMeipingWorkbook(
+      workbookBuffer([
+        headers,
+        ['M-CSV', 'OWN-CSV', maliciousTitle, '作者', '出版社', 0, maliciousBarcode, '图书'],
+      ]),
+    );
+    const report = buildMeipingPreflight(parsed.rows, {
+      storeId: 'store-east-test',
+      storeCode: 'TEST-EAST',
+    });
+    expect(report.rows[0]!.rawColumns['商品名称']).toBe(maliciousTitle);
+    expect(report.rows[0]!.rawColumns['条码']).toBe(maliciousBarcode);
+    expect(report.rows[0]!.sourceIdentifiers.barcode).toBe(maliciousBarcode.trim());
+    expect(report.exceptionReportCsv).toContain("'=HYPERLINK");
   });
 
   it('keeps assumed stock explicit and isolates the selected store', () => {
