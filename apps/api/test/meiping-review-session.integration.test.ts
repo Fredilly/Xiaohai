@@ -287,11 +287,11 @@ suite('Meiping review staging PostgreSQL integration', () => {
     // Sort by the version stored in the complete 'next' decision snapshot.
     const revisions = events
       .map((event) => ({ event, metadata: event.metadata }))
-      .sort((
-      (a, b) =>
-        Number((a.metadata.next as { version: number }).version) -
-        Number((b.metadata.next as { version: number }).version),
-    );
+      .sort(
+        (a, b) =>
+          Number((a.metadata.next as { version: number }).version) -
+          Number((b.metadata.next as { version: number }).version),
+      );
     expect(revisions.map(({ metadata }) => metadata)).toEqual([
       expect.objectContaining({
         previous: null,
