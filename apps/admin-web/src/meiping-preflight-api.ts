@@ -26,6 +26,10 @@ export type MeipingPreflightRow = {
   matchStatus: 'MATCHED_BY_EXPLICIT_ISBN' | 'UNMATCHED_REVIEW';
   disposition: 'MATCHED' | 'CREATE_CANDIDATE' | 'REVIEW' | 'REJECTED' | 'DUPLICATE';
   issues: MeipingIssue[];
+  metadataWarnings: MeipingIssue[];
+  blockingIssues: MeipingIssue[];
+  saleBlocked: MeipingIssue[];
+  rawColumns: Record<string, unknown>;
 };
 
 export type MeipingPreflightReport = {
@@ -38,6 +42,9 @@ export type MeipingPreflightReport = {
   matchedRows: number;
   createCandidateRows: number;
   exceptionRows: number;
+  metadataWarningRows: number;
+  blockingRows: number;
+  saleBlockedRows: number;
   assumedInventoryRows: number;
   plannedInventoryTotal: number;
   rows: MeipingPreflightRow[];

@@ -4,6 +4,7 @@ import {
   formatPrice,
   isReportCurrent,
   issueSummary,
+  meipingMaxFileSizeLabel,
 } from './meiping-preflight-manager';
 import type { MeipingPreflightRow } from './meiping-preflight-api';
 
@@ -31,12 +32,21 @@ const row = (
   matchStatus: 'UNMATCHED_REVIEW',
   disposition: 'CREATE_CANDIDATE',
   issues,
+  metadataWarnings: issues.filter((issue) =>
+    ['AUTHOR_MISSING', 'PUBLISHER_MISSING'].includes(issue.code),
+  ),
+  blockingIssues: issues.filter(
+    (issue) => !['AUTHOR_MISSING', 'PUBLISHER_MISSING', 'ZERO_PRICE'].includes(issue.code),
+  ),
+  saleBlocked: issues.filter((issue) => issue.code === 'ZERO_PRICE'),
+  rawColumns: {},
 });
 
 describe('Meiping preflight presentation helpers', () => {
   it('formats minor currency units as RMB and invalidates a report when context changes', () => {
     const file = new File(['xls'], 'dongmen.xls');
     expect(formatPrice(3800)).toBe('¥38.00');
+    expect(meipingMaxFileSizeLabel()).toBe('Excel 文件（最大 5 MiB）');
     expect(formatPrice(null)).toBe('—');
     expect(isReportCurrent('east', file, 'east', file)).toBe(true);
     expect(isReportCurrent('east', file, 'south', file)).toBe(false);
@@ -46,7 +56,7 @@ describe('Meiping preflight presentation helpers', () => {
   it('filters warning, error, and issue code without changing source rows', () => {
     const rows = [
       row(2, [
-        { sourceRowNumber: 2, code: 'MISSING_AUTHOR', severity: 'WARNING', message: 'missing' },
+        { sourceRowNumber: 2, code: 'AUTHOR_MISSING', severity: 'WARNING', message: 'missing' },
       ]),
       row(3, [{ sourceRowNumber: 3, code: 'ZERO_PRICE', severity: 'ERROR', message: 'zero' }]),
       row(4, []),

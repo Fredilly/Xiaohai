@@ -165,65 +165,147 @@ describe('Meiping workbook parser and dry-run preflight', () => {
     expect(report.rows[0]!.issues.map((item) => item.code)).toContain('DUPLICATE_BARCODE');
     expect(report.rows[2]!.issues.map((item) => item.code)).toContain('BARCODE_CONFLICT');
     expect(report.exceptionReportCsv).toContain('BARCODE_CONFLICT');
+    expect(report.rows[0]!.blockingIssues.map((item) => item.code)).toContain('DUPLICATE_BARCODE');
+    expect(report.rows[2]!.blockingIssues.map((item) => item.code)).toContain('BARCODE_CONFLICT');
+    expect(report.exceptionReportCsv).toContain('blocking_issue_codes');
   });
 
-  it('neutralizes formula-like CSV cells without altering source values in JSON reports', () => {
-    const untrustedTitle = '=HYPERLINK("https://example.invalid","unsafe")';
-    const untrustedBarcode = '\t@SUM(1,2)';
-    const rows = [
-      {
-        sourceRowNumber: 2,
-        category: 'BOOK' as const,
-        title: untrustedTitle,
-        barcode: untrustedBarcode,
-        reasonCodes: ['REVIEW'],
-      },
-      {
-        sourceRowNumber: 3,
-        category: 'BOOK' as const,
-        title: ' \r\n+1+2',
-        barcode: '-1+2',
-        reasonCodes: ['REVIEW'],
-      },
-      {
-        sourceRowNumber: 4,
-        category: 'BOOK' as const,
-        title: '\u200b-1+2',
-        barcode: '@SUM(A1:A2)',
-        reasonCodes: ['REVIEW'],
-      },
-      {
-        sourceRowNumber: 5,
-        category: 'BOOK' as const,
-        title: '正常中文书名',
-        barcode: '690000000001',
-        reasonCodes: ['REVIEW'],
-      },
-    ];
-    const csv = exceptionCsv(rows);
-    expect(csv).toContain(`"'=HYPERLINK(""https://example.invalid"",""unsafe"")"`);
-    expect(csv).toContain(`"'\t@SUM(1,2)"`);
-    expect(csv).toContain(`"' \r\n+1+2"`);
-    expect(csv).toContain("'-1+2");
-    expect(csv).toContain("'\u200b-1+2");
-    expect(csv).toContain("'@SUM(A1:A2)");
-    expect(csv).toContain('正常中文书名,690000000001');
-    expect(rows[0]!.title).toBe(untrustedTitle);
-    expect(rows[0]!.barcode).toBe(untrustedBarcode);
-
+  it('keeps missing author and publisher as metadata warnings without blocking a candidate', () => {
     const parsed = parseMeipingWorkbook(
       workbookBuffer([
         headers,
-        ['M-CSV', 'OWN-CSV', untrustedTitle, '作者', '出版社', 0, untrustedBarcode, '图书'],
+        ['M-008', 'OWN-008', '作者待完善', '', '', '20', '690000000008', '图书'],
       ]),
     );
     const report = buildMeipingPreflight(parsed.rows, {
       storeId: 'store-east-test',
       storeCode: 'TEST-EAST',
     });
-    expect(report.rows[0]!.rawColumns['商品名称']).toBe(untrustedTitle);
-    expect(report.rows[0]!.rawColumns['条码']).toBe(untrustedBarcode);
-    expect(report.rows[0]!.sourceIdentifiers.barcode).toBe(untrustedBarcode.trim());
+    const item = report.rows[0]!;
+    expect(item.disposition).toBe('CREATE_CANDIDATE');
+    expect(item.metadataWarnings.map((issue) => issue.code)).toEqual([
+      'AUTHOR_MISSING',
+      'PUBLISHER_MISSING',
+    ]);
+    expect(item.blockingIssues).toHaveLength(0);
+    expect(report.createCandidateRows).toBe(1);
+    expect(report.metadataWarningRows).toBe(1);
+    expect(report.exceptionRows).toBe(0);
+  });
+
+  it('allows zero-price and multiple metadata issues while blocking normal sale', () => {
+    const parsed = parseMeipingWorkbook(
+      workbookBuffer([
+        headers,
+        ['M-009', 'OWN-009', '零价格待完善', '', '', '0', '690000000009', '图书'],
+      ]),
+    );
+    const report = buildMeipingPreflight(parsed.rows, {
+      storeId: 'store-east-test',
+      storeCode: 'TEST-EAST',
+    });
+    const item = report.rows[0]!;
+    expect(item.disposition).toBe('CREATE_CANDIDATE');
+    expect(item.metadataWarnings).toHaveLength(2);
+    expect(item.saleBlocked.map((issue) => issue.code)).toEqual(['ZERO_PRICE']);
+    expect(item.blockingIssues).toHaveLength(0);
+    expect(report.createCandidateRows).toBe(1);
+    expect(report.metadataWarningRows).toBe(1);
+    expect(report.saleBlockedRows).toBe(1);
+    expect(report.exceptionRows).toBe(0);
+    expect(report.exceptionReportCsv).toContain('ZERO_PRICE');
+    expect(report.exceptionReportCsv).toContain('AUTHOR_MISSING|PUBLISHER_MISSING');
+  });
+
+  it('exports metadata-only rows and blocks unknown future errors conservatively', () => {
+    const parsed = parseMeipingWorkbook(
+      workbookBuffer([
+        headers,
+        ['M-010', 'OWN-010', '资料待完善', '', '', '20', '690000000010', '图书'],
+      ]),
+    );
+    const metadataOnly = buildMeipingPreflight(parsed.rows, {
+      storeId: 'store-east-test',
+      storeCode: 'TEST-EAST',
+    });
+    expect(metadataOnly.rows[0]!.disposition).toBe('CREATE_CANDIDATE');
+    expect(metadataOnly.exceptionRows).toBe(0);
+    expect(metadataOnly.exceptionReportCsv).toContain('AUTHOR_MISSING|PUBLISHER_MISSING');
+
+    const futureError = buildMeipingPreflight(
+      parsed.rows,
+      {
+        storeId: 'store-east-test',
+        storeCode: 'TEST-EAST',
+      },
+      { missingMappedFields: ['FUTURE_ERROR_CODE'] },
+    );
+    expect(futureError.rows[0]!.disposition).toBe('REVIEW');
+    expect(futureError.rows[0]!.blockingIssues.map((item) => item.code)).toContain(
+      'FUTURE_ERROR_CODE',
+    );
+  });
+
+  it('keeps expanded exception CSV columns safe from spreadsheet formula execution', () => {
+    const maliciousTitle = '=HYPERLINK("https://example.invalid","unsafe")';
+    const maliciousBarcode = '\t@SUM(1,2)';
+    const rows = [
+      {
+        sourceRowNumber: 2,
+        title: maliciousTitle,
+        barcode: maliciousBarcode,
+        category: 'BOOK' as const,
+        disposition: 'REVIEW',
+        metadataWarningCodes: ['AUTHOR_MISSING'],
+        blockingIssueCodes: ['BARCODE_CONFLICT'],
+        saleBlockedCodes: [],
+      },
+      {
+        sourceRowNumber: 3,
+        title: ' \r\n+1+2',
+        barcode: '-1+2',
+        category: 'BOOK' as const,
+        disposition: 'REVIEW',
+        metadataWarningCodes: [],
+        blockingIssueCodes: ['TITLE_REQUIRED'],
+        saleBlockedCodes: [],
+      },
+      {
+        sourceRowNumber: 4,
+        title: '\u200b-1+2',
+        barcode: '@SUM(A1:A2)',
+        category: 'BOOK' as const,
+        disposition: 'CREATE_CANDIDATE',
+        metadataWarningCodes: [],
+        blockingIssueCodes: [],
+        saleBlockedCodes: ['ZERO_PRICE'],
+      },
+    ];
+    const csv = exceptionCsv(rows);
+    expect(csv).toContain('metadata_warning_codes,blocking_issue_codes,sale_blocked_codes');
+    expect(csv).toContain(`"'=HYPERLINK(""https://example.invalid"",""unsafe"")"`);
+    expect(csv).toContain(`"'\t@SUM(1,2)"`);
+    expect(csv).toContain(`"' \r\n+1+2"`);
+    expect(csv).toContain("'-1+2");
+    expect(csv).toContain("'\u200b-1+2");
+    expect(csv).toContain("'@SUM(A1:A2)");
+    expect(rows[0]!.title).toBe(maliciousTitle);
+    expect(rows[0]!.barcode).toBe(maliciousBarcode);
+    expect(csv).toContain('BARCODE_CONFLICT');
+
+    const parsed = parseMeipingWorkbook(
+      workbookBuffer([
+        headers,
+        ['M-CSV', 'OWN-CSV', maliciousTitle, '作者', '出版社', 0, maliciousBarcode, '图书'],
+      ]),
+    );
+    const report = buildMeipingPreflight(parsed.rows, {
+      storeId: 'store-east-test',
+      storeCode: 'TEST-EAST',
+    });
+    expect(report.rows[0]!.rawColumns['商品名称']).toBe(maliciousTitle);
+    expect(report.rows[0]!.rawColumns['条码']).toBe(maliciousBarcode);
+    expect(report.rows[0]!.sourceIdentifiers.barcode).toBe(maliciousBarcode.trim());
     expect(report.exceptionReportCsv).toContain("'=HYPERLINK");
   });
 

@@ -224,25 +224,39 @@ export function parseMeipingWorkbook(buffer: Buffer): MeipingWorkbook {
 export function exceptionCsv(
   rows: Array<{
     sourceRowNumber: number;
-    reasonCodes: string[];
     title: string | null;
     barcode: string | null;
     category: MeipingSourceCategory;
+    disposition: string;
+    metadataWarningCodes: string[];
+    blockingIssueCodes: string[];
+    saleBlockedCodes: string[];
   }>,
 ): string {
   const escape = (value: string | number | null) => {
     const textValue = value === null ? '' : String(value);
-    // Spreadsheet apps may interpret untrusted CSV cells as formulas, even
-    // after leading spaces, tabs, line breaks or invisible control characters.
-    // Keep the workbook/JSON values unchanged; neutralize CSV output only.
+    // Excel can evaluate CSV fields beginning with formula characters, even
+    // after whitespace or control characters. Keep source/JSON data untouched.
     const safeValue = /^[\s\p{Cc}\p{Cf}]*[=+\-@]/u.test(textValue) ? `'${textValue}` : textValue;
     return /[",\r\n]/.test(safeValue) ? `"${safeValue.replaceAll('"', '""')}"` : safeValue;
   };
   return (
     [
-      'source_row_number,category,title,barcode,reason_codes',
+      'source_row_number,category,disposition,title,barcode,metadata_warning_codes,blocking_issue_codes,sale_blocked_codes,issue_count',
       ...rows.map((row) =>
-        [row.sourceRowNumber, row.category, row.title, row.barcode, row.reasonCodes.join('|')]
+        [
+          row.sourceRowNumber,
+          row.category,
+          row.disposition,
+          row.title,
+          row.barcode,
+          row.metadataWarningCodes.join('|'),
+          row.blockingIssueCodes.join('|'),
+          row.saleBlockedCodes.join('|'),
+          row.metadataWarningCodes.length +
+            row.blockingIssueCodes.length +
+            row.saleBlockedCodes.length,
+        ]
           .map(escape)
           .join(','),
       ),
