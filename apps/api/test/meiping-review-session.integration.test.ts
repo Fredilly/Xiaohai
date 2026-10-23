@@ -306,7 +306,12 @@ suite('Meiping review staging PostgreSQL integration', () => {
         next: { action: 'EXCLUDE', countedQuantity: null, reason: '条码待人工核实', version: 3 },
       }),
       expect.objectContaining({
-        previous: { action: 'EXCLUDE', countedQuantity: null, reason: '条码待人工核实', version: 3 },
+        previous: {
+          action: 'EXCLUDE',
+          countedQuantity: null,
+          reason: '条码待人工核实',
+          version: 3,
+        },
         next: { action: 'CREATE_DRAFT', countedQuantity: 7, reason: null, version: 4 },
       }),
       expect.objectContaining({
