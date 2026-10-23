@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, describe, expect, it } from 'vitest';
-import { eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import {
   auditLogs,
   books,
@@ -21,18 +21,58 @@ import {
   MeipingReviewService,
 } from '../src/migration/meiping-review-service.js';
 
-const database = process.env.DATABASE_URL ? createDatabase(process.env) : null;
+const databaseUrl = process.env.DATABASE_URL;
+// Never run mutating integration fixtures against a development or production DB.
+const database =
+  databaseUrl &&
+  /^xiaohai_(test|pr147_review_test)$/.test(new URL(databaseUrl).pathname.slice(1))
+    ? createDatabase(process.env)
+    : null;
 const suite = database ? describe : describe.skip;
 const checksum = 'a'.repeat(64);
 
 suite('Meiping review staging PostgreSQL integration', () => {
   const review = new MeipingReviewService(database!.db);
+  const actorIds: string[] = [];
+  const regionIds: string[] = [];
+  const storeIds: string[] = [];
+
   afterAll(async () => {
     if (!database) return;
-    await database.db.delete(meipingReviewDecisions);
-    await database.db.delete(meipingReviewSessions);
-    await database.db.delete(auditLogs).where(eq(auditLogs.resourceType, 'MEIPING_REVIEW_SESSION'));
-    await database.pool.end();
+    try {
+      if (storeIds.length > 0) {
+        const sessions = await database.db
+          .select({ id: meipingReviewSessions.id })
+          .from(meipingReviewSessions)
+          .where(inArray(meipingReviewSessions.storeId, storeIds));
+        const sessionIds = sessions.map((session) => session.id);
+        if (sessionIds.length > 0) {
+          await database.db
+            .delete(meipingReviewDecisions)
+            .where(inArray(meipingReviewDecisions.sessionId, sessionIds));
+          await database.db
+            .delete(auditLogs)
+            .where(
+              and(
+                eq(auditLogs.resourceType, 'MEIPING_REVIEW_SESSION'),
+                inArray(auditLogs.resourceId, sessionIds),
+              ),
+            );
+          await database.db
+            .delete(meipingReviewSessions)
+            .where(inArray(meipingReviewSessions.id, sessionIds));
+        }
+        await database.db.delete(stores).where(inArray(stores.id, storeIds));
+      }
+      if (regionIds.length > 0) {
+        await database.db.delete(regions).where(inArray(regions.id, regionIds));
+      }
+      if (actorIds.length > 0) {
+        await database.db.delete(staffAccounts).where(inArray(staffAccounts.id, actorIds));
+      }
+    } finally {
+      await database.pool.end();
+    }
   });
 
   async function fixture() {
@@ -41,6 +81,7 @@ suite('Meiping review staging PostgreSQL integration', () => {
       .insert(staffAccounts)
       .values({ loginIdentifier: 'review-' + suffix, passwordHash: 'test-only' })
       .returning({ id: staffAccounts.id });
+    actorIds.push(actor!.id);
     const [region] = await database!.db
       .insert(regions)
       .values({
@@ -50,6 +91,7 @@ suite('Meiping review staging PostgreSQL integration', () => {
         countryName: 'China',
       })
       .returning({ id: regions.id });
+    regionIds.push(region!.id);
     const [store] = await database!.db
       .insert(stores)
       .values({
@@ -65,6 +107,7 @@ suite('Meiping review staging PostgreSQL integration', () => {
         longitude: 104.0,
       })
       .returning({ id: stores.id });
+    storeIds.push(store!.id);
     const sourceRowNumber = 2;
     const warning = {
       sourceRowNumber,
