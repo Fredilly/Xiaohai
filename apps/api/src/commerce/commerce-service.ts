@@ -499,6 +499,94 @@ export class CommerceService {
       })),
     };
   }
+
+  async lookupBook(code: string) {
+    const isbn = normalizeIsbn(code);
+    if (!isbn || !isValidIsbn(isbn)) {
+      throw new CommerceError('INVALID_INPUT', 'Invalid ISBN or book barcode');
+    }
+    const [local] = await this.db
+      .select({ book: books, edition: bookEditions, sku: skus, product: products })
+      .from(bookEditions)
+      .innerJoin(books, eq(books.id, bookEditions.bookId))
+      .leftJoin(products, eq(products.bookEditionId, bookEditions.id))
+      .leftJoin(skus, eq(skus.productId, products.id))
+      .where(eq(bookEditions.isbn, isbn))
+      .limit(1);
+    if (local) {
+      return {
+        source: 'LOCAL' as const,
+        book: {
+          title: local.book.title,
+          author: local.book.author,
+          isbn,
+          publisher: local.edition.publisher,
+          coverUrl: local.product?.coverUrl ?? null,
+        },
+        suggestedPriceMinor: local.sku?.priceMinor ?? null,
+      };
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 3000);
+    try {
+      const response = await fetch(
+        `https://openlibrary.org/api/books?bibkeys=${encodeURIComponent(`ISBN:${isbn}`)}&format=json&jscmd=data`,
+        { headers: { accept: 'application/json' }, signal: controller.signal },
+      );
+      if (!response.ok)
+        return { source: 'NOT_FOUND' as const, book: null, suggestedPriceMinor: null };
+      const payload: unknown = await response.json();
+      const record =
+        payload && typeof payload === 'object'
+          ? (payload as Record<string, unknown>)[`ISBN:${isbn}`]
+          : undefined;
+      if (!record || typeof record !== 'object') {
+        return { source: 'NOT_FOUND' as const, book: null, suggestedPriceMinor: null };
+      }
+      const data = record as Record<string, unknown>;
+      const title = typeof data.title === 'string' ? data.title.trim() : '';
+      const authors = Array.isArray(data.authors) ? data.authors : [];
+      const author = authors
+        .map((item) =>
+          item && typeof item === 'object' ? (item as Record<string, unknown>).name : null,
+        )
+        .find((name): name is string => typeof name === 'string' && name.trim().length > 0);
+      const publishers = Array.isArray(data.publishers) ? data.publishers : [];
+      const publisher = publishers
+        .map((item) =>
+          item && typeof item === 'object' ? (item as Record<string, unknown>).name : null,
+        )
+        .find((name): name is string => typeof name === 'string' && name.trim().length > 0);
+      const cover =
+        data.cover && typeof data.cover === 'object'
+          ? (data.cover as Record<string, unknown>)
+          : null;
+      const coverUrl =
+        typeof cover?.large === 'string'
+          ? cover.large
+          : typeof cover?.medium === 'string'
+            ? cover.medium
+            : null;
+      if (!title || !author)
+        return { source: 'NOT_FOUND' as const, book: null, suggestedPriceMinor: null };
+      return {
+        source: 'OPEN_LIBRARY' as const,
+        book: {
+          title,
+          author: author.trim(),
+          isbn,
+          publisher: publisher?.trim() ?? null,
+          coverUrl,
+        },
+        suggestedPriceMinor: null,
+      };
+    } catch {
+      return { source: 'NOT_FOUND' as const, book: null, suggestedPriceMinor: null };
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
   async createAdminProduct(
     input: AdminProductInput,
     actorStaffAccountId: string,
@@ -544,7 +632,11 @@ export class CommerceService {
           status: input.status,
         })
         .returning({ id: products.id });
-      await tx.insert(skus).values({ productId: product!.id, ...input.sku });
+      await tx.insert(skus).values({
+        productId: product!.id,
+        ...input.sku,
+        code: input.sku.code ?? `XH-SKU-${randomUUID()}`,
+      });
       await tx.insert(auditLogs).values({
         actorStaffAccountId,
         actionKey: 'catalog.hq_create',

@@ -4,6 +4,8 @@ import {
   addCartItemRequestSchema,
   addressInputSchema,
   adminCatalogQuerySchema,
+  bookLookupQuerySchema,
+  bookLookupResponseSchema,
   adminProductCreateInputSchema,
   adminProductUpdateInputSchema,
   catalogListResponseSchema,
@@ -215,6 +217,16 @@ export function registerCommerceRoutes(
         input.data.offset,
         input.data.limit,
       );
+    } catch (error) {
+      return fail(request, reply, error);
+    }
+  });
+  app.get('/api/v1/staff/catalog/books/lookup', async (request, reply) => {
+    const input = bookLookupQuerySchema.safeParse(request.query);
+    if (!input.success) return invalid(reply, request.id);
+    try {
+      await staff(request);
+      return bookLookupResponseSchema.parse(await options.commerce.lookupBook(input.data.code));
     } catch (error) {
       return fail(request, reply, error);
     }

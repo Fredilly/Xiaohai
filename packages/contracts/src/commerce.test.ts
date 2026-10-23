@@ -75,6 +75,17 @@ describe('M5 commerce contracts', () => {
     ).toBe(true);
   });
 
+  it('allows the server to generate an internal SKU code on book creation', () => {
+    const input = {
+      name: 'Book',
+      status: 'DRAFT' as const,
+      book: { title: 'Book', author: 'Author', isbn: '9781234567890', publisher: null },
+      sku: { name: '标准', priceMinor: 3980, status: 'ACTIVE' as const, availableForSale: false },
+    };
+    expect(adminProductInputSchema.safeParse(input).success).toBe(true);
+    expect(adminProductUpdateInputSchema.safeParse(input).success).toBe(false);
+  });
+
   it('requires optimistic-lock versions and validates direct catalog edits', () => {
     const base = {
       expectedProductVersion: 0,

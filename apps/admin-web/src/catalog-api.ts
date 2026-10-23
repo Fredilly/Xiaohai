@@ -3,6 +3,7 @@ import {
   adminProductUpdateInputSchema,
   adminProductListResponseSchema,
   adminProductSchema,
+  bookLookupResponseSchema,
   storeCatalogEditRequestSchema,
   storeCatalogResponseSchema,
   type AdminProductCreateInput,
@@ -51,6 +52,11 @@ export const createAdminProduct = async (token: string, input: AdminProductCreat
       'POST',
       adminProductCreateInputSchema.parse(input),
     ),
+  );
+
+export const lookupBook = async (token: string, code: string) =>
+  bookLookupResponseSchema.parse(
+    await call(`/api/v1/staff/catalog/books/lookup?${new URLSearchParams({ code })}`, token),
   );
 
 export const updateAdminProduct = async (

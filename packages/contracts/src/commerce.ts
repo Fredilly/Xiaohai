@@ -143,6 +143,20 @@ export const adminCatalogQuerySchema = z
     limit: z.coerce.number().int().min(1).max(100).default(30),
   })
   .strict();
+export const bookLookupQuerySchema = z.object({ code: z.string().trim().min(1).max(32) }).strict();
+export const bookLookupResponseSchema = z.object({
+  source: z.enum(['LOCAL', 'OPEN_LIBRARY', 'NOT_FOUND']),
+  book: z
+    .object({
+      title: z.string(),
+      author: z.string(),
+      isbn: z.string(),
+      publisher: z.string().nullable(),
+      coverUrl: z.string().nullable(),
+    })
+    .nullable(),
+  suggestedPriceMinor: moneyMinorSchema.nullable(),
+});
 const adminProductFieldsSchema = z
   .object({
     expectedSkuId: z.uuid().optional(),
@@ -170,7 +184,12 @@ const adminProductFieldsSchema = z
     }),
   })
   .strict();
-export const adminProductCreateInputSchema = adminProductFieldsSchema.extend({
+const adminProductCreateFieldsSchema = adminProductFieldsSchema.extend({
+  sku: adminProductFieldsSchema.shape.sku.extend({
+    code: z.string().trim().min(1).max(80).optional(),
+  }),
+});
+export const adminProductCreateInputSchema = adminProductCreateFieldsSchema.extend({
   expectedProductVersion: z.number().int().nonnegative().optional(),
   expectedSkuVersion: z.number().int().nonnegative().optional(),
 });
@@ -205,6 +224,7 @@ export type Order = z.infer<typeof orderSchema>;
 export type AdminProductCreateInput = z.infer<typeof adminProductCreateInputSchema>;
 export type AdminProductInput = z.infer<typeof adminProductInputSchema>;
 export type AdminProductUpdateInput = z.infer<typeof adminProductUpdateInputSchema>;
+export type BookLookupResponse = z.infer<typeof bookLookupResponseSchema>;
 export type CommerceErrorCode = z.infer<typeof commerceErrorCodeSchema>;
 
 /** Authenticated Staff read-model: only SKU rows linked to the scoped store's inventory. */
