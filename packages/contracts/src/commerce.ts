@@ -146,6 +146,7 @@ export const adminCatalogQuerySchema = z
 export const bookLookupQuerySchema = z.object({ code: z.string().trim().min(1).max(32) }).strict();
 export const bookLookupResponseSchema = z.object({
   source: z.enum(['LOCAL', 'OPEN_LIBRARY', 'NOT_FOUND']),
+  existingProductId: z.uuid().nullable(),
   book: z
     .object({
       title: z.string(),

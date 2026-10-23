@@ -15,8 +15,11 @@ const configuredBase: unknown = import.meta.env.VITE_API_BASE_URL;
 const base = typeof configuredBase === 'string' ? configuredBase : 'http://127.0.0.1:3000';
 
 export class CatalogApiError extends Error {
-  constructor(readonly status: number) {
-    super(`Catalog API ${status}`);
+  constructor(
+    readonly status: number,
+    message?: string,
+  ) {
+    super(message ?? `Catalog API ${status}`);
   }
 }
 
@@ -26,7 +29,17 @@ async function call(path: string, token: string, method = 'GET', body?: object):
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: body ? JSON.stringify(body) : undefined,
   });
-  if (!response.ok) throw new CatalogApiError(response.status);
+  if (!response.ok) {
+    const payload = (
+      typeof response.json === 'function' ? await response.json().catch(() => null) : null
+    ) as {
+      error?: { message?: unknown };
+    } | null;
+    throw new CatalogApiError(
+      response.status,
+      typeof payload?.error?.message === 'string' ? payload.error.message : undefined,
+    );
+  }
 
   const payload: unknown = await response.json();
   return payload;
@@ -43,6 +56,9 @@ export const listAdminProducts = async (token: string, q = '', offset = 0, limit
       token,
     ),
   );
+
+export const getAdminProduct = async (token: string, id: string) =>
+  adminProductSchema.parse(await call(`/api/v1/staff/catalog/products/${id}`, token));
 
 export const createAdminProduct = async (token: string, input: AdminProductCreateInput) =>
   adminProductSchema.parse(

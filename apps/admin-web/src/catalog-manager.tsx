@@ -11,6 +11,7 @@ import { displayStatus, money } from './display';
 import {
   CatalogApiError,
   createAdminProduct,
+  getAdminProduct,
   listAdminProducts,
   lookupBook as lookupBookData,
   updateAdminProduct,
@@ -188,6 +189,11 @@ export function CatalogManager({ token }: { token: string }) {
               key={editing?.skuId ?? 'new-product'}
               initial={editing ?? blank}
               token={token}
+              onOpenExisting={async (productId) => {
+                const existing = await getAdminProduct(token, productId);
+                setCreating(false);
+                setEditing(existing);
+              }}
               onCancel={() => {
                 setCreating(false);
                 setEditing(null);
@@ -518,12 +524,14 @@ function HqStoreCatalogForm({
 function ProductForm({
   initial,
   token,
+  onOpenExisting,
   onCancel,
   onReload,
   onSave,
 }: {
   initial: Product | AdminProductInput;
   token: string;
+  onOpenExisting: (productId: string) => Promise<void>;
   onCancel: () => void;
   onReload: () => void;
   onSave: (input: AdminProductCreateInput | AdminProductUpdateInput) => Promise<void>;
@@ -554,6 +562,8 @@ function ProductForm({
   const [priceYuan, setPriceYuan] = useState(() => (v.sku.priceMinor / 100).toFixed(2));
   const [lookupStatus, setLookupStatus] = useState('');
   const [lookingUp, setLookingUp] = useState(false);
+  const [existingProductId, setExistingProductId] = useState<string | null>(null);
+  const [existingBook, setExistingBook] = useState(false);
 
   function updateBook(field: 'title' | 'author' | 'isbn' | 'publisher', value: string) {
     setV((current) => ({
@@ -566,7 +576,11 @@ function ProductForm({
         publisher: field === 'publisher' ? value || null : (current.book?.publisher ?? null),
       },
     }));
-    if (field === 'isbn') setLookupStatus('');
+    if (field === 'isbn') {
+      setLookupStatus('');
+      setExistingProductId(null);
+      setExistingBook(false);
+    }
   }
 
   async function lookupBook() {
@@ -585,9 +599,13 @@ function ProductForm({
     try {
       const result = await lookupBookData(token, isbn);
       if (!result.book) {
+        setExistingProductId(null);
+        setExistingBook(false);
         setLookupStatus('系统中未找到该编码的资料，请手动填写必填字段。');
         return;
       }
+      setExistingBook(result.source === 'LOCAL');
+      setExistingProductId(result.existingProductId);
       const book = result.book;
       setV((current) => ({
         ...current,
@@ -601,9 +619,11 @@ function ProductForm({
       if (result.suggestedPriceMinor !== null)
         setPriceYuan((result.suggestedPriceMinor / 100).toFixed(2));
       setLookupStatus(
-        result.source === 'OPEN_LIBRARY'
-          ? '已从 Open Library 回填资料；价格无可靠来源，请由用户确认填写。'
-          : '已从系统现有资料回填，请确认后再保存。',
+        result.source === 'LOCAL'
+          ? '该图书已存在，不能重复创建。请查看或编辑已有图书。'
+          : result.source === 'OPEN_LIBRARY'
+            ? '已从 Open Library 回填资料；价格无可靠来源，请由用户确认填写。'
+            : '已从系统现有资料回填，请确认后再保存。',
       );
     } catch {
       setLookupStatus('图书资料检索失败，请手动填写必填字段。');
@@ -615,6 +635,14 @@ function ProductForm({
   async function submit(e: FormEvent) {
     e.preventDefault();
     setError('');
+    if (lookingUp) {
+      setError('图书资料检索完成前不能保存。');
+      return;
+    }
+    if (existingBook) {
+      setError('该图书已存在，不能通过新增表单重复创建。请查看或编辑已有图书。');
+      return;
+    }
     const nextPriceMinor =
       !editingExisting && isBook ? parseYuanToMinor(priceYuan) : v.sku.priceMinor;
     if (nextPriceMinor === null) {
@@ -663,9 +691,13 @@ function ProductForm({
     } catch (reason) {
       if (reason instanceof CatalogApiError && reason.status === 409) {
         setStale(true);
-        setError('商品或图书资料已被其他人更新，不能覆盖。请重新加载最新版本。');
+        setError(reason.message || '商品或图书资料冲突，不能覆盖。');
       } else {
-        setError('保存失败，请检查字段、权限或 SKU code/ISBN 冲突');
+        setError(
+          reason instanceof CatalogApiError
+            ? reason.message
+            : '保存失败，请检查字段、权限或输入内容。',
+        );
       }
     }
   }
@@ -767,6 +799,11 @@ function ProductForm({
               {lookingUp ? '检索中…' : '检索已有资料'}
             </button>
             {lookupStatus && <small role="status">{lookupStatus}</small>}
+            {existingProductId && (
+              <button type="button" onClick={() => void onOpenExisting(existingProductId)}>
+                查看或编辑已有图书
+              </button>
+            )}
           </label>
           <label>
             出版社
@@ -843,7 +880,7 @@ function ProductForm({
       <button type="button" onClick={onCancel}>
         取消
       </button>
-      <button disabled={stale}>保存</button>
+      <button disabled={stale || lookingUp || existingBook}>保存</button>
     </form>
   );
 }

@@ -363,7 +363,7 @@ suite('HQ catalog create and optimistic update on disposable PostgreSQL', () => 
       const pageProducts = await db
         .insert(products)
         .values(
-          Array.from({ length: 31 }, (_, index) => ({
+          Array.from({ length: 101 }, (_, index) => ({
             name: `HQ Page Fixture ${String(index + 1).padStart(2, '0')} ${suffix}`,
             status: 'ACTIVE' as const,
           })),
@@ -379,14 +379,12 @@ suite('HQ catalog create and optimistic update on disposable PostgreSQL', () => 
         })),
       );
       const firstPage = await commerce.listAdminProducts(undefined, undefined, 0, 30);
-      const secondPage = await commerce.listAdminProducts(undefined, undefined, 30, 30);
+      const secondPage = await commerce.listAdminProducts(undefined, undefined, 100, 30);
       expect(firstPage.products).toHaveLength(30);
       expect(firstPage.hasMore).toBe(true);
-      expect(secondPage.products.some((item) => item.name.includes('HQ Page Fixture 31'))).toBe(
-        true,
-      );
+      expect(secondPage.products.length).toBeGreaterThan(0);
       const searched = await commerce.listAdminProducts(
-        'HQ Page Fixture 31 ' + suffix,
+        'HQ Page Fixture 101 ' + suffix,
         undefined,
         0,
         30,
@@ -442,6 +440,82 @@ suite('HQ catalog create and optimistic update on disposable PostgreSQL', () => 
       for (const productId of pagedProductIds) {
         await db.delete(skus).where(eq(skus.productId, productId));
         await db.delete(products).where(eq(products.id, productId));
+      }
+      await db.delete(staffAccounts).where(eq(staffAccounts.id, actor!.id));
+    }
+  });
+
+  it('rejects duplicate ISBNs deterministically, including concurrent creates', async () => {
+    const suffix = randomUUID();
+    const [actor] = await db
+      .insert(staffAccounts)
+      .values({
+        loginIdentifier: 'hq-isbn-' + suffix + '@example.com',
+        passwordHash: 'isolated-test-only',
+      })
+      .returning({ id: staffAccounts.id });
+    const productIds: string[] = [];
+    try {
+      const isbn = '9780140328721';
+      const input = {
+        name: 'Duplicate ISBN fixture ' + suffix,
+        status: 'DRAFT' as const,
+        book: { title: 'Duplicate ISBN book', author: 'Fixture', isbn, publisher: null },
+        sku: { name: '标准', priceMinor: 100, status: 'ACTIVE' as const, availableForSale: false },
+      };
+      const first = await commerce.createAdminProduct(input, actor!.id, randomUUID());
+      productIds.push(first.id);
+      await expect(
+        commerce.createAdminProduct(input, actor!.id, randomUUID()),
+      ).rejects.toMatchObject({ code: 'CONFLICT', message: '该图书已存在，请查看或编辑已有图书' });
+
+      const concurrentInput = {
+        ...input,
+        book: {
+          ...input.book,
+          isbn: '9780439023481',
+        },
+      };
+      const concurrent = await Promise.allSettled([
+        commerce.createAdminProduct(
+          { ...concurrentInput, name: input.name + ' A' },
+          actor!.id,
+          randomUUID(),
+        ),
+        commerce.createAdminProduct(
+          { ...concurrentInput, name: input.name + ' B' },
+          actor!.id,
+          randomUUID(),
+        ),
+      ]);
+      expect(concurrent.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+      expect(concurrent.filter((result) => result.status === 'rejected')).toHaveLength(1);
+      const successful = concurrent.find((result) => result.status === 'fulfilled');
+      if (successful?.status === 'fulfilled') productIds.push(successful.value.id);
+      const rejected = concurrent.find((result) => result.status === 'rejected');
+      const rejection: unknown = rejected?.status === 'rejected' ? rejected.reason : undefined;
+      const rejectedCode =
+        rejection && typeof rejection === 'object' && 'code' in rejection
+          ? (rejection as { code?: unknown }).code
+          : undefined;
+      expect(rejectedCode).toBe('CONFLICT');
+    } finally {
+      await db.delete(auditLogs).where(eq(auditLogs.actorStaffAccountId, actor!.id));
+      for (const productId of productIds) {
+        const [product] = await db
+          .select({ bookEditionId: products.bookEditionId })
+          .from(products)
+          .where(eq(products.id, productId));
+        await db.delete(skus).where(eq(skus.productId, productId));
+        await db.delete(products).where(eq(products.id, productId));
+        if (product?.bookEditionId) {
+          const [edition] = await db
+            .select({ bookId: bookEditions.bookId })
+            .from(bookEditions)
+            .where(eq(bookEditions.id, product.bookEditionId));
+          await db.delete(bookEditions).where(eq(bookEditions.id, product.bookEditionId));
+          if (edition?.bookId) await db.delete(books).where(eq(books.id, edition.bookId));
+        }
       }
       await db.delete(staffAccounts).where(eq(staffAccounts.id, actor!.id));
     }

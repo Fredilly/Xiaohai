@@ -221,6 +221,25 @@ export function registerCommerceRoutes(
       return fail(request, reply, error);
     }
   });
+  app.get('/api/v1/staff/catalog/products/:id', async (request, reply) => {
+    const params = z.object({ id: z.uuid() }).safeParse(request.params);
+    if (!params.success) return invalid(reply, request.id);
+    try {
+      await staff(request);
+      const result = await options.commerce.listAdminProducts(
+        undefined,
+        undefined,
+        0,
+        1,
+        params.data.id,
+      );
+      const product = result.products[0];
+      if (!product) throw new CommerceError('NOT_FOUND', 'Product not found');
+      return product;
+    } catch (error) {
+      return fail(request, reply, error);
+    }
+  });
   app.get('/api/v1/staff/catalog/books/lookup', async (request, reply) => {
     const input = bookLookupQuerySchema.safeParse(request.query);
     if (!input.success) return invalid(reply, request.id);
@@ -309,7 +328,11 @@ function fail(request: FastifyRequest, reply: FastifyReply, error: unknown) {
   request.log.warn({ requestId: request.id, errorCode: code }, 'Commerce request failed');
   return reply.status(status).send(
     commerceErrorResponseSchema.parse({
-      error: { code, message: publicMessage(code), requestId: request.id },
+      error: {
+        code,
+        message: error instanceof CommerceError ? error.message : publicMessage(code),
+        requestId: request.id,
+      },
     }),
   );
 }
