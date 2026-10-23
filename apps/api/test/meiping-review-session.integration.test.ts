@@ -24,8 +24,7 @@ import {
 const databaseUrl = process.env.DATABASE_URL;
 // Never run mutating integration fixtures against a development or production DB.
 const database =
-  databaseUrl &&
-  /^xiaohai_(test|pr147_review_test)$/.test(new URL(databaseUrl).pathname.slice(1))
+  databaseUrl && /^xiaohai_(test|pr147_review_test)$/.test(new URL(databaseUrl).pathname.slice(1))
     ? createDatabase(process.env)
     : null;
 const suite = database ? describe : describe.skip;
