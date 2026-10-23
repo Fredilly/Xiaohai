@@ -5,6 +5,7 @@ import { ConsumerAuthError } from '../src/auth/errors.js';
 import { inventoryPermissions } from '../src/inventory/inventory-operations-service.js';
 import { registerMeipingXlsRoutes } from '../src/migration/meiping-xls-routes.js';
 import type { StaffAuthorizationContext } from '../src/auth/staff-authorization.js';
+import { MEIPING_PREFLIGHT_MAX_BYTES } from '@xiaohai/contracts/meiping';
 
 function workbookBuffer() {
   const sheet = XLSX.utils.aoa_to_sheet([
@@ -87,6 +88,24 @@ describe('Meiping preflight API', () => {
       payload: workbookBuffer(),
     });
     expect(response.statusCode).toBe(401);
+    await app.close();
+  });
+
+  it('applies the safe route-specific workbook size limit without widening other routes', async () => {
+    const app = Fastify({ logger: false });
+    registerMeipingXlsRoutes(app, {
+      staffAuthorization: {} as never,
+      stores: {} as never,
+      inventory: {} as never,
+      db: {} as never,
+    });
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/staff/migrations/meiping/preflight?storeId=11111111-1111-4111-8111-111111111111',
+      headers: { 'content-type': 'application/vnd.ms-excel' },
+      payload: Buffer.alloc(MEIPING_PREFLIGHT_MAX_BYTES + 1),
+    });
+    expect(response.statusCode).toBe(413);
     await app.close();
   });
 });

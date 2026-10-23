@@ -24,6 +24,12 @@ const paths: Record<string, ReactNode> = {
       <path d="m3 7 9-4 9 4v10l-9 4-9-4V7ZM3 7l9 4 9-4M12 11v10" />
     </>
   ),
+  meiping: (
+    <>
+      <path d="M5 3h10l4 4v14H5zM15 3v5h5M8 13h8M8 17h6" />
+      <path d="M12 9V6m0 0-2 2m2-2 2 2" />
+    </>
+  ),
   orders: (
     <>
       <path d="M6 3h12v18l-3-2-3 2-3-2-3 2V3ZM9 8h6M9 12h6" />

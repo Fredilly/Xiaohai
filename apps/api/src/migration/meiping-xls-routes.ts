@@ -11,6 +11,7 @@ import { and, eq, inArray } from 'drizzle-orm';
 import { bookEditions, products, skus, type createDatabase } from '@xiaohai/db';
 import { buildMeipingPreflight } from './meiping-preflight.js';
 import { parseMeipingWorkbook, sourceChecksum } from './meiping-xls.js';
+import { MEIPING_PREFLIGHT_MAX_BYTES } from '@xiaohai/contracts/meiping';
 
 const querySchema = z
   .object({
@@ -38,64 +39,70 @@ export function registerMeipingXlsRoutes(
     (_request, body, done) => done(null, body),
   );
 
-  app.post('/api/v1/staff/migrations/meiping/preflight', async (request, reply) => {
-    const query = querySchema.safeParse(request.query);
-    if (!query.success || !Buffer.isBuffer(request.body)) return invalid(reply, request.id);
-    try {
-      const context = await options.staffAuthorization.authenticate(request.headers.authorization);
-      options.staffAuthorization.requirePermission(context, inventoryPermissions.receive);
-      const store = await options.stores.getStaffStore(query.data.storeId, context);
-      // This is deliberately an authorization/read boundary. It does not stage or write data.
-      await options.inventory.requireStoreAccess(context, query.data.storeId);
-      const parsed = parseMeipingWorkbook(request.body);
-      const isbns = parsed.rows
-        .map((row) => row.isbn)
-        .filter((isbn): isbn is string => Boolean(isbn));
-      const matchedRowNumbers = new Set<number>();
-      if (isbns.length > 0) {
-        const matches = await options.db
-          .select({ isbn: bookEditions.isbn })
-          .from(bookEditions)
-          .innerJoin(products, eq(products.bookEditionId, bookEditions.id))
-          .innerJoin(skus, eq(skus.productId, products.id))
-          .where(
-            and(
-              inArray(bookEditions.isbn, isbns),
-              eq(products.status, 'ACTIVE'),
-              eq(skus.status, 'ACTIVE'),
-            ),
-          );
-        const matchedIsbns = new Set(
-          matches.map((row) => row.isbn).filter((isbn): isbn is string => Boolean(isbn)),
+  app.post(
+    '/api/v1/staff/migrations/meiping/preflight',
+    { bodyLimit: MEIPING_PREFLIGHT_MAX_BYTES },
+    async (request, reply) => {
+      const query = querySchema.safeParse(request.query);
+      if (!query.success || !Buffer.isBuffer(request.body)) return invalid(reply, request.id);
+      try {
+        const context = await options.staffAuthorization.authenticate(
+          request.headers.authorization,
         );
-        for (const row of parsed.rows)
-          if (row.isbn && matchedIsbns.has(row.isbn)) matchedRowNumbers.add(row.sourceRowNumber);
+        options.staffAuthorization.requirePermission(context, inventoryPermissions.receive);
+        const store = await options.stores.getStaffStore(query.data.storeId, context);
+        // This is deliberately an authorization/read boundary. It does not stage or write data.
+        await options.inventory.requireStoreAccess(context, query.data.storeId);
+        const parsed = parseMeipingWorkbook(request.body);
+        const isbns = parsed.rows
+          .map((row) => row.isbn)
+          .filter((isbn): isbn is string => Boolean(isbn));
+        const matchedRowNumbers = new Set<number>();
+        if (isbns.length > 0) {
+          const matches = await options.db
+            .select({ isbn: bookEditions.isbn })
+            .from(bookEditions)
+            .innerJoin(products, eq(products.bookEditionId, bookEditions.id))
+            .innerJoin(skus, eq(skus.productId, products.id))
+            .where(
+              and(
+                inArray(bookEditions.isbn, isbns),
+                eq(products.status, 'ACTIVE'),
+                eq(skus.status, 'ACTIVE'),
+              ),
+            );
+          const matchedIsbns = new Set(
+            matches.map((row) => row.isbn).filter((isbn): isbn is string => Boolean(isbn)),
+          );
+          for (const row of parsed.rows)
+            if (row.isbn && matchedIsbns.has(row.isbn)) matchedRowNumbers.add(row.sourceRowNumber);
+        }
+        const report = buildMeipingPreflight(
+          parsed.rows,
+          {
+            storeId: store.id,
+            storeCode: store.code,
+          },
+          { matchedRowNumbers, missingMappedFields: parsed.missingMappedFields },
+        );
+        report.sourceChecksum = sourceChecksum(request.body);
+        if (query.data.format === 'csv') {
+          return reply
+            .type('text/csv; charset=utf-8')
+            .header('content-disposition', 'attachment; filename="meiping-exceptions.csv"')
+            .send(report.exceptionReportCsv);
+        }
+        return reply.send({
+          ...report,
+          sheetName: parsed.sheetName,
+          headers: parsed.headers,
+          missingMappedFields: parsed.missingMappedFields,
+        });
+      } catch (error) {
+        return fail(request, reply, error);
       }
-      const report = buildMeipingPreflight(
-        parsed.rows,
-        {
-          storeId: store.id,
-          storeCode: store.code,
-        },
-        { matchedRowNumbers, missingMappedFields: parsed.missingMappedFields },
-      );
-      report.sourceChecksum = sourceChecksum(request.body);
-      if (query.data.format === 'csv') {
-        return reply
-          .type('text/csv; charset=utf-8')
-          .header('content-disposition', 'attachment; filename="meiping-exceptions.csv"')
-          .send(report.exceptionReportCsv);
-      }
-      return reply.send({
-        ...report,
-        sheetName: parsed.sheetName,
-        headers: parsed.headers,
-        missingMappedFields: parsed.missingMappedFields,
-      });
-    } catch (error) {
-      return fail(request, reply, error);
-    }
-  });
+    },
+  );
 }
 
 function invalid(reply: FastifyReply, requestId: string) {
