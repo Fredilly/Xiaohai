@@ -102,6 +102,9 @@ export function MeipingPreflightManager({ token, me }: { token: string; me: Staf
     me.permissions,
   );
   const canReadStores = permissions.has('stores.read');
+  const canImportPreview = permissions.has('meiping.import.preview');
+  const canImportApprove = permissions.has('meiping.import.approve');
+  const canImportExecute = permissions.has('meiping.import.execute');
   const [stores, setStores] = useState<Awaited<ReturnType<typeof loadHqStores>> | null>(null);
   const [storeId, setStoreId] = useState('');
   const [file, setFile] = useState<(File & { readonly name: string }) | null>(null);
@@ -323,6 +326,9 @@ export function MeipingPreflightManager({ token, me }: { token: string; me: Staf
           canReadReview={canReadReview}
           canEditReview={canEditReview}
           canVerifyCorrection={canVerifyCorrection}
+          canImportPreview={canImportPreview}
+          canImportApprove={canImportApprove}
+          canImportExecute={canImportExecute}
         />
       )}
       {!report ? (
@@ -450,13 +456,17 @@ export function MeipingPreflightManager({ token, me }: { token: string; me: Staf
               canReadReview={canReadReview}
               canEditReview={canEditReview}
               canVerifyCorrection={canVerifyCorrection}
+              canImportPreview={canImportPreview}
+              canImportApprove={canImportApprove}
+              canImportExecute={canImportExecute}
             />
           )}
           <section className="panel meiping-future">
-            <span className="badge">尚未开放</span>
-            <h3>正式入库与独立审批</h3>
+            <span className="badge">受保护流程</span>
+            <h3>正式导入与对账</h3>
             <p>
-              当前只生成预检查结果。管理员审核匹配、异常和实际盘点数量后，才可在后续版本进入带审计和幂等保护的
+              先完成每条记录的人工审核和实际盘点，再生成 Dry
+              Run。独立最终批准和环境执行开关同时满足后，才会进入 带审计、事务和幂等保护的
               INITIAL_MIGRATION 入库流程。
             </p>
           </section>

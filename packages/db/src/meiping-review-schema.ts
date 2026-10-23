@@ -13,6 +13,7 @@ import {
 } from 'drizzle-orm/pg-core';
 import { staffAccounts } from './schema.js';
 import { stores } from './store-schema.js';
+import { bookEditions, books, products, skus } from './commerce-schema.js';
 
 export const meipingReviewSessions = pgTable(
   'meiping_review_sessions',
@@ -173,5 +174,78 @@ export const meipingCorrectionReviews = pgTable(
     ),
     check('meiping_correction_reviews_reason_check', sql.raw('length(trim("reason")) > 0')),
     index('meiping_correction_reviews_session_idx').on(t.sessionId),
+  ],
+);
+
+export const meipingImportBatches = pgTable(
+  'meiping_import_batches',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    reviewSessionId: uuid('review_session_id')
+      .notNull()
+      .references(() => meipingReviewSessions.id, { onDelete: 'restrict' }),
+    storeId: uuid('store_id')
+      .notNull()
+      .references(() => stores.id, { onDelete: 'restrict' }),
+    sourceChecksum: text('source_checksum').notNull(),
+    status: text('status').notNull().default('PREVIEW'),
+    plan: jsonb('plan').$type<Record<string, unknown>>().notNull(),
+    result: jsonb('result').$type<Record<string, unknown> | null>(),
+    idempotencyKey: text('idempotency_key').notNull(),
+    createdByStaffAccountId: uuid('created_by_staff_account_id')
+      .notNull()
+      .references(() => staffAccounts.id, { onDelete: 'restrict' }),
+    approvedByStaffAccountId: uuid('approved_by_staff_account_id').references(
+      () => staffAccounts.id,
+      { onDelete: 'restrict' },
+    ),
+    approvedAt: timestamp('approved_at', { withTimezone: true }),
+    executedAt: timestamp('executed_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('meiping_import_batches_session_unique').on(t.reviewSessionId),
+    uniqueIndex('meiping_import_batches_idempotency_unique').on(t.idempotencyKey),
+    index('meiping_import_batches_store_status_idx').on(t.storeId, t.status, t.createdAt),
+    check(
+      'meiping_import_batches_status_check',
+      sql.raw("\"status\" IN ('PREVIEW','APPROVED','EXECUTING','SUCCEEDED','FAILED')"),
+    ),
+    check('meiping_import_batches_checksum_check', sql.raw('length("source_checksum") = 64')),
+  ],
+);
+
+export const meipingImportResults = pgTable(
+  'meiping_import_results',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    batchId: uuid('batch_id')
+      .notNull()
+      .references(() => meipingImportBatches.id, { onDelete: 'cascade' }),
+    sourceRowNumber: integer('source_row_number').notNull(),
+    outcome: text('outcome').notNull(),
+    bookId: uuid('book_id').references(() => books.id, { onDelete: 'restrict' }),
+    bookEditionId: uuid('book_edition_id').references(() => bookEditions.id, {
+      onDelete: 'restrict',
+    }),
+    productId: uuid('product_id').references(() => products.id, { onDelete: 'restrict' }),
+    skuId: uuid('sku_id').references(() => skus.id, { onDelete: 'restrict' }),
+    countedQuantity: integer('counted_quantity'),
+    errorCode: text('error_code'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('meiping_import_results_batch_row_unique').on(t.batchId, t.sourceRowNumber),
+    index('meiping_import_results_batch_outcome_idx').on(t.batchId, t.outcome),
+    check('meiping_import_results_row_positive', sql.raw('"source_row_number" > 0')),
+    check(
+      'meiping_import_results_outcome_check',
+      sql.raw("\"outcome\" IN ('CREATED','REUSED','EXCLUDED','CONFLICT','FAILED')"),
+    ),
+    check(
+      'meiping_import_results_quantity_check',
+      sql.raw('"counted_quantity" IS NULL OR "counted_quantity" >= 0'),
+    ),
   ],
 );

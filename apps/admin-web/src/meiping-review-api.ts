@@ -336,6 +336,33 @@ export async function saveMeipingCorrectionReview(
   };
 }
 
+export type MeipingImportPlan = {
+  sourceChecksum: string;
+  storeId: string;
+  totalRows: number;
+  includedRows: number;
+  excludedRows: number;
+  conflicts: Array<{ sourceRowNumber: number; code: string }>;
+  rows: Array<{
+    sourceRowNumber: number;
+    title: string;
+    author: string | null;
+    publisher: string | null;
+    isbn: string | null;
+    barcode: string | null;
+    priceMinor: number | null;
+    countedQuantity: number;
+    acceptedCorrectionVersion: number | null;
+  }>;
+};
+export type MeipingImportPreview = {
+  batchId: string;
+  created: boolean;
+  status: 'PREVIEW';
+  plan: MeipingImportPlan;
+  canExecute: boolean;
+};
+
 export async function saveMeipingReviewDecision(
   token: string,
   storeId: string,
@@ -366,4 +393,54 @@ export async function saveMeipingReviewDecision(
     throw new Error('INVALID_DECISION_RESPONSE');
   }
   return { version: result.version };
+}
+
+function importRoot() {
+  return base + '/api/v1/staff/migrations/meiping';
+}
+
+async function parseImportResponse<T>(response: Response): Promise<T> {
+  if (!response.ok) throw await parseError(response);
+  return (await response.json()) as T;
+}
+
+export async function previewMeipingImport(
+  token: string,
+  storeId: string,
+  sessionId: string,
+): Promise<MeipingImportPreview> {
+  const response = await fetch(
+    importRoot() +
+      '/review-sessions/' +
+      encodeURIComponent(sessionId) +
+      '/import-preview' +
+      query(storeId),
+    { method: 'POST', headers: headers(token) },
+  );
+  return parseImportResponse<MeipingImportPreview>(response);
+}
+
+export async function approveMeipingImport(token: string, storeId: string, batchId: string) {
+  const response = await fetch(
+    importRoot() + '/import-batches/' + encodeURIComponent(batchId) + '/approve' + query(storeId),
+    { method: 'POST', headers: headers(token) },
+  );
+  return parseImportResponse<{
+    batchId: string;
+    status: 'APPROVED';
+    approved: true;
+    executed: false;
+  }>(response);
+}
+
+export async function executeMeipingImport(token: string, storeId: string, batchId: string) {
+  const response = await fetch(
+    importRoot() + '/import-batches/' + encodeURIComponent(batchId) + '/execute' + query(storeId),
+    { method: 'POST', headers: headers(token) },
+  );
+  return parseImportResponse<{
+    batchId: string;
+    status: 'SUCCEEDED';
+    result: Record<string, unknown>;
+  }>(response);
 }

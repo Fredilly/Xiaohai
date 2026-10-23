@@ -14,6 +14,7 @@ import {
 } from './meiping-review-api';
 import { reviewApiErrorMessage, reviewDecisionInput } from './meiping-review-form';
 import { correctionProposalInput } from './meiping-review-correction-form';
+import { MeipingImportApprovalPanel } from './meiping-import-approval-panel';
 import type { MeipingPreflightReport } from './meiping-preflight-api';
 
 const PAGE_SIZE = 25;
@@ -386,6 +387,9 @@ export function MeipingReviewManager({
   canReadReview,
   canEditReview,
   canVerifyCorrection,
+  canImportPreview = false,
+  canImportApprove = false,
+  canImportExecute = false,
   restoredSession,
 }: {
   token: string;
@@ -393,6 +397,9 @@ export function MeipingReviewManager({
   canReadReview: boolean;
   canEditReview: boolean;
   canVerifyCorrection?: boolean;
+  canImportPreview?: boolean;
+  canImportApprove?: boolean;
+  canImportExecute?: boolean;
 } & (
   | { file: File; report: MeipingPreflightReport; restoredSession?: never }
   | { file?: never; report?: never; restoredSession: ReviewSession }
@@ -718,9 +725,19 @@ export function MeipingReviewManager({
           {notice}
         </p>
       )}
+      {session && (canImportPreview || canImportApprove || canImportExecute) && (
+        <MeipingImportApprovalPanel
+          token={token}
+          storeId={storeId}
+          sessionId={session.id}
+          canPreview={canImportPreview}
+          canApprove={canImportApprove}
+          canExecute={canImportExecute}
+        />
+      )}
       <p className="meiping-review-warning">
-        本页面只存储 DRAFT 审核决定。条码冲突、人工确认、独立审批、正式建档与 INITIAL_MIGRATION
-        库存流水均需后续流程。
+        本页面只存储 DRAFT 审核决定。正式导入必须经过独立最终批准；条码冲突、人工确认、建档及
+        INITIAL_MIGRATION 库存流水均由受保护导入流程处理。
       </p>
     </section>
   );

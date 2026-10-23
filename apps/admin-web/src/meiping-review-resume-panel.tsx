@@ -12,12 +12,18 @@ export function MeipingReviewResumePanel({
   canReadReview,
   canEditReview,
   canVerifyCorrection,
+  canImportPreview = false,
+  canImportApprove = false,
+  canImportExecute = false,
 }: {
   token: string;
   storeId: string;
   canReadReview: boolean;
   canEditReview: boolean;
   canVerifyCorrection?: boolean;
+  canImportPreview?: boolean;
+  canImportApprove?: boolean;
+  canImportExecute?: boolean;
 }) {
   const [items, setItems] = useState<ReviewSessionSummary[]>([]);
   const [selected, setSelected] = useState<ReviewSessionSummary | null>(null);
@@ -79,6 +85,9 @@ export function MeipingReviewResumePanel({
             canReadReview={canReadReview}
             canEditReview={canEditReview}
             canVerifyCorrection={canVerifyCorrection}
+            canImportPreview={canImportPreview}
+            canImportApprove={canImportApprove}
+            canImportExecute={canImportExecute}
             restoredSession={{
               id: selected.id,
               created: false,
