@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import {
   bookEditions,
@@ -36,6 +36,7 @@ suite('M16 fulfillment store inventory reservation integration', () => {
     'm16-reservation-test-secret-with-at-least-32-bytes',
     new ManualDeliveryProvider(),
   );
+  let consumerIds: string[] = [];
 
   async function clean() {
     await database!.db.delete(deliveryEvents);
@@ -55,7 +56,10 @@ suite('M16 fulfillment store inventory reservation integration', () => {
     await database!.db.delete(stores);
     await database!.db.delete(franchisees);
     await database!.db.delete(regions);
-    await database!.db.delete(consumerUsers);
+    if (consumerIds.length) {
+      await database!.db.delete(consumerUsers).where(inArray(consumerUsers.id, consumerIds));
+      consumerIds = [];
+    }
   }
 
   beforeEach(clean);
@@ -128,6 +132,7 @@ suite('M16 fulfillment store inventory reservation integration', () => {
       .insert(consumerUsers)
       .values([{}, {}])
       .returning();
+    consumerIds.push(consumerA!.id, consumerB!.id);
     return { store: store!, sku: sku!, consumerA: consumerA!, consumerB: consumerB! };
   }
 
