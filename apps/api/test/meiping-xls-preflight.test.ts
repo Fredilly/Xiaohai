@@ -167,10 +167,34 @@ describe('Meiping workbook parser and dry-run preflight', () => {
     const untrustedTitle = '=HYPERLINK("https://example.invalid","unsafe")';
     const untrustedBarcode = '\t@SUM(1,2)';
     const rows = [
-      { sourceRowNumber: 2, category: 'BOOK' as const, title: untrustedTitle, barcode: untrustedBarcode, reasonCodes: ['REVIEW'] },
-      { sourceRowNumber: 3, category: 'BOOK' as const, title: ' \r\n+1+2', barcode: '-1+2', reasonCodes: ['REVIEW'] },
-      { sourceRowNumber: 4, category: 'BOOK' as const, title: '\u200b-1+2', barcode: '@SUM(A1:A2)', reasonCodes: ['REVIEW'] },
-      { sourceRowNumber: 5, category: 'BOOK' as const, title: '正常中文书名', barcode: '690000000001', reasonCodes: ['REVIEW'] },
+      {
+        sourceRowNumber: 2,
+        category: 'BOOK' as const,
+        title: untrustedTitle,
+        barcode: untrustedBarcode,
+        reasonCodes: ['REVIEW'],
+      },
+      {
+        sourceRowNumber: 3,
+        category: 'BOOK' as const,
+        title: ' \r\n+1+2',
+        barcode: '-1+2',
+        reasonCodes: ['REVIEW'],
+      },
+      {
+        sourceRowNumber: 4,
+        category: 'BOOK' as const,
+        title: '\u200b-1+2',
+        barcode: '@SUM(A1:A2)',
+        reasonCodes: ['REVIEW'],
+      },
+      {
+        sourceRowNumber: 5,
+        category: 'BOOK' as const,
+        title: '正常中文书名',
+        barcode: '690000000001',
+        reasonCodes: ['REVIEW'],
+      },
     ];
     const csv = exceptionCsv(rows);
     expect(csv).toContain(`"'=HYPERLINK(""https://example.invalid"",""unsafe"")"`);
