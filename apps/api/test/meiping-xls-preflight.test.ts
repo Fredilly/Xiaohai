@@ -1,7 +1,11 @@
 import * as XLSX from '@stackline/xlsx';
 import { describe, expect, it } from 'vitest';
 import { buildMeipingPreflight } from '../src/migration/meiping-preflight.js';
-import { exceptionCsv, parseMeipingWorkbook, sourceChecksum } from '../src/migration/meiping-xls.js';
+import {
+  exceptionCsv,
+  parseMeipingWorkbook,
+  sourceChecksum,
+} from '../src/migration/meiping-xls.js';
 
 function workbookBuffer(rows: unknown[][], bookType: 'xls' | 'xlsx' = 'xls') {
   const sheet = XLSX.utils.aoa_to_sheet(rows);
