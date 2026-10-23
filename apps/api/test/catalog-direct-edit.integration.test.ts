@@ -126,11 +126,20 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
       .returning();
     const [otherProduct] = await db
       .insert(products)
-      .values({ bookEditionId: otherEdition!.id, name: 'Second Edition Product', status: 'ACTIVE' })
+      .values({
+        bookEditionId: otherEdition!.id,
+        name: 'Second Edition Product',
+        status: 'ACTIVE',
+      })
       .returning();
     const [otherSku] = await db
       .insert(skus)
-      .values({ productId: otherProduct!.id, code: 'DCE-SECOND-' + suffix, name: 'Second', priceMinor: 2000 })
+      .values({
+        productId: otherProduct!.id,
+        code: 'DCE-SECOND-' + suffix,
+        name: 'Second',
+        priceMinor: 2000,
+      })
       .returning();
     await db
       .insert(storeInventory)
