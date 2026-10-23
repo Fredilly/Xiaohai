@@ -60,10 +60,10 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
         countryName: 'China',
       })
       .returning();
-    const [storeA, storeB, storeC] = await db
+    const [storeA, storeB, storeC, storeD] = await db
       .insert(stores)
       .values(
-        ['A', 'B', 'C'].map((letter) => ({
+        ['A', 'B', 'C', 'D'].map((letter) => ({
           code: 'DCE-S-' + letter + '-' + suffix,
           name: 'Direct Catalog Store ' + letter,
           regionId: region!.id,
@@ -118,6 +118,23 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
     await db
       .insert(storeInventory)
       .values({ storeId: storeC!.id, skuId: siblingSku!.id, onHand: 3 });
+    // A second edition shares the same book metadata, but not edition metadata.
+    // Only book title/author edits should include this fourth store in the impact preview.
+    const [otherEdition] = await db
+      .insert(bookEditions)
+      .values({ bookId: book!.id, isbn: null, publisher: 'Second Publisher' })
+      .returning();
+    const [otherProduct] = await db
+      .insert(products)
+      .values({ bookEditionId: otherEdition!.id, name: 'Second Edition Product', status: 'ACTIVE' })
+      .returning();
+    const [otherSku] = await db
+      .insert(skus)
+      .values({ productId: otherProduct!.id, code: 'DCE-SECOND-' + suffix, name: 'Second', priceMinor: 2000 })
+      .returning();
+    await db
+      .insert(storeInventory)
+      .values({ storeId: storeD!.id, skuId: otherSku!.id, onHand: 2 });
     const [actor] = await db
       .insert(staffAccounts)
       .values({
@@ -170,10 +187,22 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
         productName: 'Renamed Direct Edit Product',
       });
       expect(productNamePreview.affectedStoreCount).toBe(3);
+      const editionPreview = await editor.preview(storeA!.id, sku!.id, {
+        ...input,
+        bookTitle: undefined,
+        priceMinor: undefined,
+        publisher: 'Updated Publisher',
+      });
+      expect(editionPreview.affectedStoreCount).toBe(3);
+      const bookPreview = await editor.preview(storeA!.id, sku!.id, {
+        ...input,
+        priceMinor: undefined,
+      });
+      expect(bookPreview.affectedStoreCount).toBe(4);
 
       const preview = await editor.preview(storeA!.id, sku!.id, input);
       expect(preview.sharedFields).toEqual(['bookTitle', 'priceMinor']);
-      expect(preview.affectedStoreCount).toBe(3);
+      expect(preview.affectedStoreCount).toBe(4);
 
       const updated = await editor.update(storeA!.id, sku!.id, actor!.id, randomUUID(), input);
       expect(updated.item.bookTitle).toBe('Edited Direct Edit Book');
@@ -182,7 +211,7 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
       expect(updated.item.bookVersion).toBe(1);
       expect(updated.item.skuVersion).toBe(1);
       expect(updated.item.localVersion).toBe(1);
-      expect(updated.impact.affectedStoreCount).toBe(3);
+      expect(updated.impact.affectedStoreCount).toBe(4);
 
       const otherStore = await reader.get(storeB!.id, sku!.id);
       expect(otherStore?.bookTitle).toBe('Edited Direct Edit Book');
@@ -191,6 +220,11 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
       expect(await reader.get(storeC!.id, siblingSku!.id)).toMatchObject({
         bookTitle: 'Edited Direct Edit Book',
         priceMinor: 1500,
+      });
+      expect(await reader.get(storeD!.id, otherSku!.id)).toMatchObject({
+        bookTitle: 'Edited Direct Edit Book',
+        publisher: 'Second Publisher',
+        priceMinor: 2000,
       });
 
       await expect(
@@ -225,7 +259,7 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
       expect(audit).toHaveLength(1);
       expect(audit[0]?.actionKey).toBe('catalog.direct_edit');
       expect(audit[0]?.metadata).toMatchObject({
-        affectedStoreCount: 3,
+        affectedStoreCount: 4,
         changedFields: ['bookTitle', 'priceMinor', 'shelfLocation'],
       });
 
@@ -389,11 +423,16 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
       );
       await db.delete(skus).where(eq(skus.productId, product!.id));
       await db.delete(products).where(eq(products.id, product!.id));
+      await db.delete(storeInventory).where(eq(storeInventory.skuId, otherSku!.id));
+      await db.delete(skus).where(eq(skus.id, otherSku!.id));
+      await db.delete(products).where(eq(products.id, otherProduct!.id));
+      await db.delete(bookEditions).where(eq(bookEditions.id, otherEdition!.id));
       await db.delete(bookEditions).where(eq(bookEditions.id, edition!.id));
       await db.delete(books).where(eq(books.id, book!.id));
       await db.delete(stores).where(eq(stores.id, storeA!.id));
       await db.delete(stores).where(eq(stores.id, storeB!.id));
       await db.delete(stores).where(eq(stores.id, storeC!.id));
+      await db.delete(stores).where(eq(stores.id, storeD!.id));
       await db.delete(regions).where(eq(regions.id, region!.id));
       await db.delete(staffAccounts).where(eq(staffAccounts.id, actor!.id));
     }
