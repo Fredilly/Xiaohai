@@ -226,6 +226,113 @@ suite('Meiping review staging PostgreSQL integration', () => {
     ).toBe(3);
   });
 
+  it('records complete append-only decision history and rejects concurrent stale writers', async () => {
+    const { actorId, storeId, report } = await fixture();
+    const session = await review.createSession(report, {
+      actorStaffAccountId: actorId,
+      requestId: randomUUID(),
+    });
+    const inputs = [
+      { action: 'CREATE_DRAFT' as const, countedQuantity: 3, expectedVersion: 0 },
+      { action: 'CREATE_DRAFT' as const, countedQuantity: 5, expectedVersion: 1 },
+      { action: 'EXCLUDE' as const, reason: '条码待人工核实', expectedVersion: 2 },
+      { action: 'CREATE_DRAFT' as const, countedQuantity: 7, expectedVersion: 3 },
+    ];
+    const requests: string[] = [];
+    for (const input of inputs) {
+      const requestId = randomUUID();
+      requests.push(requestId);
+      const result = await review.saveDecision(
+        session.id,
+        storeId,
+        2,
+        { ...input, sourceRowNumber: 2, expectedChecksum: checksum },
+        { actorStaffAccountId: actorId, requestId },
+      );
+      expect(result.version).toBe(requests.length);
+    }
+    const attempts = await Promise.allSettled(
+      [8, 9].map((countedQuantity) =>
+        review.saveDecision(
+          session.id,
+          storeId,
+          2,
+          {
+            action: 'CREATE_DRAFT',
+            sourceRowNumber: 2,
+            countedQuantity,
+            expectedVersion: 4,
+            expectedChecksum: checksum,
+          },
+          { actorStaffAccountId: actorId, requestId: randomUUID() },
+        ),
+      ),
+    );
+    expect(attempts.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    const rejected = attempts.filter((result) => result.status === 'rejected');
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0]).toMatchObject({ reason: { code: 'CONFLICT' } });
+
+    const events = await database!.db
+      .select()
+      .from(auditLogs)
+      .where(
+        and(
+          eq(auditLogs.resourceType, 'MEIPING_REVIEW_SESSION'),
+          eq(auditLogs.resourceId, session.id),
+          eq(auditLogs.actionKey, 'meiping.review.decision.save'),
+        ),
+      );
+    expect(events).toHaveLength(5);
+    // Sort by the version stored in the complete 'next' decision snapshot.
+    const revisions = events
+      .map((event) => ({ event, metadata: event.metadata }))
+      .sort((
+      (a, b) =>
+        Number((a.metadata.next as { version: number }).version) -
+        Number((b.metadata.next as { version: number }).version),
+    );
+    expect(revisions.map(({ metadata }) => metadata)).toEqual([
+      expect.objectContaining({
+        previous: null,
+        next: { action: 'CREATE_DRAFT', countedQuantity: 3, reason: null, version: 1 },
+      }),
+      expect.objectContaining({
+        previous: { action: 'CREATE_DRAFT', countedQuantity: 3, reason: null, version: 1 },
+        next: { action: 'CREATE_DRAFT', countedQuantity: 5, reason: null, version: 2 },
+      }),
+      expect.objectContaining({
+        previous: { action: 'CREATE_DRAFT', countedQuantity: 5, reason: null, version: 2 },
+        next: { action: 'EXCLUDE', countedQuantity: null, reason: '条码待人工核实', version: 3 },
+      }),
+      expect.objectContaining({
+        previous: { action: 'EXCLUDE', countedQuantity: null, reason: '条码待人工核实', version: 3 },
+        next: { action: 'CREATE_DRAFT', countedQuantity: 7, reason: null, version: 4 },
+      }),
+      expect.objectContaining({
+        previous: { action: 'CREATE_DRAFT', countedQuantity: 7, reason: null, version: 4 },
+        next: expect.objectContaining({ action: 'CREATE_DRAFT', version: 5 }),
+      }),
+    ]);
+    for (const { event, metadata } of revisions) {
+      expect(event.actorStaffAccountId).toBe(actorId);
+      expect(event.requestId).toBeTruthy();
+      expect(event.createdAt).toBeInstanceOf(Date);
+      expect(metadata).toMatchObject({
+        sessionId: session.id,
+        storeId,
+        sourceChecksum: checksum,
+        sourceRowNumber: 2,
+      });
+    }
+    expect(revisions.slice(0, 4).map(({ event }) => event.requestId)).toEqual(requests);
+    const [stored] = await database!.db
+      .select()
+      .from(meipingReviewDecisions)
+      .where(eq(meipingReviewDecisions.sessionId, session.id));
+    expect(stored).toMatchObject({ action: 'CREATE_DRAFT', version: 5 });
+  });
+
   it('rejects mismatched store/checksum and review-blocked items', async () => {
     const { actorId, storeId, report } = await fixture();
     const audit = { actorStaffAccountId: actorId, requestId: randomUUID() };
