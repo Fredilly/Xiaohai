@@ -39,6 +39,7 @@ import { InventorySearchService } from './inventory/inventory-service.js';
 import { registerInventoryRoutes } from './inventory/inventory-routes.js';
 import { InventoryOperationsService } from './inventory/inventory-operations-service.js';
 import { registerInventoryOperationsRoutes } from './inventory/inventory-operations-routes.js';
+import { registerMeipingXlsRoutes } from './migration/meiping-xls-routes.js';
 import { RentalService } from './rental/rental-service.js';
 import { registerRentalRoutes } from './rental/rental-routes.js';
 import { FulfillmentService } from './fulfillment/fulfillment-service.js';
@@ -92,6 +93,8 @@ const staffAuthorization = new StaffAuthorizationService(
 const homeCms = new HomeCmsService(db);
 const commission = new CommissionService(db);
 const commerce = new CommerceService(db, commission);
+const stores = new StoreNetworkService(db);
+const inventory = new InventoryOperationsService(db);
 const content = new ContentService(db);
 const rateLimitStore = new RedisRateLimitStore(config.REDIS_URL);
 const app = buildApp({
@@ -117,12 +120,10 @@ registerPaymentRoutes(app, {
   staffAuthorization,
 });
 registerContentRoutes(app, { content, consumerSessions: sessions, staffAuthorization });
-registerStoreRoutes(app, { stores: new StoreNetworkService(db), staffAuthorization });
+registerStoreRoutes(app, { stores, staffAuthorization });
 registerInventoryRoutes(app, { inventory: new InventorySearchService(db) });
-registerInventoryOperationsRoutes(app, {
-  operations: new InventoryOperationsService(db),
-  staffAuthorization,
-});
+registerInventoryOperationsRoutes(app, { operations: inventory, staffAuthorization });
+registerMeipingXlsRoutes(app, { staffAuthorization, stores, inventory, db });
 const pickupCodeSecret = config.PICKUP_CODE_SECRET ?? config.STAFF_SESSION_SECRET;
 registerRentalRoutes(app, {
   rental: new RentalService(db, config.RENTAL_LOAN_DAYS, pickupCodeSecret),

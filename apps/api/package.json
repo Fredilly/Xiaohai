@@ -8,6 +8,7 @@
     "predev": "[ -f ../../.env ] || cp ../../.env.example ../../.env",
     "dev": "node --env-file ../../.env --conditions=development --import tsx/esm --watch src/server.ts",
     "finance:backfill": "node --env-file ../../.env --conditions=development --import tsx/esm src/finance/backfill.ts",
+    "meiping:preflight": "node --conditions=development --import tsx/esm src/migration/meiping-preflight-cli.ts",
     "seed:local-staff": "node --env-file ../../.env --conditions=development --import tsx/esm src/dev/seed-local-staff-cli.ts",
     "lint": "eslint src test",
     "start": "node dist/server.js",
@@ -16,6 +17,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@stackline/xlsx": "1.0.9",
     "@xiaohai/config": "workspace:*",
     "@xiaohai/contracts": "workspace:*",
     "@xiaohai/db": "workspace:*",
