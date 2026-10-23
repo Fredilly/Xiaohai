@@ -232,7 +232,11 @@ export function exceptionCsv(
 ): string {
   const escape = (value: string | number | null) => {
     const textValue = value === null ? '' : String(value);
-    return /[",\n]/.test(textValue) ? `"${textValue.replaceAll('"', '""')}"` : textValue;
+    // Spreadsheet apps may interpret untrusted CSV cells as formulas, even
+    // after leading spaces, tabs, line breaks or invisible control characters.
+    // Keep the workbook/JSON values unchanged; neutralize CSV output only.
+    const safeValue = /^[\s\p{Cc}\p{Cf}]*[=+\-@]/u.test(textValue) ? `'${textValue}` : textValue;
+    return /[",\r\n]/.test(safeValue) ? `"${safeValue.replaceAll('"', '""')}"` : safeValue;
   };
   return (
     [
