@@ -331,10 +331,12 @@ export class CatalogEditService {
     const conditions = [];
     if (fields.includes('productName')) conditions.push(eq(skus.productId, source.productId));
     if (fields.includes('priceMinor')) conditions.push(eq(skus.id, source.skuId));
-    if (
-      source.editionId &&
-      fields.some((field) => ['bookTitle', 'author', 'publisher', 'isbn'].includes(field))
-    ) {
+    // Book title and author live on books and affect every edition of that book.
+    if (source.bookId && fields.some((field) => ['bookTitle', 'author'].includes(field))) {
+      conditions.push(eq(bookEditions.bookId, source.bookId));
+    }
+    // Publisher and ISBN live on an edition and do not affect sibling editions.
+    if (source.editionId && fields.some((field) => ['publisher', 'isbn'].includes(field))) {
       conditions.push(eq(products.bookEditionId, source.editionId));
     }
     if (conditions.length === 0) return [source.storeId];
