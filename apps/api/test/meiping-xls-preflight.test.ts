@@ -222,7 +222,8 @@ describe('Meiping workbook parser and dry-run preflight', () => {
       storeCode: 'TEST-EAST',
     });
     expect(report.rows[0]!.rawColumns['商品名称']).toBe(untrustedTitle);
-    expect(report.rows[0]!.sourceIdentifiers.barcode).toBe(untrustedBarcode);
+    expect(report.rows[0]!.rawColumns['条码']).toBe(untrustedBarcode);
+    expect(report.rows[0]!.sourceIdentifiers.barcode).toBe(untrustedBarcode.trim());
     expect(report.exceptionReportCsv).toContain("'=HYPERLINK");
   });
 
