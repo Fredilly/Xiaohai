@@ -167,7 +167,13 @@ registerMeipingReviewRoutes(app, {
   db,
 });
 registerMeipingApplyRoutes(app, {
-  apply: new MeipingApplyService(db, process.env.MEIPING_IMPORT_EXECUTION_ENABLED === 'true'),
+  apply: new MeipingApplyService(
+    db,
+    process.env.MEIPING_IMPORT_EXECUTION_ENABLED === 'true' &&
+      process.env.MEIPING_IMPORT_EXECUTION_CONFIRMATION === 'LOCAL_ONLY' &&
+      process.env.APP_ENV !== 'production' &&
+      process.env.NODE_ENV !== 'production',
+  ),
   staffAuthorization,
   stores,
 });

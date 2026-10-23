@@ -67,7 +67,7 @@ export function registerMeipingApplyRoutes(
       if (!params.success || !query.success) return invalid(reply, request.id);
       try {
         const audit = await authorize(request, query.data.storeId, 'meiping.import.approve');
-        return await options.apply.approve(params.data.batchId, audit);
+        return await options.apply.approve(params.data.batchId, query.data.storeId, audit);
       } catch (error) {
         return fail(request, reply, error);
       }
@@ -82,7 +82,7 @@ export function registerMeipingApplyRoutes(
       if (!params.success || !query.success) return invalid(reply, request.id);
       try {
         const audit = await authorize(request, query.data.storeId, 'meiping.import.execute');
-        return await options.apply.execute(params.data.batchId, audit);
+        return await options.apply.execute(params.data.batchId, query.data.storeId, audit);
       } catch (error) {
         return fail(request, reply, error);
       }
@@ -133,6 +133,11 @@ function fail(request: FastifyRequest, reply: FastifyReply, error: unknown) {
       APPROVAL_SEPARATION_REQUIRED: 'Final approval must be performed by a different staff account',
       EXECUTION_DISABLED: 'Formal Meiping execution is disabled in this environment',
       EXISTING_INVENTORY: 'Existing inventory prevents a silent stock overwrite',
+      EXISTING_IMPORT: 'This SKU has already been included in an import batch',
+      SHARED_CATALOG_CHANGE_REQUIRES_REVIEW:
+        'Shared catalog changes must be handled through the catalog review workflow',
+      AMBIGUOUS_SKU_MATCH: 'The source row matches multiple SKUs and requires manual resolution',
+      SKU_MATCH_NOT_FOUND: 'The source SKU code does not match the existing product',
       INVALID_SOURCE: 'The persisted source checksum or store does not match',
     };
     return reply

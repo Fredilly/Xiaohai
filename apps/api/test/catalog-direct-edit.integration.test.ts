@@ -35,7 +35,10 @@ import {
 
 const databaseUrl = process.env.DATABASE_URL;
 const disposableDatabase =
-  databaseUrl && /^xiaohai_(test|pr160_uat|pr161_uat)$/.test(new URL(databaseUrl).pathname.slice(1))
+  databaseUrl &&
+  /^xiaohai_(test|pr160_uat|pr161_uat|pr162_security_test)$/.test(
+    new URL(databaseUrl).pathname.slice(1),
+  )
     ? createDatabase(process.env)
     : null;
 const suite = disposableDatabase ? describe : describe.skip;

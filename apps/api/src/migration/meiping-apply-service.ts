@@ -36,6 +36,10 @@ export class MeipingApplyError extends Error {
       | 'APPROVAL_SEPARATION_REQUIRED'
       | 'EXECUTION_DISABLED'
       | 'EXISTING_INVENTORY'
+      | 'EXISTING_IMPORT'
+      | 'SHARED_CATALOG_CHANGE_REQUIRES_REVIEW'
+      | 'AMBIGUOUS_SKU_MATCH'
+      | 'SKU_MATCH_NOT_FOUND'
       | 'INVALID_SOURCE',
   ) {
     super(code);
@@ -49,6 +53,7 @@ type ApplyPlanRow = {
   publisher: string | null;
   isbn: string | null;
   barcode: string | null;
+  sourceSkuCode: string | null;
   priceMinor: number | null;
   countedQuantity: number;
   action: 'CREATE_DRAFT';
@@ -97,22 +102,32 @@ export class MeipingApplyService {
       if (!batchId) throw new MeipingApplyError('CONFLICT');
       if (!created) {
         const [existing] = await tx
-          .select({ status: meipingImportBatches.status })
+          .select({
+            status: meipingImportBatches.status,
+            plan: meipingImportBatches.plan,
+            result: meipingImportBatches.result,
+          })
           .from(meipingImportBatches)
           .where(eq(meipingImportBatches.id, batchId))
+          .for('update')
           .limit(1);
+        if (existing?.status === 'SUCCEEDED') {
+          return {
+            batchId,
+            created: false,
+            status: 'SUCCEEDED' as const,
+            plan: existing.plan,
+            result: existing.result,
+          };
+        }
+        if (existing?.status === 'EXECUTING') throw new MeipingApplyError('CONFLICT');
         if (existing?.status === 'PREVIEW') {
           await tx
             .update(meipingImportBatches)
             .set({ plan, updatedAt: new Date() })
             .where(eq(meipingImportBatches.id, batchId));
         } else if (existing?.status === 'APPROVED') {
-          const [approvedBatch] = await tx
-            .select({ plan: meipingImportBatches.plan })
-            .from(meipingImportBatches)
-            .where(eq(meipingImportBatches.id, batchId))
-            .limit(1);
-          if (stableJson(approvedBatch?.plan) !== stableJson(plan)) {
+          if (stableJson(existing.plan) !== stableJson(plan)) {
             await tx
               .update(meipingImportBatches)
               .set({
@@ -123,6 +138,14 @@ export class MeipingApplyService {
                 updatedAt: new Date(),
               })
               .where(eq(meipingImportBatches.id, batchId));
+          } else {
+            return {
+              batchId,
+              created: false,
+              status: 'APPROVED' as const,
+              plan: existing.plan,
+              result: existing.result,
+            };
           }
         }
       }
@@ -142,21 +165,33 @@ export class MeipingApplyService {
           },
         });
       }
-      return { batchId, created: Boolean(created) };
+      return { batchId, created: Boolean(created), status: 'PREVIEW' as const, plan, result: null };
     });
-    return { ...result, status: 'PREVIEW' as const, plan, canExecute: this.executionEnabled };
+    return { ...result, canExecute: this.executionEnabled };
   }
 
-  async approve(batchId: string, audit: MeipingApplyAuditContext) {
+  async approve(batchId: string, storeId: string, audit: MeipingApplyAuditContext) {
     const result = await this.db.transaction(async (tx) => {
       const batch = await this.lockBatch(tx, batchId);
       if (!batch) throw new MeipingApplyError('NOT_FOUND');
+      if (batch.storeId !== storeId) throw new MeipingApplyError('NOT_FOUND');
       if (batch.createdByStaffAccountId === audit.actorStaffAccountId) {
         throw new MeipingApplyError('APPROVAL_SEPARATION_REQUIRED');
       }
       if (batch.status !== 'PREVIEW') throw new MeipingApplyError('CONFLICT');
       const savedPlan = batch.plan as unknown as ApplyPlan;
       if (savedPlan.conflicts.length > 0) throw new MeipingApplyError('CONFLICT');
+      const current = await this.loadReview(batch.reviewSessionId, storeId, tx);
+      const currentPlan = this.buildPlan(
+        current.session,
+        current.report,
+        current.decisions,
+        current.corrections,
+        current.reviews,
+      );
+      if (currentPlan.conflicts.length > 0 || stableJson(savedPlan) !== stableJson(currentPlan)) {
+        throw new MeipingApplyError('CONFLICT');
+      }
       const [updated] = await tx
         .update(meipingImportBatches)
         .set({
@@ -183,19 +218,20 @@ export class MeipingApplyService {
     return { ...result, approved: true as const, executed: false as const };
   }
 
-  async execute(batchId: string, audit: MeipingApplyAuditContext) {
+  async execute(batchId: string, storeId: string, audit: MeipingApplyAuditContext) {
     if (!this.executionEnabled) throw new MeipingApplyError('EXECUTION_DISABLED');
     try {
       return await this.db.transaction(async (tx) => {
         const batch = await this.lockBatch(tx, batchId);
         if (!batch) throw new MeipingApplyError('NOT_FOUND');
+        if (batch.storeId !== storeId) throw new MeipingApplyError('NOT_FOUND');
         if (batch.status === 'SUCCEEDED') {
           return { batchId, status: 'SUCCEEDED' as const, result: batch.result };
         }
         if (batch.status !== 'APPROVED') throw new MeipingApplyError('APPROVAL_REQUIRED');
         const { session, report, decisions, corrections, reviews } = await this.loadReview(
           batch.reviewSessionId,
-          batch.storeId,
+          storeId,
           tx,
         );
         if (session.sourceChecksum !== batch.sourceChecksum)
@@ -359,9 +395,13 @@ export class MeipingApplyService {
           ? acceptedFields.publisher
           : normalized.publisher;
       const isbn =
-        typeof acceptedFields?.barcode === 'string'
-          ? acceptedFields.barcode
-          : row.sourceIdentifiers.isbn;
+        typeof acceptedFields?.isbn === 'string'
+          ? normalizeIsbn(acceptedFields.isbn)
+          : normalizeIsbn(row.sourceIdentifiers.isbn);
+      if ((row.sourceIdentifiers.isbn && !isbn) || (acceptedFields?.isbn && !isbn)) {
+        conflicts.push({ sourceRowNumber: row.sourceRowNumber, code: 'INVALID_ISBN' });
+        continue;
+      }
       const barcode = row.sourceIdentifiers.barcode;
       const priceMinor =
         typeof acceptedFields?.priceMinor === 'number'
@@ -381,6 +421,7 @@ export class MeipingApplyService {
         publisher,
         isbn,
         barcode,
+        sourceSkuCode: row.sourceIdentifiers.internalCode ?? row.sourceIdentifiers.bookCode ?? null,
         priceMinor,
         countedQuantity: decision.countedQuantity,
         action: 'CREATE_DRAFT',
@@ -415,7 +456,7 @@ export class MeipingApplyService {
       const [edition] = await tx
         .select()
         .from(bookEditions)
-        .where(eq(bookEditions.isbn, row.isbn))
+        .where(sql`regexp_replace(${bookEditions.isbn}, '[-[:space:]]', '', 'g') = ${row.isbn}`)
         .limit(1);
       if (edition) {
         editionId = edition.id;
@@ -439,11 +480,12 @@ export class MeipingApplyService {
     }
     if (!editionId) throw new MeipingApplyError('INVALID_SOURCE');
     const ensuredEditionId = editionId;
-    const [existingProduct] = await tx
+    const existingProducts = await tx
       .select()
       .from(products)
-      .where(eq(products.bookEditionId, ensuredEditionId))
-      .limit(1);
+      .where(eq(products.bookEditionId, ensuredEditionId));
+    if (existingProducts.length > 1) throw new MeipingApplyError('CONFLICT');
+    const existingProduct = existingProducts[0];
     if (existingProduct) productId = existingProduct.id;
     if (!productId) {
       const [product] = await tx
@@ -453,11 +495,17 @@ export class MeipingApplyService {
       if (!product) throw new MeipingApplyError('CONFLICT');
       productId = product.id;
     }
-    const [existingSku] = await tx
-      .select()
-      .from(skus)
-      .where(eq(skus.productId, productId))
-      .limit(1);
+    const existingSkus = await tx.select().from(skus).where(eq(skus.productId, productId));
+    const matchingSkus = row.sourceSkuCode
+      ? existingSkus.filter((sku) => sku.code === row.sourceSkuCode)
+      : existingSkus;
+    if (existingProduct && row.sourceSkuCode && matchingSkus.length === 0) {
+      throw new MeipingApplyError('SKU_MATCH_NOT_FOUND');
+    }
+    if (matchingSkus.length > 1 || (!row.sourceSkuCode && existingSkus.length > 1)) {
+      throw new MeipingApplyError('AMBIGUOUS_SKU_MATCH');
+    }
+    const existingSku = matchingSkus[0];
     if (existingSku) skuId = existingSku.id;
     if (!skuId) {
       const code = `MP-${batchId.slice(0, 8)}-${String(row.sourceRowNumber).padStart(6, '0')}`;
@@ -474,39 +522,22 @@ export class MeipingApplyService {
       if (!sku) throw new MeipingApplyError('CONFLICT');
       skuId = sku.id;
     }
-    if (existingProduct && (row.acceptedFields.title || row.acceptedFields.author)) {
-      await tx
-        .update(books)
-        .set({
-          ...(typeof row.acceptedFields.title === 'string'
-            ? { title: row.acceptedFields.title }
-            : {}),
-          ...(typeof row.acceptedFields.author === 'string'
-            ? { author: row.acceptedFields.author }
-            : {}),
-          version: sql`${books.version} + 1`,
-          updatedAt: new Date(),
-        })
-        .where(eq(books.id, bookId));
-    }
-    if (existingProduct && typeof row.acceptedFields.publisher === 'string') {
-      await tx
-        .update(bookEditions)
-        .set({
-          publisher: row.acceptedFields.publisher,
-          version: sql`${bookEditions.version} + 1`,
-        })
+    if (existingProduct) {
+      const [currentBook] = await tx.select().from(books).where(eq(books.id, bookId));
+      const [currentEdition] = await tx
+        .select()
+        .from(bookEditions)
         .where(eq(bookEditions.id, ensuredEditionId));
-    }
-    if (existingSku && typeof row.acceptedFields.priceMinor === 'number') {
-      await tx
-        .update(skus)
-        .set({
-          priceMinor: row.acceptedFields.priceMinor,
-          version: sql`${skus.version} + 1`,
-          updatedAt: new Date(),
-        })
-        .where(eq(skus.id, skuId));
+      const sharedChanged =
+        (typeof row.acceptedFields.title === 'string' &&
+          row.acceptedFields.title !== currentBook?.title) ||
+        (typeof row.acceptedFields.author === 'string' &&
+          row.acceptedFields.author !== currentBook?.author) ||
+        (typeof row.acceptedFields.publisher === 'string' &&
+          row.acceptedFields.publisher !== currentEdition?.publisher) ||
+        (typeof row.acceptedFields.priceMinor === 'number' &&
+          row.acceptedFields.priceMinor !== existingSku?.priceMinor);
+      if (sharedChanged) throw new MeipingApplyError('SHARED_CATALOG_CHANGE_REQUIRES_REVIEW');
     }
     const [inventory] = await tx
       .select()
@@ -514,7 +545,21 @@ export class MeipingApplyService {
       .where(and(eq(storeInventory.storeId, storeId), eq(storeInventory.skuId, skuId)))
       .for('update')
       .limit(1);
-    if (inventory && inventory.onHand !== 0) throw new MeipingApplyError('EXISTING_INVENTORY');
+    const [historicalTransaction] = await tx
+      .select({ id: inventoryTransactions.id })
+      .from(inventoryTransactions)
+      .where(
+        and(eq(inventoryTransactions.storeId, storeId), eq(inventoryTransactions.skuId, skuId)),
+      )
+      .limit(1);
+    const [previousImport] = await tx
+      .select({ id: meipingImportResults.id })
+      .from(meipingImportResults)
+      .innerJoin(meipingImportBatches, eq(meipingImportBatches.id, meipingImportResults.batchId))
+      .where(and(eq(meipingImportResults.skuId, skuId), eq(meipingImportBatches.storeId, storeId)))
+      .limit(1);
+    if (previousImport) throw new MeipingApplyError('EXISTING_IMPORT');
+    if (inventory || historicalTransaction) throw new MeipingApplyError('EXISTING_INVENTORY');
     if (!inventory) {
       await tx.insert(storeInventory).values({
         storeId,
@@ -522,15 +567,6 @@ export class MeipingApplyService {
         onHand: row.countedQuantity,
         version: row.countedQuantity > 0 ? 1 : 0,
       });
-    } else if (row.countedQuantity > 0) {
-      await tx
-        .update(storeInventory)
-        .set({
-          onHand: row.countedQuantity,
-          version: sql`${storeInventory.version} + 1`,
-          updatedAt: new Date(),
-        })
-        .where(and(eq(storeInventory.storeId, storeId), eq(storeInventory.skuId, skuId)));
     }
     if (row.countedQuantity > 0) {
       await tx.insert(inventoryTransactions).values({
@@ -589,4 +625,25 @@ function stableJson(value: unknown): string {
     );
   }
   return JSON.stringify(value);
+}
+
+function normalizeIsbn(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const compact = value.replace(/[\s-]/g, '').toUpperCase();
+  if (/^\d{13}$/.test(compact)) {
+    const check = compact
+      .slice(0, 12)
+      .split('')
+      .reduce((sum, digit, index) => sum + Number(digit) * (index % 2 === 0 ? 1 : 3), 0);
+    return (10 - (check % 10)) % 10 === Number(compact[12]) ? compact : null;
+  }
+  if (/^\d{9}[\dX]$/.test(compact)) {
+    const check = compact
+      .slice(0, 9)
+      .split('')
+      .reduce((sum, digit, index) => sum + Number(digit) * (10 - index), 0);
+    const expected = (11 - (check % 11)) % 11;
+    return expected === (compact[9] === 'X' ? 10 : Number(compact[9])) ? compact : null;
+  }
+  return null;
 }

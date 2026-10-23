@@ -244,7 +244,7 @@ suite('Meiping guarded apply PostgreSQL integration', () => {
           sourceCategory: '图书',
           sourceCategoryType: 'BOOK',
           sourceIdentifiers: {
-            bookCode: 'EXIST-3',
+            bookCode: `EXIST-${suffix}`,
             internalCode: null,
             barcode: null,
             isbn: '9783161484100',
@@ -329,14 +329,17 @@ suite('Meiping guarded apply PostgreSQL integration', () => {
     });
     expect(preview.plan).toMatchObject({ totalRows: 2, includedRows: 2, excludedRows: 0 });
     await expect(
-      apply.approve(preview.batchId, { actorStaffAccountId: actor!.id, requestId: randomUUID() }),
+      apply.approve(preview.batchId, store!.id, {
+        actorStaffAccountId: actor!.id,
+        requestId: randomUUID(),
+      }),
     ).rejects.toThrow(MeipingApplyError);
-    await apply.approve(preview.batchId, {
+    await apply.approve(preview.batchId, store!.id, {
       actorStaffAccountId: approver!.id,
       requestId: randomUUID(),
     });
     await expect(
-      new MeipingApplyService(database!.db, false).execute(preview.batchId, {
+      new MeipingApplyService(database!.db, false).execute(preview.batchId, store!.id, {
         actorStaffAccountId: approver!.id,
         requestId: randomUUID(),
       }),
@@ -355,7 +358,7 @@ suite('Meiping guarded apply PostgreSQL integration', () => {
       { actorStaffAccountId: actor!.id, requestId: randomUUID() },
     );
     await expect(
-      apply.execute(preview.batchId, {
+      apply.execute(preview.batchId, store!.id, {
         actorStaffAccountId: approver!.id,
         requestId: randomUUID(),
       }),
@@ -364,11 +367,11 @@ suite('Meiping guarded apply PostgreSQL integration', () => {
       actorStaffAccountId: actor!.id,
       requestId: randomUUID(),
     });
-    await apply.approve(refreshedPreview.batchId, {
+    await apply.approve(refreshedPreview.batchId, store!.id, {
       actorStaffAccountId: approver!.id,
       requestId: randomUUID(),
     });
-    const executed = await apply.execute(preview.batchId, {
+    const executed = await apply.execute(preview.batchId, store!.id, {
       actorStaffAccountId: approver!.id,
       requestId: randomUUID(),
     });
@@ -376,7 +379,7 @@ suite('Meiping guarded apply PostgreSQL integration', () => {
       status: 'SUCCEEDED',
       result: { writtenRows: 2, countedQuantity: 3 },
     });
-    const retry = await apply.execute(preview.batchId, {
+    const retry = await apply.execute(preview.batchId, store!.id, {
       actorStaffAccountId: approver!.id,
       requestId: randomUUID(),
     });
