@@ -169,6 +169,7 @@ jobs:
       - name: Scanner PostgreSQL integration (disposable DB)
         run: pnpm --filter @xiaohai/db test:reliability-integration
       - run: pnpm test:integration
+      - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm test:e2e
       - name: Restore drill on disposable test database
         run: |
