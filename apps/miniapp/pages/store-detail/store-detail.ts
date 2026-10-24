@@ -3,6 +3,7 @@ import { getStore } from '../../services/stores';
 
 Page({
   data: {
+    id: '',
     store: null as PublicStore | null,
     loading: true,
     error: false,
@@ -17,16 +18,20 @@ Page({
   },
 
   onLoad(query: Record<string, string | undefined>) {
-    if (query.id) void this.loadStore(query.id);
+    const id = query.id ?? '';
+    this.setData({ id });
+    if (id) void this.loadStore(id);
     else this.setData({ loading: false, error: true });
   },
 
   async loadStore(id: string) {
+    this.setData({ loading: true, error: false });
     try {
       const store = await getStore(id);
       this.setData({
         store,
         loading: false,
+        error: false,
         markers: [
           {
             id: 1,
@@ -40,8 +45,12 @@ Page({
       });
       void wx.setNavigationBarTitle({ title: store.name });
     } catch {
-      this.setData({ loading: false, error: true });
+      this.setData({ loading: false, error: true, store: null, markers: [] });
     }
+  },
+
+  retry() {
+    if (this.data.id) void this.loadStore(this.data.id);
   },
 
   navigate() {

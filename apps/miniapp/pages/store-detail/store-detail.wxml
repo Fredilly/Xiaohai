@@ -7,6 +7,7 @@
   <view wx:elif="{{error || !store}}" class="state-card">
     <text class="state-title">门店信息不可用</text>
     <text class="state-copy">门店可能已暂停营业，或网络暂时不可用。</text>
+    <button wx:if="{{id}}" class="primary-btn" bindtap="retry">重新加载</button>
   </view>
 
   <block wx:else>
