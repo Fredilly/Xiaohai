@@ -284,10 +284,11 @@ suite('Meiping review staging PostgreSQL integration', () => {
       .from(auditLogs)
       .where(eq(auditLogs.resourceId, session.id));
     expect(events).toHaveLength(3); // session creation + exactly two successful saves
-    const revisions = events
-      .filter((event) => event.actionKey === 'meiping.review.correction.save')
-      .sort((left, right) => Number(left.metadata.next && (left.metadata.next as { version: number }).version) -
-        Number(right.metadata.next && (right.metadata.next as { version: number }).version));
+    const revisions = events.filter(
+      (event) => event.actionKey === 'meiping.review.correction.save',
+    );
+    const firstRevision = revisions.find((event) => event.metadata.expectedVersion === 0);
+    const secondRevision = revisions.find((event) => event.metadata.expectedVersion === 1);
     expect(revisions).toHaveLength(2);
     for (const event of revisions) {
       expect(event).toMatchObject({
@@ -304,7 +305,7 @@ suite('Meiping review staging PostgreSQL integration', () => {
         sourceRowNumber: 2,
       });
     }
-    expect(revisions[0]?.metadata).toMatchObject({
+    expect(firstRevision?.metadata).toMatchObject({
       expectedVersion: 0,
       previous: null,
       next: {
@@ -313,7 +314,7 @@ suite('Meiping review staging PostgreSQL integration', () => {
         reason: 'first proposal: verify barcode and price',
       },
     });
-    expect(revisions[1]?.metadata).toMatchObject({
+    expect(secondRevision?.metadata).toMatchObject({
       expectedVersion: 1,
       previous: {
         version: 1,
@@ -346,19 +347,21 @@ suite('Meiping review staging PostgreSQL integration', () => {
       },
       audit,
     );
+    const proposalA = {
+      expectedChecksum: checksum,
+      expectedVersion: 1,
+      proposedFields: { priceMinor: 1500 },
+      reason: 'concurrent A',
+    };
+    const proposalB = {
+      expectedChecksum: checksum,
+      expectedVersion: 1,
+      proposedFields: { priceMinor: 1700 },
+      reason: 'concurrent B',
+    };
     const changes = await Promise.allSettled([
-      review.saveCorrection(session.id, storeId, 2, {
-        expectedChecksum: checksum,
-        expectedVersion: 1,
-        proposedFields: { priceMinor: 1500 },
-        reason: 'concurrent A',
-      }, audit),
-      review.saveCorrection(session.id, storeId, 2, {
-        expectedChecksum: checksum,
-        expectedVersion: 1,
-        proposedFields: { priceMinor: 1700 },
-        reason: 'concurrent B',
-      }, audit),
+      review.saveCorrection(session.id, storeId, 2, proposalA, audit),
+      review.saveCorrection(session.id, storeId, 2, proposalB, audit),
     ]);
     expect(changes.filter((change) => change.status === 'fulfilled')).toHaveLength(1);
     expect(changes.filter((change) => change.status === 'rejected')).toHaveLength(1);
