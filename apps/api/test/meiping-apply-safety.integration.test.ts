@@ -468,7 +468,10 @@ suite('Meiping guarded apply safety boundaries PostgreSQL integration', () => {
       }),
     ).rejects.toMatchObject({ code: 'CONFLICT' });
 
-    const [unchangedBook] = await database!.db.select().from(books).where(eq(books.id, book!.id));
+    const [unchangedBook] = await database!.db
+      .select()
+      .from(books)
+      .where(eq(books.id, book!.id));
     const [unchangedEdition] = await database!.db
       .select()
       .from(bookEditions)
