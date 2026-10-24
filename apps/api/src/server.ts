@@ -16,6 +16,8 @@ import { StaffSessionService } from './auth/staff-session.js';
 import { HomeCmsService } from './cms/home-cms-service.js';
 import { CommerceService } from './commerce/commerce-service.js';
 import { registerCommerceRoutes } from './commerce/commerce-routes.js';
+import { StoreCatalogReadService } from './commerce/store-catalog-read-service.js';
+import { registerStoreCatalogReadRoutes } from './commerce/store-catalog-read-routes.js';
 import { loadWeChatPayProvider } from './payments/wechat-pay.js';
 import { PaymentService } from './payments/payment-service.js';
 import { registerPaymentRoutes } from './payments/payment-routes.js';
@@ -116,6 +118,11 @@ const app = buildApp({
   trustProxy: config.APP_ENV === 'dev' ? false : 1,
 });
 registerCommerceRoutes(app, { commerce, consumerSessions: sessions, staffAuthorization });
+registerStoreCatalogReadRoutes(app, {
+  staffAuthorization,
+  stores,
+  catalog: new StoreCatalogReadService(db),
+});
 registerPaymentRoutes(app, {
   payments: new PaymentService(db, loadWeChatPayProvider(process.env), commission),
   consumerSessions: sessions,

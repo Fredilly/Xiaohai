@@ -159,3 +159,44 @@ export type Address = z.infer<typeof addressSchema>;
 export type Order = z.infer<typeof orderSchema>;
 export type AdminProductInput = z.infer<typeof adminProductInputSchema>;
 export type CommerceErrorCode = z.infer<typeof commerceErrorCodeSchema>;
+
+/** Authenticated Staff read-model: only SKU rows linked to the scoped store's inventory. */
+export const storeCatalogQuerySchema = z
+  .object({
+    q: z.string().trim().max(120).optional(),
+    offset: z.coerce.number().int().min(0).max(100000).default(0),
+    limit: z.coerce.number().int().min(1).max(100).default(30),
+  })
+  .strict();
+
+export const storeCatalogItemSchema = z.object({
+  storeId: z.uuid(),
+  productId: z.uuid(),
+  productName: z.string(),
+  productStatus: productStatusSchema,
+  coverUrl: z.string().nullable(),
+  bookTitle: z.string().nullable(),
+  author: z.string().nullable(),
+  isbn: z.string().nullable(),
+  publisher: z.string().nullable(),
+  skuId: z.uuid(),
+  skuCode: z.string(),
+  skuName: z.string(),
+  skuStatus: skuStatusSchema,
+  priceMinor: moneyMinorSchema,
+  availableForSale: z.boolean(),
+  onHand: z.number().int().min(0),
+  reserved: z.number().int().min(0),
+  rentalReserved: z.number().int().min(0),
+  available: z.number().int().min(0),
+  inventoryVersion: z.number().int().min(0),
+});
+export const storeCatalogResponseSchema = z.object({
+  storeId: z.uuid(),
+  offset: z.number().int().min(0),
+  limit: z.number().int().min(1),
+  hasMore: z.boolean(),
+  items: z.array(storeCatalogItemSchema),
+});
+export type StoreCatalogItem = z.infer<typeof storeCatalogItemSchema>;
+export type StoreCatalogResponse = z.infer<typeof storeCatalogResponseSchema>;
