@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, describe, expect, it } from 'vitest';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import {
   auditLogs,
   bookEditions,
@@ -35,7 +35,7 @@ import {
 
 const databaseUrl = process.env.DATABASE_URL;
 const disposableDatabase =
-  databaseUrl && /^xiaohai_(test|pr160_uat)$/.test(new URL(databaseUrl).pathname.slice(1))
+  databaseUrl && /^xiaohai_(test|pr160_uat|pr161_uat)$/.test(new URL(databaseUrl).pathname.slice(1))
     ? createDatabase(process.env)
     : null;
 const suite = disposableDatabase ? describe : describe.skip;
@@ -60,10 +60,10 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
         countryName: 'China',
       })
       .returning();
-    const [storeA, storeB] = await db
+    const [storeA, storeB, storeC, storeD] = await db
       .insert(stores)
       .values(
-        ['A', 'B'].map((letter) => ({
+        ['A', 'B', 'C', 'D'].map((letter) => ({
           code: 'DCE-S-' + letter + '-' + suffix,
           name: 'Direct Catalog Store ' + letter,
           regionId: region!.id,
@@ -106,6 +106,42 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
       { storeId: storeA!.id, skuId: sku!.id, onHand: 6 },
       { storeId: storeB!.id, skuId: sku!.id, onHand: 4 },
     ]);
+    const [siblingSku] = await db
+      .insert(skus)
+      .values({
+        productId: product!.id,
+        code: 'DCE-SIBLING-' + suffix,
+        name: 'Alternate edition',
+        priceMinor: 1500,
+      })
+      .returning();
+    await db
+      .insert(storeInventory)
+      .values({ storeId: storeC!.id, skuId: siblingSku!.id, onHand: 3 });
+    // A second edition shares the same book metadata, but not edition metadata.
+    // Only book title/author edits should include this fourth store in the impact preview.
+    const [otherEdition] = await db
+      .insert(bookEditions)
+      .values({ bookId: book!.id, isbn: null, publisher: 'Second Publisher' })
+      .returning();
+    const [otherProduct] = await db
+      .insert(products)
+      .values({
+        bookEditionId: otherEdition!.id,
+        name: 'Second Edition Product',
+        status: 'ACTIVE',
+      })
+      .returning();
+    const [otherSku] = await db
+      .insert(skus)
+      .values({
+        productId: otherProduct!.id,
+        code: 'DCE-SECOND-' + suffix,
+        name: 'Second',
+        priceMinor: 2000,
+      })
+      .returning();
+    await db.insert(storeInventory).values({ storeId: storeD!.id, skuId: otherSku!.id, onHand: 2 });
     const [actor] = await db
       .insert(staffAccounts)
       .values({
@@ -145,9 +181,35 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
         shelfLocation: 'Shelf A-01',
       };
 
+      const pricePreview = await editor.preview(storeA!.id, sku!.id, {
+        ...input,
+        bookTitle: undefined,
+        priceMinor: 1300,
+      });
+      expect(pricePreview.affectedStoreCount).toBe(2);
+      const productNamePreview = await editor.preview(storeA!.id, sku!.id, {
+        ...input,
+        bookTitle: undefined,
+        priceMinor: undefined,
+        productName: 'Renamed Direct Edit Product',
+      });
+      expect(productNamePreview.affectedStoreCount).toBe(3);
+      const editionPreview = await editor.preview(storeA!.id, sku!.id, {
+        ...input,
+        bookTitle: undefined,
+        priceMinor: undefined,
+        publisher: 'Updated Publisher',
+      });
+      expect(editionPreview.affectedStoreCount).toBe(3);
+      const bookPreview = await editor.preview(storeA!.id, sku!.id, {
+        ...input,
+        priceMinor: undefined,
+      });
+      expect(bookPreview.affectedStoreCount).toBe(4);
+
       const preview = await editor.preview(storeA!.id, sku!.id, input);
       expect(preview.sharedFields).toEqual(['bookTitle', 'priceMinor']);
-      expect(preview.affectedStoreCount).toBe(2);
+      expect(preview.affectedStoreCount).toBe(4);
 
       const updated = await editor.update(storeA!.id, sku!.id, actor!.id, randomUUID(), input);
       expect(updated.item.bookTitle).toBe('Edited Direct Edit Book');
@@ -156,12 +218,34 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
       expect(updated.item.bookVersion).toBe(1);
       expect(updated.item.skuVersion).toBe(1);
       expect(updated.item.localVersion).toBe(1);
-      expect(updated.impact.affectedStoreCount).toBe(2);
+      expect(updated.impact.affectedStoreCount).toBe(4);
 
       const otherStore = await reader.get(storeB!.id, sku!.id);
       expect(otherStore?.bookTitle).toBe('Edited Direct Edit Book');
       expect(otherStore?.priceMinor).toBe(1200);
       expect(otherStore?.shelfLocation).toBeNull();
+      expect(await reader.get(storeC!.id, siblingSku!.id)).toMatchObject({
+        bookTitle: 'Edited Direct Edit Book',
+        priceMinor: 1500,
+      });
+      expect(await reader.get(storeD!.id, otherSku!.id)).toMatchObject({
+        bookTitle: 'Edited Direct Edit Book',
+        publisher: 'Second Publisher',
+        priceMinor: 2000,
+      });
+
+      await expect(
+        editor.update(storeA!.id, sku!.id, actor!.id, randomUUID(), {
+          expectedProductVersion: 0,
+          expectedBookVersion: 1,
+          expectedEditionVersion: 0,
+          expectedSkuVersion: 1,
+          expectedLocalVersion: 1,
+          isbn: 'not-an-isbn',
+          storeNote: 'Must not write with invalid ISBN',
+        }),
+      ).rejects.toMatchObject({ code: 'INVALID_REFERENCE' } satisfies Partial<CatalogEditError>);
+      expect((await reader.get(storeA!.id, sku!.id))?.storeNote).toBeNull();
 
       await expect(
         editor.update(storeA!.id, sku!.id, actor!.id, randomUUID(), input),
@@ -182,7 +266,7 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
       expect(audit).toHaveLength(1);
       expect(audit[0]?.actionKey).toBe('catalog.direct_edit');
       expect(audit[0]?.metadata).toMatchObject({
-        affectedStoreCount: 2,
+        affectedStoreCount: 4,
         changedFields: ['bookTitle', 'priceMinor', 'shelfLocation'],
       });
 
@@ -265,6 +349,61 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
       } finally {
         await app.close();
       }
+
+      // More than 1,000 linked SKU rows must not make direct lookup or a
+      // successful edit return NOT_FOUND just because its SKU sorts last.
+      // Restrict this heavier regression to the disposable CI-only database.
+      if (/^\/xiaohai_(test|pr161_uat)$/.test(new URL(databaseUrl!).pathname)) {
+        const filler = await db
+          .insert(skus)
+          .values(
+            Array.from({ length: 1001 }, (_, index) => ({
+              productId: product!.id,
+              code: `DCE-FILL-${suffix}-${String(index).padStart(4, '0')}`,
+              name: 'Extra edition',
+              priceMinor: 900,
+            })),
+          )
+          .returning({ id: skus.id });
+        const [lastSku] = await db
+          .insert(skus)
+          .values({
+            productId: product!.id,
+            code: 'ZZZ-DCE-' + suffix,
+            name: 'Last edition',
+            priceMinor: 900,
+          })
+          .returning({ id: skus.id });
+        await db.insert(storeInventory).values(
+          [...filler, lastSku!].map((entry) => ({
+            storeId: storeA!.id,
+            skuId: entry.id,
+            onHand: 1,
+          })),
+        );
+
+        const firstPage = await reader.list(storeA!.id, { offset: 0, limit: 1000 });
+        expect(firstPage.hasMore).toBe(true);
+        expect(firstPage.items.some((item) => item.skuId === lastSku!.id)).toBe(false);
+        expect(await reader.get(storeA!.id, lastSku!.id)).toMatchObject({
+          skuId: lastSku!.id,
+          skuCode: 'ZZZ-DCE-' + suffix,
+          priceMinor: 900,
+        });
+        expect(await reader.get(storeB!.id, lastSku!.id)).toBeNull();
+
+        const lastUpdated = await editor.update(storeA!.id, lastSku!.id, actor!.id, randomUUID(), {
+          expectedProductVersion: 0,
+          expectedSkuVersion: 0,
+          expectedLocalVersion: 0,
+          priceMinor: 950,
+        });
+        expect(lastUpdated.item).toMatchObject({
+          skuId: lastSku!.id,
+          priceMinor: 950,
+          skuVersion: 1,
+        });
+      }
     } finally {
       await db.delete(auditLogs).where(eq(auditLogs.actorStaffAccountId, actor!.id));
       await db.delete(staffDataScopes).where(eq(staffDataScopes.staffAccountId, actor!.id));
@@ -279,13 +418,28 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
             eq(storeCatalogMetadata.skuId, sku!.id),
           ),
         );
-      await db.delete(storeInventory).where(eq(storeInventory.skuId, sku!.id));
-      await db.delete(skus).where(eq(skus.id, sku!.id));
+      const fixtureSkuIds = await db
+        .select({ id: skus.id })
+        .from(skus)
+        .where(eq(skus.productId, product!.id));
+      await db.delete(storeInventory).where(
+        inArray(
+          storeInventory.skuId,
+          fixtureSkuIds.map((item) => item.id),
+        ),
+      );
+      await db.delete(skus).where(eq(skus.productId, product!.id));
       await db.delete(products).where(eq(products.id, product!.id));
+      await db.delete(storeInventory).where(eq(storeInventory.skuId, otherSku!.id));
+      await db.delete(skus).where(eq(skus.id, otherSku!.id));
+      await db.delete(products).where(eq(products.id, otherProduct!.id));
+      await db.delete(bookEditions).where(eq(bookEditions.id, otherEdition!.id));
       await db.delete(bookEditions).where(eq(bookEditions.id, edition!.id));
       await db.delete(books).where(eq(books.id, book!.id));
       await db.delete(stores).where(eq(stores.id, storeA!.id));
       await db.delete(stores).where(eq(stores.id, storeB!.id));
+      await db.delete(stores).where(eq(stores.id, storeC!.id));
+      await db.delete(stores).where(eq(stores.id, storeD!.id));
       await db.delete(regions).where(eq(regions.id, region!.id));
       await db.delete(staffAccounts).where(eq(staffAccounts.id, actor!.id));
     }
