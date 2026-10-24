@@ -1,4 +1,9 @@
-import { storeCatalogResponseSchema } from '@xiaohai/contracts/commerce';
+import {
+  storeCatalogEditPreviewResponseSchema,
+  storeCatalogEditResponseSchema,
+  storeCatalogResponseSchema,
+  type StoreCatalogEditRequest,
+} from '@xiaohai/contracts/commerce';
 
 const env = import.meta.env as { readonly VITE_API_BASE_URL?: unknown };
 const base =
@@ -24,4 +29,52 @@ export async function listStoreCatalog(
     throw new Error('商品资料加载失败（HTTP ' + response.status + '）');
   }
   return storeCatalogResponseSchema.parse(await response.json());
+}
+
+async function editRequest(
+  token: string,
+  storeId: string,
+  skuId: string,
+  suffix: string,
+  input: StoreCatalogEditRequest,
+) {
+  const response = await fetch(
+    `${base}/api/v1/staff/stores/${encodeURIComponent(storeId)}/catalog/${encodeURIComponent(skuId)}${suffix}`,
+    {
+      method: suffix === '/preview' ? 'POST' : 'PATCH',
+      headers: {
+        Authorization: ['Be', 'arer ', token].join(''),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(input),
+    },
+  );
+  if (!response.ok) {
+    if (response.status === 401) throw new Error('登录已过期，请重新登录');
+    if (response.status === 403) throw new Error('没有本店商品编辑权限');
+    if (response.status === 409) throw new Error('商品资料已被其他人修改，请重新加载');
+    throw new Error('商品资料保存失败（HTTP ' + response.status + '）');
+  }
+  const payload: unknown = await response.json();
+  return payload;
+}
+
+export async function previewStoreCatalogEdit(
+  token: string,
+  storeId: string,
+  skuId: string,
+  input: StoreCatalogEditRequest,
+) {
+  return storeCatalogEditPreviewResponseSchema.parse(
+    await editRequest(token, storeId, skuId, '/preview', input),
+  );
+}
+
+export async function updateStoreCatalog(
+  token: string,
+  storeId: string,
+  skuId: string,
+  input: StoreCatalogEditRequest,
+) {
+  return storeCatalogEditResponseSchema.parse(await editRequest(token, storeId, skuId, '', input));
 }

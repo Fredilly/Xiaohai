@@ -127,6 +127,8 @@ export const adminCatalogQuerySchema = z
   .strict();
 export const adminProductInputSchema = z
   .object({
+    expectedProductVersion: z.number().int().nonnegative().optional(),
+    expectedSkuVersion: z.number().int().nonnegative().optional(),
     name: z.string().trim().min(1).max(160),
     description: z.string().trim().max(4000).nullable().optional(),
     coverUrl: z.url().max(2048).nullable().optional(),
@@ -149,7 +151,12 @@ export const adminProductInputSchema = z
     }),
   })
   .strict();
-export const adminProductSchema = adminProductInputSchema.extend({ id: z.uuid(), skuId: z.uuid() });
+export const adminProductSchema = adminProductInputSchema.extend({
+  id: z.uuid(),
+  skuId: z.uuid(),
+  productVersion: z.number().int().nonnegative(),
+  skuVersion: z.number().int().nonnegative(),
+});
 export const adminProductListResponseSchema = z.object({ products: z.array(adminProductSchema) });
 
 export type CatalogProduct = z.infer<typeof catalogProductSchema>;
@@ -190,6 +197,14 @@ export const storeCatalogItemSchema = z.object({
   rentalReserved: z.number().int().min(0),
   available: z.number().int().min(0),
   inventoryVersion: z.number().int().min(0),
+  productVersion: z.number().int().min(0).default(0),
+  bookVersion: z.number().int().min(0).default(0),
+  editionVersion: z.number().int().min(0).default(0),
+  skuVersion: z.number().int().min(0).default(0),
+  localVersion: z.number().int().min(0).default(0),
+  shelfLocation: z.string().nullable().default(null),
+  storeNote: z.string().nullable().default(null),
+  displayInfo: z.string().nullable().default(null),
 });
 export const storeCatalogResponseSchema = z.object({
   storeId: z.uuid(),
@@ -200,6 +215,61 @@ export const storeCatalogResponseSchema = z.object({
 });
 export type StoreCatalogItem = z.infer<typeof storeCatalogItemSchema>;
 export type StoreCatalogResponse = z.infer<typeof storeCatalogResponseSchema>;
+
+const editableText = (max: number) => z.string().trim().min(1).max(max).nullable().optional();
+export const storeCatalogEditRequestSchema = z
+  .object({
+    expectedProductVersion: z.number().int().nonnegative(),
+    expectedBookVersion: z.number().int().nonnegative().optional(),
+    expectedEditionVersion: z.number().int().nonnegative().optional(),
+    expectedSkuVersion: z.number().int().nonnegative(),
+    expectedLocalVersion: z.number().int().nonnegative(),
+    productName: z.string().trim().min(1).max(160).optional(),
+    bookTitle: z.string().trim().min(1).max(200).optional(),
+    author: z.string().trim().min(1).max(160).optional(),
+    publisher: editableText(160),
+    isbn: z
+      .string()
+      .trim()
+      .regex(/^[0-9Xx-]{10,20}$/)
+      .nullable()
+      .optional(),
+    priceMinor: moneyMinorSchema.optional(),
+    shelfLocation: editableText(160),
+    storeNote: z.string().trim().max(2000).nullable().optional(),
+    displayInfo: z.string().trim().max(2000).nullable().optional(),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    const fields = [
+      'productName',
+      'bookTitle',
+      'author',
+      'publisher',
+      'isbn',
+      'priceMinor',
+      'shelfLocation',
+      'storeNote',
+      'displayInfo',
+    ] as const;
+    if (!fields.some((field) => value[field] !== undefined)) {
+      ctx.addIssue({ code: 'custom', message: 'At least one catalog field is required' });
+    }
+  });
+export const storeCatalogEditImpactSchema = z.object({
+  sharedFields: z.array(z.string()),
+  affectedStoreCount: z.number().int().nonnegative(),
+  affectedStoreIds: z.array(z.uuid()),
+});
+export const storeCatalogEditResponseSchema = z.object({
+  item: storeCatalogItemSchema,
+  impact: storeCatalogEditImpactSchema,
+});
+export const storeCatalogEditPreviewResponseSchema = z.object({
+  impact: storeCatalogEditImpactSchema,
+});
+export type StoreCatalogEditRequest = z.infer<typeof storeCatalogEditRequestSchema>;
+export type StoreCatalogEditResponse = z.infer<typeof storeCatalogEditResponseSchema>;
 
 /** Ordinary daily catalog correction requests never write shared master data. */
 export const catalogCorrectionFieldSchema = z.enum([

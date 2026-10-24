@@ -17,7 +17,12 @@ import { HomeCmsService } from './cms/home-cms-service.js';
 import { CommerceService } from './commerce/commerce-service.js';
 import { registerCommerceRoutes } from './commerce/commerce-routes.js';
 import { StoreCatalogReadService } from './commerce/store-catalog-read-service.js';
-import { registerStoreCatalogReadRoutes } from './commerce/store-catalog-read-routes.js';
+import {
+  registerHqCatalogEditRoutes,
+  registerStoreCatalogEditRoutes,
+  registerStoreCatalogReadRoutes,
+} from './commerce/store-catalog-read-routes.js';
+import { CatalogEditService } from './commerce/catalog-edit-service.js';
 import { CatalogCorrectionService } from './commerce/catalog-correction-service.js';
 import { registerCatalogCorrectionRoutes } from './commerce/catalog-correction-routes.js';
 import { loadWeChatPayProvider } from './payments/wechat-pay.js';
@@ -120,10 +125,22 @@ const app = buildApp({
   trustProxy: config.APP_ENV === 'dev' ? false : 1,
 });
 registerCommerceRoutes(app, { commerce, consumerSessions: sessions, staffAuthorization });
+const storeCatalogRead = new StoreCatalogReadService(db);
 registerStoreCatalogReadRoutes(app, {
   staffAuthorization,
   stores,
+  catalog: storeCatalogRead,
+});
+registerStoreCatalogEditRoutes(app, {
+  staffAuthorization,
+  stores,
+  catalog: new CatalogEditService(db),
+});
+registerHqCatalogEditRoutes(app, {
+  staffAuthorization,
+  stores: new StoreNetworkService(db),
   catalog: new StoreCatalogReadService(db),
+  editor: new CatalogEditService(db),
 });
 registerCatalogCorrectionRoutes(app, {
   staffAuthorization,

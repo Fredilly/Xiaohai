@@ -41,6 +41,7 @@ export function registerCommerceRoutes(
     const context = await options.staffAuthorization.authenticate(request.headers.authorization);
     options.staffAuthorization.requirePermission(context, CATALOG_MANAGE_PERMISSION);
     options.staffAuthorization.requireDataScope(context, 'GLOBAL', null);
+    return context;
   };
   app.get('/api/v1/catalog/products', async (request, reply) => {
     const input = catalogQuerySchema.safeParse(request.query);
@@ -227,8 +228,13 @@ export function registerCommerceRoutes(
     const input = adminProductInputSchema.safeParse(request.body);
     if (!params.success || !input.success) return invalid(reply, request.id);
     try {
-      await staff(request);
-      return await options.commerce.updateAdminProduct(params.data.id, input.data);
+      const actor = await staff(request);
+      return await options.commerce.updateAdminProduct(
+        params.data.id,
+        input.data,
+        actor.staffAccountId,
+        request.id,
+      );
     } catch (error) {
       return fail(request, reply, error);
     }

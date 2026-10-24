@@ -2,7 +2,10 @@ import {
   adminProductInputSchema,
   adminProductListResponseSchema,
   adminProductSchema,
+  storeCatalogEditRequestSchema,
+  storeCatalogResponseSchema,
   type AdminProductInput,
+  type StoreCatalogEditRequest,
 } from '@xiaohai/contracts/commerce';
 
 const configuredBase: unknown = import.meta.env.VITE_API_BASE_URL;
@@ -50,3 +53,40 @@ export const updateAdminProduct = async (token: string, id: string, input: Admin
       adminProductInputSchema.parse(input),
     ),
   );
+
+export async function listHqStoreCatalog(token: string, storeId: string) {
+  const query = new URLSearchParams({ offset: '0', limit: '30' });
+  return storeCatalogResponseSchema.parse(
+    await call(`/api/v1/staff/catalog/stores/${encodeURIComponent(storeId)}/items?${query}`, token),
+  );
+}
+
+export async function previewHqStoreCatalogEdit(
+  token: string,
+  storeId: string,
+  skuId: string,
+  input: StoreCatalogEditRequest,
+) {
+  return (await call(
+    `/api/v1/staff/catalog/stores/${encodeURIComponent(storeId)}/items/${encodeURIComponent(skuId)}/preview`,
+    token,
+    'POST',
+    storeCatalogEditRequestSchema.parse(input),
+  )) as {
+    impact: { affectedStoreCount: number; affectedStoreIds: string[]; sharedFields: string[] };
+  };
+}
+
+export async function updateHqStoreCatalog(
+  token: string,
+  storeId: string,
+  skuId: string,
+  input: StoreCatalogEditRequest,
+) {
+  return call(
+    `/api/v1/staff/catalog/stores/${encodeURIComponent(storeId)}/items/${encodeURIComponent(skuId)}`,
+    token,
+    'PATCH',
+    storeCatalogEditRequestSchema.parse(input),
+  );
+}

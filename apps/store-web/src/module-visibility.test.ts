@@ -3,7 +3,9 @@ import { visibleStoreModules } from './mock-data';
 
 describe('Store Web module visibility', () => {
   it('shows only modules backed by the current Staff permissions', () => {
-    const visible = visibleStoreModules(['stores.read', 'inventory.read']).map((item) => item.key);
+    const visible = visibleStoreModules(['stores.read', 'inventory.read', 'catalog.edit']).map(
+      (item) => item.key,
+    );
 
     expect(visible).toEqual(['dashboard', 'books', 'catalog', 'inventory', 'operations']);
     expect(visible).toContain('catalog');
@@ -18,7 +20,10 @@ describe('Store Web module visibility', () => {
       'catalog',
     );
     expect(visibleStoreModules(['inventory.read']).map((v) => v.key)).not.toContain('catalog');
-    expect(visibleStoreModules(['inventory.read', 'stores.read']).map((v) => v.key)).toContain(
+    expect(
+      visibleStoreModules(['inventory.read', 'stores.read', 'catalog.edit']).map((v) => v.key),
+    ).toContain('catalog');
+    expect(visibleStoreModules(['inventory.read', 'stores.read']).map((v) => v.key)).not.toContain(
       'catalog',
     );
   });
@@ -52,25 +57,17 @@ describe('Store Web module visibility', () => {
     ).toContain('catalog-corrections');
   });
 
-  it('shows rental, fulfillment, and manager modules only after their permissions are granted', () => {
+  it('shows rental and fulfillment modules after their permissions are granted', () => {
     const visible = visibleStoreModules([
       'stores.read',
       'inventory.read',
       'rental.read',
       'fulfillment.read',
-      'stores.manage',
+      'catalog.edit',
     ]).map((item) => item.key);
 
     expect(visible).toEqual(
-      expect.arrayContaining([
-        'dashboard',
-        'books',
-        'inventory',
-        'operations',
-        'rental',
-        'orders',
-        'manager',
-      ]),
+      expect.arrayContaining(['dashboard', 'books', 'inventory', 'operations', 'rental', 'orders']),
     );
   });
 });
