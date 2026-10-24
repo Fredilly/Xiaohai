@@ -13,6 +13,7 @@ import { FulfillmentPanel } from './fulfillment-panel';
 import { OperationsPanel } from './operations-panel';
 import { DashboardPanel } from './dashboard-panel';
 import { ManagerPanel } from './manager-panel';
+import { MeipingReviewPanel } from './meiping-review-panel';
 
 const tokenKey = 'staff_session_token';
 const selectedStoreKey = 'staff_selected_store_id';
@@ -200,6 +201,17 @@ function Shell({
         ) : current === 'orders' ? (
           currentStore ? (
             <FulfillmentPanel token={token} storeId={currentStore.id} />
+          ) : (
+            <StoreRequired />
+          )
+        ) : current === 'meiping' ? (
+          currentStore ? (
+            <MeipingReviewPanel
+              key={currentStore.id}
+              token={token}
+              storeId={currentStore.id}
+              permissions={me.permissions}
+            />
           ) : (
             <StoreRequired />
           )
