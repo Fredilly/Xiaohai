@@ -1,7 +1,11 @@
 import * as XLSX from '@stackline/xlsx';
 import { describe, expect, it } from 'vitest';
 import { buildMeipingPreflight } from '../src/migration/meiping-preflight.js';
-import { parseMeipingWorkbook, sourceChecksum } from '../src/migration/meiping-xls.js';
+import {
+  exceptionCsv,
+  parseMeipingWorkbook,
+  sourceChecksum,
+} from '../src/migration/meiping-xls.js';
 
 function workbookBuffer(rows: unknown[][], bookType: 'xls' | 'xlsx' = 'xls') {
   const sheet = XLSX.utils.aoa_to_sheet(rows);
@@ -240,6 +244,69 @@ describe('Meiping workbook parser and dry-run preflight', () => {
     expect(futureError.rows[0]!.blockingIssues.map((item) => item.code)).toContain(
       'FUTURE_ERROR_CODE',
     );
+  });
+
+  it('keeps expanded exception CSV columns safe from spreadsheet formula execution', () => {
+    const maliciousTitle = '=HYPERLINK("https://example.invalid","unsafe")';
+    const maliciousBarcode = '\t@SUM(1,2)';
+    const rows = [
+      {
+        sourceRowNumber: 2,
+        title: maliciousTitle,
+        barcode: maliciousBarcode,
+        category: 'BOOK' as const,
+        disposition: 'REVIEW',
+        metadataWarningCodes: ['AUTHOR_MISSING'],
+        blockingIssueCodes: ['BARCODE_CONFLICT'],
+        saleBlockedCodes: [],
+      },
+      {
+        sourceRowNumber: 3,
+        title: ' \r\n+1+2',
+        barcode: '-1+2',
+        category: 'BOOK' as const,
+        disposition: 'REVIEW',
+        metadataWarningCodes: [],
+        blockingIssueCodes: ['TITLE_REQUIRED'],
+        saleBlockedCodes: [],
+      },
+      {
+        sourceRowNumber: 4,
+        title: '\u200b-1+2',
+        barcode: '@SUM(A1:A2)',
+        category: 'BOOK' as const,
+        disposition: 'CREATE_CANDIDATE',
+        metadataWarningCodes: [],
+        blockingIssueCodes: [],
+        saleBlockedCodes: ['ZERO_PRICE'],
+      },
+    ];
+    const csv = exceptionCsv(rows);
+    expect(csv).toContain('metadata_warning_codes,blocking_issue_codes,sale_blocked_codes');
+    expect(csv).toContain(`"'=HYPERLINK(""https://example.invalid"",""unsafe"")"`);
+    expect(csv).toContain(`"'\t@SUM(1,2)"`);
+    expect(csv).toContain(`"' \r\n+1+2"`);
+    expect(csv).toContain("'-1+2");
+    expect(csv).toContain("'\u200b-1+2");
+    expect(csv).toContain("'@SUM(A1:A2)");
+    expect(rows[0]!.title).toBe(maliciousTitle);
+    expect(rows[0]!.barcode).toBe(maliciousBarcode);
+    expect(csv).toContain('BARCODE_CONFLICT');
+
+    const parsed = parseMeipingWorkbook(
+      workbookBuffer([
+        headers,
+        ['M-CSV', 'OWN-CSV', maliciousTitle, '作者', '出版社', 0, maliciousBarcode, '图书'],
+      ]),
+    );
+    const report = buildMeipingPreflight(parsed.rows, {
+      storeId: 'store-east-test',
+      storeCode: 'TEST-EAST',
+    });
+    expect(report.rows[0]!.rawColumns['商品名称']).toBe(maliciousTitle);
+    expect(report.rows[0]!.rawColumns['条码']).toBe(maliciousBarcode);
+    expect(report.rows[0]!.sourceIdentifiers.barcode).toBe(maliciousBarcode.trim());
+    expect(report.exceptionReportCsv).toContain("'=HYPERLINK");
   });
 
   it('keeps assumed stock explicit and isolates the selected store', () => {

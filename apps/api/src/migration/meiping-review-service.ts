@@ -190,6 +190,30 @@ export class MeipingReviewService {
       throw new MeipingReviewError('CONFLICT');
     }
     const result = await this.db.transaction(async (tx) => {
+      // Capture the preceding persisted value before a version-checked mutation.
+      // A concurrent update can win between the SELECT and UPDATE, but then
+      // the expected-version predicate prevents a stale history entry.
+      const [previous] = await tx
+        .select({
+          action: meipingReviewDecisions.action,
+          countedQuantity: meipingReviewDecisions.countedQuantity,
+          reason: meipingReviewDecisions.reason,
+          version: meipingReviewDecisions.version,
+        })
+        .from(meipingReviewDecisions)
+        .where(
+          and(
+            eq(meipingReviewDecisions.sessionId, id),
+            eq(meipingReviewDecisions.sourceRowNumber, sourceRowNumber),
+          ),
+        )
+        .limit(1);
+      if (
+        (input.expectedVersion === 0 && previous) ||
+        (input.expectedVersion !== 0 && previous?.version !== input.expectedVersion)
+      ) {
+        throw new MeipingReviewError('CONFLICT');
+      }
       const values = {
         action: input.action,
         countedQuantity: input.action === 'CREATE_DRAFT' ? input.countedQuantity : null,
@@ -218,6 +242,23 @@ export class MeipingReviewService {
           .returning({ version: meipingReviewDecisions.version });
       }
       if (!updated) throw new MeipingReviewError('CONFLICT');
+      // An append-only audit event with complete before/after snapshots is
+      // persisted in the same transaction as the mutable current decision.
+      // A failed/stale mutation rolls back without producing a history entry.
+      const before = previous
+        ? {
+            action: previous.action,
+            countedQuantity: previous.countedQuantity,
+            reason: previous.reason,
+            version: previous.version,
+          }
+        : null;
+      const after = {
+        action: values.action,
+        countedQuantity: values.countedQuantity,
+        reason: values.reason,
+        version: updated.version,
+      };
       await tx.insert(auditLogs).values({
         actorStaffAccountId: audit.actorStaffAccountId,
         actionKey: 'meiping.review.decision.save',
@@ -225,10 +266,15 @@ export class MeipingReviewService {
         resourceId: id,
         requestId: audit.requestId,
         metadata: {
+          sessionId: id,
           storeId,
+          sourceChecksum: session.sourceChecksum,
           sourceRowNumber,
-          action: input.action,
-          version: updated.version,
+          expectedVersion: input.expectedVersion,
+          previous: before,
+          next: after,
+          // Actor, request ID and timestamp are stored in dedicated audit_logs
+          // columns (actorStaffAccountId, requestId, createdAt).
         },
       });
       return updated;
