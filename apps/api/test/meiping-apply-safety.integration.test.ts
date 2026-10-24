@@ -415,6 +415,72 @@ suite('Meiping guarded apply safety boundaries PostgreSQL integration', () => {
     const [unchanged] = await database!.db.select().from(books).where(eq(books.id, book!.id));
     expect(unchanged?.title).toBe('既有主数据');
   });
+
+  it('blocks accepted shared book edits when the existing edition has no product', async () => {
+    const fixtureData = await fixture();
+    const sharedIsbn = makeIsbn13(randomUUID().replaceAll('-', '').slice(0, 9));
+    const [book] = await database!.db
+      .insert(books)
+      .values({ title: '已有但未上架的书', author: '原作者' })
+      .returning({ id: books.id });
+    ids.books.push(book!.id);
+    const [edition] = await database!.db
+      .insert(bookEditions)
+      .values({ bookId: book!.id, isbn: sharedIsbn, publisher: '原出版社' })
+      .returning({ id: bookEditions.id });
+    ids.editions.push(edition!.id);
+    const sessionId = await createSession(
+      fixtureData.storeA,
+      fixtureData.actor,
+      '7'.repeat(64),
+      sharedIsbn,
+    );
+    await database!.db.insert(meipingReviewCorrections).values({
+      sessionId,
+      sourceRowNumber: 2,
+      proposedFields: { title: '不应静默忽略的修改', publisher: '待审核出版社' },
+      reason: '验证无商品关联时共享元数据仍需阻断',
+      version: 1,
+      updatedByStaffAccountId: fixtureData.actor,
+    });
+    await database!.db.insert(meipingCorrectionReviews).values({
+      sessionId,
+      sourceRowNumber: 2,
+      correctionVersion: 1,
+      verdict: 'ACCEPTED',
+      reason: '仅接受纠错提议，不授权覆盖共享数据',
+      reviewedByStaffAccountId: fixtureData.approver,
+    });
+
+    const apply = new MeipingApplyService(database!.db, true);
+    const preview = await apply.preview(sessionId, fixtureData.storeA, {
+      actorStaffAccountId: fixtureData.actor,
+      requestId: randomUUID(),
+    });
+    expect(preview.plan.conflicts).toContainEqual({
+      sourceRowNumber: 2,
+      code: 'SHARED_CATALOG_CHANGE_REQUIRES_REVIEW',
+    });
+    await expect(
+      apply.approve(preview.batchId, fixtureData.storeA, {
+        actorStaffAccountId: fixtureData.approver,
+        requestId: randomUUID(),
+      }),
+    ).rejects.toMatchObject({ code: 'CONFLICT' });
+
+    const [unchangedBook] = await database!.db.select().from(books).where(eq(books.id, book!.id));
+    const [unchangedEdition] = await database!.db
+      .select()
+      .from(bookEditions)
+      .where(eq(bookEditions.id, edition!.id));
+    const uncreatedProducts = await database!.db
+      .select({ id: products.id })
+      .from(products)
+      .where(eq(products.bookEditionId, edition!.id));
+    expect(unchangedBook).toMatchObject({ title: '已有但未上架的书', author: '原作者' });
+    expect(unchangedEdition?.publisher).toBe('原出版社');
+    expect(uncreatedProducts).toHaveLength(0);
+  });
 });
 
 function makeIsbn13(seed: string): string {
