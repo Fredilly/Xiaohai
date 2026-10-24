@@ -1,15 +1,7 @@
 import type { PublicRegion, PublicStore } from '@xiaohai/contracts/stores';
 import { listRegions, listStores } from '../../services/stores';
 import { storeCountLabel } from './global-state';
-
-type StoreMarker = {
-  id: number;
-  latitude: number;
-  longitude: number;
-  title: string;
-  width: number;
-  height: number;
-};
+import { buildStoreMarkers, type StoreMarker } from './global-markers';
 
 type InputEvent = { detail: { value?: string } };
 type PickerEvent = { detail: { value?: string | number } };
@@ -152,14 +144,7 @@ Page({
       storeCountLabel: storeCountLabel('ready', stores.length),
       mapLatitude: first?.latitude ?? this.data.latitude ?? 30.657,
       mapLongitude: first?.longitude ?? this.data.longitude ?? 104.066,
-      markers: stores.map((store, index) => ({
-        id: index + 1,
-        latitude: store.latitude,
-        longitude: store.longitude,
-        title: store.name,
-        width: 28,
-        height: 28,
-      })),
+      markers: buildStoreMarkers(stores),
     });
   },
 

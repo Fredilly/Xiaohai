@@ -1,21 +1,16 @@
-<view class="page">
-  <view class="hero hero-soft">
+<view class="page pangzhu-global">
+  <view class="pangzhu-masthead">
+    <text class="masthead-kicker">PANGZHU · READING MAP</text>
     <text class="hero-title">胖竹全球</text>
     <text class="hero-subtitle">从身边的一家书店出发，找好书，也发现更多阅读空间。</text>
-    <view class="hero-links"><text bindtap="scrollToStores">探索门店 ↓</text><text bindtap="scrollToMap">查看地图 ↗</text></view>
+    <view class="hero-links">
+      <text bindtap="scrollToStores">探索门店 ↓</text>
+      <text bindtap="scrollToMap">查看地图 ↗</text>
+    </view>
   </view>
 
-  <view class="service-heading"><text>从这里开始</text></view>
-  <view class="service-grid">
-    <view class="service-entry service-entry-primary" bindtap="useNearby"><view class="service-icon"><image src="/assets/ui/pin.svg" /></view><text>附近门店</text></view>
-    <view class="service-entry service-entry-primary" bindtap="openBookSearch"><view class="service-icon"><image src="/assets/ui/search.svg" /></view><text>图书查询</text></view>
-    <view class="service-entry" bindtap="openBookSearch"><view class="service-icon"><image src="/assets/ui/book.svg" /></view><text>门店库存</text></view>
-    <view class="service-entry" bindtap="openRentals"><view class="service-icon"><image src="/assets/ui/book.svg" /></view><text>图书租借</text></view>
-    <view class="service-entry" bindtap="scrollToStores"><view class="service-icon"><image src="/assets/ui/package.svg" /></view><text>自提配送</text></view>
-    <view class="service-entry" bindtap="scrollToStores"><view class="service-icon"><image src="/assets/ui/globe.svg" /></view><text>全球门店</text></view>
-  </view>
-  <view class="service-hint">到店自提和同城配送以门店详情及实际服务为准。</view>
   <view class="store-search card">
+    <view class="search-heading"><text>寻找阅读空间</text><text>按门店名称或区域筛选</text></view>
     <view class="search-row">
       <input class="search-input" value="{{query}}" placeholder="搜索门店名称" bindinput="onQueryInput" confirm-type="search" bindconfirm="submitSearch" />
       <button class="search-btn" size="mini" bindtap="submitSearch" loading="{{loading}}">搜索</button>
@@ -30,11 +25,11 @@
     </view>
   </view>
 
-  <view wx:if="{{errorMessage && storeStatus !== 'error'}}" class="demo-note"><text>{{errorMessage}}</text><button size="mini" bindtap="refreshStores">重试</button></view>
+  <view wx:if="{{errorMessage && storeStatus !== 'error'}}" class="demo-note"><text>{{errorMessage}}</text><button size="mini" bindtap="useNearby">重试</button></view>
 
-  <view class="section" id="store-map">
+  <view class="section map-section" id="store-map">
     <view class="section-head">
-      <text class="section-title">门店地图</text>
+      <view class="section-heading"><text class="section-kicker">EXPLORE THE WORLD</text><text class="section-title">门店地图</text></view>
       <text class="section-note">{{storeCountLabel}}</text>
     </view>
     <view wx:if="{{storeStatus === 'loading'}}" class="state-card">
@@ -46,6 +41,10 @@
       <text class="state-copy">{{errorMessage}}</text>
       <button size="mini" bindtap="refreshStores">重试</button>
     </view>
+    <view wx:elif="{{storeStatus === 'ready' && stores.length === 0}}" class="state-card">
+      <text class="state-title">当前条件没有匹配的门店</text>
+      <text class="state-copy">可以调整搜索词或区域；有门店结果后这里会显示真实地图。</text>
+    </view>
     <map wx:else
       class="store-map"
       latitude="{{mapLatitude}}"
@@ -54,12 +53,26 @@
       markers="{{markers}}"
       show-location="{{nearbyMode}}"
     />
+    <text wx:if="{{storeStatus === 'ready' && stores.length > 0}}" class="map-caption">地图标记来自门店数据，点击下方门店查看详情。</text>
   </view>
 
-  <view class="section" id="store-list">
+  <view class="quick-actions">
+    <view class="quick-action" bindtap="useNearby">
+      <view class="quick-icon"><image src="/assets/ui/pin.svg" mode="aspectFit" /></view>
+      <view class="quick-text"><text class="quick-title">找附近门店</text><text class="quick-subtitle">按当前位置查找</text></view>
+      <text class="quick-arrow">›</text>
+    </view>
+    <view class="quick-action" bindtap="openBookSearch">
+      <view class="quick-icon"><image src="/assets/ui/search.svg" mode="aspectFit" /></view>
+      <view class="quick-text"><text class="quick-title">查找一本书</text><text class="quick-subtitle">查询真实门店库存</text></view>
+      <text class="quick-arrow">›</text>
+    </view>
+  </view>
+
+  <view class="section store-section" id="store-list">
     <view class="section-head">
-      <text class="section-title">门店列表</text>
-      <text class="section-note">营业门店</text>
+      <view class="section-heading"><text class="section-kicker">NEARBY & BEYOND</text><text class="section-title">门店列表</text></view>
+      <text class="section-note">{{storeCountLabel}}</text>
     </view>
 
     <view wx:if="{{storeStatus === 'loading'}}" class="state-card">
@@ -80,6 +93,7 @@
 
     <view wx:else class="store-list">
       <view class="list-card store-card" wx:for="{{stores}}" wx:key="id" data-id="{{item.id}}" bindtap="openStore">
+        <view class="store-mark"><image src="/assets/ui/pin.svg" mode="aspectFit" /></view>
         <view class="list-main">
           <view class="store-title-row">
             <text class="list-title">{{item.name}}</text>
@@ -96,9 +110,19 @@
       </view>
     </view>
   </view>
+
+  <view class="more-services">
+    <view class="service-heading"><text>更多门店服务</text><text>以实际门店提供的服务为准</text></view>
+    <view class="service-grid">
+      <view class="service-entry" bindtap="openBookSearch"><view class="service-icon"><image src="/assets/ui/book.svg" mode="aspectFit" /></view><text>门店库存</text></view>
+      <view class="service-entry" bindtap="openRentals"><view class="service-icon"><image src="/assets/ui/book.svg" mode="aspectFit" /></view><text>图书租借</text></view>
+      <view class="service-entry" bindtap="scrollToStores"><view class="service-icon"><image src="/assets/ui/package.svg" mode="aspectFit" /></view><text>自提配送</text></view>
+      <view class="service-entry" bindtap="scrollToStores"><view class="service-icon"><image src="/assets/ui/globe.svg" mode="aspectFit" /></view><text>全球门店</text></view>
+    </view>
+    <view class="service-hint">到店自提和同城配送以门店详情及实际服务为准。</view>
+  </view>
   <view class="card franchise-card" bindtap="openFranchise">
-    <view><text class="card-title">一起开一家有故事的书店</text><text class="card-subtitle">了解胖竹加盟合作与申请流程</text></view>
+    <view class="franchise-copy"><text class="card-title">一起开一家有故事的书店</text><text class="card-subtitle">了解胖竹加盟合作与申请流程</text></view>
     <text class="franchise-link">了解加盟 ›</text>
   </view>
-
 </view>
