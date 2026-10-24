@@ -7,6 +7,7 @@ import {
   createDatabase,
   meipingReviewDecisions,
   meipingReviewCorrections,
+  meipingCorrectionReviews,
   meipingReviewSessions,
   regions,
   staffAccounts,
@@ -47,6 +48,9 @@ suite('Meiping review staging PostgreSQL integration', () => {
           .where(inArray(meipingReviewSessions.storeId, storeIds));
         const sessionIds = sessions.map((session) => session.id);
         if (sessionIds.length > 0) {
+          await database.db
+            .delete(meipingCorrectionReviews)
+            .where(inArray(meipingCorrectionReviews.sessionId, sessionIds));
           await database.db
             .delete(meipingReviewCorrections)
             .where(inArray(meipingReviewCorrections.sessionId, sessionIds));
@@ -203,6 +207,178 @@ suite('Meiping review staging PostgreSQL integration', () => {
     expect(afterLast.items).toHaveLength(0);
     expect((await database!.db.select().from(books)).length).toBe(catalogBefore.length);
     expect((await database!.db.select().from(storeInventory)).length).toBe(stockBefore.length);
+  });
+
+  it('enforces independent reviewer, immutable verdict version and preserves catalog/stock', async () => {
+    const { actorId, storeId, report } = await fixture();
+    const author = { actorStaffAccountId: actorId, requestId: randomUUID() };
+    const [reviewer] = await database!.db
+      .insert(staffAccounts)
+      .values({
+        loginIdentifier: 'reviewer-' + randomUUID().slice(0, 8),
+        passwordHash: 'test-only',
+      })
+      .returning({ id: staffAccounts.id });
+    actorIds.push(reviewer!.id);
+    const independent = { actorStaffAccountId: reviewer!.id, requestId: randomUUID() };
+    const session = await review.createSession(report, author);
+    const [beforeBooks, beforeInventory] = await Promise.all([
+      database!.db.select().from(books),
+      database!.db.select().from(storeInventory),
+    ]);
+    await review.saveCorrection(
+      session.id,
+      storeId,
+      2,
+      {
+        expectedChecksum: checksum,
+        expectedVersion: 0,
+        proposedFields: { author: '待复核作者', barcode: 'PR153-UNIQUE-001' },
+        reason: '人工核对纸质书',
+      },
+      author,
+    );
+    const proposal = {
+      expectedChecksum: checksum,
+      expectedCorrectionVersion: 1,
+      verdict: 'ACCEPTED' as const,
+      reason: '核对原书封底信息，记录建议待下游审核',
+    };
+    await expect(review.reviewCorrection(session.id, storeId, 2, proposal, author)).rejects.toThrow(
+      MeipingReviewError,
+    );
+    await expect(
+      review.reviewCorrection(
+        session.id,
+        storeId,
+        2,
+        {
+          ...proposal,
+          expectedCorrectionVersion: 9,
+        },
+        independent,
+      ),
+    ).rejects.toThrow(MeipingReviewError);
+    const first = await review.reviewCorrection(session.id, storeId, 2, proposal, independent);
+    expect(first).toMatchObject({
+      sourceRowNumber: 2,
+      correctionVersion: 1,
+      verdict: 'ACCEPTED',
+      correctionAcceptedForLaterReview: true,
+      approved: false,
+      catalogOrInventoryWritten: false,
+    });
+    await expect(
+      review.reviewCorrection(session.id, storeId, 2, proposal, independent),
+    ).rejects.toThrow(MeipingReviewError);
+    const page = await review.listRows(session.id, storeId, 0, 10);
+    expect(page.items[0]).toMatchObject({
+      sourceRowNumber: 2,
+      decision: null,
+      correction: { version: 1 },
+      correctionReview: { verdict: 'ACCEPTED', correctionVersion: 1 },
+    });
+    await review.saveCorrection(
+      session.id,
+      storeId,
+      2,
+      {
+        expectedChecksum: checksum,
+        expectedVersion: 1,
+        proposedFields: { title: '第二版建议' },
+        reason: '二次复核',
+      },
+      author,
+    );
+    const changed = await review.listRows(session.id, storeId, 0, 10);
+    expect(changed.items[0]?.correction).toMatchObject({ version: 2 });
+    expect(changed.items[0]?.correctionReview).toBeNull();
+    const rejected = await review.reviewCorrection(
+      session.id,
+      storeId,
+      2,
+      {
+        expectedChecksum: checksum,
+        expectedCorrectionVersion: 2,
+        verdict: 'REJECTED',
+        reason: '缺少充分的复核证据',
+      },
+      independent,
+    );
+    expect(rejected).toMatchObject({ correctionVersion: 2, verdict: 'REJECTED' });
+    const savedReviews = await database!.db
+      .select()
+      .from(meipingCorrectionReviews)
+      .where(eq(meipingCorrectionReviews.sessionId, session.id));
+    expect(savedReviews).toHaveLength(2);
+    expect((await database!.db.select().from(books)).length).toBe(beforeBooks.length);
+    expect((await database!.db.select().from(storeInventory)).length).toBe(beforeInventory.length);
+    const audit = await database!.db
+      .select()
+      .from(auditLogs)
+      .where(eq(auditLogs.resourceId, session.id));
+    const verdictAudit = audit.filter(
+      (item) => item.actionKey === 'meiping.review.correction.verdict',
+    );
+    expect(verdictAudit).toHaveLength(2);
+    // #152 intentionally stores complete proposal revisions in restricted
+    // audit_logs. Only the independent-verdict event must omit raw proposal
+    // values and the reviewer's free-text reason.
+    const correctionAudit = audit.filter(
+      (item) => item.actionKey === 'meiping.review.correction.save',
+    );
+    expect(correctionAudit).toHaveLength(2);
+    expect(JSON.stringify(correctionAudit)).toContain('PR153-UNIQUE-001');
+    expect(JSON.stringify(verdictAudit)).not.toContain('PR153-UNIQUE-001');
+    expect(JSON.stringify(verdictAudit)).not.toContain('核对原书封底');
+  });
+
+  it('rejects proposed barcodes already assigned to other Excel rows and wrong-store reviews', async () => {
+    const { actorId, storeId, report } = await fixture();
+    const author = { actorStaffAccountId: actorId, requestId: randomUUID() };
+    const [reviewer] = await database!.db
+      .insert(staffAccounts)
+      .values({
+        loginIdentifier: 'reviewer-' + randomUUID().slice(0, 8),
+        passwordHash: 'test-only',
+      })
+      .returning({ id: staffAccounts.id });
+    actorIds.push(reviewer!.id);
+    const independent = { actorStaffAccountId: reviewer!.id, requestId: randomUUID() };
+    const secondRow = {
+      ...report.rows[0]!,
+      sourceRowNumber: 3,
+      sourceIdentifiers: { ...report.rows[0]!.sourceIdentifiers, barcode: 'EXISTS-555' },
+    };
+    report.rows.push(secondRow);
+    report.totalRows = 2;
+    const session = await review.createSession(report, author);
+    await review.saveCorrection(
+      session.id,
+      storeId,
+      2,
+      {
+        expectedChecksum: checksum,
+        expectedVersion: 0,
+        proposedFields: { barcode: 'EXISTS-555' },
+        reason: '建议纸书核对',
+      },
+      author,
+    );
+    const proposal = {
+      expectedChecksum: checksum,
+      expectedCorrectionVersion: 1,
+      verdict: 'ACCEPTED' as const,
+      reason: '核对结果',
+    };
+    await expect(
+      review.reviewCorrection(session.id, storeId, 2, proposal, independent),
+    ).rejects.toThrow(MeipingReviewError);
+    await expect(
+      review.reviewCorrection(session.id, randomUUID(), 2, proposal, independent),
+    ).rejects.toThrow(MeipingReviewError);
+    const page = await review.listRows(session.id, storeId, 0, 10);
+    expect(page.items[0]?.correctionReview).toBeNull();
   });
 
   it('reconstructs CREATE→EDIT correction history without changing source or formal stock', async () => {

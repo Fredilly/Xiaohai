@@ -4,6 +4,7 @@ import { MEIPING_PREFLIGHT_MAX_BYTES, MEIPING_PREFLIGHT_MAX_MIB } from '@xiaohai
 import { loadHqStores } from './hq-operations-api';
 import { MeipingReviewManager } from './meiping-review-manager';
 import { MeipingReviewResumePanel } from './meiping-review-resume-panel';
+import { meipingReviewPermissions } from './meiping-review-permissions';
 import {
   downloadMeipingExceptions,
   MeipingPreflightApiError,
@@ -97,6 +98,9 @@ function renderIssue(issue: MeipingIssue) {
 export function MeipingPreflightManager({ token, me }: { token: string; me: StaffMeResponse }) {
   const permissions = useMemo(() => new Set(me.permissions), [me.permissions]);
   const canPreflight = permissions.has('inventory.receive');
+  const { canReadReview, canEditReview, canVerifyCorrection } = meipingReviewPermissions(
+    me.permissions,
+  );
   const canReadStores = permissions.has('stores.read');
   const [stores, setStores] = useState<Awaited<ReturnType<typeof loadHqStores>> | null>(null);
   const [storeId, setStoreId] = useState('');
@@ -138,12 +142,12 @@ export function MeipingPreflightManager({ token, me }: { token: string; me: Staf
   const selectedStore = stores?.stores.find((store) => store.id === storeId);
   const reportIsCurrent = isReportCurrent(reportStoreId, reportFile, storeId, file);
 
-  if (!canPreflight) {
+  if (!canPreflight && !canReadReview) {
     return (
       <section className="panel meiping-panel">
         <span className="badge">权限不足</span>
         <h2>美萍导入预检查</h2>
-        <p>当前账号没有 inventory.receive 权限，不能上传或预检查文件。</p>
+        <p>当前账号没有预检查或审核草稿读取权限。</p>
       </section>
     );
   }
@@ -183,7 +187,7 @@ export function MeipingPreflightManager({ token, me }: { token: string; me: Staf
   }
 
   async function submit() {
-    if (!storeId || !file) {
+    if (!canPreflight || !storeId || !file) {
       setStatus('请先选择授权门店和 Excel 文件。');
       return;
     }
@@ -217,7 +221,7 @@ export function MeipingPreflightManager({ token, me }: { token: string; me: Staf
   }
 
   async function downloadCsv() {
-    if (!file || !storeId || !reportIsCurrent) return;
+    if (!canPreflight || !file || !storeId || !reportIsCurrent) return;
     setBusy(true);
     try {
       const csv = await downloadMeipingExceptions(token, storeId, file);
@@ -239,9 +243,13 @@ export function MeipingPreflightManager({ token, me }: { token: string; me: Staf
       <div className="panel meiping-intro">
         <div className="meiping-heading">
           <div>
-            <span className="badge">只读预检查</span>
-            <h2>美萍 Excel 导入预检查</h2>
-            <p>先选择已授权门店并查看解析结果。当前版本不会写入商品、SKU 或库存。</p>
+            <span className="badge">{canPreflight ? '只读预检查' : '独立复核 · 只读草稿'}</span>
+            <h2>{canPreflight ? '美萍 Excel 导入预检查' : '美萍纠错建议独立复核'}</h2>
+            <p>
+              {canPreflight
+                ? '先选择已授权门店并查看解析结果。当前版本不会写入商品、SKU 或库存。'
+                : '选择授权门店并继续已有审核草稿。不能上传文件、修改原审核决定或修改纠错建议。'}
+            </p>
           </div>
           <span className="meiping-readonly">正式入库：未开放</span>
         </div>
@@ -268,33 +276,37 @@ export function MeipingPreflightManager({ token, me }: { token: string; me: Staf
               ))}
             </select>
           </label>
-          <label>
-            {meipingMaxFileSizeLabel()}
-            <input
-              ref={inputRef}
-              type="file"
-              accept=".xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-              disabled={busy}
-              onChange={(event) => chooseFile(event.target.files?.[0])}
-            />
-          </label>
+          {canPreflight && (
+            <label>
+              {meipingMaxFileSizeLabel()}
+              <input
+                ref={inputRef}
+                type="file"
+                accept=".xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                disabled={busy}
+                onChange={(event) => chooseFile(event.target.files?.[0])}
+              />
+            </label>
+          )}
         </div>
         <div className="meiping-upload-actions">
           <span>
             {selectedStore ? `当前门店：${selectedStore.name}` : '仅可使用服务端返回的授权门店'}
           </span>
-          <div className="button-row">
-            <button disabled={busy || !file || !storeId} onClick={() => void submit()}>
-              {busy ? '处理中…' : '开始只读预检查'}
-            </button>
-            <button
-              className="secondary"
-              disabled={busy || !reportIsCurrent}
-              onClick={() => void downloadCsv()}
-            >
-              下载问题明细 CSV
-            </button>
-          </div>
+          {canPreflight && (
+            <div className="button-row">
+              <button disabled={busy || !file || !storeId} onClick={() => void submit()}>
+                {busy ? '处理中…' : '开始只读预检查'}
+              </button>
+              <button
+                className="secondary"
+                disabled={busy || !reportIsCurrent}
+                onClick={() => void downloadCsv()}
+              >
+                下载问题明细 CSV
+              </button>
+            </div>
+          )}
         </div>
         {status && (
           <p className="meiping-status" role="alert">
@@ -308,13 +320,19 @@ export function MeipingPreflightManager({ token, me }: { token: string; me: Staf
           key={storeId}
           token={token}
           storeId={storeId}
-          canReview={permissions.has('inventory.stocktake')}
+          canReadReview={canReadReview}
+          canEditReview={canEditReview}
+          canVerifyCorrection={canVerifyCorrection}
         />
       )}
       {!report ? (
         <div className="panel empty-state meiping-empty">
-          <strong>等待上传 Excel</strong>
-          <span>这里将展示商品数量、异常原因和待盘点库存计划。</span>
+          <strong>{canPreflight ? '等待上传 Excel' : '选择授权门店继续复核'}</strong>
+          <span>
+            {canPreflight
+              ? '这里将展示商品数量、异常原因和待盘点库存计划。'
+              : '选择门店后，在上方打开已有审核草稿，查看需要独立复核的纠错建议。'}
+          </span>
         </div>
       ) : (
         <>
@@ -429,7 +447,9 @@ export function MeipingPreflightManager({ token, me }: { token: string; me: Staf
               storeId={storeId}
               file={file}
               report={report}
-              canReview={permissions.has('inventory.stocktake')}
+              canReadReview={canReadReview}
+              canEditReview={canEditReview}
+              canVerifyCorrection={canVerifyCorrection}
             />
           )}
           <section className="panel meiping-future">
