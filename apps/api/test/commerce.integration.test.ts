@@ -1,5 +1,5 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import {
   bookEditions,
   books,
@@ -23,7 +23,8 @@ const suite = database ? describe : describe.skip;
 suite('M5 Commerce PostgreSQL integration', () => {
   const commission = new CommissionService(database!.db);
   const commerce = new CommerceService(database!.db, commission);
-  beforeEach(async () => {
+  let consumerIds: string[] = [];
+  async function clean() {
     await database!.db.delete(referralAttributions);
     await database!.db.delete(orderItems);
     await database!.db.delete(orders);
@@ -36,14 +37,22 @@ suite('M5 Commerce PostgreSQL integration', () => {
     await database!.db.delete(bookEditions);
     await database!.db.delete(books);
     await database!.db.delete(referralLinks);
-    await database!.db.delete(consumerUsers);
+    if (consumerIds.length) {
+      await database!.db.delete(consumerUsers).where(inArray(consumerUsers.id, consumerIds));
+      consumerIds = [];
+    }
+  }
+  beforeEach(clean);
+  afterAll(async () => {
+    await clean();
+    await database?.pool.end();
   });
-  afterAll(async () => database?.pool.end());
   async function consumer() {
     const [u] = await database!.db
       .insert(consumerUsers)
       .values({})
       .returning({ id: consumerUsers.id });
+    consumerIds.push(u!.id);
     return u!.id;
   }
   async function sku(price = 2500, available = true) {
