@@ -550,6 +550,17 @@ export class MeipingApplyService {
       }
       const product = existingProducts[0];
       if (!product) {
+        const changesExistingBook =
+          (typeof row.acceptedFields.title === 'string' &&
+            row.acceptedFields.title !== book?.title) ||
+          (typeof row.acceptedFields.author === 'string' &&
+            row.acceptedFields.author !== book?.author) ||
+          (typeof row.acceptedFields.publisher === 'string' &&
+            row.acceptedFields.publisher !== edition.publisher);
+        if (changesExistingBook) {
+          addConflict(row.sourceRowNumber, 'SHARED_CATALOG_CHANGE_REQUIRES_REVIEW');
+          continue;
+        }
         row.resolution = {
           book: 'REUSE',
           product: 'CREATE',
@@ -697,6 +708,23 @@ export class MeipingApplyService {
     const existingProduct = existingProducts[0];
     if (existingProduct) productId = existingProduct.id;
     if (!productId) {
+      if (row.resolution?.book === 'REUSE') {
+        const [currentBook] = await tx.select().from(books).where(eq(books.id, bookId));
+        const [currentEdition] = await tx
+          .select()
+          .from(bookEditions)
+          .where(eq(bookEditions.id, ensuredEditionId));
+        const changesExistingBook =
+          (typeof row.acceptedFields.title === 'string' &&
+            row.acceptedFields.title !== currentBook?.title) ||
+          (typeof row.acceptedFields.author === 'string' &&
+            row.acceptedFields.author !== currentBook?.author) ||
+          (typeof row.acceptedFields.publisher === 'string' &&
+            row.acceptedFields.publisher !== currentEdition?.publisher);
+        if (changesExistingBook) {
+          throw new MeipingApplyError('SHARED_CATALOG_CHANGE_REQUIRES_REVIEW');
+        }
+      }
       const [product] = await tx
         .insert(products)
         .values({ bookEditionId: ensuredEditionId, name: row.title, status: 'DRAFT' })
