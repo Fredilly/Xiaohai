@@ -156,6 +156,51 @@ suite('Meiping review staging PostgreSQL integration', () => {
     return { actorId: actor!.id, storeId: store!.id, report };
   }
 
+  it('lists only current-store drafts with saved-decision counts, without workbook data or writes', async () => {
+    const first = await fixture();
+    const second = await fixture();
+    const auditA = { actorStaffAccountId: first.actorId, requestId: randomUUID() };
+    const auditB = { actorStaffAccountId: second.actorId, requestId: randomUUID() };
+    const [catalogBefore, stockBefore] = await Promise.all([
+      database!.db.select().from(books),
+      database!.db.select().from(storeInventory),
+    ]);
+    const a = await review.createSession(first.report, auditA);
+    const b = await review.createSession(second.report, auditB);
+    await review.saveDecision(
+      a.id,
+      first.storeId,
+      2,
+      {
+        action: 'CREATE_DRAFT',
+        sourceRowNumber: 2,
+        countedQuantity: 0,
+        expectedVersion: 0,
+        expectedChecksum: checksum,
+      },
+      auditA,
+    );
+    const listA = await review.listSessions(first.storeId, 0, 20);
+    expect(listA).toMatchObject({ storeId: first.storeId, offset: 0, limit: 20, hasMore: false });
+    expect(listA.items).toHaveLength(1);
+    expect(listA.items[0]).toMatchObject({
+      id: a.id,
+      status: 'DRAFT',
+      savedDecisions: 1,
+      totalRows: 1,
+      approved: false,
+      catalogOrInventoryWritten: false,
+    });
+    expect(JSON.stringify(listA)).not.toContain('rawColumns');
+    expect(JSON.stringify(listA)).not.toContain('测试绘本');
+    const listB = await review.listSessions(second.storeId, 0, 20);
+    expect(listB.items.map((row) => row.id)).toEqual([b.id]);
+    const afterLast = await review.listSessions(first.storeId, 1, 20);
+    expect(afterLast.items).toHaveLength(0);
+    expect((await database!.db.select().from(books)).length).toBe(catalogBefore.length);
+    expect((await database!.db.select().from(storeInventory)).length).toBe(stockBefore.length);
+  });
+
   it('stages by store/checksum once without modifying catalog or physical stock', async () => {
     const { actorId, storeId, report } = await fixture();
     const audit = { actorStaffAccountId: actorId, requestId: randomUUID() };
