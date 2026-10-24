@@ -93,7 +93,7 @@ export function CatalogManager({ token }: { token: string }) {
             </thead>
             <tbody>
               {products.map((p) => (
-                <tr key={p.id}>
+                <tr key={p.skuId}>
                   <td className="product-cell">
                     {p.coverUrl ? (
                       <img src={p.coverUrl} alt="" />
@@ -152,10 +152,16 @@ export function CatalogManager({ token }: { token: string }) {
               ×
             </button>
             <ProductForm
+              key={editing?.skuId ?? 'new-product'}
               initial={editing ?? blank}
               onCancel={() => {
                 setCreating(false);
                 setEditing(null);
+              }}
+              onReload={() => {
+                setCreating(false);
+                setEditing(null);
+                void load();
               }}
               onSave={async (input) => {
                 if (editing) await updateAdminProduct(token, editing.id, input);
@@ -477,10 +483,12 @@ function HqStoreCatalogForm({
 function ProductForm({
   initial,
   onCancel,
+  onReload,
   onSave,
 }: {
   initial: Product | AdminProductInput;
   onCancel: () => void;
+  onReload: () => void;
   onSave: (input: AdminProductInput) => Promise<void>;
 }) {
   const [v, setV] = useState<AdminProductInput>({
@@ -493,17 +501,43 @@ function ProductForm({
     ...('productVersion' in initial
       ? {
           expectedProductVersion: initial.productVersion,
+          expectedSkuId: initial.skuId,
+          ...(initial.bookVersion === null ? {} : { expectedBookVersion: initial.bookVersion }),
+          ...(initial.editionVersion === null
+            ? {}
+            : { expectedEditionVersion: initial.editionVersion }),
           expectedSkuVersion: initial.skuVersion,
         }
       : {}),
   });
   const [error, setError] = useState('');
+  const [stale, setStale] = useState(false);
   async function submit(e: FormEvent) {
     e.preventDefault();
+    const changedShared =
+      'id' in initial &&
+      ((initial.book !== null &&
+        v.book !== null &&
+        (initial.book?.title !== v.book?.title ||
+          initial.book?.author !== v.book?.author ||
+          initial.book?.isbn !== v.book?.isbn ||
+          initial.book?.publisher !== v.book?.publisher)) ||
+        initial.sku.priceMinor !== v.sku.priceMinor);
+    if (
+      changedShared &&
+      !window.confirm('共享图书资料或价格的修改可能影响其他门店。确定保存到正式商品资料吗？')
+    ) {
+      return;
+    }
     try {
       await onSave(v);
-    } catch {
-      setError('保存失败，请检查字段、权限或 SKU code/ISBN 冲突');
+    } catch (reason) {
+      if (reason instanceof CatalogApiError && reason.status === 409) {
+        setStale(true);
+        setError('商品或图书资料已被其他人更新，不能覆盖。请重新加载最新版本。');
+      } else {
+        setError('保存失败，请检查字段、权限或 SKU code/ISBN 冲突');
+      }
     }
   }
   return (
@@ -667,11 +701,16 @@ function ProductForm({
           <option>INACTIVE</option>
         </select>
       </label>
-      {error && <p>{error}</p>}
+      {error && <p role="status">{error}</p>}
+      {stale && (
+        <button type="button" onClick={onReload}>
+          重新加载最新商品资料
+        </button>
+      )}
       <button type="button" onClick={onCancel}>
         取消
       </button>
-      <button>保存</button>
+      <button disabled={stale}>保存</button>
     </form>
   );
 }

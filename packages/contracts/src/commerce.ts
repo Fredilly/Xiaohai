@@ -125,10 +125,11 @@ export const orderListResponseSchema = z.object({ orders: z.array(orderSchema) }
 export const adminCatalogQuerySchema = z
   .object({ q: z.string().trim().max(120).optional(), status: productStatusSchema.optional() })
   .strict();
-export const adminProductInputSchema = z
+const adminProductFieldsSchema = z
   .object({
-    expectedProductVersion: z.number().int().nonnegative().optional(),
-    expectedSkuVersion: z.number().int().nonnegative().optional(),
+    expectedSkuId: z.uuid().optional(),
+    expectedBookVersion: z.number().int().nonnegative().optional(),
+    expectedEditionVersion: z.number().int().nonnegative().optional(),
     name: z.string().trim().min(1).max(160),
     description: z.string().trim().max(4000).nullable().optional(),
     coverUrl: z.url().max(2048).nullable().optional(),
@@ -151,10 +152,22 @@ export const adminProductInputSchema = z
     }),
   })
   .strict();
-export const adminProductSchema = adminProductInputSchema.extend({
+export const adminProductCreateInputSchema = adminProductFieldsSchema.extend({
+  expectedProductVersion: z.number().int().nonnegative().optional(),
+  expectedSkuVersion: z.number().int().nonnegative().optional(),
+});
+export const adminProductUpdateInputSchema = adminProductFieldsSchema.extend({
+  expectedProductVersion: z.number().int().nonnegative(),
+  expectedSkuVersion: z.number().int().nonnegative(),
+});
+/** @deprecated Use the explicit create/update schemas at API boundaries. */
+export const adminProductInputSchema = adminProductCreateInputSchema;
+export const adminProductSchema = adminProductCreateInputSchema.extend({
   id: z.uuid(),
   skuId: z.uuid(),
   productVersion: z.number().int().nonnegative(),
+  bookVersion: z.number().int().nonnegative().nullable(),
+  editionVersion: z.number().int().nonnegative().nullable(),
   skuVersion: z.number().int().nonnegative(),
 });
 export const adminProductListResponseSchema = z.object({ products: z.array(adminProductSchema) });
@@ -165,6 +178,7 @@ export type AddressInput = z.infer<typeof addressInputSchema>;
 export type Address = z.infer<typeof addressSchema>;
 export type Order = z.infer<typeof orderSchema>;
 export type AdminProductInput = z.infer<typeof adminProductInputSchema>;
+export type AdminProductUpdateInput = z.infer<typeof adminProductUpdateInputSchema>;
 export type CommerceErrorCode = z.infer<typeof commerceErrorCodeSchema>;
 
 /** Authenticated Staff read-model: only SKU rows linked to the scoped store's inventory. */
