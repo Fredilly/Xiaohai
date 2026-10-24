@@ -200,3 +200,65 @@ export const storeCatalogResponseSchema = z.object({
 });
 export type StoreCatalogItem = z.infer<typeof storeCatalogItemSchema>;
 export type StoreCatalogResponse = z.infer<typeof storeCatalogResponseSchema>;
+
+/** Ordinary daily catalog correction requests never write shared master data. */
+export const catalogCorrectionFieldSchema = z.enum([
+  'productName',
+  'bookTitle',
+  'author',
+  'publisher',
+  'isbn',
+  'priceMinor',
+]);
+export const catalogCorrectionStatusSchema = z.enum(['PENDING', 'ACCEPTED', 'REJECTED']);
+function validPriceMinor(value: string): boolean {
+  return /^(0|[1-9]\d{0,9})$/.test(value) && Number(value) <= 2147483647;
+}
+
+export const createCatalogCorrectionSchema = z
+  .object({
+    skuId: z.uuid(),
+    expectedInventoryVersion: z.number().int().nonnegative(),
+    field: catalogCorrectionFieldSchema,
+    proposedValue: z.string().trim().min(1).max(200),
+    reason: z.string().trim().min(1).max(500),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (value.field === 'priceMinor' && !validPriceMinor(value.proposedValue)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['proposedValue'],
+        message: 'Invalid minor-unit price',
+      });
+    }
+    if (value.field === 'isbn' && !/^[0-9Xx-]{10,20}$/.test(value.proposedValue)) {
+      ctx.addIssue({ code: 'custom', path: ['proposedValue'], message: 'Invalid ISBN' });
+    }
+  });
+export const reviewCatalogCorrectionSchema = z
+  .object({
+    verdict: z.enum(['ACCEPTED', 'REJECTED']),
+    reason: z.string().trim().min(1).max(500),
+  })
+  .strict();
+export const catalogCorrectionRecordSchema = z.object({
+  id: z.uuid(),
+  storeId: z.uuid(),
+  skuId: z.uuid(),
+  field: catalogCorrectionFieldSchema,
+  originalValue: z.string().nullable(),
+  proposedValue: z.string(),
+  reason: z.string(),
+  status: catalogCorrectionStatusSchema,
+  requestedByStaffAccountId: z.uuid(),
+  reviewedByStaffAccountId: z.uuid().nullable(),
+  reviewReason: z.string().nullable(),
+  createdAt: z.iso.datetime(),
+  reviewedAt: z.iso.datetime().nullable(),
+});
+export const catalogCorrectionsResponseSchema = z.object({
+  requests: z.array(catalogCorrectionRecordSchema),
+});
+export type CreateCatalogCorrection = z.infer<typeof createCatalogCorrectionSchema>;
+export type ReviewCatalogCorrection = z.infer<typeof reviewCatalogCorrectionSchema>;
