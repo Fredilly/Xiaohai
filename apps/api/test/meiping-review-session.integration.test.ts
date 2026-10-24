@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, describe, expect, it } from 'vitest';
-import { eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import {
   auditLogs,
   books,
@@ -21,18 +21,57 @@ import {
   MeipingReviewService,
 } from '../src/migration/meiping-review-service.js';
 
-const database = process.env.DATABASE_URL ? createDatabase(process.env) : null;
+const databaseUrl = process.env.DATABASE_URL;
+// Never run mutating integration fixtures against a development or production DB.
+const database =
+  databaseUrl && /^xiaohai_(test|pr147_review_test)$/.test(new URL(databaseUrl).pathname.slice(1))
+    ? createDatabase(process.env)
+    : null;
 const suite = database ? describe : describe.skip;
 const checksum = 'a'.repeat(64);
 
 suite('Meiping review staging PostgreSQL integration', () => {
   const review = new MeipingReviewService(database!.db);
+  const actorIds: string[] = [];
+  const regionIds: string[] = [];
+  const storeIds: string[] = [];
+
   afterAll(async () => {
     if (!database) return;
-    await database.db.delete(meipingReviewDecisions);
-    await database.db.delete(meipingReviewSessions);
-    await database.db.delete(auditLogs).where(eq(auditLogs.resourceType, 'MEIPING_REVIEW_SESSION'));
-    await database.pool.end();
+    try {
+      if (storeIds.length > 0) {
+        const sessions = await database.db
+          .select({ id: meipingReviewSessions.id })
+          .from(meipingReviewSessions)
+          .where(inArray(meipingReviewSessions.storeId, storeIds));
+        const sessionIds = sessions.map((session) => session.id);
+        if (sessionIds.length > 0) {
+          await database.db
+            .delete(meipingReviewDecisions)
+            .where(inArray(meipingReviewDecisions.sessionId, sessionIds));
+          await database.db
+            .delete(auditLogs)
+            .where(
+              and(
+                eq(auditLogs.resourceType, 'MEIPING_REVIEW_SESSION'),
+                inArray(auditLogs.resourceId, sessionIds),
+              ),
+            );
+          await database.db
+            .delete(meipingReviewSessions)
+            .where(inArray(meipingReviewSessions.id, sessionIds));
+        }
+        await database.db.delete(stores).where(inArray(stores.id, storeIds));
+      }
+      if (regionIds.length > 0) {
+        await database.db.delete(regions).where(inArray(regions.id, regionIds));
+      }
+      if (actorIds.length > 0) {
+        await database.db.delete(staffAccounts).where(inArray(staffAccounts.id, actorIds));
+      }
+    } finally {
+      await database.pool.end();
+    }
   });
 
   async function fixture() {
@@ -41,6 +80,7 @@ suite('Meiping review staging PostgreSQL integration', () => {
       .insert(staffAccounts)
       .values({ loginIdentifier: 'review-' + suffix, passwordHash: 'test-only' })
       .returning({ id: staffAccounts.id });
+    actorIds.push(actor!.id);
     const [region] = await database!.db
       .insert(regions)
       .values({
@@ -50,6 +90,7 @@ suite('Meiping review staging PostgreSQL integration', () => {
         countryName: 'China',
       })
       .returning({ id: regions.id });
+    regionIds.push(region!.id);
     const [store] = await database!.db
       .insert(stores)
       .values({
@@ -65,6 +106,7 @@ suite('Meiping review staging PostgreSQL integration', () => {
         longitude: 104.0,
       })
       .returning({ id: stores.id });
+    storeIds.push(store!.id);
     const sourceRowNumber = 2;
     const warning = {
       sourceRowNumber,
@@ -227,6 +269,125 @@ suite('Meiping review staging PostgreSQL integration', () => {
       (await database!.db.select().from(auditLogs).where(eq(auditLogs.resourceId, session.id)))
         .length,
     ).toBe(3);
+  });
+
+  it('records complete append-only decision history and rejects concurrent stale writers', async () => {
+    const { actorId, storeId, report } = await fixture();
+    const session = await review.createSession(report, {
+      actorStaffAccountId: actorId,
+      requestId: randomUUID(),
+    });
+    const inputs = [
+      { action: 'CREATE_DRAFT' as const, countedQuantity: 3, expectedVersion: 0 },
+      { action: 'CREATE_DRAFT' as const, countedQuantity: 5, expectedVersion: 1 },
+      { action: 'EXCLUDE' as const, reason: '条码待人工核实', expectedVersion: 2 },
+      { action: 'CREATE_DRAFT' as const, countedQuantity: 7, expectedVersion: 3 },
+    ];
+    const requests: string[] = [];
+    for (const input of inputs) {
+      const requestId = randomUUID();
+      requests.push(requestId);
+      const result = await review.saveDecision(
+        session.id,
+        storeId,
+        2,
+        { ...input, sourceRowNumber: 2, expectedChecksum: checksum },
+        { actorStaffAccountId: actorId, requestId },
+      );
+      expect(result.version).toBe(requests.length);
+    }
+    const attempts = await Promise.allSettled(
+      [8, 9].map((countedQuantity) =>
+        review.saveDecision(
+          session.id,
+          storeId,
+          2,
+          {
+            action: 'CREATE_DRAFT',
+            sourceRowNumber: 2,
+            countedQuantity,
+            expectedVersion: 4,
+            expectedChecksum: checksum,
+          },
+          { actorStaffAccountId: actorId, requestId: randomUUID() },
+        ),
+      ),
+    );
+    expect(attempts.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    const rejected = attempts.filter((result) => result.status === 'rejected');
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0]).toMatchObject({ reason: { code: 'CONFLICT' } });
+
+    const events = await database!.db
+      .select()
+      .from(auditLogs)
+      .where(
+        and(
+          eq(auditLogs.resourceType, 'MEIPING_REVIEW_SESSION'),
+          eq(auditLogs.resourceId, session.id),
+          eq(auditLogs.actionKey, 'meiping.review.decision.save'),
+        ),
+      );
+    expect(events).toHaveLength(5);
+    // Sort by the version stored in the complete 'next' decision snapshot.
+    const revisions = events
+      .map((event) => ({ event, metadata: event.metadata }))
+      .sort(
+        (a, b) =>
+          Number((a.metadata.next as { version: number }).version) -
+          Number((b.metadata.next as { version: number }).version),
+      );
+    expect(revisions.map(({ metadata }) => metadata)).toEqual([
+      expect.objectContaining({
+        previous: null,
+        next: { action: 'CREATE_DRAFT', countedQuantity: 3, reason: null, version: 1 },
+      }),
+      expect.objectContaining({
+        previous: { action: 'CREATE_DRAFT', countedQuantity: 3, reason: null, version: 1 },
+        next: { action: 'CREATE_DRAFT', countedQuantity: 5, reason: null, version: 2 },
+      }),
+      expect.objectContaining({
+        previous: { action: 'CREATE_DRAFT', countedQuantity: 5, reason: null, version: 2 },
+        next: { action: 'EXCLUDE', countedQuantity: null, reason: '条码待人工核实', version: 3 },
+      }),
+      expect.objectContaining({
+        previous: {
+          action: 'EXCLUDE',
+          countedQuantity: null,
+          reason: '条码待人工核实',
+          version: 3,
+        },
+        next: { action: 'CREATE_DRAFT', countedQuantity: 7, reason: null, version: 4 },
+      }),
+      expect.objectContaining({
+        previous: { action: 'CREATE_DRAFT', countedQuantity: 7, reason: null, version: 4 },
+      }),
+    ]);
+    const lastDecision = revisions[4]!.metadata.next as {
+      action: string;
+      countedQuantity: number;
+      reason: string | null;
+      version: number;
+    };
+    expect(lastDecision).toMatchObject({ action: 'CREATE_DRAFT', reason: null, version: 5 });
+    expect([8, 9]).toContain(lastDecision.countedQuantity);
+    for (const { event, metadata } of revisions) {
+      expect(event.actorStaffAccountId).toBe(actorId);
+      expect(event.requestId).toBeTruthy();
+      expect(event.createdAt).toBeInstanceOf(Date);
+      expect(metadata).toMatchObject({
+        sessionId: session.id,
+        storeId,
+        sourceChecksum: checksum,
+        sourceRowNumber: 2,
+      });
+    }
+    expect(revisions.slice(0, 4).map(({ event }) => event.requestId)).toEqual(requests);
+    const [stored] = await database!.db
+      .select()
+      .from(meipingReviewDecisions)
+      .where(eq(meipingReviewDecisions.sessionId, session.id));
+    expect(stored).toMatchObject({ action: 'CREATE_DRAFT', version: 5 });
   });
 
   it('rejects mismatched store/checksum and review-blocked items', async () => {
