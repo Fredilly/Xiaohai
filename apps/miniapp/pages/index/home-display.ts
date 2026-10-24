@@ -30,6 +30,11 @@ export function homeDisplaySections(sections: HomeSection[]): HomeSection[] {
   });
 }
 
+/** Presence of an actual CMS HERO controls the decorative intro, not content or routing. */
+export function hasCmsHero(sections: HomeSection[]): boolean {
+  return sections.some((section) => section.sectionType === 'HERO');
+}
+
 /**
  * Ignore stale image errors from a previous CMS load or a recycled list row.
  * Replace the entire matching section to preserve its id, type, title and config.
