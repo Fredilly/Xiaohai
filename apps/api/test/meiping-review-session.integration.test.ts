@@ -317,11 +317,20 @@ suite('Meiping review staging PostgreSQL integration', () => {
       .select()
       .from(auditLogs)
       .where(eq(auditLogs.resourceId, session.id));
-    expect(
-      audit.filter((item) => item.actionKey === 'meiping.review.correction.verdict'),
-    ).toHaveLength(2);
-    expect(JSON.stringify(audit)).not.toContain('PR153-UNIQUE-001');
-    expect(JSON.stringify(audit)).not.toContain('核对原书封底');
+    const verdictAudit = audit.filter(
+      (item) => item.actionKey === 'meiping.review.correction.verdict',
+    );
+    expect(verdictAudit).toHaveLength(2);
+    // #152 intentionally stores complete proposal revisions in restricted
+    // audit_logs. Only the independent-verdict event must omit raw proposal
+    // values and the reviewer's free-text reason.
+    const correctionAudit = audit.filter(
+      (item) => item.actionKey === 'meiping.review.correction.save',
+    );
+    expect(correctionAudit).toHaveLength(2);
+    expect(JSON.stringify(correctionAudit)).toContain('PR153-UNIQUE-001');
+    expect(JSON.stringify(verdictAudit)).not.toContain('PR153-UNIQUE-001');
+    expect(JSON.stringify(verdictAudit)).not.toContain('核对原书封底');
   });
 
   it('rejects proposed barcodes already assigned to other Excel rows and wrong-store reviews', async () => {
