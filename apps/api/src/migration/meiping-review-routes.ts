@@ -22,6 +22,28 @@ const listQuery = storeQuery.extend({
   limit: z.coerce.number().int().positive().max(100).default(50),
 });
 const checksum = z.string().regex(/^[a-f0-9]{64}$/i);
+const correctionBody = z
+  .object({
+    expectedVersion: z.number().int().nonnegative(),
+    expectedChecksum: checksum,
+    proposedFields: z
+      .object({
+        title: z.string().trim().min(1).max(200).optional(),
+        author: z.string().trim().min(1).max(160).optional(),
+        publisher: z.string().trim().min(1).max(160).optional(),
+        barcode: z
+          .string()
+          .trim()
+          .regex(/^[A-Za-z0-9-]{4,64}$/)
+          .optional(),
+        priceMinor: z.number().int().min(0).max(2147483647).optional(),
+      })
+      .strict()
+      .refine((fields) => Object.keys(fields).length > 0),
+    reason: z.string().trim().min(1).max(500),
+  })
+  .strict();
+
 const decisionBody = z.discriminatedUnion('action', [
   z
     .object({
@@ -148,6 +170,28 @@ export function registerMeipingReviewRoutes(
       return fail(request, reply, error);
     }
   });
+
+  app.put(
+    '/api/v1/staff/migrations/meiping/review-sessions/:id/corrections/:sourceRowNumber',
+    async (request, reply) => {
+      const params = rowParams.safeParse(request.params);
+      const query = storeQuery.safeParse(request.query);
+      const body = correctionBody.safeParse(request.body);
+      if (!params.success || !query.success || !body.success) return invalid(reply, request.id);
+      try {
+        const audit = await authorize(request, query.data.storeId);
+        return await options.review.saveCorrection(
+          params.data.id,
+          query.data.storeId,
+          params.data.sourceRowNumber,
+          body.data,
+          audit,
+        );
+      } catch (error) {
+        return fail(request, reply, error);
+      }
+    },
+  );
 
   app.put(
     '/api/v1/staff/migrations/meiping/review-sessions/:id/decisions/:sourceRowNumber',

@@ -90,4 +90,8 @@ export {
   staffRoles,
   wechatIdentities,
 } from './schema.js';
-export { meipingReviewSessions, meipingReviewDecisions } from './meiping-review-schema.js';
+export {
+  meipingReviewSessions,
+  meipingReviewDecisions,
+  meipingReviewCorrections,
+} from './meiping-review-schema.js';
