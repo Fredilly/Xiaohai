@@ -792,3 +792,108 @@ textarea {
     grid-column: auto;
   }
 }
+
+.meiping-review-section {
+  display: grid;
+  gap: 16px;
+}
+.meiping-review-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: flex-start;
+}
+.meiping-review-heading h2 {
+  margin: 9px 0 4px;
+}
+.meiping-review-heading p,
+.meiping-review-warning {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+.meiping-review-setup {
+  display: grid;
+  gap: 12px;
+  justify-items: start;
+}
+.meiping-review-setup p {
+  margin: 0;
+}
+.meiping-review-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.meiping-review-list {
+  display: grid;
+  gap: 12px;
+}
+.meiping-review-item {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(260px, 1fr);
+  gap: 18px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fafcfd;
+}
+.meiping-review-info,
+.meiping-review-editor {
+  display: grid;
+  align-content: start;
+  gap: 9px;
+}
+.meiping-review-info span,
+.meiping-review-info small {
+  font-size: 12px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.meiping-review-info strong {
+  font-size: 14px;
+}
+.meiping-review-editor label {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.meiping-review-editor input,
+.meiping-review-editor select {
+  min-height: 36px;
+  width: 100%;
+  min-width: 0;
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: white;
+}
+.meiping-review-save,
+.meiping-review-pagination {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.meiping-review-save small {
+  font-size: 12px;
+  color: var(--muted);
+}
+.meiping-review-pagination {
+  justify-content: flex-end;
+}
+.meiping-review-warning {
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+@media (max-width: 780px) {
+  .meiping-review-heading {
+    display: grid;
+  }
+  .meiping-review-item {
+    grid-template-columns: 1fr;
+  }
+}
