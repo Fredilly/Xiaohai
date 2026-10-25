@@ -78,6 +78,7 @@ export {
   financeReconciliationItems,
 } from './finance-schema.js';
 export { auditLogs } from './audit-schema.js';
+export { catalogCorrectionRequests } from './catalog-correction-schema.js';
 export {
   consumerUsers,
   migrationBatches,

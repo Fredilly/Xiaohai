@@ -72,24 +72,41 @@ export function InventoryPanel({ token, storeId }: { token: string; storeId: str
       <span className="tag">M14 Inventory Operations</span>
       <h2>库存操作</h2>
       <p>当前门店由 M19 工作台选择器确定；余额、版本、写入权限与 Data Scope 仍由服务端确认。</p>
-      <div className="inventory-table">
-        <div className="inventory-row heading">
-          <span>SKU</span>
-          <span>现存 / 可用</span>
-          <span>版本</span>
-        </div>
-        {items.map((item) => (
-          <div className="inventory-row" key={`${item.storeId}:${item.skuId}`}>
-            <span>
-              <strong>{item.skuName}</strong>
-              <small>{item.skuCode}</small>
-            </span>
-            <span>
-              {item.onHand} / {item.available}
-            </span>
-            <span>v{item.version}</span>
-          </div>
-        ))}
+      <div className="data-table-scroll" role="region" aria-label="门店库存列表" tabIndex={0}>
+        <table className="data-table data-table-compact">
+          <thead>
+            <tr>
+              <th scope="col">商品 / SKU</th>
+              <th scope="col" className="numeric">
+                现存 / 可用
+              </th>
+              <th scope="col" className="numeric">
+                库存版本
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((item) => (
+              <tr key={`${item.storeId}:${item.skuId}`}>
+                <td>
+                  <strong className="cell-title">{item.skuName}</strong>
+                  <small className="cell-meta">{item.skuCode}</small>
+                </td>
+                <td className="numeric">
+                  {item.onHand} / <strong>{item.available}</strong>
+                </td>
+                <td className="numeric">v{item.version}</td>
+              </tr>
+            ))}
+            {!items.length && (
+              <tr>
+                <td colSpan={3} className="data-table-empty">
+                  当前门店暂无库存记录
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
       </div>
       {items.length > 0 && (
         <form className="operation-form" onSubmit={(event) => void submit(event)}>

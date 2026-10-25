@@ -253,6 +253,13 @@
       "when": 1792513200000,
       "tag": "0035_meiping_correction_reviews",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1792590000000,
+      "tag": "0036_store_catalog_correction_requests",
+      "breakpoints": true
     }
   ]
 }
