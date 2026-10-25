@@ -29,7 +29,9 @@ function setup(permissions: string[]) {
   };
   const submit = vi.fn(() => Promise.resolve({ id: correctionId, status: 'PENDING' }));
   const review = vi.fn(() => Promise.resolve({ id: correctionId, status: 'ACCEPTED' }));
-  const list = vi.fn(() => Promise.resolve({ requests: [] }));
+  const list = vi.fn(() =>
+    Promise.resolve({ offset: 0, limit: 30, hasMore: false, requests: [] }),
+  );
   registerCatalogCorrectionRoutes(app, {
     staffAuthorization: {
       authenticate: (header: string | undefined) => {
@@ -146,7 +148,7 @@ describe('daily catalog corrections remain scoped and separately authorized', ()
       headers: { authorization },
     });
     expect(read.statusCode).toBe(200);
-    expect(list).toHaveBeenCalledWith(own);
+    expect(list).toHaveBeenCalledWith(own, { offset: 0, limit: 30 });
     const response = await app.inject({
       method: 'POST',
       url: '/api/v1/staff/stores/' + own + '/catalog-corrections/' + correctionId + '/review',
@@ -159,4 +161,30 @@ describe('daily catalog corrections remain scoped and separately authorized', ()
       reason: '复核确认',
     });
   });
+  it('bounds pagination and propagates explicit pages only after store authorization', async () => {
+    const { app, list } = setup(['stores.read', 'catalog.correction.review']);
+    const url = '/api/v1/staff/stores/' + own + '/catalog-corrections';
+    const page = await app.inject({
+      method: 'GET',
+      url: url + '?offset=50&limit=20',
+      headers: { authorization },
+    });
+    expect(page.statusCode).toBe(200);
+    expect(list).toHaveBeenCalledWith(own, { offset: 50, limit: 20 });
+    const invalid = await app.inject({
+      method: 'GET',
+      url: url + '?offset=-1&limit=1000',
+      headers: { authorization },
+    });
+    expect(invalid.statusCode).toBe(400);
+    expect(list).toHaveBeenCalledTimes(1);
+    const foreign = await app.inject({
+      method: 'GET',
+      url: '/api/v1/staff/stores/' + other + '/catalog-corrections?offset=0',
+      headers: { authorization },
+    });
+    expect(foreign.statusCode).toBe(403);
+    expect(list).toHaveBeenCalledTimes(1);
+  });
+
 });
