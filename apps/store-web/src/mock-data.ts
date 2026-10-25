@@ -1,5 +1,13 @@
 export type StoreModule = {
-  key: 'dashboard' | 'books' | 'inventory' | 'rental' | 'orders' | 'operations' | 'manager';
+  key:
+    | 'dashboard'
+    | 'books'
+    | 'inventory'
+    | 'rental'
+    | 'orders'
+    | 'operations'
+    | 'manager'
+    | 'meiping';
   label: string;
   description: string;
   status: string;
@@ -49,6 +57,12 @@ export const storeModules: StoreModule[] = [
     requiredPermission: 'inventory.read',
   },
   {
+    key: 'meiping',
+    label: '迁移资料审核',
+    description: '门店内审核美萍历史迁移草稿、纠错建议和独立复核',
+    status: '一次性历史数据迁移 · 不入库',
+  },
+  {
     key: 'manager',
     label: '店长视图',
     description: '实时运营报表、当前 Staff 权限与门店授权范围',
@@ -58,7 +72,11 @@ export const storeModules: StoreModule[] = [
 ];
 
 export function visibleStoreModules(permissions: readonly string[]): StoreModule[] {
-  return storeModules.filter(
-    (item) => !item.requiredPermission || permissions.includes(item.requiredPermission),
+  return storeModules.filter((item) =>
+    item.key === 'meiping'
+      ? (permissions.includes('inventory.receive') &&
+          permissions.includes('inventory.stocktake')) ||
+        permissions.includes('meiping.correction.review')
+      : !item.requiredPermission || permissions.includes(item.requiredPermission),
   );
 }
