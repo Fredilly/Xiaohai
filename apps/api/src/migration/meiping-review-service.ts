@@ -436,6 +436,27 @@ export class MeipingReviewService {
     if (!row) throw new MeipingReviewError('INVALID_ROW');
 
     const result = await this.db.transaction(async (tx) => {
+      // Lock ordering is always session -> correction row. The session lock
+      // serializes the complete accepted-barcode lookup + verdict insert for
+      // different source rows, not just competing reviews of the same row.
+      // PostgreSQL READ COMMITTED rechecks accepted proposals after waiting.
+      const [lockedSession] = await tx
+        .select({
+          id: meipingReviewSessions.id,
+          status: meipingReviewSessions.status,
+          sourceChecksum: meipingReviewSessions.sourceChecksum,
+        })
+        .from(meipingReviewSessions)
+        .where(and(eq(meipingReviewSessions.id, id), eq(meipingReviewSessions.storeId, storeId)))
+        .for('update')
+        .limit(1);
+      if (
+        !lockedSession ||
+        lockedSession.status !== 'DRAFT' ||
+        lockedSession.sourceChecksum !== input.expectedChecksum
+      ) {
+        throw new MeipingReviewError('CONFLICT');
+      }
       // Lock this proposal so concurrent edits cannot change its version during review.
       const [current] = await tx
         .select()
