@@ -511,10 +511,7 @@ suite('daily catalog corrections against disposable PostgreSQL', () => {
         .from(catalogCorrectionRequests)
         .where(eq(catalogCorrectionRequests.id, created.id));
       expect(stillPending?.status).toBe('PENDING');
-      const reviews = await db
-        .select()
-        .from(auditLogs)
-        .where(eq(auditLogs.resourceId, created.id));
+      const reviews = await db.select().from(auditLogs).where(eq(auditLogs.resourceId, created.id));
       const verdictAudits = reviews.filter((row) => row.actionKey === 'catalog.correction.review');
       const submitAudits = reviews.filter((row) => row.actionKey === 'catalog.correction.submit');
       expect(verdictAudits).toHaveLength(0);

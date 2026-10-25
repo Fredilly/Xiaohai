@@ -29,9 +29,7 @@ function setup(permissions: string[]) {
   };
   const submit = vi.fn(() => Promise.resolve({ id: correctionId, status: 'PENDING' }));
   const review = vi.fn(() => Promise.resolve({ id: correctionId, status: 'ACCEPTED' }));
-  const list = vi.fn(() =>
-    Promise.resolve({ offset: 0, limit: 30, hasMore: false, requests: [] }),
-  );
+  const list = vi.fn(() => Promise.resolve({ offset: 0, limit: 30, hasMore: false, requests: [] }));
   registerCatalogCorrectionRoutes(app, {
     staffAuthorization: {
       authenticate: (header: string | undefined) => {
