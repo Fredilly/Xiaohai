@@ -5,6 +5,7 @@ import {
   listMeipingReviewSessions,
   saveMeipingReviewDecision,
   saveMeipingReviewCorrection,
+  saveMeipingCorrectionReview,
 } from './meiping-review-api';
 
 afterEach(() => vi.unstubAllGlobals());
@@ -13,6 +14,34 @@ const sessionId = '22222222-2222-4222-8222-222222222222';
 const checksum = 'a'.repeat(64);
 
 describe('Meiping review admin HTTP adapter', () => {
+  it('submits an explicitly versioned independent review and never claims catalog approval', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: vi.fn().mockResolvedValue({
+        sourceRowNumber: 5,
+        correctionVersion: 2,
+        verdict: 'REJECTED',
+        correctionAcceptedForLaterReview: false,
+        approved: false,
+        catalogOrInventoryWritten: false,
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const body = {
+      expectedChecksum: checksum,
+      expectedCorrectionVersion: 2,
+      verdict: 'REJECTED' as const,
+      reason: '缺少原书比对信息',
+    };
+    const result = await saveMeipingCorrectionReview('token', storeId, sessionId, 5, body);
+    expect(result).toEqual({ correctionVersion: 2, verdict: 'REJECTED' });
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toContain('/corrections/5/review?storeId=' + storeId);
+    expect(init.method).toBe('POST');
+    expect(init.headers).toMatchObject({ Authorization: ['Bearer', 'token'].join(' ') });
+    expect(JSON.parse(init.body as string)).toMatchObject(body);
+  });
+
   it('sends a correction proposal for a row with server-side version and checksum', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,

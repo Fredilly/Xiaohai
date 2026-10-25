@@ -31,6 +31,12 @@ export function reviewDecisionInput(
 
 export function reviewApiErrorMessage(error: unknown): string {
   if (!(error instanceof Error)) return '操作失败，请检查网络后重试。';
+  if (error.message === 'SELF_REVIEW_FORBIDDEN') {
+    return '纠错建议必须由另一名具备独立复核权限的工作人员复核。';
+  }
+  if (error.message === 'BARCODE_NOT_VERIFIED') {
+    return '建议条码仍有冲突或未能通过现有记录校验，不可采纳；请驳回或进一步核对。';
+  }
   if (error.message === 'CONFLICT') return '审核记录已更新或存在冲突，请刷新后重新核对。';
   if (error.message === 'NOT_FOUND') return '该审核会话不存在，请重新上传 Excel 建立草稿。';
   if (error.message === 'STAFF_AUTHENTICATION_REQUIRED') return '登录状态已失效，请重新登录。';

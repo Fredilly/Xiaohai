@@ -9,11 +9,15 @@ const PAGE_SIZE = 20;
 export function MeipingReviewResumePanel({
   token,
   storeId,
-  canReview,
+  canReadReview,
+  canEditReview,
+  canVerifyCorrection,
 }: {
   token: string;
   storeId: string;
-  canReview: boolean;
+  canReadReview: boolean;
+  canEditReview: boolean;
+  canVerifyCorrection?: boolean;
 }) {
   const [items, setItems] = useState<ReviewSessionSummary[]>([]);
   const [selected, setSelected] = useState<ReviewSessionSummary | null>(null);
@@ -24,7 +28,7 @@ export function MeipingReviewResumePanel({
   const [error, setError] = useState('');
 
   useEffect(() => {
-    if (!canReview || !storeId) return;
+    if (!canReadReview || !storeId) return;
     let cancelled = false;
     setLoading(true);
     setItems([]);
@@ -44,9 +48,9 @@ export function MeipingReviewResumePanel({
     return () => {
       cancelled = true;
     };
-  }, [token, storeId, canReview, offset, retry]);
+  }, [token, storeId, canReadReview, offset, retry]);
 
-  if (!canReview || !storeId) return null;
+  if (!canReadReview || !storeId) return null;
   return (
     <section className="panel meiping-resume-section" aria-labelledby="meiping-resume-title">
       <div>
@@ -72,7 +76,9 @@ export function MeipingReviewResumePanel({
             key={selected.id}
             token={token}
             storeId={storeId}
-            canReview={canReview}
+            canReadReview={canReadReview}
+            canEditReview={canEditReview}
+            canVerifyCorrection={canVerifyCorrection}
             restoredSession={{
               id: selected.id,
               created: false,

@@ -130,6 +130,9 @@ export const adminModules: ModulePreview[] = [
 
 export function visibleAdminModules(permissions: readonly string[]): ModulePreview[] {
   return adminModules.filter(
-    (item) => !item.requiredPermission || permissions.includes(item.requiredPermission),
+    (item) =>
+      !item.requiredPermission ||
+      permissions.includes(item.requiredPermission) ||
+      (item.key === 'meiping' && permissions.includes('meiping.correction.review')),
   );
 }
