@@ -20,13 +20,13 @@ The Meiping Excel migration is an **one-time historical import**, not the source
 - This PR does not enable formal INITIAL_MIGRATION, stock transactions, production product/SKU writes or daily catalog mutation.
 - HQ Account Admin already provides create/enable/disable/password reset/roles/data scopes. Permanent deletion is intentionally not provided because it would lose audit lineage.
 - HQ operations reporting is currently scoped to **data its Staff identity may read**. Unrestricted global reporting requires GLOBAL scope in the server authorization context; the front-end does not escalate.
-- Existing stacked PRs #152/#153 remain Draft and unmerged.
+- **Integration checkpoint (2026-10-25):** #152 and #153 have been merged to `main`. This Store Web-only PR is rebased by a non-force merge on that approved backend, including #153's fixed transaction-level barcode acceptance serialization; no backend behavior is reimplemented in the browser.
 
 ## Verification
 - Store Web nav permission test: limited inventory permission cannot reveal migration review; dedicated reviewer can see it without inventory mutation grant.
 - Store Review API adapter tests: same Staff endpoints as HQ, auth/response validation, 401/403 error mapping.
 - Store panel tests: explicit no-default verdict, required reason, immutable reviewed record, source/proposal comparison, stale-version safety, original duplicate blocked from CREATE_DRAFT.
-- Run full CI, build and disposable integration. Mac browser UAT of Store Web remains pending; no Mac database writes authorized/performed by this branch.
+- Run full CI, build and disposable integration on the merged latest-main tree. **Mac browser UAT is only PARTIAL PASS:** the actual Store Web Cancel/no-write path, two genuine store-scoped Staff roles (earlier screenshots used HQ Admin), and an authenticated **different-store** denial remain unverified. The disposable test dataset was reported to contain only one store; do not invent a cross-store PASS. Do not create additional stores/users or submit new verdicts without authorization. Read-only inspection is preferred before any UAT.
 
 ## Store operator roles for browser UAT / 门店岗位验收
 
