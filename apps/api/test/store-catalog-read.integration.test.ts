@@ -52,7 +52,7 @@ suite('Store catalog SQL read-model PostgreSQL isolation', () => {
     }
   });
 
-  it('reads only linked SKUs for the selected store, including zero-stock and inactive rows, without writes', async () => {
+  it('isolates store-linked SKUs, inactive stock, search and pagination', async () => {
     const suffix = randomUUID().slice(0, 8);
     const [region] = await database!.db
       .insert(regions)
@@ -210,8 +210,14 @@ suite('Store catalog SQL read-model PostgreSQL isolation', () => {
     expect(unlinked.items).toEqual([]);
 
     const [stockAfterA, stockAfterB] = await Promise.all([
-      database!.db.select().from(storeInventory).where(inArray(storeInventory.storeId, [storeA.id])),
-      database!.db.select().from(storeInventory).where(inArray(storeInventory.storeId, [storeB.id])),
+      database!.db
+        .select()
+        .from(storeInventory)
+        .where(inArray(storeInventory.storeId, [storeA.id])),
+      database!.db
+        .select()
+        .from(storeInventory)
+        .where(inArray(storeInventory.storeId, [storeB.id])),
     ]);
     expect(stockAfterA).toHaveLength(2);
     expect(stockAfterB).toHaveLength(1);
