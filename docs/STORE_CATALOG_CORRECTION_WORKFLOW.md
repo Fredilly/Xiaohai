@@ -2,7 +2,7 @@
 
 ## Dependency and non-goals
 
-Stacked on Draft PR #155 (scoped read-only catalog). This workflow is **not** Meiping historical Excel correction and is **not** HQ catalog CRUD. Global shared books/ISBN/price/SKU are never directly changed by a store, by ACCEPTED, or by this feature.
+**Integration checkpoint 2026-10-25:** PR #155 was merged to `main` (merge commit `a5c7f21`), and this PR was retargeted to `main`. We merged the latest approved main changes into this branch without force-push; the existing read-only catalog and two-store query test stay intact. This workflow is **not** Meiping historical Excel correction and is **not** HQ catalog CRUD. Global shared books/ISBN/price/SKU are never directly changed by a store, by ACCEPTED, or by this feature.
 
 ## Initial controlled business rule
 
@@ -28,4 +28,4 @@ Do not add a direct apply endpoint until these are agreed and checked against cu
 
 ## Acceptance and status
 
-Draft only. PR CI, isolated PostgreSQL integration tests, UI manual acceptance, and staging deployment must be separately recorded; do not label this production-ready from route mocks alone. Historical PR #154 manual cancellations and cross-store UAT remain BLOCKED without proper isolation.
+Draft until latest integrated HEAD CI and Fred review. PR CI, isolated PostgreSQL integration tests, UI manual acceptance, and staging deployment must be separately recorded; do not label this production-ready from route mocks alone. The catalog-correction PostgreSQL integration fixture now refuses database names outside `xiaohai_test` or the dedicated `xiaohai_pr156_test`; never run these mutating fixtures on the production or shared development database. The latest integrated GitHub CI verifies the disposable database only, not a real Store Web browser with independently authenticated staff accounts. Historical PR #154 manual cancellations and cross-store UAT remain BLOCKED without proper isolation.
