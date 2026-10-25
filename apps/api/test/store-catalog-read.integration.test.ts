@@ -181,6 +181,15 @@ suite('Store catalog SQL read-model PostgreSQL isolation', () => {
     expect(scopedB.items.map((item) => item.skuId)).toEqual([createdSkus[2]!.id]);
     expect(scopedB.items[0]).toMatchObject({ storeId: storeB.id, onHand: 9, available: 9 });
 
+    // Exact-SKU lookup is independent of sorted pagination, and remains scoped.
+    expect(await catalog.get(storeA.id, createdSkus[1]!.id)).toMatchObject({
+      skuId: createdSkus[1]!.id,
+      storeId: storeA.id,
+      onHand: 0,
+    });
+    expect(await catalog.get(storeA.id, createdSkus[2]!.id)).toBeNull();
+    expect(await catalog.get(storeB.id, createdSkus[0]!.id)).toBeNull();
+
     const first = await catalog.list(storeA.id, { offset: 0, limit: 1 });
     expect(first.hasMore).toBe(true);
     expect(first.items.map((item) => item.skuId)).toEqual([createdSkus[0]!.id]);
