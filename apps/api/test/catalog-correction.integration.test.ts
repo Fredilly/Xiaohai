@@ -36,7 +36,12 @@ import { registerStoreCatalogReadRoutes } from '../src/commerce/store-catalog-re
 import { CatalogCorrectionService } from '../src/commerce/catalog-correction-service.js';
 import { registerCatalogCorrectionRoutes } from '../src/commerce/catalog-correction-routes.js';
 
-const database = process.env.DATABASE_URL ? createDatabase(process.env) : null;
+const databaseUrl = process.env.DATABASE_URL;
+// Never run mutating fixtures against development, staging, or production.
+const database =
+  databaseUrl && /^xiaohai_(test|pr156_test)$/.test(new URL(databaseUrl).pathname.slice(1))
+    ? createDatabase(process.env)
+    : null;
 const suite = database ? describe : describe.skip;
 
 suite('daily catalog corrections against disposable PostgreSQL', () => {
