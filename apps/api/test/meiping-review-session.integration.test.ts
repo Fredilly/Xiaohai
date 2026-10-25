@@ -405,9 +405,12 @@ suite('Meiping review staging PostgreSQL integration', () => {
     const rejected = attempts.filter((item) => item.status === 'rejected');
     expect(accepted).toHaveLength(1);
     expect(rejected).toHaveLength(1);
-    const error = (rejected[0] as PromiseRejectedResult).reason;
-    expect(error).toBeInstanceOf(MeipingReviewError);
-    expect(error.code).toBe('BARCODE_NOT_VERIFIED');
+    const rejection: unknown = (rejected[0] as PromiseRejectedResult).reason;
+    expect(rejection).toBeInstanceOf(MeipingReviewError);
+    if (!(rejection instanceof MeipingReviewError)) {
+      throw new Error('Expected barcode conflict');
+    }
+    expect(rejection.code).toBe('BARCODE_NOT_VERIFIED');
 
     const verdicts = await database!.db
       .select()
