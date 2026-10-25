@@ -392,7 +392,7 @@ suite('daily catalog corrections against disposable PostgreSQL', () => {
       await f.cleanup();
     }
   });
-  it('keeps an old PENDING proposal reachable beyond 50 newer decided records', async () => {
+  it('paginates 63 records without hiding old PENDING requests', async () => {
     const f = await fixture();
     try {
       const [sku] = await db
@@ -436,16 +436,15 @@ suite('daily catalog corrections against disposable PostgreSQL', () => {
       expect(first.requests[0]?.status).toBe('PENDING');
       expect(first.hasMore).toBe(true);
       const pages = await Promise.all(
-        [0, 20, 40, 60].map((offset) =>
-          corrections.list(f.storeA.id, { offset, limit: 20 }),
-        ),
+        [0, 20, 40, 60].map((offset) => corrections.list(f.storeA.id, { offset, limit: 20 })),
       );
       const ids = pages.flatMap((page) => page.requests.map((row) => row.id));
       expect(ids).toHaveLength(63);
       expect(new Set(ids).size).toBe(63);
       expect(pages[3]?.hasMore).toBe(false);
       expect(pages[3]?.requests).toHaveLength(3);
-      expect((await corrections.list(f.storeB.id, { offset: 0, limit: 20 })).requests).toEqual([]);
+      const foreign = await corrections.list(f.storeB.id, { offset: 0, limit: 20 });
+      expect(foreign.requests).toEqual([]);
       const reviewed = await corrections.review(
         f.storeA.id,
         pending!.id,
@@ -464,7 +463,7 @@ suite('daily catalog corrections against disposable PostgreSQL', () => {
     }
   });
 
-  it('rejects stale ACCEPTED when HQ edits canonical book while the reviewer waits', async () => {
+  it('rejects an HQ-edit race without review audit', async () => {
     const f = await fixture();
     try {
       const created = await corrections.submit(f.storeA.id, f.proposer.id, randomUUID(), {
@@ -516,8 +515,10 @@ suite('daily catalog corrections against disposable PostgreSQL', () => {
         .select()
         .from(auditLogs)
         .where(eq(auditLogs.resourceId, created.id));
-      expect(reviews.filter((row) => row.actionKey === 'catalog.correction.review')).toHaveLength(0);
-      expect(reviews.filter((row) => row.actionKey === 'catalog.correction.submit')).toHaveLength(1);
+      const verdictAudits = reviews.filter((row) => row.actionKey === 'catalog.correction.review');
+      const submitAudits = reviews.filter((row) => row.actionKey === 'catalog.correction.submit');
+      expect(verdictAudits).toHaveLength(0);
+      expect(submitAudits).toHaveLength(1);
       const [stock] = await db
         .select()
         .from(storeInventory)
@@ -527,5 +528,4 @@ suite('daily catalog corrections against disposable PostgreSQL', () => {
       await f.cleanup();
     }
   });
-
 });

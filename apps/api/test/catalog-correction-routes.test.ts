@@ -161,7 +161,7 @@ describe('daily catalog corrections remain scoped and separately authorized', ()
       reason: '复核确认',
     });
   });
-  it('bounds pagination and propagates explicit pages only after store authorization', async () => {
+  it('validates paginated queries after store authorization', async () => {
     const { app, list } = setup(['stores.read', 'catalog.correction.review']);
     const url = '/api/v1/staff/stores/' + own + '/catalog-corrections';
     const page = await app.inject({
@@ -186,5 +186,4 @@ describe('daily catalog corrections remain scoped and separately authorized', ()
     expect(foreign.statusCode).toBe(403);
     expect(list).toHaveBeenCalledTimes(1);
   });
-
 });

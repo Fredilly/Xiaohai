@@ -255,7 +255,17 @@ export class CatalogCorrectionService {
   }
 }
 
-type Source = NonNullable<Awaited<ReturnType<CatalogCorrectionService['loadLockedSource']>>>;
+type Source = {
+  productId: string;
+  productName: string;
+  bookTitle: string | null;
+  author: string | null;
+  publisher: string | null;
+  isbn: string | null;
+  bookEditionId: string | null;
+  priceMinor: number;
+  inventoryVersion: number;
+};
 
 function getSourceField(source: Source, field: string): string | null | undefined {
   switch (field) {
