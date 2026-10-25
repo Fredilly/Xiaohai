@@ -5,6 +5,7 @@ import {
   addressInputSchema,
   adminCatalogQuerySchema,
   adminProductInputSchema,
+  adminProductUpdateSchema,
   catalogListResponseSchema,
   catalogProductSchema,
   catalogQuerySchema,
@@ -225,7 +226,7 @@ export function registerCommerceRoutes(
   });
   app.put('/api/v1/staff/catalog/products/:id', async (request, reply) => {
     const params = z.object({ id: z.uuid() }).safeParse(request.params);
-    const input = adminProductInputSchema.safeParse(request.body);
+    const input = adminProductUpdateSchema.safeParse(request.body);
     if (!params.success || !input.success) return invalid(reply, request.id);
     try {
       const actor = await staff(request);

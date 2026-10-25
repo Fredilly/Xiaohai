@@ -509,8 +509,13 @@ export class CommerceService {
   ) {
     const current = (await this.listAdminProducts()).products.find((item) => item.id === id);
     if (!current) throw new CommerceError('NOT_FOUND', 'Product not found');
-    const expectedProductVersion = input.expectedProductVersion ?? current.productVersion;
-    const expectedSkuVersion = input.expectedSkuVersion ?? current.skuVersion;
+    // The legacy HQ PUT must require the versions the client actually read.
+    // Falling back to the latest DB versions silently bypasses optimistic locking.
+    if (input.expectedProductVersion === undefined || input.expectedSkuVersion === undefined) {
+      throw new CommerceError('CONFLICT', 'Expected product and SKU versions are required');
+    }
+    const expectedProductVersion = input.expectedProductVersion;
+    const expectedSkuVersion = input.expectedSkuVersion;
     await this.db.transaction(async (tx) => {
       const [updatedProduct] = await tx
         .update(products)

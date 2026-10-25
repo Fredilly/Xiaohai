@@ -151,6 +151,10 @@ export const adminProductInputSchema = z
     }),
   })
   .strict();
+export const adminProductUpdateSchema = adminProductInputSchema.extend({
+  expectedProductVersion: z.number().int().nonnegative(),
+  expectedSkuVersion: z.number().int().nonnegative(),
+});
 export const adminProductSchema = adminProductInputSchema.extend({
   id: z.uuid(),
   skuId: z.uuid(),
