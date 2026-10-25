@@ -511,7 +511,10 @@ function ProductForm({
     <form className="cms-form" onSubmit={(e) => void submit(e)}>
       <h3>{isEditing ? '编辑商品' : '新增商品'}</h3>
       {isEditing && (
-        <p>此处仅能修改商品状态与 SKU 信息。修改书名、作者、ISBN、出版社请使用下方总部跨店商品编辑器。</p>
+        <p>
+          此处仅能修改商品状态与 SKU
+          信息。修改书名、作者、ISBN、出版社请使用下方总部跨店商品编辑器。
+        </p>
       )}
       <label>
         商品名

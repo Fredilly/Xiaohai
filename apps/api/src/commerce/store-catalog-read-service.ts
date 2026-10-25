@@ -23,7 +23,10 @@ export class StoreCatalogReadService {
     return page.items[0] ?? null;
   }
 
-  async list(storeId: string, input: { q?: string; skuId?: string; offset: number; limit: number }) {
+  async list(
+    storeId: string,
+    input: { q?: string; skuId?: string; offset: number; limit: number },
+  ) {
     const rows = await this.db
       .select({
         storeId: storeInventory.storeId,
