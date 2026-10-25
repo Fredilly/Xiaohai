@@ -13,7 +13,7 @@ Stacked on #152. Independent staff review can accept or reject a specific versio
 - Migration \`0035_meiping_correction_reviews.sql\` adds immutable records keyed \`(session_id, source_row_number, correction_version)\`.
 - A valid verdict is \`ACCEPTED\` or \`REJECTED\`, with a required human reason and reviewer identity. Same version may not be reviewed twice.
 - Editing a correction creates another version: prior verdict stays in history, but is **not** treated as the verdict on the new version.
-- The review transaction locks the correction row; concurrent correction saves and duplicate reviews fail closed. Audit metadata records reviewer, version, decision, source row and store; never the proposed values, barcode or free-text reason.
+- Every review transaction first obtains a **session-level PostgreSQL row lock**, then locks the individual correction row (fixed order: session → correction), before running the current-session accepted-barcode collision check and inserting a verdict. This serializes concurrent ACCEPTED proposals for the same barcode **across different source rows**; one succeeds, the other fails without an audit event. A correction version update invalidates its former verdict. Audit *verdict* metadata records reviewer, version, decision, source row and store but never proposed values, barcode or free-text reason; complete correction revision history remains exclusively in the protected audit store added in #152.
 
 ## Conservative barcode check
 - Before accepting a correction with a proposed barcode, reject known collisions with other original barcode/ISBN values in the **same source workbook** and existing formal SKU codes and book-edition ISBNs, plus current already-accepted corrections in the same session.
@@ -30,7 +30,7 @@ Show saved correction proposals and verdict for the current version. Only users 
 
 ## Verification & safe rollout
 - CI: migration guard; formatting/lint/typing/unit/build; disposable PostgreSQL integration.
-- Integration scenarios: separate reviewer, self-review forbidden, duplicate verdict forbidden, stale version forbidden, source-barcode collision, access scoping, persistent audit records and zero formal catalog/inventory writes.
+- Integration scenarios: separate reviewer, self-review forbidden, duplicate verdict forbidden, stale version forbidden, source-barcode collision, **two independent reviewers concurrently accepting the same barcode for different rows (exactly one ACCEPTED, rejected attempt creates no verdict or audit)**, access scoping, persistent audit records and zero formal catalog/inventory writes.
 - User Mac UAT **not performed yet**. Clone the already isolated \`xiaohai_pr152_test\` to a new disposable DB, apply 0035 there only after explicit authorization; do not mutate original source DB, \`xiaohai_dev\`, or production. To test two-person rule, provision a distinct Staff reviewer identity in the new disposable database with narrowly granted review permission, no reuse of any real personnel credentials.
 - Keep this and stacked upstream PRs Draft. No merge or production deployment.
 
