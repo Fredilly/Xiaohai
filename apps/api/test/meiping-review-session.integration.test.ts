@@ -417,9 +417,8 @@ suite('Meiping review staging PostgreSQL integration', () => {
     expect(verdicts[0]?.verdict).toBe('ACCEPTED');
     expect(verdicts[0]?.correctionVersion).toBe(1);
     expect([2, 3]).toContain(verdicts[0]?.sourceRowNumber);
-    expect([firstReviewer.actorStaffAccountId, secondReviewer.actorStaffAccountId]).toContain(
-      verdicts[0]?.reviewedByStaffAccountId,
-    );
+    const reviewerIds = [firstReviewer.actorStaffAccountId, secondReviewer.actorStaffAccountId];
+    expect(reviewerIds).toContain(verdicts[0]?.reviewedByStaffAccountId);
 
     const events = await database!.db
       .select()
@@ -435,8 +434,10 @@ suite('Meiping review staging PostgreSQL integration', () => {
       verdict: 'ACCEPTED',
     });
     expect(JSON.stringify(verdictEvents)).not.toContain('PR153-SHARED-001');
-    expect(events.filter((event) => event.actionKey === 'meiping.review.correction.save'))
-      .toHaveLength(2);
+    const proposalEvents = events.filter(
+      (event) => event.actionKey === 'meiping.review.correction.save',
+    );
+    expect(proposalEvents).toHaveLength(2);
     expect((await review.listRows(session.id, storeId, 0, 10)).status).toBe('DRAFT');
     expect((await database!.db.select().from(books)).length).toBe(booksBefore.length);
     expect((await database!.db.select().from(storeInventory)).length).toBe(stockBefore.length);
