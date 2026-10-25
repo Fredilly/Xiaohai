@@ -51,7 +51,13 @@ describe('M5 commerce contracts', () => {
       name: 'Book',
       status: 'ACTIVE' as const,
       book: null,
-      sku: { code: 'A', name: 'A', priceMinor: 1200, status: 'ACTIVE' as const, availableForSale: true },
+      sku: {
+        code: 'A',
+        name: 'A',
+        priceMinor: 1200,
+        status: 'ACTIVE' as const,
+        availableForSale: true,
+      },
     };
     // Creating a new product has no previous versions.
     expect(adminProductInputSchema.safeParse(product).success).toBe(true);
