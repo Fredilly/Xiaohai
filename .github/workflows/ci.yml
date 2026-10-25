@@ -75,6 +75,11 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Workspace, Mini Program and secret checks
         run: pnpm check:workspace && pnpm check:miniapp && pnpm check:secrets
+      # Temporary PR-only formatter diagnostic. No source writes are committed by CI.
+      - name: Preview exact Prettier test formatting diff
+        run: |
+          pnpm exec prettier --write apps/api/test/catalog-correction-routes.test.ts apps/api/test/catalog-correction.integration.test.ts
+          git diff -- apps/api/test/catalog-correction-routes.test.ts apps/api/test/catalog-correction.integration.test.ts
       - name: Format, lint and typecheck
         run: pnpm format:check && pnpm lint && pnpm typecheck
       - name: Unit tests
