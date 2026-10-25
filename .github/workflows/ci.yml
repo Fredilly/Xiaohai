@@ -102,6 +102,17 @@ jobs:
         if: needs.changes.outputs.schema != 'true' || needs.changes.outputs.migration == 'true'
         run: echo "Migration guard passed."
 
+  # Also check every migration journal entry, not just schema filenames.
+  # A 0036/0037 historic timestamp inversion needs a forward-safe 0038 repair.
+  migration-chain:
+    name: migration journal guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Drizzle journal, SQL and legacy upgrade repair
+        run: node scripts/check-migration-chain.mjs
+
   critical:
     name: critical integration
     needs: changes
@@ -153,6 +164,8 @@ jobs:
           pnpm --filter @xiaohai/config build
       - run: pnpm --filter @xiaohai/db db:check
       - run: pnpm --filter @xiaohai/db db:migrate
+      - name: Verify incremental 0036→0038 repair on a second disposable PostgreSQL DB
+        run: pnpm --filter @xiaohai/db exec node test/stacked-upgrade.integration.mjs
       - name: Scanner PostgreSQL integration (disposable DB)
         run: pnpm --filter @xiaohai/db test:reliability-integration
       - run: pnpm test:integration
@@ -167,7 +180,7 @@ jobs:
   gate:
     name: merge gate
     if: always()
-    needs: [changes, fast, migration-guard, critical]
+    needs: [changes, fast, migration-guard, migration-chain, critical]
     runs-on: ubuntu-latest
     steps:
       - name: Enforce required outcomes
@@ -175,12 +188,14 @@ jobs:
           CHANGES: ${{ needs.changes.result }}
           FAST: ${{ needs.fast.result }}
           MIGRATION: ${{ needs.migration-guard.result }}
+          MIGRATION_CHAIN: ${{ needs.migration-chain.result }}
           CRITICAL: ${{ needs.critical.result }}
         run: |
           set -euo pipefail
           [ "$CHANGES" = "success" ]
           [ "$FAST" = "success" ]
           [ "$MIGRATION" = "success" ]
+          [ "$MIGRATION_CHAIN" = "success" ]
           if [ "$CRITICAL" != "success" ] && [ "$CRITICAL" != "skipped" ]; then
             echo "::error::Critical integration checks did not pass."
             exit 1

@@ -328,6 +328,9 @@ export const catalogCorrectionRecordSchema = z.object({
   reviewedAt: z.iso.datetime().nullable(),
 });
 export const catalogCorrectionsResponseSchema = z.object({
+  offset: z.number().int().nonnegative(),
+  limit: z.number().int().positive().max(100),
+  hasMore: z.boolean(),
   requests: z.array(catalogCorrectionRecordSchema),
 });
 export type CreateCatalogCorrection = z.infer<typeof createCatalogCorrectionSchema>;

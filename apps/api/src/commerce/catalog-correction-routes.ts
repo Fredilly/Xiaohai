@@ -14,6 +14,12 @@ import {
 
 const storeParam = z.object({ id: z.uuid() });
 const reviewParams = z.object({ id: z.uuid(), correctionId: z.uuid() });
+const listQuery = z
+  .object({
+    offset: z.coerce.number().int().min(0).max(100000).default(0),
+    limit: z.coerce.number().int().min(1).max(100).default(30),
+  })
+  .strict();
 
 export function registerCatalogCorrectionRoutes(
   app: FastifyInstance,
@@ -48,10 +54,11 @@ export function registerCatalogCorrectionRoutes(
 
   app.get('/api/v1/staff/stores/:id/catalog-corrections', async (request, reply) => {
     const params = storeParam.safeParse(request.params);
-    if (!params.success) return invalid(reply, request.id);
+    const query = listQuery.safeParse(request.query);
+    if (!params.success || !query.success) return invalid(reply, request.id);
     try {
       await authorize(request, params.data.id, 'read');
-      return await options.corrections.list(params.data.id);
+      return await options.corrections.list(params.data.id, query.data);
     } catch (error) {
       return fail(request, reply, error);
     }
