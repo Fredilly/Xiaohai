@@ -2,6 +2,8 @@ import { useEffect, useState, type FormEvent } from 'react';
 import {
   adminProductUpdateInputSchema,
   type AdminProductInput,
+  type AdminProductCreateInput,
+  type AdminProductUpdateInput,
   type StoreCatalogEditRequest,
   type StoreCatalogItem,
 } from '@xiaohai/contracts/commerce';
@@ -10,6 +12,8 @@ import { displayStatus, money } from './display';
 import {
   CatalogApiError,
   createAdminProduct,
+  getAdminProduct,
+  lookupBook as lookupBookData,
   listAdminProducts,
   updateAdminProduct,
   previewAdminProductUpdate,
@@ -18,19 +22,28 @@ import {
   updateHqStoreCatalog,
 } from './catalog-api';
 import { loadHqStores } from './hq-operations-api';
+import { isValidIsbn, normalizeIsbn } from '@xiaohai/contracts/commerce';
 type Product = Awaited<ReturnType<typeof listAdminProducts>>['products'][number];
+export function parseYuanToMinor(value: string): number | null {
+  if (!/^(?:0|[1-9]\d*)(?:\.\d{1,2})?$/.test(value)) return null;
+  const [yuan = '', fraction = ''] = value.split('.');
+  const minor = BigInt(yuan) * 100n + BigInt((fraction + '00').slice(0, 2));
+  return minor <= 2147483647n ? Number(minor) : null;
+}
 const blank: AdminProductInput = {
   name: '',
   description: null,
   coverUrl: null,
   status: 'DRAFT',
   book: { title: '', author: '', isbn: null, publisher: null },
-  sku: { code: '', name: '标准', priceMinor: 0, status: 'ACTIVE', availableForSale: true },
+  sku: { code: '', name: '标准', priceMinor: 0, status: 'ACTIVE', availableForSale: false },
 };
 export function CatalogManager({ token }: { token: string }) {
   const [products, setProducts] = useState<Product[]>([]);
   const [state, setState] = useState('loading');
   const [q, setQ] = useState('');
+  const [offset, setOffset] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
   const [creating, setCreating] = useState(false);
   useEffect(() => {
@@ -525,17 +538,22 @@ function HqStoreCatalogForm({
 }
 function ProductForm({
   initial,
+  token,
+  onOpenExisting,
   onCancel,
   onReload,
   onSave,
 }: {
   initial: Product | AdminProductInput;
+  token: string;
+  onOpenExisting: (productId: string) => Promise<void>;
   onCancel: () => void;
   onReload: () => void;
-  onSave: (input: AdminProductInput, requestKey: string) => Promise<void>;
+  onSave: (input: AdminProductCreateInput | AdminProductUpdateInput, requestKey: string) => Promise<void>;
 }) {
   const [requestKey] = useState(() => crypto.randomUUID());
   const [saving, setSaving] = useState(false);
+  const editingExisting = 'productVersion' in initial;
   const [v, setV] = useState<AdminProductInput>({
     name: initial.name,
     description: initial.description,
@@ -555,21 +573,138 @@ function ProductForm({
         }
       : {}),
   });
+  const [isBook, setIsBook] = useState(initial.book !== null);
   const [error, setError] = useState('');
   const [stale, setStale] = useState(false);
+  const [priceYuan, setPriceYuan] = useState(() => (v.sku.priceMinor / 100).toFixed(2));
+  const [lookupStatus, setLookupStatus] = useState('');
+  const [lookingUp, setLookingUp] = useState(false);
+  const [existingProductId, setExistingProductId] = useState<string | null>(null);
+  const [existingBook, setExistingBook] = useState(false);
+
+  function updateBook(field: 'title' | 'author' | 'isbn' | 'publisher', value: string) {
+    setV((current) => ({
+      ...current,
+      name: !editingExisting && field === 'title' ? value : current.name,
+      book: {
+        title: field === 'title' ? value : (current.book?.title ?? ''),
+        author: field === 'author' ? value : (current.book?.author ?? ''),
+        isbn: field === 'isbn' ? value || null : (current.book?.isbn ?? null),
+        publisher: field === 'publisher' ? value || null : (current.book?.publisher ?? null),
+      },
+    }));
+    if (field === 'isbn') {
+      setLookupStatus('');
+      setExistingProductId(null);
+      setExistingBook(false);
+    }
+  }
+
+  async function lookupBook() {
+    const raw = v.book?.isbn ?? '';
+    const isbn = normalizeIsbn(raw);
+    if (!isbn) {
+      setLookupStatus('请输入图书编码后再检索。');
+      return;
+    }
+    if (!isValidIsbn(isbn)) {
+      setLookupStatus('图书编码格式不正确，请检查 ISBN / 图书条码。');
+      return;
+    }
+    setLookingUp(true);
+    setLookupStatus('正在检索系统已有图书资料…');
+    try {
+      const result = await lookupBookData(token, isbn);
+      if (!result.book) {
+        setExistingProductId(null);
+        setExistingBook(false);
+        setLookupStatus('系统中未找到该编码的资料，请手动填写必填字段。');
+        return;
+      }
+      setExistingBook(result.source === 'LOCAL');
+      setExistingProductId(result.existingProductId);
+      const book = result.book;
+      setV((current) => ({
+        ...current,
+        name: book.title,
+        coverUrl: book.coverUrl,
+        book,
+        ...(result.suggestedPriceMinor === null
+          ? {}
+          : { sku: { ...current.sku, priceMinor: result.suggestedPriceMinor } }),
+      }));
+      if (result.suggestedPriceMinor !== null)
+        setPriceYuan((result.suggestedPriceMinor / 100).toFixed(2));
+      setLookupStatus(
+        result.source === 'LOCAL'
+          ? '该图书已存在，不能重复创建。请查看或编辑已有图书。'
+          : result.source === 'OPEN_LIBRARY'
+            ? '已从 Open Library 回填资料；价格无可靠来源，请由用户确认填写。'
+            : '已从系统现有资料回填，请确认后再保存。',
+      );
+    } catch {
+      setLookupStatus('图书资料检索失败，请手动填写必填字段。');
+    } finally {
+      setLookingUp(false);
+    }
+  }
+
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (saving) return;
+    setError('');
+    if (lookingUp) {
+      setError('图书资料检索完成前不能保存。');
+      return;
+    }
+    if (existingBook) {
+      setError('该图书已存在，不能通过新增表单重复创建。请查看或编辑已有图书。');
+      return;
+    }
+    const nextPriceMinor =
+      !editingExisting && isBook ? parseYuanToMinor(priceYuan) : v.sku.priceMinor;
+    if (nextPriceMinor === null) {
+      setError('价格请输入 0.00 至 21474836.47 元，最多两位小数。');
+      return;
+    }
+    if (isBook && !v.book?.isbn) {
+      setError('图书编码为必填项。');
+      return;
+    }
+    const next = {
+      ...v,
+      ...(isBook && !editingExisting ? { status: 'DRAFT' as const } : {}),
+      sku: {
+        ...v.sku,
+        priceMinor: nextPriceMinor,
+        ...(isBook && !editingExisting ? { availableForSale: false } : {}),
+      },
+    };
     setSaving(true);
-    // Retain requestKey after a network error so retry cannot create a duplicate.
     try {
-      await onSave(v, requestKey);
+      if (!isBook) {
+        const nonBook = { ...next };
+        nonBook.book = null;
+        delete nonBook.expectedBookVersion;
+        delete nonBook.expectedEditionVersion;
+        await onSave(nonBook, requestKey);
+      } else {
+        const bookInput = { ...next, name: next.book?.title ?? next.name };
+        await onSave({
+          ...bookInput,
+          sku: editingExisting ? bookInput.sku : { ...bookInput.sku, code: undefined },
+        }, requestKey);
+      }
     } catch (reason) {
       if (reason instanceof CatalogApiError && reason.status === 409) {
         setStale(true);
-        setError('商品或图书资料已被其他人更新，不能覆盖。请重新加载最新版本。');
+        setError(reason.message || '商品或图书资料冲突，不能覆盖。');
       } else {
-        setError('保存失败，请检查字段、权限或 SKU code/ISBN 冲突');
+        setError(
+          reason instanceof CatalogApiError
+            ? reason.message
+            : '保存失败，请检查字段、权限或输入内容。',
+        );
       }
     } finally {
       setSaving(false);
@@ -579,8 +714,12 @@ function ProductForm({
     <form className="cms-form" onSubmit={(e) => void submit(e)}>
       <h3>{'id' in initial ? '编辑商品' : '新增商品'}</h3>
       <label>
-        商品名
-        <input required value={v.name} onChange={(e) => setV({ ...v, name: e.target.value })} />
+        {!(!editingExisting && isBook) && (
+          <>
+            商品名
+            <input required value={v.name} onChange={(e) => setV({ ...v, name: e.target.value })} />
+          </>
+        )}
       </label>
       <label>
         简介
@@ -750,7 +889,7 @@ function ProductForm({
       <button type="button" onClick={onCancel}>
         取消
       </button>
-      <button disabled={stale || saving}>{saving ? '保存中…' : '保存'}</button>
+      <button disabled={stale || lookingUp || existingBook || saving}>{saving ? '保存中…' : '保存'}</button>
     </form>
   );
 }
