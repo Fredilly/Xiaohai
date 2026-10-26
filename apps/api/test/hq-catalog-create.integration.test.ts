@@ -25,7 +25,11 @@ const suite = disposableDatabase ? describe : describe.skip;
 
 suite('HQ catalog create and optimistic update on disposable PostgreSQL', () => {
   const db = disposableDatabase!.db;
-  const commerce = new CommerceService(db, undefined, 'disposable-hq-catalog-impact-secret-123456789');
+  const commerce = new CommerceService(
+    db,
+    undefined,
+    'disposable-hq-catalog-impact-secret-123456789',
+  );
 
   afterAll(async () => {
     await disposableDatabase!.pool.end();
@@ -157,34 +161,47 @@ suite('HQ catalog create and optimistic update on disposable PostgreSQL', () => 
         commerce.updateAdminProduct(created.id, editedBookInput, actor!.id, randomUUID(), 'fake'),
       ).rejects.toMatchObject({ code: 'CONFLICT' });
       const signedPreview = await commerce.previewAdminProductUpdate(
-        created.id, editedBookInput, actor!.id,
+        created.id,
+        editedBookInput,
+        actor!.id,
       );
       expect(signedPreview.impact.affectedStoreCount).toBe(2);
       // A newly linked store after preview must invalidate the signed scope,
       // even if every submitted version number is otherwise still current.
-      const [storeC] = await db.insert(stores).values({
-        code: 'HQ-CAT-S-C-' + suffix,
-        name: 'HQ Catalog C',
-        regionId: region!.id,
-        countryCode: 'CN',
-        countryName: 'China',
-        city: 'Chengdu',
-        timezone: 'Asia/Shanghai',
-        addressLine: 'Test only',
-        latitude: 30,
-        longitude: 104,
-      }).returning({ id: stores.id });
+      const [storeC] = await db
+        .insert(stores)
+        .values({
+          code: 'HQ-CAT-S-C-' + suffix,
+          name: 'HQ Catalog C',
+          regionId: region!.id,
+          countryCode: 'CN',
+          countryName: 'China',
+          city: 'Chengdu',
+          timezone: 'Asia/Shanghai',
+          addressLine: 'Test only',
+          latitude: 30,
+          longitude: 104,
+        })
+        .returning({ id: stores.id });
       storeIds.push(storeC!.id);
       await db.insert(storeInventory).values({
-        storeId: storeC!.id, skuId: created.skuId, onHand: 1,
+        storeId: storeC!.id,
+        skuId: created.skuId,
+        onHand: 1,
       });
       await expect(
         commerce.updateAdminProduct(
-          created.id, editedBookInput, actor!.id, randomUUID(), signedPreview.previewToken,
+          created.id,
+          editedBookInput,
+          actor!.id,
+          randomUUID(),
+          signedPreview.previewToken,
         ),
       ).rejects.toMatchObject({ code: 'CONFLICT' });
       const currentPreview = await commerce.previewAdminProductUpdate(
-        created.id, editedBookInput, actor!.id,
+        created.id,
+        editedBookInput,
+        actor!.id,
       );
       expect(currentPreview.impact.affectedStoreCount).toBe(3);
       const updated = await commerce.updateAdminProduct(
@@ -304,7 +321,9 @@ suite('HQ catalog create and optimistic update on disposable PostgreSQL', () => 
         expectedSkuVersion: 0,
       };
       const nonBookPreview = await commerce.previewAdminProductUpdate(
-        nonBook.id, nonBookEdit, actor!.id,
+        nonBook.id,
+        nonBookEdit,
+        actor!.id,
       );
       expect(nonBookPreview.impact.affectedStoreCount).toBe(0);
       const updatedNonBook = await commerce.updateAdminProduct(
