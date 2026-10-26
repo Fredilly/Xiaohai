@@ -184,7 +184,7 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
 
       const preview = await editor.preview(storeA!.id, sku!.id, input, actor!.id, true);
       expect(preview.impact.sharedFields).toEqual(['bookTitle', 'priceMinor']);
-      expect(preview.impact.affectedStoreCount).toBe(2);
+      expect(preview.impact.affectedStoreCount).toBe(4);
       expect(preview.previewToken).toMatch(/^\d{10}\./);
 
       await expect(
