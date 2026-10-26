@@ -1,5 +1,5 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import { and, eq, or, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, or, sql } from 'drizzle-orm';
 import {
   auditLogs,
   bookEditions,
@@ -100,20 +100,41 @@ export class CatalogEditService {
   ) {
     try {
       const result = await this.db.transaction(async (tx) => {
-        const source = await this.loadSource(tx, storeId, skuId);
+        const initial = await this.loadSource(tx, storeId, skuId);
+        if (!initial) throw new CatalogEditError('NOT_FOUND');
+        const proposedChanges = this.changedFields(initial, input);
+        const proposedShared = proposedChanges.filter((field) => !isLocalField(field));
+        if (proposedShared.length && !sharedAllowed) {
+          throw new CatalogEditError('SHARED_FORBIDDEN');
+        }
+
+        // Lock the entire dependency graph, not just the selected SKU. A new
+        // inventory association uses an FK KEY SHARE lock on its SKU, and a
+        // newly linked SKU/product/edition uses KEY SHARE on its parent.
+        // Parent-to-child FOR UPDATE locks therefore serialize all such
+        // associations until the impact has been checked AND committed.
+        if (proposedShared.length) await this.lockSharedImpactGraph(tx, initial, proposedShared);
+        // Lock waits may expose a newer committed source. Re-read under the
+        // same transaction and refuse relationship changes without guessing.
+        const source = proposedShared.length
+          ? await this.loadSource(tx, storeId, skuId)
+          : initial;
         if (!source) throw new CatalogEditError('NOT_FOUND');
+        if (
+          source.productId !== initial.productId ||
+          source.editionId !== initial.editionId ||
+          source.bookId !== initial.bookId
+        ) throw new CatalogEditError('CONFLICT');
         this.assertExpectedVersions(source, input);
 
         const changed = this.changedFields(source, input);
         if (!changed.length) return { impact: emptyImpact(), changed };
-
         const sharedFields = changed.filter((field) => !isLocalField(field));
-        if (sharedFields.length && !sharedAllowed) throw new CatalogEditError('SHARED_FORBIDDEN');
-        // Before checking acknowledged impact, lock the shared SKU to block
-        // concurrent FK-backed store-inventory linking during this transaction.
-        if (sharedFields.length) {
-          await tx.select({ id: skus.id }).from(skus).where(eq(skus.id, skuId)).for('update');
+        if (JSON.stringify(sharedFields) !== JSON.stringify(proposedShared)) {
+          throw new CatalogEditError('CONFLICT');
         }
+        if (sharedFields.length && !sharedAllowed) throw new CatalogEditError('SHARED_FORBIDDEN');
+
         const affectedStoreIds = sharedFields.length
           ? await this.findAffectedStores(tx, source, sharedFields)
           : [storeId];
@@ -191,6 +212,67 @@ export class CatalogEditService {
       if (hasPgCode(error, '23505')) throw new CatalogEditError('CONFLICT');
       throw error;
     }
+  }
+
+  private async lockSharedImpactGraph(tx: Tx, source: Source, fields: string[]) {
+    // Fixed hierarchy: book -> edition -> product -> SKU. Lock all siblings
+    // which can be affected by the changed master fields, not merely the
+    // SKU on this store's URL. PostgreSQL's FK KEY SHARE vs FOR UPDATE
+    // conflict prevents a new descendant or inventory link from slipping in.
+    const bookOrEditionFields = fields.some((field) =>
+      ['bookTitle', 'author', 'publisher', 'isbn'].includes(field),
+    );
+    let productIds: string[];
+    if (bookOrEditionFields) {
+      let editionIds: string[];
+      if (source.bookId) {
+        const bookRows = await tx
+          .select({ id: books.id })
+          .from(books)
+          .where(eq(books.id, source.bookId))
+          .for('update');
+        if (!bookRows.length) throw new CatalogEditError('CONFLICT');
+        const editionRows = await tx
+          .select({ id: bookEditions.id })
+          .from(bookEditions)
+          .where(eq(bookEditions.bookId, source.bookId))
+          .orderBy(asc(bookEditions.id))
+          .for('update');
+        editionIds = editionRows.map((row) => row.id);
+      } else if (source.editionId) {
+        const editionRows = await tx
+          .select({ id: bookEditions.id })
+          .from(bookEditions)
+          .where(eq(bookEditions.id, source.editionId))
+          .for('update');
+        editionIds = editionRows.map((row) => row.id);
+      } else {
+        throw new CatalogEditError('INVALID_REFERENCE');
+      }
+      if (!editionIds.includes(source.editionId ?? '')) throw new CatalogEditError('CONFLICT');
+      const productRows = await tx
+        .select({ id: products.id })
+        .from(products)
+        .where(inArray(products.bookEditionId, editionIds))
+        .orderBy(asc(products.id))
+        .for('update');
+      productIds = productRows.map((row) => row.id);
+    } else {
+      const productRows = await tx
+        .select({ id: products.id })
+        .from(products)
+        .where(eq(products.id, source.productId))
+        .for('update');
+      productIds = productRows.map((row) => row.id);
+    }
+    if (!productIds.includes(source.productId)) throw new CatalogEditError('CONFLICT');
+    const skuRows = await tx
+      .select({ id: skus.id })
+      .from(skus)
+      .where(inArray(skus.productId, productIds))
+      .orderBy(asc(skus.id))
+      .for('update');
+    if (!skuRows.some((row) => row.id === source.skuId)) throw new CatalogEditError('CONFLICT');
   }
 
   private signImpact(
