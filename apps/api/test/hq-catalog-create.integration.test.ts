@@ -466,7 +466,7 @@ suite('HQ catalog create and optimistic update on disposable PostgreSQL', () => 
       await db.delete(staffAccounts).where(eq(staffAccounts.id, actor!.id));
     }
   });
-  it('uses targeted readback and idempotently replays after a committed read failure' async () => {
+  it('uses targeted readback and idempotently replays after a committed read failure', async () => {
     const suffix = randomUUID();
     const [actor] = await db
       .insert(staffAccounts)
