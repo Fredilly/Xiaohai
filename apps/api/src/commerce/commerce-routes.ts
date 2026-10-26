@@ -217,18 +217,18 @@ export function registerCommerceRoutes(
   app.post('/api/v1/staff/catalog/products', async (request, reply) => {
     const input = adminProductInputSchema.safeParse(request.body);
     const key = request.headers['idempotency-key'];
-    if (
-      !input.success ||
-      typeof key !== 'string' ||
-      !/^[A-Za-z0-9._:-]{8,128}$/.test(key)
-    ) return invalid(reply, request.id);
+    if (!input.success || typeof key !== 'string' || !/^[A-Za-z0-9._:-]{8,128}$/.test(key))
+      return invalid(reply, request.id);
     try {
       const actor = await staff(request);
       return reply
         .status(201)
         .send(
           await options.commerce.createAdminProduct(
-            input.data, actor.staffAccountId, request.id, key,
+            input.data,
+            actor.staffAccountId,
+            request.id,
+            key,
           ),
         );
     } catch (error) {

@@ -178,7 +178,11 @@ suite('HQ catalog create and optimistic update on disposable PostgreSQL', () => 
     const key = 'create-' + suffix;
     try {
       const other = await commerce.createAdminProduct(
-        { ...base, name: 'Other HQ fixture ' + suffix, sku: { ...base.sku, code: 'OTHER-' + suffix } },
+        {
+          ...base,
+          name: 'Other HQ fixture ' + suffix,
+          sku: { ...base.sku, code: 'OTHER-' + suffix },
+        },
         actor!.id,
         randomUUID(),
         'other-' + suffix,
@@ -190,9 +194,9 @@ suite('HQ catalog create and optimistic update on disposable PostgreSQL', () => 
 
       // Insert and audit commit before the response fails. The second HTTP
       // request has a new request ID but reuses the original idempotency key.
-      await expect(
-        commerce.createAdminProduct(base, actor!.id, randomUUID(), key),
-      ).rejects.toThrow('simulated post-commit readback failure');
+      await expect(commerce.createAdminProduct(base, actor!.id, randomUUID(), key)).rejects.toThrow(
+        'simulated post-commit readback failure',
+      );
       readSpy.mockRestore();
 
       const recovered = await commerce.createAdminProduct(base, actor!.id, randomUUID(), key);
@@ -248,5 +252,4 @@ suite('HQ catalog create and optimistic update on disposable PostgreSQL', () => 
       await db.delete(staffAccounts).where(eq(staffAccounts.id, actor!.id));
     }
   });
-
 });
