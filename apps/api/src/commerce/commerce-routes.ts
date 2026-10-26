@@ -4,8 +4,8 @@ import {
   addCartItemRequestSchema,
   addressInputSchema,
   adminCatalogQuerySchema,
-  adminProductInputSchema,
-  adminProductUpdateSchema,
+  adminProductCreateInputSchema,
+  adminProductUpdateInputSchema,
   catalogListResponseSchema,
   catalogProductSchema,
   catalogQuerySchema,
@@ -215,7 +215,7 @@ export function registerCommerceRoutes(
     }
   });
   app.post('/api/v1/staff/catalog/products', async (request, reply) => {
-    const input = adminProductInputSchema.safeParse(request.body);
+    const input = adminProductCreateInputSchema.safeParse(request.body);
     const key = request.headers['idempotency-key'];
     if (!input.success || typeof key !== 'string' || !/^[A-Za-z0-9._:-]{8,128}$/.test(key))
       return invalid(reply, request.id);
@@ -235,9 +235,24 @@ export function registerCommerceRoutes(
       return fail(request, reply, error);
     }
   });
+  app.post('/api/v1/staff/catalog/products/:id/preview', async (request, reply) => {
+    const params = z.object({ id: z.uuid() }).safeParse(request.params);
+    const input = adminProductUpdateInputSchema.safeParse(request.body);
+    if (!params.success || !input.success) return invalid(reply, request.id);
+    try {
+      const actor = await staff(request);
+      return await options.commerce.previewAdminProductUpdate(
+        params.data.id,
+        input.data,
+        actor.staffAccountId,
+      );
+    } catch (error) {
+      return fail(request, reply, error);
+    }
+  });
   app.put('/api/v1/staff/catalog/products/:id', async (request, reply) => {
     const params = z.object({ id: z.uuid() }).safeParse(request.params);
-    const input = adminProductUpdateSchema.safeParse(request.body);
+    const input = adminProductUpdateInputSchema.safeParse(request.body);
     if (!params.success || !input.success) return invalid(reply, request.id);
     try {
       const actor = await staff(request);
@@ -246,6 +261,9 @@ export function registerCommerceRoutes(
         input.data,
         actor.staffAccountId,
         request.id,
+        typeof request.headers['x-catalog-preview-token'] === 'string'
+          ? request.headers['x-catalog-preview-token']
+          : undefined,
       );
     } catch (error) {
       return fail(request, reply, error);

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   addCartItemRequestSchema,
   adminProductInputSchema,
+  adminProductUpdateInputSchema,
   adminProductUpdateSchema,
   createOrderRequestSchema,
   orderStatusSchema,
@@ -66,6 +67,35 @@ describe('M5 commerce contracts', () => {
       adminProductUpdateSchema.safeParse({
         ...product,
         expectedProductVersion: 1,
+        expectedSkuVersion: 0,
+      }).success,
+    ).toBe(true);
+  });
+
+  it('separates create and update version contracts', () => {
+    const base = {
+      name: 'Book',
+      status: 'ACTIVE' as const,
+      book: null,
+      sku: {
+        code: 'A',
+        name: 'A',
+        priceMinor: 1200,
+        status: 'ACTIVE' as const,
+        availableForSale: true,
+      },
+    };
+    expect(adminProductUpdateInputSchema.safeParse(base).success).toBe(false);
+    expect(
+      adminProductUpdateInputSchema.safeParse({ ...base, expectedProductVersion: 0 }).success,
+    ).toBe(false);
+    expect(
+      adminProductUpdateInputSchema.safeParse({ ...base, expectedSkuVersion: 0 }).success,
+    ).toBe(false);
+    expect(
+      adminProductUpdateInputSchema.safeParse({
+        ...base,
+        expectedProductVersion: 0,
         expectedSkuVersion: 0,
       }).success,
     ).toBe(true);

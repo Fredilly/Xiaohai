@@ -1,6 +1,11 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, ilike, or, sql } from 'drizzle-orm';
-import type { AddressInput, AdminProductInput, CartResponse } from '@xiaohai/contracts/commerce';
+import type {
+  AddressInput,
+  AdminProductInput,
+  AdminProductUpdateInput,
+  CartResponse,
+} from '@xiaohai/contracts/commerce';
 import {
   bookEditions,
   books,
@@ -18,6 +23,11 @@ import {
   auditLogs,
 } from '@xiaohai/db';
 import type { createDatabase } from '@xiaohai/db';
+import {
+  legacyCatalogImpact,
+  signLegacyPreview,
+  verifyLegacyPreview,
+} from './hq-catalog-impact.js';
 
 type Db = ReturnType<typeof createDatabase>['db'];
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
@@ -37,6 +47,7 @@ export class CommerceService {
   constructor(
     private readonly db: Db,
     private readonly referrals?: ReferralAttributionWriter,
+    private readonly catalogPreviewSecret = '',
   ) {}
 
   async attributeReferral(tx: Tx, orderId: string, consumerUserId: string, referralCode?: string) {
@@ -430,14 +441,21 @@ export class CommerceService {
 
   /** A post-COMMIT read restricted to the single created product, never a catalog scan. */
   async getAdminProductById(id: string) {
-    const result = await this.readAdminProducts(undefined, undefined, id);
+    const result = await this.readAdminProducts(undefined, undefined, id, true);
     return result.products[0] ?? null;
+  }
+
+  /** Filter by product ID without losing sibling SKUs for HQ edit selection. */
+  async getAdminProductsById(id: string) {
+    const result = await this.readAdminProducts(undefined, undefined, id);
+    return result.products;
   }
 
   private async readAdminProducts(
     q?: string,
     status?: 'DRAFT' | 'ACTIVE' | 'INACTIVE',
     productId?: string,
+    onlyOne = false,
   ) {
     const query = this.db
       .select({ product: products, sku: skus, book: books, edition: bookEditions })
@@ -452,12 +470,16 @@ export class CommerceService {
           q ? ilike(products.name, `%${q}%`) : undefined,
         ),
       );
-    const rows = productId ? await query.limit(1) : await query;
+    const rows = onlyOne ? await query.limit(1) : await query;
     return {
       products: rows.map(({ product, sku, book, edition }) => ({
         id: product.id,
         skuId: sku.id,
+        bookId: book?.id ?? null,
+        editionId: edition?.id ?? null,
         productVersion: product.version,
+        bookVersion: book?.version ?? null,
+        editionVersion: edition?.version ?? null,
         skuVersion: sku.version,
         name: product.name,
         description: product.description,
@@ -569,22 +591,116 @@ export class CommerceService {
     if (!created) throw new CommerceError('NOT_FOUND', 'Committed product not found');
     return created;
   }
+  async previewAdminProductUpdate(
+    id: string,
+    input: AdminProductUpdateInput,
+    actorStaffAccountId: string,
+  ) {
+    if (Buffer.byteLength(this.catalogPreviewSecret, 'utf8') < 32) {
+      throw new CommerceError('CONFLICT', 'HQ catalog preview signing is not configured');
+    }
+    const matches = await this.getAdminProductsById(id);
+    if (!matches.length) throw new CommerceError('NOT_FOUND', 'Product not found');
+    if (!input.expectedSkuId && matches.length > 1) {
+      throw new CommerceError('CONFLICT', 'Explicit SKU identity required');
+    }
+    const current = input.expectedSkuId
+      ? matches.find((item) => item.skuId === input.expectedSkuId)
+      : matches[0];
+    if (!current) throw new CommerceError('CONFLICT', 'SKU reference changed');
+    if (
+      input.expectedProductVersion !== current.productVersion ||
+      input.expectedSkuVersion !== current.skuVersion ||
+      (current.book &&
+        (input.expectedBookVersion !== current.bookVersion ||
+          input.expectedEditionVersion !== current.editionVersion))
+    )
+      throw new CommerceError('CONFLICT', 'Stale catalog preview');
+    const impact = await legacyCatalogImpact(this.db, current.id, current.skuId);
+    if (!impact || impact.bookId !== current.bookId || impact.editionId !== current.editionId)
+      throw new CommerceError('CONFLICT', 'Catalog relationships changed');
+    return {
+      impact: {
+        affectedStoreCount: impact.affectedStoreIds.length,
+        affectedStoreIds: impact.affectedStoreIds,
+      },
+      previewToken: signLegacyPreview(
+        this.catalogPreviewSecret,
+        actorStaffAccountId,
+        current.id,
+        current.skuId,
+        input,
+        impact,
+      ),
+    };
+  }
+
   async updateAdminProduct(
     id: string,
-    input: AdminProductInput,
+    input: AdminProductUpdateInput,
     actorStaffAccountId: string,
     requestId: string,
+    previewToken?: string,
   ) {
-    const current = (await this.listAdminProducts()).products.find((item) => item.id === id);
-    if (!current) throw new CommerceError('NOT_FOUND', 'Product not found');
-    // The legacy HQ PUT must require the versions the client actually read.
-    // Falling back to the latest DB versions silently bypasses optimistic locking.
+    const matches = await this.getAdminProductsById(id);
+    if (matches.length === 0) throw new CommerceError('NOT_FOUND', 'Product not found');
+    // A product may have multiple SKUs: never update an arbitrary first SKU.
+    if (!input.expectedSkuId && matches.length > 1) {
+      throw new CommerceError('CONFLICT', 'Explicit SKU identity required');
+    }
+    const current = input.expectedSkuId
+      ? matches.find((item) => item.skuId === input.expectedSkuId)
+      : matches[0];
+    if (!current) throw new CommerceError('CONFLICT', 'SKU reference changed');
     if (input.expectedProductVersion === undefined || input.expectedSkuVersion === undefined) {
-      throw new CommerceError('CONFLICT', 'Expected product and SKU versions are required');
+      throw new CommerceError('CONFLICT', 'Product and SKU versions are required');
     }
     const expectedProductVersion = input.expectedProductVersion;
     const expectedSkuVersion = input.expectedSkuVersion;
+
+    if (current.book) {
+      if (
+        !input.book ||
+        input.expectedBookVersion === undefined ||
+        input.expectedEditionVersion === undefined ||
+        current.bookVersion !== input.expectedBookVersion ||
+        current.editionVersion !== input.expectedEditionVersion
+      ) {
+        throw new CommerceError('CONFLICT', 'Book or edition version conflict');
+      }
+    } else if (input.book) {
+      throw new CommerceError('CONFLICT', 'Cannot attach book through catalog update');
+    }
+    const bookChanged = Boolean(
+      current.book &&
+      input.book &&
+      (input.book.title !== current.book.title || input.book.author !== current.book.author),
+    );
+    const editionChanged = Boolean(
+      current.book &&
+      input.book &&
+      (input.book.isbn !== current.book.isbn || input.book.publisher !== current.book.publisher),
+    );
+
     await this.db.transaction(async (tx) => {
+      // The legacy PUT is a separate shared-master write path. It must not
+      // bypass the HQ preview policy enforced by the newer cross-store PATCH.
+      const impact = await legacyCatalogImpact(tx, current.id, current.skuId, true);
+      if (
+        !impact ||
+        impact.bookId !== current.bookId ||
+        impact.editionId !== current.editionId ||
+        !verifyLegacyPreview(
+          this.catalogPreviewSecret,
+          previewToken,
+          actorStaffAccountId,
+          current.id,
+          current.skuId,
+          input,
+          impact,
+        )
+      )
+        throw new CommerceError('CONFLICT', 'Stale or missing HQ catalog preview');
       const [updatedProduct] = await tx
         .update(products)
         .set({
@@ -598,6 +714,50 @@ export class CommerceService {
         .where(and(eq(products.id, id), eq(products.version, expectedProductVersion)))
         .returning({ id: products.id });
       if (!updatedProduct) throw new CommerceError('CONFLICT', 'Product version conflict');
+      if (bookChanged || editionChanged) {
+        const [source] = await tx
+          .select({ editionId: products.bookEditionId })
+          .from(products)
+          .where(eq(products.id, id))
+          .limit(1);
+        if (!source?.editionId) throw new CommerceError('CONFLICT', 'Book edition missing');
+        const [edition] = await tx
+          .select({ bookId: bookEditions.bookId })
+          .from(bookEditions)
+          .where(eq(bookEditions.id, source.editionId))
+          .limit(1);
+        if (!edition) throw new CommerceError('CONFLICT', 'Book missing');
+        if (bookChanged) {
+          const [updated] = await tx
+            .update(books)
+            .set({
+              title: input.book!.title,
+              author: input.book!.author,
+              version: sql`${books.version} + 1`,
+              updatedAt: new Date(),
+            })
+            .where(and(eq(books.id, edition.bookId), eq(books.version, input.expectedBookVersion!)))
+            .returning({ id: books.id });
+          if (!updated) throw new CommerceError('CONFLICT', 'Book version conflict');
+        }
+        if (editionChanged) {
+          const [updated] = await tx
+            .update(bookEditions)
+            .set({
+              isbn: input.book!.isbn ?? null,
+              publisher: input.book!.publisher ?? null,
+              version: sql`${bookEditions.version} + 1`,
+            })
+            .where(
+              and(
+                eq(bookEditions.id, source.editionId),
+                eq(bookEditions.version, input.expectedEditionVersion!),
+              ),
+            )
+            .returning({ id: bookEditions.id });
+          if (!updated) throw new CommerceError('CONFLICT', 'Edition version conflict');
+        }
+      }
       const [updatedSku] = await tx
         .update(skus)
         .set({ ...input.sku, version: sql`${skus.version} + 1`, updatedAt: new Date() })
@@ -611,14 +771,47 @@ export class CommerceService {
         resourceId: id,
         requestId,
         metadata: {
-          changedFields: ['product', 'sku'],
-          affectedStoreCount: 0,
-          beforeVersions: { product: current.productVersion, sku: current.skuVersion },
-          afterVersions: { product: current.productVersion + 1, sku: current.skuVersion + 1 },
+          productId: id,
+          skuId: current.skuId,
+          bookId: current.bookId,
+          editionId: current.editionId,
+          affectedStoreCount: impact.affectedStoreIds.length,
+          affectedStoreIds: impact.affectedStoreIds,
+          changedFields: [
+            'product',
+            'sku',
+            ...(bookChanged ? ['book'] : []),
+            ...(editionChanged ? ['edition'] : []),
+          ],
+          beforeVersions: {
+            product: current.productVersion,
+            sku: current.skuVersion,
+            book: current.bookVersion,
+            edition: current.editionVersion,
+          },
+          entityIds: {
+            productId: id,
+            skuId: current.skuId,
+            bookId: current.bookId,
+            editionId: current.editionId,
+          },
+          afterVersions: {
+            product: current.productVersion + 1,
+            sku: current.skuVersion + 1,
+            book: current.bookVersion === null ? null : current.bookVersion + Number(bookChanged),
+            edition:
+              current.editionVersion === null
+                ? null
+                : current.editionVersion + Number(editionChanged),
+          },
         },
       });
     });
-    return (await this.listAdminProducts()).products.find((item) => item.id === id)!;
+    const updated = (await this.getAdminProductsById(id)).find(
+      (item) => item.skuId === current.skuId,
+    );
+    if (!updated) throw new CommerceError('NOT_FOUND', 'Updated product not found');
+    return updated;
   }
 
   private async requirePurchasableSku(id: string) {

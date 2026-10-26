@@ -1,8 +1,9 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import type {
-  AdminProductInput,
-  StoreCatalogEditRequest,
-  StoreCatalogItem,
+import {
+  adminProductUpdateInputSchema,
+  type AdminProductInput,
+  type StoreCatalogEditRequest,
+  type StoreCatalogItem,
 } from '@xiaohai/contracts/commerce';
 import type { StaffStore } from '@xiaohai/contracts/stores';
 import { displayStatus, money } from './display';
@@ -11,6 +12,7 @@ import {
   createAdminProduct,
   listAdminProducts,
   updateAdminProduct,
+  previewAdminProductUpdate,
   listHqStoreCatalog,
   previewHqStoreCatalogEdit,
   updateHqStoreCatalog,
@@ -93,7 +95,7 @@ export function CatalogManager({ token }: { token: string }) {
             </thead>
             <tbody>
               {products.map((p) => (
-                <tr key={p.id}>
+                <tr key={p.skuId}>
                   <td className="product-cell">
                     {p.coverUrl ? (
                       <img src={p.coverUrl} alt="" />
@@ -152,14 +154,31 @@ export function CatalogManager({ token }: { token: string }) {
               ×
             </button>
             <ProductForm
+              key={editing?.skuId ?? 'new-product'}
               initial={editing ?? blank}
               onCancel={() => {
                 setCreating(false);
                 setEditing(null);
               }}
+              onReload={() => {
+                setCreating(false);
+                setEditing(null);
+                void load();
+              }}
               onSave={async (input, requestKey) => {
-                if (editing) await updateAdminProduct(token, editing.id, input);
-                else await createAdminProduct(token, input, requestKey);
+                if (editing) {
+                  const updateInput = adminProductUpdateInputSchema.parse(input);
+                  const preview = await previewAdminProductUpdate(token, editing.id, updateInput);
+                  if (
+                    !window.confirm(
+                      `总部修改将影响 ${preview.impact.affectedStoreCount} 家门店。确认正式保存？`,
+                    )
+                  )
+                    return;
+                  await updateAdminProduct(token, editing.id, updateInput, preview.previewToken);
+                } else {
+                  await createAdminProduct(token, input, requestKey);
+                }
                 setCreating(false);
                 setEditing(null);
                 await load();
@@ -480,15 +499,16 @@ function HqStoreCatalogForm({
 function ProductForm({
   initial,
   onCancel,
+  onReload,
   onSave,
 }: {
   initial: Product | AdminProductInput;
   onCancel: () => void;
+  onReload: () => void;
   onSave: (input: AdminProductInput, requestKey: string) => Promise<void>;
 }) {
   const [requestKey] = useState(() => crypto.randomUUID());
   const [saving, setSaving] = useState(false);
-  const isEditing = 'id' in initial;
   const [v, setV] = useState<AdminProductInput>({
     name: initial.name,
     description: initial.description,
@@ -499,32 +519,38 @@ function ProductForm({
     ...('productVersion' in initial
       ? {
           expectedProductVersion: initial.productVersion,
+          expectedSkuId: initial.skuId,
+          ...(initial.bookVersion === null ? {} : { expectedBookVersion: initial.bookVersion }),
+          ...(initial.editionVersion === null
+            ? {}
+            : { expectedEditionVersion: initial.editionVersion }),
           expectedSkuVersion: initial.skuVersion,
         }
       : {}),
   });
   const [error, setError] = useState('');
+  const [stale, setStale] = useState(false);
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (saving) return;
     setSaving(true);
+    // Retain requestKey after a network error so retry cannot create a duplicate.
     try {
       await onSave(v, requestKey);
-    } catch {
-      setError('保存失败，请检查字段、权限或 SKU code/ISBN 冲突');
+    } catch (reason) {
+      if (reason instanceof CatalogApiError && reason.status === 409) {
+        setStale(true);
+        setError('商品或图书资料已被其他人更新，不能覆盖。请重新加载最新版本。');
+      } else {
+        setError('保存失败，请检查字段、权限或 SKU code/ISBN 冲突');
+      }
     } finally {
       setSaving(false);
     }
   }
   return (
     <form className="cms-form" onSubmit={(e) => void submit(e)}>
-      <h3>{isEditing ? '编辑商品' : '新增商品'}</h3>
-      {isEditing && (
-        <p>
-          此处仅能修改商品状态与 SKU
-          信息。修改书名、作者、ISBN、出版社请使用下方总部跨店商品编辑器。
-        </p>
-      )}
+      <h3>{'id' in initial ? '编辑商品' : '新增商品'}</h3>
       <label>
         商品名
         <input required value={v.name} onChange={(e) => setV({ ...v, name: e.target.value })} />
@@ -569,7 +595,6 @@ function ProductForm({
         书名
         <input
           required
-          disabled={isEditing}
           value={v.book?.title ?? ''}
           onChange={(e) =>
             setV({
@@ -588,7 +613,6 @@ function ProductForm({
         作者
         <input
           required
-          disabled={isEditing}
           value={v.book?.author ?? ''}
           onChange={(e) =>
             setV({
@@ -606,7 +630,6 @@ function ProductForm({
       <label>
         ISBN
         <input
-          disabled={isEditing}
           value={v.book?.isbn ?? ''}
           onChange={(e) =>
             setV({
@@ -624,7 +647,6 @@ function ProductForm({
       <label>
         出版社
         <input
-          disabled={isEditing}
           value={v.book?.publisher ?? ''}
           onChange={(e) =>
             setV({
@@ -687,11 +709,16 @@ function ProductForm({
           <option>INACTIVE</option>
         </select>
       </label>
-      {error && <p>{error}</p>}
+      {error && <p role="status">{error}</p>}
+      {stale && (
+        <button type="button" onClick={onReload}>
+          重新加载最新商品资料
+        </button>
+      )}
       <button type="button" onClick={onCancel}>
         取消
       </button>
-      <button disabled={saving}>{saving ? '保存中…' : '保存'}</button>
+      <button disabled={stale || saving}>{saving ? '保存中…' : '保存'}</button>
     </form>
   );
 }
