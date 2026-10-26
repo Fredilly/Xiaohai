@@ -157,9 +157,9 @@ export function CatalogManager({ token }: { token: string }) {
                 setCreating(false);
                 setEditing(null);
               }}
-              onSave={async (input) => {
+              onSave={async (input, requestKey) => {
                 if (editing) await updateAdminProduct(token, editing.id, input);
-                else await createAdminProduct(token, input);
+                else await createAdminProduct(token, input, requestKey);
                 setCreating(false);
                 setEditing(null);
                 await load();
@@ -484,8 +484,10 @@ function ProductForm({
 }: {
   initial: Product | AdminProductInput;
   onCancel: () => void;
-  onSave: (input: AdminProductInput) => Promise<void>;
+  onSave: (input: AdminProductInput, requestKey: string) => Promise<void>;
 }) {
+  const [requestKey] = useState(() => crypto.randomUUID());
+  const [saving, setSaving] = useState(false);
   const isEditing = 'id' in initial;
   const [v, setV] = useState<AdminProductInput>({
     name: initial.name,
@@ -504,10 +506,14 @@ function ProductForm({
   const [error, setError] = useState('');
   async function submit(e: FormEvent) {
     e.preventDefault();
+    if (saving) return;
+    setSaving(true);
     try {
-      await onSave(v);
+      await onSave(v, requestKey);
     } catch {
       setError('保存失败，请检查字段、权限或 SKU code/ISBN 冲突');
+    } finally {
+      setSaving(false);
     }
   }
   return (
@@ -685,7 +691,7 @@ function ProductForm({
       <button type="button" onClick={onCancel}>
         取消
       </button>
-      <button>保存</button>
+      <button disabled={saving}>{saving ? '保存中…' : '保存'}</button>
     </form>
   );
 }
