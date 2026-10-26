@@ -723,6 +723,8 @@ export class CommerceService {
           skuId: current.skuId,
           bookId: current.bookId,
           editionId: current.editionId,
+          affectedStoreCount: impact.affectedStoreIds.length,
+          affectedStoreIds: impact.affectedStoreIds,
           changedFields: [
             'product',
             'sku',
