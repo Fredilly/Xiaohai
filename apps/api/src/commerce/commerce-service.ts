@@ -675,86 +675,89 @@ export class CommerceService {
     let createdId: string;
     try {
       createdId = await this.db.transaction(async (tx) => {
-      // Serializes concurrent requests for the same actor/key, including the
-      // first transaction's INSERT + audit. An unrelated hash collision only
-      // serializes two transactions; it cannot mix their audit identities.
-      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${keyHash}))`);
-      const [previous] = await tx
-        .select({ resourceId: auditLogs.resourceId, metadata: auditLogs.metadata })
-        .from(auditLogs)
-        .where(
-          and(
-            eq(auditLogs.actorStaffAccountId, actorStaffAccountId),
-            eq(auditLogs.actionKey, 'catalog.hq_create'),
-            sql`${auditLogs.metadata}->>'idempotencyKeyHash' = ${keyHash}`,
-          ),
-        )
-        .limit(1);
-      if (previous) {
-        if (previous.metadata.payloadHash !== payloadHash || !previous.resourceId) {
-          throw new CommerceError('CONFLICT', 'Idempotency key reused with different product');
+        // Serializes concurrent requests for the same actor/key, including the
+        // first transaction's INSERT + audit. An unrelated hash collision only
+        // serializes two transactions; it cannot mix their audit identities.
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${keyHash}))`);
+        const [previous] = await tx
+          .select({ resourceId: auditLogs.resourceId, metadata: auditLogs.metadata })
+          .from(auditLogs)
+          .where(
+            and(
+              eq(auditLogs.actorStaffAccountId, actorStaffAccountId),
+              eq(auditLogs.actionKey, 'catalog.hq_create'),
+              sql`${auditLogs.metadata}->>'idempotencyKeyHash' = ${keyHash}`,
+            ),
+          )
+          .limit(1);
+        if (previous) {
+          if (previous.metadata.payloadHash !== payloadHash || !previous.resourceId) {
+            throw new CommerceError('CONFLICT', 'Idempotency key reused with different product');
+          }
+          return previous.resourceId;
         }
-        return previous.resourceId;
-      }
-      // Replay checks must come FIRST, because the original successful create
-      // legitimately occupies this ISBN and must not be mistaken for a duplicate.
-      const isbn = normalizeIsbn(input.book?.isbn);
-      if (input.book?.isbn && !isValidIsbn(isbn))
-        throw new CommerceError('INVALID_INPUT', 'Invalid ISBN');
-      if (isbn) {
-        const [taken] = await tx.select({ id: bookEditions.id }).from(bookEditions)
-          .where(eq(bookEditions.isbn, isbn)).limit(1);
-        if (taken) throw new CommerceError('CONFLICT', '该图书已存在，请查看或编辑已有图书');
-      }
-      let editionId: string | null = null;
-      if (input.book) {
-        const [book] = await tx
-          .insert(books)
+        // Replay checks must come FIRST, because the original successful create
+        // legitimately occupies this ISBN and must not be mistaken for a duplicate.
+        const isbn = normalizeIsbn(input.book?.isbn);
+        if (input.book?.isbn && !isValidIsbn(isbn))
+          throw new CommerceError('INVALID_INPUT', 'Invalid ISBN');
+        if (isbn) {
+          const [taken] = await tx
+            .select({ id: bookEditions.id })
+            .from(bookEditions)
+            .where(eq(bookEditions.isbn, isbn))
+            .limit(1);
+          if (taken) throw new CommerceError('CONFLICT', '该图书已存在，请查看或编辑已有图书');
+        }
+        let editionId: string | null = null;
+        if (input.book) {
+          const [book] = await tx
+            .insert(books)
+            .values({
+              title: input.book.title,
+              author: input.book.author,
+              description: input.description ?? null,
+            })
+            .returning({ id: books.id });
+          const [edition] = await tx
+            .insert(bookEditions)
+            .values({
+              bookId: book!.id,
+              isbn: normalizeIsbn(input.book.isbn) ?? null,
+              publisher: input.book.publisher ?? null,
+            })
+            .returning({ id: bookEditions.id });
+          editionId = edition!.id;
+        }
+        const [product] = await tx
+          .insert(products)
           .values({
-            title: input.book.title,
-            author: input.book.author,
+            bookEditionId: editionId,
+            name: input.name,
             description: input.description ?? null,
+            coverUrl: input.coverUrl ?? null,
+            status: input.status,
           })
-          .returning({ id: books.id });
-        const [edition] = await tx
-          .insert(bookEditions)
-          .values({
-            bookId: book!.id,
-            isbn: normalizeIsbn(input.book.isbn) ?? null,
-            publisher: input.book.publisher ?? null,
-          })
-          .returning({ id: bookEditions.id });
-        editionId = edition!.id;
-      }
-      const [product] = await tx
-        .insert(products)
-        .values({
-          bookEditionId: editionId,
-          name: input.name,
-          description: input.description ?? null,
-          coverUrl: input.coverUrl ?? null,
-          status: input.status,
-        })
-        .returning({ id: products.id });
-      await tx.insert(skus).values({
-        productId: product!.id,
-        ...input.sku,
-        code: input.sku.code ?? `XH-SKU-${randomUUID()}`,
-      });
-      await tx.insert(auditLogs).values({
-        actorStaffAccountId,
-        actionKey: 'catalog.hq_create',
-        resourceType: 'PRODUCT',
-        resourceId: product!.id,
-        requestId,
-        metadata: {
-          changedFields: input.book ? ['product', 'book', 'edition', 'sku'] : ['product', 'sku'],
-          skuCount: 1,
-          idempotencyKeyHash: keyHash,
-          payloadHash,
-        },
-      });
-      return product!.id;
+          .returning({ id: products.id });
+        await tx.insert(skus).values({
+          productId: product!.id,
+          ...input.sku,
+          code: input.sku.code ?? `XH-SKU-${randomUUID()}`,
+        });
+        await tx.insert(auditLogs).values({
+          actorStaffAccountId,
+          actionKey: 'catalog.hq_create',
+          resourceType: 'PRODUCT',
+          resourceId: product!.id,
+          requestId,
+          metadata: {
+            changedFields: input.book ? ['product', 'book', 'edition', 'sku'] : ['product', 'sku'],
+            skuCount: 1,
+            idempotencyKeyHash: keyHash,
+            payloadHash,
+          },
+        });
+        return product!.id;
       });
     } catch (error) {
       // Concurrent inserts can pass the preflight together. The unique

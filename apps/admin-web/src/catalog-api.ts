@@ -50,8 +50,12 @@ async function call(
       payload = null;
     }
     const message =
-      payload && typeof payload === 'object' && 'error' in payload &&
-      payload.error && typeof payload.error === 'object' && 'message' in payload.error &&
+      payload &&
+      typeof payload === 'object' &&
+      'error' in payload &&
+      payload.error &&
+      typeof payload.error === 'object' &&
+      'message' in payload.error &&
       typeof payload.error.message === 'string'
         ? payload.error.message
         : undefined;
@@ -62,12 +66,7 @@ async function call(
   return payload;
 }
 
-export const listAdminProducts = async (
-  token: string,
-  q = '',
-  offset = 0,
-  limit = 30,
-) =>
+export const listAdminProducts = async (token: string, q = '', offset = 0, limit = 30) =>
   adminProductListResponseSchema.parse(
     await call(
       `/api/v1/staff/catalog/products?${new URLSearchParams({
@@ -86,10 +85,7 @@ export const getAdminProduct = async (token: string, id: string) =>
 
 export const lookupBook = async (token: string, code: string) =>
   bookLookupResponseSchema.parse(
-    await call(
-      `/api/v1/staff/catalog/books/lookup?${new URLSearchParams({ code })}`,
-      token,
-    ),
+    await call(`/api/v1/staff/catalog/books/lookup?${new URLSearchParams({ code })}`, token),
   );
 
 export const createAdminProduct = async (

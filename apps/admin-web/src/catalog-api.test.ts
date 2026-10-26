@@ -42,20 +42,24 @@ describe('M5 Admin catalog adapter', () => {
       }),
     );
     await expect(
-      createAdminProduct('token', {
-        name: '非图书测试商品',
-        description: null,
-        coverUrl: null,
-        status: 'ACTIVE',
-        book: null,
-        sku: {
-          code: 'NONBOOK-TEST',
-          name: '标准',
-          priceMinor: 800,
+      createAdminProduct(
+        'token',
+        {
+          name: '非图书测试商品',
+          description: null,
+          coverUrl: null,
           status: 'ACTIVE',
-          availableForSale: true,
+          book: null,
+          sku: {
+            code: 'NONBOOK-TEST',
+            name: '标准',
+            priceMinor: 800,
+            status: 'ACTIVE',
+            availableForSale: true,
+          },
         },
-      }, 'hq-nonbook-test-request-0001'),
+        'hq-nonbook-test-request-0001',
+      ),
     ).resolves.toMatchObject({ book: null, bookId: null, editionId: null });
   });
 

@@ -549,7 +549,10 @@ function ProductForm({
   onOpenExisting: (productId: string) => Promise<void>;
   onCancel: () => void;
   onReload: () => void;
-  onSave: (input: AdminProductCreateInput | AdminProductUpdateInput, requestKey: string) => Promise<void>;
+  onSave: (
+    input: AdminProductCreateInput | AdminProductUpdateInput,
+    requestKey: string,
+  ) => Promise<void>;
 }) {
   const [requestKey] = useState(() => crypto.randomUUID());
   const [saving, setSaving] = useState(false);
@@ -690,10 +693,13 @@ function ProductForm({
         await onSave(nonBook, requestKey);
       } else {
         const bookInput = { ...next, name: next.book?.title ?? next.name };
-        await onSave({
-          ...bookInput,
-          sku: editingExisting ? bookInput.sku : { ...bookInput.sku, code: undefined },
-        }, requestKey);
+        await onSave(
+          {
+            ...bookInput,
+            sku: editingExisting ? bookInput.sku : { ...bookInput.sku, code: undefined },
+          },
+          requestKey,
+        );
       }
     } catch (reason) {
       if (reason instanceof CatalogApiError && reason.status === 409) {
@@ -889,7 +895,9 @@ function ProductForm({
       <button type="button" onClick={onCancel}>
         取消
       </button>
-      <button disabled={stale || lookingUp || existingBook || saving}>{saving ? '保存中…' : '保存'}</button>
+      <button disabled={stale || lookingUp || existingBook || saving}>
+        {saving ? '保存中…' : '保存'}
+      </button>
     </form>
   );
 }

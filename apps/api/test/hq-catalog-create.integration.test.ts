@@ -491,7 +491,12 @@ suite('HQ catalog create and optimistic update on disposable PostgreSQL', () => 
       expect(firstPage.products).toHaveLength(30);
       expect(firstPage.hasMore).toBe(true);
       expect(secondPage.products.length).toBeGreaterThan(0);
-      const search = await commerce.listAdminProducts('HQ Page Fixture 101 ' + suffix, undefined, 0, 30);
+      const search = await commerce.listAdminProducts(
+        'HQ Page Fixture 101 ' + suffix,
+        undefined,
+        0,
+        30,
+      );
       expect(search.products).toHaveLength(1);
       const target = search.products[0]!;
       const change = {
@@ -507,7 +512,11 @@ suite('HQ catalog create and optimistic update on disposable PostgreSQL', () => 
       };
       const preview = await commerce.previewAdminProductUpdate(target.id, change, actor!.id);
       const edited = await commerce.updateAdminProduct(
-        target.id, change, actor!.id, randomUUID(), preview.previewToken,
+        target.id,
+        change,
+        actor!.id,
+        randomUUID(),
+        preview.previewToken,
       );
       expect(edited.name).toContain('edited');
     } finally {
