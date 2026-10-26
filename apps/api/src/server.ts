@@ -103,7 +103,7 @@ const staffAuthorization = new StaffAuthorizationService(
 );
 const homeCms = new HomeCmsService(db);
 const commission = new CommissionService(db);
-const commerce = new CommerceService(db, commission);
+const commerce = new CommerceService(db, commission, config.STAFF_SESSION_SECRET);
 const stores = new StoreNetworkService(db);
 const inventory = new InventoryOperationsService(db);
 const content = new ContentService(db);
