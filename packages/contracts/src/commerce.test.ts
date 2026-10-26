@@ -157,5 +157,4 @@ describe('M5 commerce contracts', () => {
       }).isbn,
     ).toBeNull();
   });
-
 });
