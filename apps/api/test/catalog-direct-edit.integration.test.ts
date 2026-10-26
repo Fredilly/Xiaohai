@@ -616,17 +616,34 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
         });
         expect(await reader.get(storeB!.id, lastSku!.id)).toBeNull();
 
-        const lastUpdated = await editor.update(storeA!.id, lastSku!.id, actor!.id, randomUUID(), {
+        const baselineVersions = {
           expectedProductVersion: 0,
           expectedSkuVersion: 0,
           expectedLocalVersion: 0,
-          priceMinor: 950,
-        });
+        };
+        // A STORE-scoped account cannot change a globally shared SKU price,
+        // even when the target SKU is beyond the first 1,000 catalog rows.
+        await expect(
+          editor.update(storeA!.id, lastSku!.id, actor!.id, randomUUID(), {
+            ...baselineVersions,
+            priceMinor: 950,
+          }),
+        ).rejects.toMatchObject({ code: 'SHARED_FORBIDDEN' });
+        const lastUpdated = await editor.update(
+          storeA!.id,
+          lastSku!.id,
+          actor!.id,
+          randomUUID(),
+          { ...baselineVersions, shelfLocation: 'Shelf Z-01' },
+        );
         expect(lastUpdated.item).toMatchObject({
           skuId: lastSku!.id,
-          priceMinor: 950,
-          skuVersion: 1,
+          priceMinor: 900,
+          skuVersion: 0,
+          shelfLocation: 'Shelf Z-01',
+          localVersion: 1,
         });
+        expect((await reader.get(storeB!.id, lastSku!.id))).toBeNull();
       }
     } finally {
       await db.delete(auditLogs).where(eq(auditLogs.actorStaffAccountId, actor!.id));
@@ -634,18 +651,18 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
       await db.delete(staffRoles).where(eq(staffRoles.staffAccountId, actor!.id));
       await db.delete(rolePermissions).where(eq(rolePermissions.roleId, role!.id));
       await db.delete(roles).where(eq(roles.id, role!.id));
-      await db
-        .delete(storeCatalogMetadata)
-        .where(
-          and(
-            eq(storeCatalogMetadata.storeId, storeA!.id),
-            eq(storeCatalogMetadata.skuId, sku!.id),
-          ),
-        );
       const fixtureSkuIds = await db
         .select({ id: skus.id })
         .from(skus)
         .where(eq(skus.productId, product!.id));
+      // The paginated last SKU now has its own local metadata row, which must
+      // be removed along with the original item's metadata before FK cleanup.
+      await db.delete(storeCatalogMetadata).where(
+        inArray(
+          storeCatalogMetadata.skuId,
+          fixtureSkuIds.map((item) => item.id),
+        ),
+      );
       await db.delete(storeInventory).where(
         inArray(
           storeInventory.skuId,
