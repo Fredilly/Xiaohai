@@ -180,6 +180,7 @@ export type AddressInput = z.infer<typeof addressInputSchema>;
 export type Address = z.infer<typeof addressSchema>;
 export type Order = z.infer<typeof orderSchema>;
 export type AdminProductInput = z.infer<typeof adminProductInputSchema>;
+export type AdminProductUpdateInput = z.infer<typeof adminProductUpdateInputSchema>;
 export type CommerceErrorCode = z.infer<typeof commerceErrorCodeSchema>;
 
 /** Authenticated Staff read-model: only SKU rows linked to the scoped store's inventory. */
