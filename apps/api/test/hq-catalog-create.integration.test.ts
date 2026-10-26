@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it, vi } from 'vitest';
 import { eq } from 'drizzle-orm';
 import {
   auditLogs,
@@ -153,4 +153,100 @@ suite('HQ catalog create and optimistic update on disposable PostgreSQL', () => 
       await db.delete(staffAccounts).where(eq(staffAccounts.id, actor!.id));
     }
   });
+
+  it('uses targeted readback and idempotently replays after a committed read failure', async () => {
+    const suffix = randomUUID();
+    const [actor] = await db
+      .insert(staffAccounts)
+      .values({
+        loginIdentifier: 'hq-replay-' + suffix + '@example.com',
+        passwordHash: 'isolated-test-only',
+      })
+      .returning({ id: staffAccounts.id });
+    const base = {
+      name: 'Idempotent HQ fixture ' + suffix,
+      status: 'ACTIVE' as const,
+      book: null,
+      sku: {
+        code: 'HQ-IDEMPOTENT-' + suffix,
+        name: 'Test SKU',
+        priceMinor: 1200,
+        status: 'ACTIVE' as const,
+        availableForSale: true,
+      },
+    };
+    const key = 'create-' + suffix;
+    try {
+      const other = await commerce.createAdminProduct(
+        { ...base, name: 'Other HQ fixture ' + suffix, sku: { ...base.sku, code: 'OTHER-' + suffix } },
+        actor!.id,
+        randomUUID(),
+        'other-' + suffix,
+      );
+      const listSpy = vi.spyOn(commerce, 'listAdminProducts');
+      const readSpy = vi
+        .spyOn(commerce, 'getAdminProductById')
+        .mockRejectedValueOnce(new Error('simulated post-commit readback failure'));
+
+      // Insert and audit commit before the response fails. The second HTTP
+      // request has a new request ID but reuses the original idempotency key.
+      await expect(
+        commerce.createAdminProduct(base, actor!.id, randomUUID(), key),
+      ).rejects.toThrow('simulated post-commit readback failure');
+      readSpy.mockRestore();
+
+      const recovered = await commerce.createAdminProduct(base, actor!.id, randomUUID(), key);
+      expect(recovered.name).toBe(base.name);
+      expect(recovered.id).not.toBe(other.id);
+      expect(recovered.sku.code).toBe(base.sku.code);
+      expect(recovered.productVersion).toBe(0);
+      expect(listSpy).not.toHaveBeenCalled();
+
+      const [sameOne, sameTwo] = await Promise.all([
+        commerce.createAdminProduct(base, actor!.id, randomUUID(), key),
+        commerce.createAdminProduct(base, actor!.id, randomUUID(), key),
+      ]);
+      expect(sameOne.id).toBe(recovered.id);
+      expect(sameTwo.id).toBe(recovered.id);
+
+      await expect(
+        commerce.createAdminProduct(
+          { ...base, name: 'Changed request must be rejected' },
+          actor!.id,
+          randomUUID(),
+          key,
+        ),
+      ).rejects.toMatchObject({ code: 'CONFLICT' });
+
+      const rows = await db
+        .select({ id: products.id })
+        .from(products)
+        .where(eq(products.name, base.name));
+      expect(rows.map((item) => item.id)).toEqual([recovered.id]);
+
+      const creationAudits = await db
+        .select({ resourceId: auditLogs.resourceId })
+        .from(auditLogs)
+        .where(eq(auditLogs.actorStaffAccountId, actor!.id));
+      expect(creationAudits).toHaveLength(2);
+      expect(creationAudits.map((item) => item.resourceId).sort()).toEqual(
+        [other.id, recovered.id].sort(),
+      );
+    } finally {
+      vi.restoreAllMocks();
+      const creationAudits = await db
+        .select({ resourceId: auditLogs.resourceId })
+        .from(auditLogs)
+        .where(eq(auditLogs.actorStaffAccountId, actor!.id));
+      await db.delete(auditLogs).where(eq(auditLogs.actorStaffAccountId, actor!.id));
+      for (const { resourceId } of creationAudits) {
+        if (resourceId) {
+          await db.delete(skus).where(eq(skus.productId, resourceId));
+          await db.delete(products).where(eq(products.id, resourceId));
+        }
+      }
+      await db.delete(staffAccounts).where(eq(staffAccounts.id, actor!.id));
+    }
+  });
+
 });
