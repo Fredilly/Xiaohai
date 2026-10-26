@@ -73,6 +73,10 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Temporary PR160 Prettier diagnostic (remove before review)
+        run: |
+          pnpm exec prettier --write apps/admin-web/src/catalog-api.ts apps/admin-web/src/catalog-manager.tsx apps/api/src/commerce/commerce-service.ts apps/api/src/commerce/hq-catalog-impact.ts apps/api/test/hq-catalog-create.integration.test.ts
+          git diff -- apps/admin-web/src/catalog-api.ts apps/admin-web/src/catalog-manager.tsx apps/api/src/commerce/commerce-service.ts apps/api/src/commerce/hq-catalog-impact.ts apps/api/test/hq-catalog-create.integration.test.ts
       - name: Workspace, Mini Program and secret checks
         run: pnpm check:workspace && pnpm check:miniapp && pnpm check:secrets
       - name: Format, lint and typecheck
