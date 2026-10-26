@@ -1,6 +1,18 @@
 import { z } from 'zod';
 
 export const moneyMinorSchema = z.number().int().min(0).max(2147483647);
+export function normalizeIsbn(value: string | null | undefined) {
+  if (value === undefined || value === null) return value;
+  const normalized = value.trim().replace(/[\s-]+/g, '');
+  return normalized === '' ? null : normalized.toUpperCase();
+}
+export function isValidIsbn(value: string | null | undefined): value is string {
+  return value !== null && value !== undefined && /^(?:\d{9}[\dX]|\d{13})$/.test(value);
+}
+const isbnInputSchema = z.preprocess(
+  (value) => (typeof value === 'string' ? normalizeIsbn(value) : value),
+  z.string().max(32).nullable().optional(),
+);
 export const productStatusSchema = z.enum(['DRAFT', 'ACTIVE', 'INACTIVE']);
 export const skuStatusSchema = z.enum(['ACTIVE', 'INACTIVE']);
 export const orderStatusSchema = z.enum([
@@ -138,7 +150,7 @@ const adminProductFieldsSchema = z
       .object({
         title: z.string().trim().min(1).max(200),
         author: z.string().trim().min(1).max(160),
-        isbn: z.string().trim().max(32).nullable().optional(),
+        isbn: isbnInputSchema,
         publisher: z.string().trim().max(160).nullable().optional(),
       })
       .nullable()
@@ -244,12 +256,7 @@ export const storeCatalogEditRequestSchema = z
     bookTitle: z.string().trim().min(1).max(200).optional(),
     author: z.string().trim().min(1).max(160).optional(),
     publisher: editableText(160),
-    isbn: z
-      .string()
-      .trim()
-      .regex(/^[0-9Xx-]{10,20}$/)
-      .nullable()
-      .optional(),
+    isbn: isbnInputSchema,
     priceMinor: moneyMinorSchema.optional(),
     shelfLocation: editableText(160),
     storeNote: z.string().trim().max(2000).nullable().optional(),
@@ -319,7 +326,7 @@ export const createCatalogCorrectionSchema = z
         message: 'Invalid minor-unit price',
       });
     }
-    if (value.field === 'isbn' && !/^[0-9Xx-]{10,20}$/.test(value.proposedValue)) {
+    if (value.field === 'isbn' && !isValidIsbn(normalizeIsbn(value.proposedValue))) {
       ctx.addIssue({ code: 'custom', path: ['proposedValue'], message: 'Invalid ISBN' });
     }
   });

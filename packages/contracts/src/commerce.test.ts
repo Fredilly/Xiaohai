@@ -117,4 +117,45 @@ describe('M5 commerce contracts', () => {
     );
     expect(storeCatalogEditRequestSchema.safeParse(base).success).toBe(false);
   });
+
+  it('normalizes ISBN separators consistently while preserving explicit null', () => {
+    const base = {
+      name: 'Book',
+      status: 'ACTIVE' as const,
+      book: {
+        title: 'Title',
+        author: 'Author',
+        isbn: '978-1 2345-67890',
+        publisher: null,
+      },
+      sku: {
+        code: 'ISBN-1',
+        name: 'Standard',
+        priceMinor: 100,
+        status: 'ACTIVE' as const,
+        availableForSale: true,
+      },
+    };
+    expect(adminProductInputSchema.parse(base).book?.isbn).toBe('9781234567890');
+    expect(
+      storeCatalogEditRequestSchema.parse({
+        expectedProductVersion: 0,
+        expectedSkuVersion: 0,
+        expectedLocalVersion: 0,
+        expectedBookVersion: 0,
+        expectedEditionVersion: 0,
+        isbn: '978-1 2345-67890',
+      }).isbn,
+    ).toBe('9781234567890');
+    expect(
+      storeCatalogEditRequestSchema.parse({
+        expectedProductVersion: 0,
+        expectedSkuVersion: 0,
+        expectedLocalVersion: 0,
+        expectedEditionVersion: 0,
+        isbn: '',
+      }).isbn,
+    ).toBeNull();
+  });
+
 });

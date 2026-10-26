@@ -12,6 +12,8 @@ import {
 import {
   catalogCorrectionRecordSchema,
   catalogCorrectionsResponseSchema,
+  isValidIsbn,
+  normalizeIsbn,
   type CreateCatalogCorrection,
   type ReviewCatalogCorrection,
 } from '@xiaohai/contracts/commerce';
@@ -69,9 +71,14 @@ export class CatalogCorrectionService {
           throw new CatalogCorrectionError('CONFLICT');
         }
         const current = getSourceField(source, input.field);
-        if (current === undefined || current === input.proposedValue) {
+        const proposedValue =
+          input.field === 'isbn' ? normalizeIsbn(input.proposedValue)! : input.proposedValue;
+        const comparableCurrent = input.field === 'isbn' ? normalizeIsbn(current) : current;
+        if (current === undefined || comparableCurrent === proposedValue) {
           throw new CatalogCorrectionError('CONFLICT');
         }
+        if (input.field === 'isbn' && !isValidIsbn(proposedValue))
+          throw new CatalogCorrectionError('CONFLICT');
         const [row] = await tx
           .insert(catalogCorrectionRequests)
           .values({
@@ -80,7 +87,7 @@ export class CatalogCorrectionService {
             sourceProductId: source.productId,
             field: input.field,
             originalValue: current,
-            proposedValue: input.proposedValue,
+            proposedValue,
             expectedInventoryVersion: input.expectedInventoryVersion,
             reason: input.reason,
             requestedByStaffAccountId: actorId,
@@ -143,7 +150,8 @@ export class CatalogCorrectionService {
         if (request.field === 'isbn') {
           // Serialize recommendation acceptance by ISBN, even across different stores.
           // This never locks or changes the canonical SKU, edition, or inventory rows.
-          await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${request.proposedValue}))`);
+          const proposedIsbn = normalizeIsbn(request.proposedValue)!;
+          await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${proposedIsbn}))`);
           const acceptedConflicts = await tx
             .select({ id: catalogCorrectionRequests.id })
             .from(catalogCorrectionRequests)
@@ -151,7 +159,7 @@ export class CatalogCorrectionService {
               and(
                 eq(catalogCorrectionRequests.field, 'isbn'),
                 eq(catalogCorrectionRequests.status, 'ACCEPTED'),
-                eq(catalogCorrectionRequests.proposedValue, request.proposedValue),
+                eq(catalogCorrectionRequests.proposedValue, proposedIsbn),
                 ne(catalogCorrectionRequests.sourceProductId, request.sourceProductId),
               ),
             )
@@ -162,7 +170,7 @@ export class CatalogCorrectionService {
             .from(bookEditions)
             .where(
               and(
-                eq(bookEditions.isbn, request.proposedValue),
+                eq(bookEditions.isbn, proposedIsbn),
                 source.bookEditionId ? ne(bookEditions.id, source.bookEditionId) : undefined,
               ),
             )

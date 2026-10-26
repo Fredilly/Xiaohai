@@ -12,6 +12,8 @@ import {
 } from '@xiaohai/db';
 import {
   storeCatalogEditResponseSchema,
+  isValidIsbn,
+  normalizeIsbn,
   type StoreCatalogEditRequest,
 } from '@xiaohai/contracts/commerce';
 import { StoreCatalogReadService } from './store-catalog-read-service.js';
@@ -73,8 +75,9 @@ export class CatalogEditService {
   ) {
     const source = await this.loadSource(this.db, storeId, skuId);
     if (!source) throw new CatalogEditError('NOT_FOUND');
-    this.assertExpectedVersions(source, input);
-    const changed = this.changedFields(source, input);
+    const canonicalInput = this.canonicalizeIsbn(source, input);
+    this.assertExpectedVersions(source, canonicalInput);
+    const changed = this.changedFields(source, canonicalInput);
     const sharedFields = changed.filter((field) => !isLocalField(field));
     if (sharedFields.length && !sharedAllowed) throw new CatalogEditError('SHARED_FORBIDDEN');
     const affectedStoreIds = sharedFields.length
@@ -102,7 +105,8 @@ export class CatalogEditService {
       const result = await this.db.transaction(async (tx) => {
         const initial = await this.loadSource(tx, storeId, skuId);
         if (!initial) throw new CatalogEditError('NOT_FOUND');
-        const proposedChanges = this.changedFields(initial, input);
+        const proposal = this.canonicalizeIsbn(initial, input);
+        const proposedChanges = this.changedFields(initial, proposal);
         const proposedShared = proposedChanges.filter((field) => !isLocalField(field));
         if (proposedShared.length && !sharedAllowed) {
           throw new CatalogEditError('SHARED_FORBIDDEN');
@@ -124,9 +128,10 @@ export class CatalogEditService {
           source.bookId !== initial.bookId
         )
           throw new CatalogEditError('CONFLICT');
-        this.assertExpectedVersions(source, input);
+        const canonicalInput = this.canonicalizeIsbn(source, input);
+        this.assertExpectedVersions(source, canonicalInput);
 
-        const changed = this.changedFields(source, input);
+        const changed = this.changedFields(source, canonicalInput);
         if (!changed.length) return { impact: emptyImpact(), changed };
         const sharedFields = changed.filter((field) => !isLocalField(field));
         if (JSON.stringify(sharedFields) !== JSON.stringify(proposedShared)) {
@@ -152,19 +157,19 @@ export class CatalogEditService {
         }
 
         if (changed.includes('productName')) {
-          await this.updateProduct(tx, source, input.productName!);
+          await this.updateProduct(tx, source, canonicalInput.productName!);
         }
         if (changed.includes('bookTitle') || changed.includes('author')) {
-          await this.updateBook(tx, source, input);
+          await this.updateBook(tx, source, canonicalInput);
         }
         if (changed.includes('publisher') || changed.includes('isbn')) {
-          await this.updateEdition(tx, source, input);
+          await this.updateEdition(tx, source, canonicalInput);
         }
         if (changed.includes('priceMinor')) {
-          await this.updateSku(tx, source, input.priceMinor!);
+          await this.updateSku(tx, source, canonicalInput.priceMinor!);
         }
         if (changed.some(isLocalField)) {
-          await this.updateLocalMetadata(tx, source, input);
+          await this.updateLocalMetadata(tx, source, canonicalInput);
         }
 
         await tx.insert(auditLogs).values({
@@ -188,14 +193,14 @@ export class CatalogEditService {
               local: source.localVersion,
             },
             expectedVersions: {
-              product: input.expectedProductVersion,
-              book: input.expectedBookVersion ?? null,
-              edition: input.expectedEditionVersion ?? null,
-              sku: input.expectedSkuVersion,
-              local: input.expectedLocalVersion,
+              product: canonicalInput.expectedProductVersion,
+              book: canonicalInput.expectedBookVersion ?? null,
+              edition: canonicalInput.expectedEditionVersion ?? null,
+              sku: canonicalInput.expectedSkuVersion,
+              local: canonicalInput.expectedLocalVersion,
             },
             beforeValues: valuesFromSource(source, changed),
-            afterValues: valuesFromInput(input, changed),
+            afterValues: valuesFromInput(canonicalInput, changed),
           },
         });
         return {
@@ -395,6 +400,15 @@ export class CatalogEditService {
       throw new CatalogEditError('INVALID_REFERENCE');
   }
 
+  private canonicalizeIsbn(source: Source, input: StoreCatalogEditRequest) {
+    if (input.isbn === undefined) return input;
+    const isbn = normalizeIsbn(input.isbn);
+    if (isbn !== source.isbn && !isValidIsbn(isbn)) {
+      throw new CatalogEditError('INVALID_REFERENCE');
+    }
+    return { ...input, isbn };
+  }
+
   private changedFields(source: Source, input: StoreCatalogEditRequest): string[] {
     const changed: string[] = [];
     if (input.productName !== undefined && input.productName !== source.productName)
@@ -492,15 +506,18 @@ export class CatalogEditService {
   }
 
   private async findAffectedStores(tx: QueryContext, source: Source, fields: string[]) {
-    const productOrSku = or(eq(skus.id, source.skuId), eq(skus.productId, source.productId));
-    const bookOrEdition = source.bookId
-      ? or(eq(bookEditions.id, source.editionId!), eq(books.id, source.bookId))
-      : eq(bookEditions.id, source.editionId ?? '00000000-0000-0000-0000-000000000000');
-    const condition = fields.some((field) =>
-      ['bookTitle', 'author', 'publisher', 'isbn'].includes(field),
-    )
-      ? or(productOrSku, bookOrEdition)
-      : productOrSku;
+    const conditions = [];
+    if (fields.includes('productName')) conditions.push(eq(skus.productId, source.productId));
+    if (fields.includes('priceMinor')) conditions.push(eq(skus.id, source.skuId));
+    // Book title and author live on books and affect every edition of that book.
+    if (source.bookId && fields.some((field) => ['bookTitle', 'author'].includes(field))) {
+      conditions.push(eq(bookEditions.bookId, source.bookId));
+    }
+    // Publisher and ISBN live on an edition and do not affect sibling editions.
+    if (source.editionId && fields.some((field) => ['publisher', 'isbn'].includes(field))) {
+      conditions.push(eq(products.bookEditionId, source.editionId));
+    }
+    if (conditions.length === 0) return [source.storeId];
     const rows = await tx
       .selectDistinct({ storeId: storeInventory.storeId })
       .from(storeInventory)
@@ -508,7 +525,7 @@ export class CatalogEditService {
       .innerJoin(products, eq(skus.productId, products.id))
       .leftJoin(bookEditions, eq(products.bookEditionId, bookEditions.id))
       .leftJoin(books, eq(bookEditions.bookId, books.id))
-      .where(condition);
+      .where(or(...conditions));
     return rows.map((row) => row.storeId);
   }
 }
