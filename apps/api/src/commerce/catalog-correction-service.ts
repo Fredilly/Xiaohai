@@ -71,9 +71,14 @@ export class CatalogCorrectionService {
           throw new CatalogCorrectionError('CONFLICT');
         }
         const current = getSourceField(source, input.field);
-        if (current === undefined || current === input.proposedValue) {
+        const proposedValue =
+          input.field === 'isbn' ? normalizeIsbn(input.proposedValue)! : input.proposedValue;
+        const comparableCurrent = input.field === 'isbn' ? normalizeIsbn(current) : current;
+        if (current === undefined || comparableCurrent === proposedValue) {
           throw new CatalogCorrectionError('CONFLICT');
         }
+        if (input.field === 'isbn' && !isValidIsbn(proposedValue))
+          throw new CatalogCorrectionError('CONFLICT');
         const [row] = await tx
           .insert(catalogCorrectionRequests)
           .values({
