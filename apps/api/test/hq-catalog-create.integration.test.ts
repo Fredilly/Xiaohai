@@ -25,7 +25,7 @@ const suite = disposableDatabase ? describe : describe.skip;
 
 suite('HQ catalog create and optimistic update on disposable PostgreSQL', () => {
   const db = disposableDatabase!.db;
-  const commerce = new CommerceService(db);
+  const commerce = new CommerceService(db, undefined, 'disposable-hq-catalog-impact-secret-123456789');
 
   afterAll(async () => {
     await disposableDatabase!.pool.end();
@@ -140,20 +140,32 @@ suite('HQ catalog create and optimistic update on disposable PostgreSQL', () => 
         publisher: 'Updated publisher',
         isbn: revisedIsbn,
       };
+      const editedBookInput = {
+        ...input,
+        name: 'Updated HQ catalog fixture',
+        book: revisedBook,
+        expectedProductVersion: 0,
+        expectedSkuId: created.skuId,
+        expectedBookVersion: 0,
+        expectedEditionVersion: 0,
+        expectedSkuVersion: 0,
+      };
+      await expect(
+        commerce.updateAdminProduct(created.id, editedBookInput, actor!.id, randomUUID()),
+      ).rejects.toMatchObject({ code: 'CONFLICT' });
+      await expect(
+        commerce.updateAdminProduct(created.id, editedBookInput, actor!.id, randomUUID(), 'fake'),
+      ).rejects.toMatchObject({ code: 'CONFLICT' });
+      const signedPreview = await commerce.previewAdminProductUpdate(
+        created.id, editedBookInput, actor!.id,
+      );
+      expect(signedPreview.impact.affectedStoreCount).toBe(2);
       const updated = await commerce.updateAdminProduct(
         created.id,
-        {
-          ...input,
-          name: 'Updated HQ catalog fixture',
-          book: revisedBook,
-          expectedProductVersion: 0,
-          expectedSkuId: created.skuId,
-          expectedBookVersion: 0,
-          expectedEditionVersion: 0,
-          expectedSkuVersion: 0,
-        },
+        editedBookInput,
         actor!.id,
         randomUUID(),
+        signedPreview.previewToken,
       );
       expect(updated.productVersion).toBe(1);
       expect(updated.skuVersion).toBe(1);
@@ -254,20 +266,26 @@ suite('HQ catalog create and optimistic update on disposable PostgreSQL', () => 
       const nonBook = await commerce.createAdminProduct(nonBookInput, actor!.id, randomUUID());
       nonBookId = nonBook.id;
       expect(nonBook.book).toBeNull();
+      const nonBookEdit = {
+        ...nonBookInput,
+        name: 'Updated non-book fixture',
+        sku: { ...nonBookInput.sku, priceMinor: 1000 },
+        expectedProductVersion: 0,
+        expectedSkuId: nonBook.skuId,
+        expectedBookVersion: undefined,
+        expectedEditionVersion: undefined,
+        expectedSkuVersion: 0,
+      };
+      const nonBookPreview = await commerce.previewAdminProductUpdate(
+        nonBook.id, nonBookEdit, actor!.id,
+      );
+      expect(nonBookPreview.impact.affectedStoreCount).toBe(0);
       const updatedNonBook = await commerce.updateAdminProduct(
         nonBook.id,
-        {
-          ...nonBookInput,
-          name: 'Updated non-book fixture',
-          sku: { ...nonBookInput.sku, priceMinor: 1000 },
-          expectedProductVersion: 0,
-          expectedSkuId: nonBook.skuId,
-          expectedBookVersion: undefined,
-          expectedEditionVersion: undefined,
-          expectedSkuVersion: 0,
-        },
+        nonBookEdit,
         actor!.id,
         randomUUID(),
+        nonBookPreview.previewToken,
       );
       expect(updatedNonBook.name).toBe('Updated non-book fixture');
       expect(updatedNonBook.sku.priceMinor).toBe(1000);
