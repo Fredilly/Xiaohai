@@ -75,6 +75,11 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Workspace, Mini Program and secret checks
         run: pnpm check:workspace && pnpm check:miniapp && pnpm check:secrets
+      # TEMP: capture exact Prettier output for review, then remove this step.
+      - name: Diagnostic preview of Prettier changes
+        run: |
+          pnpm exec prettier --write apps/api/src/commerce/catalog-edit-service.ts apps/api/src/commerce/store-catalog-read-routes.ts apps/api/test/catalog-direct-edit.integration.test.ts apps/store-web/src/store-catalog-panel.tsx
+          git diff -- apps/api/src/commerce/catalog-edit-service.ts apps/api/src/commerce/store-catalog-read-routes.ts apps/api/test/catalog-direct-edit.integration.test.ts apps/store-web/src/store-catalog-panel.tsx
       - name: Format, lint and typecheck
         run: pnpm format:check && pnpm lint && pnpm typecheck
       - name: Unit tests
