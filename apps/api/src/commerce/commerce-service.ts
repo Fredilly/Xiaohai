@@ -23,6 +23,7 @@ import {
   auditLogs,
 } from '@xiaohai/db';
 import type { createDatabase } from '@xiaohai/db';
+import { legacyCatalogImpact, signLegacyPreview, verifyLegacyPreview } from './hq-catalog-impact.js';
 
 type Db = ReturnType<typeof createDatabase>['db'];
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
@@ -42,6 +43,7 @@ export class CommerceService {
   constructor(
     private readonly db: Db,
     private readonly referrals?: ReferralAttributionWriter,
+    private readonly catalogPreviewSecret = '',
   ) {}
 
   async attributeReferral(tx: Tx, orderId: string, consumerUserId: string, referralCode?: string) {
@@ -533,11 +535,55 @@ export class CommerceService {
     if (!created) throw new CommerceError('NOT_FOUND', 'Newly created product not found');
     return created;
   }
+  async previewAdminProductUpdate(
+    id: string,
+    input: AdminProductUpdateInput,
+    actorStaffAccountId: string,
+  ) {
+    if (Buffer.byteLength(this.catalogPreviewSecret, 'utf8') < 32) {
+      throw new CommerceError('CONFLICT', 'HQ catalog preview signing is not configured');
+    }
+    const matches = (await this.listAdminProducts()).products.filter((item) => item.id === id);
+    if (!matches.length) throw new CommerceError('NOT_FOUND', 'Product not found');
+    if (!input.expectedSkuId && matches.length > 1) {
+      throw new CommerceError('CONFLICT', 'Explicit SKU identity required');
+    }
+    const current = input.expectedSkuId
+      ? matches.find((item) => item.skuId === input.expectedSkuId)
+      : matches[0];
+    if (!current) throw new CommerceError('CONFLICT', 'SKU reference changed');
+    if (
+      input.expectedProductVersion !== current.productVersion ||
+      input.expectedSkuVersion !== current.skuVersion ||
+      (current.book && (
+        input.expectedBookVersion !== current.bookVersion ||
+        input.expectedEditionVersion !== current.editionVersion
+      ))
+    ) throw new CommerceError('CONFLICT', 'Stale catalog preview');
+    const impact = await legacyCatalogImpact(this.db, current.id, current.skuId);
+    if (
+      !impact ||
+      impact.bookId !== current.bookId ||
+      impact.editionId !== current.editionId
+    ) throw new CommerceError('CONFLICT', 'Catalog relationships changed');
+    return {
+      impact: {
+        affectedStoreCount: impact.affectedStoreIds.length,
+        affectedStoreIds: impact.affectedStoreIds,
+      },
+      previewToken: signLegacyPreview(
+        this.catalogPreviewSecret, actorStaffAccountId,
+        current.id, current.skuId, input, impact,
+      ),
+    };
+  }
+
   async updateAdminProduct(
     id: string,
     input: AdminProductUpdateInput,
     actorStaffAccountId: string,
     requestId: string,
+    previewToken?: string,
   ) {
     const matches = (await this.listAdminProducts()).products.filter((item) => item.id === id);
     if (matches.length === 0) throw new CommerceError('NOT_FOUND', 'Product not found');
@@ -580,6 +626,18 @@ export class CommerceService {
     );
 
     await this.db.transaction(async (tx) => {
+      // The legacy PUT is a separate shared-master write path. It must not
+      // bypass the HQ preview policy enforced by the newer cross-store PATCH.
+      const impact = await legacyCatalogImpact(tx, current.id, current.skuId, true);
+      if (
+        !impact ||
+        impact.bookId !== current.bookId ||
+        impact.editionId !== current.editionId ||
+        !verifyLegacyPreview(
+          this.catalogPreviewSecret, previewToken, actorStaffAccountId,
+          current.id, current.skuId, input, impact,
+        )
+      ) throw new CommerceError('CONFLICT', 'Stale or missing HQ catalog preview');
       const [updatedProduct] = await tx
         .update(products)
         .set({
