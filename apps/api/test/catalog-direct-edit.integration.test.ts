@@ -411,7 +411,7 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
           previewToken: string;
         }>();
         expect(confirmed.impact.affectedStoreCount).toBe(2);
-        expect(confirmed.previewToken).toMatch(/^\\d{10}\\./);
+        expect(confirmed.previewToken).toMatch(/^\d{10}\./);
 
         const missingAck = await app.inject({
           method: 'PATCH',
