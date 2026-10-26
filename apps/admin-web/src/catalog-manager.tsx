@@ -11,6 +11,7 @@ import {
   createAdminProduct,
   listAdminProducts,
   updateAdminProduct,
+  previewAdminProductUpdate,
   listHqStoreCatalog,
   previewHqStoreCatalogEdit,
   updateHqStoreCatalog,
@@ -164,8 +165,17 @@ export function CatalogManager({ token }: { token: string }) {
                 void load();
               }}
               onSave={async (input) => {
-                if (editing) await updateAdminProduct(token, editing.id, input);
-                else await createAdminProduct(token, input);
+                if (editing) {
+                  const preview = await previewAdminProductUpdate(token, editing.id, input);
+                  if (
+                    !window.confirm(
+                      `总部修改将影响 ${preview.impact.affectedStoreCount} 家门店。确认正式保存？`,
+                    )
+                  ) return;
+                  await updateAdminProduct(token, editing.id, input, preview.previewToken);
+                } else {
+                  await createAdminProduct(token, input);
+                }
                 setCreating(false);
                 setEditing(null);
                 await load();
@@ -514,21 +524,7 @@ function ProductForm({
   const [stale, setStale] = useState(false);
   async function submit(e: FormEvent) {
     e.preventDefault();
-    const changedShared =
-      'id' in initial &&
-      ((initial.book !== null &&
-        v.book !== null &&
-        (initial.book?.title !== v.book?.title ||
-          initial.book?.author !== v.book?.author ||
-          initial.book?.isbn !== v.book?.isbn ||
-          initial.book?.publisher !== v.book?.publisher)) ||
-        initial.sku.priceMinor !== v.sku.priceMinor);
-    if (
-      changedShared &&
-      !window.confirm('共享图书资料或价格的修改可能影响其他门店。确定保存到正式商品资料吗？')
-    ) {
-      return;
-    }
+    // The parent gets a server-signed impact preview before asking for confirmation.
     try {
       await onSave(v);
     } catch (reason) {
