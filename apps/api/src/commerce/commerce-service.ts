@@ -759,8 +759,7 @@ export class CommerceService {
     } catch (error) {
       // Concurrent inserts can pass the preflight together. The unique
       // database index remains the final ISBN conflict boundary.
-      const cause = error as { code?: unknown; constraint?: unknown } | null;
-      if (cause?.code === '23505' && cause.constraint === 'book_editions_isbn_unique')
+      if (isBookEditionUniqueViolation(error))
         throw new CommerceError('CONFLICT', '该图书已存在，请查看或编辑已有图书');
       throw error;
     }
