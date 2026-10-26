@@ -5,6 +5,7 @@ import {
   addressInputSchema,
   adminCatalogQuerySchema,
   adminProductInputSchema,
+  adminProductUpdateSchema,
   catalogListResponseSchema,
   catalogProductSchema,
   catalogQuerySchema,
@@ -41,6 +42,7 @@ export function registerCommerceRoutes(
     const context = await options.staffAuthorization.authenticate(request.headers.authorization);
     options.staffAuthorization.requirePermission(context, CATALOG_MANAGE_PERMISSION);
     options.staffAuthorization.requireDataScope(context, 'GLOBAL', null);
+    return context;
   };
   app.get('/api/v1/catalog/products', async (request, reply) => {
     const input = catalogQuerySchema.safeParse(request.query);
@@ -224,11 +226,16 @@ export function registerCommerceRoutes(
   });
   app.put('/api/v1/staff/catalog/products/:id', async (request, reply) => {
     const params = z.object({ id: z.uuid() }).safeParse(request.params);
-    const input = adminProductInputSchema.safeParse(request.body);
+    const input = adminProductUpdateSchema.safeParse(request.body);
     if (!params.success || !input.success) return invalid(reply, request.id);
     try {
-      await staff(request);
-      return await options.commerce.updateAdminProduct(params.data.id, input.data);
+      const actor = await staff(request);
+      return await options.commerce.updateAdminProduct(
+        params.data.id,
+        input.data,
+        actor.staffAccountId,
+        request.id,
+      );
     } catch (error) {
       return fail(request, reply, error);
     }

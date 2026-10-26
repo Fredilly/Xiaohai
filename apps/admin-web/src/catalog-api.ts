@@ -2,7 +2,11 @@ import {
   adminProductInputSchema,
   adminProductListResponseSchema,
   adminProductSchema,
+  storeCatalogEditRequestSchema,
+  storeCatalogEditPreviewResponseSchema,
+  storeCatalogResponseSchema,
   type AdminProductInput,
+  type StoreCatalogEditRequest,
 } from '@xiaohai/contracts/commerce';
 
 const configuredBase: unknown = import.meta.env.VITE_API_BASE_URL;
@@ -14,10 +18,20 @@ export class CatalogApiError extends Error {
   }
 }
 
-async function call(path: string, token: string, method = 'GET', body?: object): Promise<unknown> {
+async function call(
+  path: string,
+  token: string,
+  method = 'GET',
+  body?: object,
+  previewToken?: string | null,
+): Promise<unknown> {
   const response = await fetch(`${base}${path}`, {
     method,
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      ...(previewToken ? { 'X-Catalog-Preview-Token': previewToken } : {}),
+    },
     body: body ? JSON.stringify(body) : undefined,
   });
   if (!response.ok) throw new CatalogApiError(response.status);
@@ -50,3 +64,42 @@ export const updateAdminProduct = async (token: string, id: string, input: Admin
       adminProductInputSchema.parse(input),
     ),
   );
+
+export async function listHqStoreCatalog(token: string, storeId: string) {
+  const query = new URLSearchParams({ offset: '0', limit: '30' });
+  return storeCatalogResponseSchema.parse(
+    await call(`/api/v1/staff/catalog/stores/${encodeURIComponent(storeId)}/items?${query}`, token),
+  );
+}
+
+export async function previewHqStoreCatalogEdit(
+  token: string,
+  storeId: string,
+  skuId: string,
+  input: StoreCatalogEditRequest,
+) {
+  return storeCatalogEditPreviewResponseSchema.parse(
+    await call(
+      `/api/v1/staff/catalog/stores/${encodeURIComponent(storeId)}/items/${encodeURIComponent(skuId)}/preview`,
+      token,
+      'POST',
+      storeCatalogEditRequestSchema.parse(input),
+    ),
+  );
+}
+
+export async function updateHqStoreCatalog(
+  token: string,
+  storeId: string,
+  skuId: string,
+  input: StoreCatalogEditRequest,
+  previewToken: string | null,
+) {
+  return call(
+    `/api/v1/staff/catalog/stores/${encodeURIComponent(storeId)}/items/${encodeURIComponent(skuId)}`,
+    token,
+    'PATCH',
+    storeCatalogEditRequestSchema.parse(input),
+    previewToken,
+  );
+}

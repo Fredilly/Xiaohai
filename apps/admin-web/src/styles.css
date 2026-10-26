@@ -1020,3 +1020,49 @@ textarea {
 .meiping-independent-review button {
   justify-self: start;
 }
+
+/* Shared catalog editing dialog for HQ, separate from the scrollable product table. */
+.catalog-editor-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(18, 31, 44, 0.5);
+}
+.catalog-editor-dialog {
+  position: relative;
+  width: min(780px, 100%);
+  max-height: calc(100dvh - 40px);
+  overflow-y: auto;
+  border-radius: 14px;
+  background: #fff;
+  padding: 24px;
+  box-shadow: 0 20px 65px rgba(0, 0, 0, 0.24);
+}
+.catalog-editor-dialog .cms-form {
+  margin: 0;
+  max-width: none;
+}
+.catalog-editor-close {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  float: right;
+  border: 1px solid #d5dfe5;
+  border-radius: 8px;
+  background: #fff;
+  padding: 5px 12px;
+  cursor: pointer;
+}
+@media (max-width: 640px) {
+  .catalog-editor-overlay {
+    padding: 10px;
+  }
+  .catalog-editor-dialog {
+    padding: 16px;
+    max-height: calc(100dvh - 20px);
+  }
+}

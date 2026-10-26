@@ -260,6 +260,20 @@
       "when": 1792590000000,
       "tag": "0036_store_catalog_correction_requests",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1792584849830,
+      "tag": "0037_store_catalog_direct_edit",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1792590600000,
+      "tag": "0038_store_catalog_direct_edit_upgrade_repair",
+      "breakpoints": true
     }
   ]
 }

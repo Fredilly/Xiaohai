@@ -1,8 +1,9 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import type { StoreCatalogItem } from '@xiaohai/contracts/commerce';
-import { listStoreCatalog } from './store-catalog-api';
+import type { StoreCatalogEditRequest, StoreCatalogItem } from '@xiaohai/contracts/commerce';
+import { listStoreCatalog, updateStoreCatalog } from './store-catalog-api';
 
 const limit = 30;
+
 export function StoreCatalogPanel({
   token,
   storeId,
@@ -18,6 +19,8 @@ export function StoreCatalogPanel({
   const [items, setItems] = useState<StoreCatalogItem[]>([]);
   const [more, setMore] = useState(false);
   const [status, setStatus] = useState('正在读取门店商品资料…');
+  const [editing, setEditing] = useState<StoreCatalogItem | null>(null);
+  const [reloadNonce, setReloadNonce] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -30,9 +33,7 @@ export function StoreCatalogPanel({
         setItems(page.items);
         setMore(page.hasMore);
         setStatus(
-          page.items.length
-            ? '展示本店已建立库存记录的商品资料（只读）'
-            : '本店暂无关联库存的正式商品资料',
+          page.items.length ? '展示本店已建立库存记录的商品资料' : '本店暂无关联库存的正式商品资料',
         );
       })
       .catch((error: unknown) => {
@@ -44,7 +45,16 @@ export function StoreCatalogPanel({
     return () => {
       active = false;
     };
-  }, [token, storeId, applied, offset]);
+  }, [token, storeId, applied, offset, reloadNonce]);
+
+  useEffect(() => {
+    if (!editing) return;
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === 'Escape') setEditing(null);
+    }
+    window.addEventListener('keydown', handleEscape);
+    return () => window.removeEventListener('keydown', handleEscape);
+  }, [editing]);
 
   function search(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -54,15 +64,15 @@ export function StoreCatalogPanel({
 
   return (
     <section className="panel store-catalog-panel">
-      <span className="tag">日常商品资料 · 门店只读</span>
+      <span className="tag">日常商品资料 · 店铺账号可编辑</span>
       <h2>本店商品资料</h2>
       <p>
         当前门店：{storeName}
-        。仅显示与本店库存记录关联的商品及其基础资料，包括暂停销售或草稿状态的项目。
+        。仅显示与本店库存记录关联的商品及其基础资料。库存数量仍须通过库存盘点或调整流程变更。
       </p>
       <p>
-        图书书名、ISBN、出版社及 SKU
-        可能被多家门店共用。店长不能直接在这里修改全局商品资料。如需更正，请进入「商品纠错申请」提交建议，由另一名授权人员独立复核；即使采纳也不会自动修改正式商品或库存。
+        本店员工仅能直接编辑本店货架、备注和陈列信息。 书名、作者、ISBN、出版社及 SKU
+        价格属于总部共享主数据，请通过商品纠错申请或联系总部处理。
       </p>
       <form className="book-search-form" onSubmit={search}>
         <input
@@ -94,6 +104,7 @@ export function StoreCatalogPanel({
               <th scope="col" className="numeric">
                 库存版本
               </th>
+              <th scope="col">操作</th>
             </tr>
           </thead>
           <tbody>
@@ -123,11 +134,16 @@ export function StoreCatalogPanel({
                   <small className="cell-meta">SKU：{skuStatus(item.skuStatus)}</small>
                 </td>
                 <td className="numeric">v{item.inventoryVersion}</td>
+                <td>
+                  <button type="button" onClick={() => setEditing(item)}>
+                    编辑商品资料
+                  </button>
+                </td>
               </tr>
             ))}
             {!items.length && (
               <tr>
-                <td colSpan={8} className="data-table-empty">
+                <td colSpan={9} className="data-table-empty">
                   暂无符合条件的商品
                 </td>
               </tr>
@@ -145,7 +161,117 @@ export function StoreCatalogPanel({
         </button>
       </div>
       <p role="status">{status}</p>
+      {editing && (
+        <div
+          className="catalog-editor-overlay"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setEditing(null);
+          }}
+        >
+          <div
+            className="catalog-editor-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-label={`编辑商品资料：${editing.bookTitle ?? editing.productName}`}
+          >
+            <button
+              className="catalog-editor-close"
+              type="button"
+              aria-label="关闭商品编辑"
+              onClick={() => setEditing(null)}
+            >
+              ×
+            </button>
+            <StoreCatalogEditForm
+              key={editing.skuId}
+              token={token}
+              storeId={storeId}
+              item={editing}
+              onCancel={() => setEditing(null)}
+              onSaved={() => {
+                setEditing(null);
+                setReloadNonce((value) => value + 1);
+              }}
+            />
+          </div>
+        </div>
+      )}
     </section>
+  );
+}
+
+function draftFor(item: StoreCatalogItem): StoreCatalogEditRequest {
+  return {
+    expectedProductVersion: item.productVersion,
+    expectedSkuVersion: item.skuVersion,
+    expectedLocalVersion: item.localVersion,
+    shelfLocation: item.shelfLocation,
+    storeNote: item.storeNote,
+    displayInfo: item.displayInfo,
+  };
+}
+
+function StoreCatalogEditForm({
+  token,
+  storeId,
+  item,
+  onCancel,
+  onSaved,
+}: {
+  token: string;
+  storeId: string;
+  item: StoreCatalogItem;
+  onCancel: () => void;
+  onSaved: () => void;
+}) {
+  const [draft, setDraft] = useState(() => draftFor(item));
+  const [status, setStatus] = useState('仅编辑本店的货架、备注与陈列信息。');
+
+  async function save(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setStatus('正在保存本店资料…');
+    try {
+      await updateStoreCatalog(token, storeId, item.skuId, draft);
+      onSaved();
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : '保存失败');
+    }
+  }
+
+  const textField = (
+    label: string,
+    key: keyof StoreCatalogEditRequest,
+    original: string | null,
+  ) => (
+    <label>
+      {label}（原值：{original ?? '未填写'}）
+      <input
+        value={typeof draft[key] === 'string' ? draft[key] : ''}
+        onChange={(event) =>
+          setDraft((current) => ({ ...current, [key]: event.target.value || null }))
+        }
+      />
+    </label>
+  );
+
+  return (
+    <form className="catalog-correction-form" onSubmit={(event) => void save(event)}>
+      <h3>编辑商品资料：{item.bookTitle ?? item.productName}</h3>
+      <p>共享书目和价格仅供查看，修改需总部审核；本页不提供共享字段写入。</p>
+      {textField('货架位置', 'shelfLocation', item.shelfLocation)}
+      {textField('本店备注', 'storeNote', item.storeNote)}
+      {textField('陈列信息', 'displayInfo', item.displayInfo)}
+      <p className="dashboard-status" role="status">
+        {status}
+      </p>
+      <div className="meiping-store-actions">
+        <button type="submit">保存本店资料</button>
+        <button type="button" onClick={onCancel}>
+          取消
+        </button>
+      </div>
+    </form>
   );
 }
 
