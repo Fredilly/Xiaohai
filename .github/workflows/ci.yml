@@ -75,16 +75,6 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Workspace, Mini Program and secret checks
         run: pnpm check:workspace && pnpm check:miniapp && pnpm check:secrets
-      # Temporary code style diagnostic, revert before final review
-      - name: Print canonical Prettier diff
-        run: |
-          pnpm exec prettier --write apps/api/src/commerce/catalog-edit-service.ts apps/api/test/catalog-direct-edit.integration.test.ts apps/api/test/catalog-impact-serialization.integration.test.ts
-          git diff -- apps/api/src/commerce/catalog-edit-service.ts apps/api/test/catalog-direct-edit.integration.test.ts apps/api/test/catalog-impact-serialization.integration.test.ts
-      # Temporary CI-only Prettier diff diagnostic, removed in next commit.
-      - name: Preview serialization test Prettier diff
-        run: |
-          pnpm exec prettier --write apps/api/test/catalog-impact-serialization.integration.test.ts
-          git diff -- apps/api/test/catalog-impact-serialization.integration.test.ts
       - name: Format, lint and typecheck
         run: pnpm format:check && pnpm lint && pnpm typecheck
       - name: Unit tests

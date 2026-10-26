@@ -87,8 +87,18 @@ suite('shared catalog dependency serialization on disposable PostgreSQL', () => 
     const skuRows = await db
       .insert(skus)
       .values([
-        { productId: productRows[0]!.id, code: 'CSI-MAIN-' + suffix, name: 'Main', priceMinor: 1000 },
-        { productId: productRows[1]!.id, code: 'CSI-ALT-' + suffix, name: 'Alternate', priceMinor: 1100 },
+        {
+          productId: productRows[0]!.id,
+          code: 'CSI-MAIN-' + suffix,
+          name: 'Main',
+          priceMinor: 1000,
+        },
+        {
+          productId: productRows[1]!.id,
+          code: 'CSI-ALT-' + suffix,
+          name: 'Alternate',
+          priceMinor: 1100,
+        },
       ])
       .returning();
     const [selectedSku, alternateSku] = skuRows;
@@ -98,7 +108,10 @@ suite('shared catalog dependency serialization on disposable PostgreSQL', () => 
     ]);
     const [actor] = await db
       .insert(staffAccounts)
-      .values({ loginIdentifier: 'csi-' + randomUUID() + '@example.com', passwordHash: 'test-only' })
+      .values({
+        loginIdentifier: 'csi-' + randomUUID() + '@example.com',
+        passwordHash: 'test-only',
+      })
       .returning();
 
     let releaseAudit: () => void = () => undefined;
@@ -186,10 +199,11 @@ suite('shared catalog dependency serialization on disposable PostgreSQL', () => 
         .select()
         .from(auditLogs)
         .where(eq(auditLogs.actorStaffAccountId, actor!.id));
-      expect(audit?.metadata).toMatchObject({
-        affectedStoreCount: 2,
-        affectedStoreIds: expect.arrayContaining([storeA!.id, storeB!.id]),
-      });
+      expect(audit?.metadata).toMatchObject({ affectedStoreCount: 2 });
+      const affectedIds = (
+        audit?.metadata as { affectedStoreIds?: string[] } | undefined
+      )?.affectedStoreIds;
+      expect(affectedIds?.sort()).toEqual([storeA!.id, storeB!.id].sort());
       const [newLink] = await db
         .select()
         .from(storeInventory)
@@ -199,12 +213,37 @@ suite('shared catalog dependency serialization on disposable PostgreSQL', () => 
       releaseAudit();
       await Promise.allSettled([blocker, update, link].filter((p) => p !== undefined));
       await db.delete(auditLogs).where(eq(auditLogs.actorStaffAccountId, actor!.id));
-      await db.delete(storeInventory).where(inArray(storeInventory.skuId, skuRows.map((r) => r.id)));
-      await db.delete(skus).where(inArray(skus.id, skuRows.map((r) => r.id)));
-      await db.delete(products).where(inArray(products.id, productRows.map((r) => r.id)));
-      await db.delete(bookEditions).where(inArray(bookEditions.id, editionRows.map((r) => r.id)));
+      await db.delete(storeInventory).where(
+        inArray(
+          storeInventory.skuId,
+          skuRows.map((r) => r.id),
+        ),
+      );
+      await db.delete(skus).where(
+        inArray(
+          skus.id,
+          skuRows.map((r) => r.id),
+        ),
+      );
+      await db.delete(products).where(
+        inArray(
+          products.id,
+          productRows.map((r) => r.id),
+        ),
+      );
+      await db.delete(bookEditions).where(
+        inArray(
+          bookEditions.id,
+          editionRows.map((r) => r.id),
+        ),
+      );
       await db.delete(books).where(eq(books.id, book!.id));
-      await db.delete(stores).where(inArray(stores.id, storeRows.map((r) => r.id)));
+      await db.delete(stores).where(
+        inArray(
+          stores.id,
+          storeRows.map((r) => r.id),
+        ),
+      );
       await db.delete(regions).where(eq(regions.id, region!.id));
       await db.delete(staffAccounts).where(eq(staffAccounts.id, actor!.id));
     }

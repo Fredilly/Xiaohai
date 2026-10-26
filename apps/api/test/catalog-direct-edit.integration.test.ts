@@ -481,7 +481,11 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
             bookTitle: 'Must reject changed affected-store graph',
           };
           const scopePreview = await editor.preview(
-            storeA!.id, sku!.id, concurrentInput, actor!.id, true,
+            storeA!.id,
+            sku!.id,
+            concurrentInput,
+            actor!.id,
+            true,
           );
           expect(scopePreview.impact.affectedStoreCount).toBe(2);
           let releaseLink!: () => void;
@@ -518,15 +522,18 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
           await linkTx;
           const staleImpact = await concurrentSave;
           expect(staleImpact.statusCode).toBe(409);
-          expect((await reader.get(storeA!.id, sku!.id))?.bookTitle).toBe('HQ approved shared title');
-          expect((await reader.get(storeC!.id, linkedSku!.id))?.bookTitle).toBe('HQ approved shared title');
+          expect((await reader.get(storeA!.id, sku!.id))?.bookTitle).toBe(
+            'HQ approved shared title',
+          );
+          expect((await reader.get(storeC!.id, linkedSku!.id))?.bookTitle).toBe(
+            'HQ approved shared title',
+          );
         } finally {
           await db.delete(storeInventory).where(eq(storeInventory.skuId, linkedSku!.id));
           await db.delete(skus).where(eq(skus.id, linkedSku!.id));
           await db.delete(products).where(eq(products.id, linkedProduct!.id));
           await db.delete(stores).where(eq(stores.id, storeC!.id));
         }
-
       } finally {
         await app.close();
       }

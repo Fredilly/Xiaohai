@@ -116,15 +116,14 @@ export class CatalogEditService {
         if (proposedShared.length) await this.lockSharedImpactGraph(tx, initial, proposedShared);
         // Lock waits may expose a newer committed source. Re-read under the
         // same transaction and refuse relationship changes without guessing.
-        const source = proposedShared.length
-          ? await this.loadSource(tx, storeId, skuId)
-          : initial;
+        const source = proposedShared.length ? await this.loadSource(tx, storeId, skuId) : initial;
         if (!source) throw new CatalogEditError('NOT_FOUND');
         if (
           source.productId !== initial.productId ||
           source.editionId !== initial.editionId ||
           source.bookId !== initial.bookId
-        ) throw new CatalogEditError('CONFLICT');
+        )
+          throw new CatalogEditError('CONFLICT');
         this.assertExpectedVersions(source, input);
 
         const changed = this.changedFields(source, input);
