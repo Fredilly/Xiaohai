@@ -271,6 +271,7 @@ export const storeCatalogEditResponseSchema = z.object({
 });
 export const storeCatalogEditPreviewResponseSchema = z.object({
   impact: storeCatalogEditImpactSchema,
+  previewToken: z.string().nullable(),
 });
 export type StoreCatalogEditRequest = z.infer<typeof storeCatalogEditRequestSchema>;
 export type StoreCatalogEditResponse = z.infer<typeof storeCatalogEditResponseSchema>;

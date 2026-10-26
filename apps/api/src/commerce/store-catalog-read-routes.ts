@@ -11,6 +11,17 @@ import type { StoreCatalogReadService } from './store-catalog-read-service.js';
 import { CatalogEditError, type CatalogEditService } from './catalog-edit-service.js';
 
 export const CATALOG_EDIT_PERMISSION = 'catalog.edit';
+const sharedFieldKeys = [
+  'productName', 'bookTitle', 'author', 'publisher', 'isbn', 'priceMinor',
+] as const;
+function hasSharedFields(input: Record<string, unknown>) {
+  return sharedFieldKeys.some((field) => input[field] !== undefined);
+}
+function sharedForbidden(reply: FastifyReply, request: FastifyRequest) {
+  return reply.status(403).send({
+    error: { code: 'STAFF_FORBIDDEN', message: 'HQ approval required', requestId: request.id },
+  });
+}
 
 /** Does not grant catalog.manage; global product mutation remains HQ-only. */
 export function registerStoreCatalogReadRoutes(
@@ -63,9 +74,10 @@ export function registerStoreCatalogEditRoutes(
       options.staffAuthorization.requirePermission(actor, 'stores.read');
       options.staffAuthorization.requirePermission(actor, CATALOG_EDIT_PERMISSION);
       await options.stores.getStaffStore(params.data.id, actor);
-      return {
-        impact: await options.catalog.preview(params.data.id, params.data.skuId, body.data),
-      };
+      if (hasSharedFields(body.data)) return sharedForbidden(reply, request);
+      return await options.catalog.preview(
+        params.data.id, params.data.skuId, body.data, actor.staffAccountId,
+      );
     } catch (error) {
       return editFail(request, reply, error);
     }
@@ -84,6 +96,7 @@ export function registerStoreCatalogEditRoutes(
       options.staffAuthorization.requirePermission(actor, 'stores.read');
       options.staffAuthorization.requirePermission(actor, CATALOG_EDIT_PERMISSION);
       await options.stores.getStaffStore(params.data.id, actor);
+      if (hasSharedFields(body.data)) return sharedForbidden(reply, request);
       return await options.catalog.update(
         params.data.id,
         params.data.skuId,
@@ -134,7 +147,9 @@ export function registerHqCatalogEditRoutes(
     try {
       const actor = await authorizeHq(request);
       await options.stores.getStaffStore(params.data.id, actor);
-      return { impact: await options.editor.preview(params.data.id, params.data.skuId, body.data) };
+      return await options.editor.preview(
+        params.data.id, params.data.skuId, body.data, actor.staffAccountId, true,
+      );
     } catch (error) {
       return editFail(request, reply, error);
     }
@@ -147,12 +162,15 @@ export function registerHqCatalogEditRoutes(
     try {
       const actor = await authorizeHq(request);
       await options.stores.getStaffStore(params.data.id, actor);
+      const previewToken = request.headers['x-catalog-preview-token'];
       return await options.editor.update(
         params.data.id,
         params.data.skuId,
         actor.staffAccountId,
         request.id,
         body.data,
+        true,
+        typeof previewToken === 'string' ? previewToken : undefined,
       );
     } catch (error) {
       return editFail(request, reply, error);
@@ -201,7 +219,10 @@ function editFail(request: FastifyRequest, reply: FastifyReply, error: unknown) 
     status = error.code === 'SCOPE_MISMATCH' ? 403 : error.code === 'NOT_FOUND' ? 404 : 409;
     code = status === 403 ? 'STAFF_FORBIDDEN' : error.code;
   } else if (error instanceof CatalogEditError) {
-    status = error.code === 'NOT_FOUND' ? 404 : error.code === 'INVALID_REFERENCE' ? 400 : 409;
+    status =
+      error.code === 'NOT_FOUND' ? 404 :
+      error.code === 'INVALID_REFERENCE' ? 400 :
+      error.code === 'SHARED_FORBIDDEN' ? 403 : 409;
     code = error.code;
   }
   request.log.warn({ requestId: request.id, errorCode: code }, 'Store catalog edit failed');
