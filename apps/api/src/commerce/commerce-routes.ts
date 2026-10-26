@@ -314,7 +314,7 @@ function invalid(reply: FastifyReply, requestId: string) {
     }),
   );
 }
-function fail(request: FastifyRequest, reply: FastifyReply, error: unknown) {
+export function fail(request: FastifyRequest, reply: FastifyReply, error: unknown) {
   let status = 500;
   let code:
     | 'CONSUMER_AUTHENTICATION_REQUIRED'
