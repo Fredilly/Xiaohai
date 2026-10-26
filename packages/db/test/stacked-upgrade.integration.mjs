@@ -31,6 +31,8 @@ const folder = mkdtempSync(join(tmpdir(), 'xiaohai-migration-0036-'));
 const source = fileURLToPath(new URL('../migrations/', import.meta.url));
 let targetPool;
 let databaseCreated = false;
+let closing = false;
+let unexpectedPoolError;
 
 try {
   await control.query('CREATE DATABASE "xiaohai_ci_0036_upgrade"');
@@ -57,6 +59,11 @@ try {
   }
 
   targetPool = new Pool({ connectionString: upgradeUrl.toString() });
+  // DROP DATABASE WITH FORCE may close idle clients during cleanup. Treat
+  // SQLSTATE 57P01 as expected ONLY during teardown; preserve other errors.
+  targetPool.on('error', (error) => {
+    if (!closing || error.code !== '57P01') unexpectedPoolError = error;
+  });
   const db = drizzle(targetPool);
   await migrate(db, { migrationsFolder: folder });
   const before = await targetPool.query(
@@ -97,17 +104,19 @@ try {
   const same = await targetPool.query(
     'SELECT count(*)::int AS count FROM drizzle.__drizzle_migrations',
   );
-  if (same.rows[0]?.count !== journal.entries.length - 1) {
+  if (same.rows[0]?.count !== 38) {
     throw new Error('UPGRADE_MIGRATION_RERAN_UNEXPECTEDLY');
   }
   console.log(
-    `PASS: disposable 0036→latest upgrade repaired direct-edit schema/permissions; ${journal.entries.length - 1} applied migrations and rerun did not reapply migrations.`,
+    'PASS: disposable 0036→0038 upgrade repaired all direct-edit schema/permissions; rerun did not reapply migrations.',
   );
 } finally {
+  closing = true;
   if (targetPool) await targetPool.end();
   if (databaseCreated) {
     await control.query('DROP DATABASE "xiaohai_ci_0036_upgrade" WITH (FORCE)');
   }
   await control.end();
   rmSync(folder, { recursive: true, force: true });
+  if (unexpectedPoolError) throw unexpectedPoolError;
 }

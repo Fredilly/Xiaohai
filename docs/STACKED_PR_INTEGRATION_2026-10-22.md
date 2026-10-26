@@ -1,6 +1,6 @@
 # Stacked Meiping → Store Catalog integration / 合并前集成检查
 
-Status: Draft only. Based on PR #157; do not merge or deploy this chain without a human review.
+Status (2026-10-25): PR #143–#156 are merged. This integration/0038 repair is now included directly in Draft PR #157 for migration-safe review. PR #158 overlaps with these migrated fixes and must be reconciled or marked superseded after #157 merge; do not merge duplicate changes without rechecking.
 
 ## Dependency order (checked 2026-10-22)
 
@@ -8,11 +8,11 @@ Status: Draft only. Based on PR #157; do not merge or deploy this chain without 
 - PR #151–#153: review resume, proposed corrections, independent Meiping review
 - PR #154: scoped Store Web Meiping draft review (historical migration only)
 - PR #155: scoped store catalog read model
-- PR #156: historical daily catalog correction **recommendations** and independent review
-- PR #157: direct catalog edits, local store metadata, HQ store/Staff administration
-- This PR: forward-safe migration and integrated journal guard
+- PR #156: historical daily catalog correction **recommendations** and independent review (merged)
+- PR #157: direct catalog edits, local store metadata, HQ store/Staff administration, **now includes forward-safe 0038 migration and integrated journal guard**
+- PR #158: originally carried 0038 and migration guard, now overlaps #157; do not merge independently without reconciliation
 
-All listed PRs are stacked Draft. Existing PR #150 staging migration correction is already in main; PR #149 is superseded. Avoid cherry-picking the tail to main or force-updating parent branches.
+Upstream #143–#156 have merged, including the final #156 concurrency/pending-pagination repairs. PR #150 is merged and #149 superseded. This direct-edit branch has merged latest main without force push. Never reapply a duplicate 0038 migration or deploy based on outdated stacked ancestry.
 
 ## Critical migration upgrade issue
 
@@ -36,7 +36,7 @@ The CI `migration journal guard` detects missing journal/SQL entries, duplicate/
 1. On a freshly created **disposable** DB, run 0000→0038. Confirm `catalog.edit`, version columns, local metadata table and audit paths; run all relevant integration tests.
 2. In CI, `packages/db/test/stacked-upgrade.integration.mjs` creates a **separate disposable DB**, migrates to 0036, then executes the full journal to 0038. It checks that version fields, nonnegative constraints, local metadata and the `catalog.edit` permission exist, and confirms a repeat migrate does not rerun applied SQL. Verify that this job passed on the current PR commit. Do **not** run it against existing PR153/PR156/PR157 UAT or real databases.
 3. Verify store-owned metadata stays scoped while shared title/ISBN/price propagates; cross-store write/read 403 after scope revocation; staff deactivation session invalidation; Meiping DRAFT reviews never alter canonical catalog.
-4. Record status of **each** upstream Draft PR's head CI, including migrations and the stacked base chain. Passing only tail PR CI is not proof that every predecessor has been reviewed.
+4. Verify #156's approved merge and run the **final PR #157 head** CI after every new change. An earlier green #158 CI does not replace the latest #157 checks.
 5. Verify that existing staging/production database migration state is known and deployment/backups/rollback approach reviewed by the owner. No unattended cutover, merge or seed.
 
 ## Not yet proven

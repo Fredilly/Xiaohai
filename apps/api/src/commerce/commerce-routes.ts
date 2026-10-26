@@ -252,14 +252,36 @@ export function registerCommerceRoutes(
   });
   app.post('/api/v1/staff/catalog/products', async (request, reply) => {
     const input = adminProductCreateInputSchema.safeParse(request.body);
-    if (!input.success) return invalid(reply, request.id);
+    const key = request.headers['idempotency-key'];
+    if (!input.success || typeof key !== 'string' || !/^[A-Za-z0-9._:-]{8,128}$/.test(key))
+      return invalid(reply, request.id);
     try {
       const actor = await staff(request);
       return reply
         .status(201)
         .send(
-          await options.commerce.createAdminProduct(input.data, actor.staffAccountId, request.id),
+          await options.commerce.createAdminProduct(
+            input.data,
+            actor.staffAccountId,
+            request.id,
+            key,
+          ),
         );
+    } catch (error) {
+      return fail(request, reply, error);
+    }
+  });
+  app.post('/api/v1/staff/catalog/products/:id/preview', async (request, reply) => {
+    const params = z.object({ id: z.uuid() }).safeParse(request.params);
+    const input = adminProductUpdateInputSchema.safeParse(request.body);
+    if (!params.success || !input.success) return invalid(reply, request.id);
+    try {
+      const actor = await staff(request);
+      return await options.commerce.previewAdminProductUpdate(
+        params.data.id,
+        input.data,
+        actor.staffAccountId,
+      );
     } catch (error) {
       return fail(request, reply, error);
     }
@@ -275,6 +297,9 @@ export function registerCommerceRoutes(
         input.data,
         actor.staffAccountId,
         request.id,
+        typeof request.headers['x-catalog-preview-token'] === 'string'
+          ? request.headers['x-catalog-preview-token']
+          : undefined,
       );
     } catch (error) {
       return fail(request, reply, error);

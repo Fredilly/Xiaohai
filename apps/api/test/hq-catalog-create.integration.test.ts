@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it, vi } from 'vitest';
 import { eq } from 'drizzle-orm';
 import {
   auditLogs,
@@ -25,7 +25,11 @@ const suite = disposableDatabase ? describe : describe.skip;
 
 suite('HQ catalog create and optimistic update on disposable PostgreSQL', () => {
   const db = disposableDatabase!.db;
-  const commerce = new CommerceService(db);
+  const commerce = new CommerceService(
+    db,
+    undefined,
+    'disposable-hq-catalog-impact-secret-123456789',
+  );
 
   afterAll(async () => {
     await disposableDatabase!.pool.end();
@@ -42,9 +46,11 @@ suite('HQ catalog create and optimistic update on disposable PostgreSQL', () => 
       .returning({ id: staffAccounts.id });
     let createdId: string | null = null;
     let nonBookId: string | null = null;
+    let siblingEditionId: string | null = null;
+    let siblingProductId: string | null = null;
+    let siblingSkuId: string | null = null;
     let regionId: string | null = null;
     const storeIds: string[] = [];
-    const pagedProductIds: string[] = [];
     try {
       const input = {
         name: 'HQ Catalog Integration ' + suffix,
@@ -141,20 +147,94 @@ suite('HQ catalog create and optimistic update on disposable PostgreSQL', () => 
         publisher: 'Updated publisher',
         isbn: revisedIsbn,
       };
+      const editedBookInput = {
+        ...input,
+        name: 'Updated HQ catalog fixture',
+        book: revisedBook,
+        expectedProductVersion: 0,
+        expectedSkuId: created.skuId,
+        expectedBookVersion: 0,
+        expectedEditionVersion: 0,
+        expectedSkuVersion: 0,
+      };
+      await expect(
+        commerce.updateAdminProduct(created.id, editedBookInput, actor!.id, randomUUID()),
+      ).rejects.toMatchObject({ code: 'CONFLICT' });
+      await expect(
+        commerce.updateAdminProduct(created.id, editedBookInput, actor!.id, randomUUID(), 'fake'),
+      ).rejects.toMatchObject({ code: 'CONFLICT' });
+      const signedPreview = await commerce.previewAdminProductUpdate(
+        created.id,
+        editedBookInput,
+        actor!.id,
+      );
+      expect(signedPreview.impact.affectedStoreCount).toBe(2);
+      // A newly linked store after preview must invalidate the signed scope,
+      // even if every submitted version number is otherwise still current.
+      const [storeC] = await db
+        .insert(stores)
+        .values({
+          code: 'HQ-CAT-S-C-' + suffix,
+          name: 'HQ Catalog C',
+          regionId: region!.id,
+          countryCode: 'CN',
+          countryName: 'China',
+          city: 'Chengdu',
+          timezone: 'Asia/Shanghai',
+          addressLine: 'Test only',
+          latitude: 30,
+          longitude: 104,
+        })
+        .returning({ id: stores.id });
+      storeIds.push(storeC!.id);
+      // Link through a *different* edition, product and SKU of the same book.
+      // A book-title correction must include this sibling branch in its impact.
+      const [siblingEdition] = await db
+        .insert(bookEditions)
+        .values({ bookId: created.bookId!, publisher: 'Untouched sibling publisher' })
+        .returning({ id: bookEditions.id });
+      siblingEditionId = siblingEdition!.id;
+      const [siblingProduct] = await db
+        .insert(products)
+        .values({ bookEditionId: siblingEditionId, name: 'Sibling edition', status: 'ACTIVE' })
+        .returning({ id: products.id });
+      siblingProductId = siblingProduct!.id;
+      const [siblingSku] = await db
+        .insert(skus)
+        .values({
+          productId: siblingProductId,
+          code: 'HQ-SIBLING-' + suffix,
+          name: 'Other SKU',
+          priceMinor: 2700,
+        })
+        .returning({ id: skus.id });
+      siblingSkuId = siblingSku!.id;
+      await db.insert(storeInventory).values({
+        storeId: storeC!.id,
+        skuId: siblingSkuId,
+        onHand: 1,
+      });
+      await expect(
+        commerce.updateAdminProduct(
+          created.id,
+          editedBookInput,
+          actor!.id,
+          randomUUID(),
+          signedPreview.previewToken,
+        ),
+      ).rejects.toMatchObject({ code: 'CONFLICT' });
+      const currentPreview = await commerce.previewAdminProductUpdate(
+        created.id,
+        editedBookInput,
+        actor!.id,
+      );
+      expect(currentPreview.impact.affectedStoreCount).toBe(3);
       const updated = await commerce.updateAdminProduct(
         created.id,
-        {
-          ...input,
-          name: 'Updated HQ catalog fixture',
-          book: revisedBook,
-          expectedProductVersion: 0,
-          expectedSkuId: created.skuId,
-          expectedBookVersion: 0,
-          expectedEditionVersion: 0,
-          expectedSkuVersion: 0,
-        },
+        editedBookInput,
         actor!.id,
         randomUUID(),
+        currentPreview.previewToken,
       );
       expect(updated.productVersion).toBe(1);
       expect(updated.skuVersion).toBe(1);
@@ -164,14 +244,15 @@ suite('HQ catalog create and optimistic update on disposable PostgreSQL', () => 
 
       const reader = new StoreCatalogReadService(db);
       for (const storeId of storeIds) {
-        const item = await reader.get(storeId, created.skuId);
+        const sibling = storeId === storeC!.id;
+        const item = await reader.get(storeId, sibling ? siblingSkuId : created.skuId);
         expect(item).toMatchObject({
           bookTitle: revisedBook.title,
           author: revisedBook.author,
-          publisher: revisedBook.publisher,
-          isbn: revisedBook.isbn,
+          publisher: sibling ? 'Untouched sibling publisher' : revisedBook.publisher,
+          isbn: sibling ? null : revisedBook.isbn,
           bookVersion: 1,
-          editionVersion: 1,
+          editionVersion: sibling ? 0 : 1,
         });
       }
 
@@ -237,7 +318,11 @@ suite('HQ catalog create and optimistic update on disposable PostgreSQL', () => 
         skuId: created.skuId,
         bookId: created.bookId,
         editionId: created.editionId,
+        affectedStoreCount: 3,
       });
+      const auditedStoreIds = (editAudit?.metadata as { affectedStoreIds?: string[] } | undefined)
+        ?.affectedStoreIds;
+      expect(auditedStoreIds?.slice().sort()).toEqual([...storeIds].sort());
 
       const nonBookInput = {
         name: 'HQ Non-book Integration ' + suffix,
@@ -255,20 +340,28 @@ suite('HQ catalog create and optimistic update on disposable PostgreSQL', () => 
       const nonBook = await commerce.createAdminProduct(nonBookInput, actor!.id, randomUUID());
       nonBookId = nonBook.id;
       expect(nonBook.book).toBeNull();
+      const nonBookEdit = {
+        ...nonBookInput,
+        name: 'Updated non-book fixture',
+        sku: { ...nonBookInput.sku, priceMinor: 1000 },
+        expectedProductVersion: 0,
+        expectedSkuId: nonBook.skuId,
+        expectedBookVersion: undefined,
+        expectedEditionVersion: undefined,
+        expectedSkuVersion: 0,
+      };
+      const nonBookPreview = await commerce.previewAdminProductUpdate(
+        nonBook.id,
+        nonBookEdit,
+        actor!.id,
+      );
+      expect(nonBookPreview.impact.affectedStoreCount).toBe(0);
       const updatedNonBook = await commerce.updateAdminProduct(
         nonBook.id,
-        {
-          ...nonBookInput,
-          name: 'Updated non-book fixture',
-          sku: { ...nonBookInput.sku, priceMinor: 1000 },
-          expectedProductVersion: 0,
-          expectedSkuId: nonBook.skuId,
-          expectedBookVersion: undefined,
-          expectedEditionVersion: undefined,
-          expectedSkuVersion: 0,
-        },
+        nonBookEdit,
         actor!.id,
         randomUUID(),
+        nonBookPreview.previewToken,
       );
       expect(updatedNonBook.name).toBe('Updated non-book fixture');
       expect(updatedNonBook.sku.priceMinor).toBe(1000);
@@ -359,57 +452,30 @@ suite('HQ catalog create and optimistic update on disposable PostgreSQL', () => 
         bookId: null,
         editionId: null,
       });
-
-      const pageProducts = await db
-        .insert(products)
-        .values(
-          Array.from({ length: 101 }, (_, index) => ({
-            name: `HQ Page Fixture ${String(index + 1).padStart(2, '0')} ${suffix}`,
-            status: 'ACTIVE' as const,
-          })),
-        )
-        .returning({ id: products.id });
-      pagedProductIds.push(...pageProducts.map((item) => item.id));
-      await db.insert(skus).values(
-        pageProducts.map((product, index) => ({
-          productId: product.id,
-          code: `HQ-PAGE-SKU-${suffix}-${String(index + 1).padStart(2, '0')}`,
-          name: 'Standard',
-          priceMinor: 100 + index,
-        })),
-      );
-      const firstPage = await commerce.listAdminProducts(undefined, undefined, 0, 30);
-      const secondPage = await commerce.listAdminProducts(undefined, undefined, 100, 30);
-      expect(firstPage.products).toHaveLength(30);
-      expect(firstPage.hasMore).toBe(true);
-      expect(secondPage.products.length).toBeGreaterThan(0);
-      const searched = await commerce.listAdminProducts(
-        'HQ Page Fixture 101 ' + suffix,
-        undefined,
-        0,
-        30,
-      );
-      expect(searched.products).toHaveLength(1);
-      const target = searched.products[0]!;
-      const editedTarget = await commerce.updateAdminProduct(
-        target.id,
-        {
-          name: target.name + ' edited',
-          description: target.description,
-          coverUrl: target.coverUrl,
-          status: target.status,
-          book: undefined,
-          sku: target.sku,
-          expectedProductVersion: target.productVersion,
-          expectedSkuId: target.skuId,
-          expectedSkuVersion: target.skuVersion,
-        },
-        actor!.id,
-        randomUUID(),
-      );
-      expect(editedTarget.name).toContain('edited');
+      const [extraSku] = await db
+        .insert(skus)
+        .values({
+          productId: created.id,
+          code: 'HQ-SECOND-' + suffix,
+          name: 'Different SKU on same product',
+          priceMinor: 3500,
+          status: 'ACTIVE',
+          availableForSale: true,
+        })
+        .returning({ id: skus.id });
+      expect(
+        (await commerce.getAdminProductsById(created.id)).map((item) => item.skuId).sort(),
+      ).toEqual([created.skuId, extraSku!.id].sort());
     } finally {
       await db.delete(auditLogs).where(eq(auditLogs.actorStaffAccountId, actor!.id));
+      if (siblingSkuId) {
+        await db.delete(storeInventory).where(eq(storeInventory.skuId, siblingSkuId));
+        await db.delete(skus).where(eq(skus.id, siblingSkuId));
+      }
+      if (siblingProductId) await db.delete(products).where(eq(products.id, siblingProductId));
+      if (siblingEditionId) {
+        await db.delete(bookEditions).where(eq(bookEditions.id, siblingEditionId));
+      }
       for (const productId of [createdId, nonBookId].filter((id): id is string => Boolean(id))) {
         const ownedSkus = await db
           .select({ id: skus.id })
@@ -515,6 +581,104 @@ suite('HQ catalog create and optimistic update on disposable PostgreSQL', () => 
             .where(eq(bookEditions.id, product.bookEditionId));
           await db.delete(bookEditions).where(eq(bookEditions.id, product.bookEditionId));
           if (edition?.bookId) await db.delete(books).where(eq(books.id, edition.bookId));
+        }
+      }
+      await db.delete(staffAccounts).where(eq(staffAccounts.id, actor!.id));
+    }
+  });
+  it('uses targeted readback and idempotently replays after a committed read failure', async () => {
+    const suffix = randomUUID();
+    const [actor] = await db
+      .insert(staffAccounts)
+      .values({
+        loginIdentifier: 'hq-replay-' + suffix + '@example.com',
+        passwordHash: 'isolated-test-only',
+      })
+      .returning({ id: staffAccounts.id });
+    const base = {
+      name: 'Idempotent HQ fixture ' + suffix,
+      status: 'ACTIVE' as const,
+      book: null,
+      sku: {
+        code: 'HQ-IDEMPOTENT-' + suffix,
+        name: 'Test SKU',
+        priceMinor: 1200,
+        status: 'ACTIVE' as const,
+        availableForSale: true,
+      },
+    };
+    const key = 'create-' + suffix;
+    try {
+      const other = await commerce.createAdminProduct(
+        {
+          ...base,
+          name: 'Other HQ fixture ' + suffix,
+          sku: { ...base.sku, code: 'OTHER-' + suffix },
+        },
+        actor!.id,
+        randomUUID(),
+        'other-' + suffix,
+      );
+      const listSpy = vi.spyOn(commerce, 'listAdminProducts');
+      const readSpy = vi
+        .spyOn(commerce, 'getAdminProductById')
+        .mockRejectedValueOnce(new Error('simulated post-commit readback failure'));
+
+      // Insert and audit commit before the response fails. The second HTTP
+      // request has a new request ID but reuses the original idempotency key.
+      await expect(commerce.createAdminProduct(base, actor!.id, randomUUID(), key)).rejects.toThrow(
+        'simulated post-commit readback failure',
+      );
+      readSpy.mockRestore();
+
+      const recovered = await commerce.createAdminProduct(base, actor!.id, randomUUID(), key);
+      expect(recovered.name).toBe(base.name);
+      expect(recovered.id).not.toBe(other.id);
+      expect(recovered.sku.code).toBe(base.sku.code);
+      expect(recovered.productVersion).toBe(0);
+      expect(listSpy).not.toHaveBeenCalled();
+
+      const [sameOne, sameTwo] = await Promise.all([
+        commerce.createAdminProduct(base, actor!.id, randomUUID(), key),
+        commerce.createAdminProduct(base, actor!.id, randomUUID(), key),
+      ]);
+      expect(sameOne.id).toBe(recovered.id);
+      expect(sameTwo.id).toBe(recovered.id);
+
+      await expect(
+        commerce.createAdminProduct(
+          { ...base, name: 'Changed request must be rejected' },
+          actor!.id,
+          randomUUID(),
+          key,
+        ),
+      ).rejects.toMatchObject({ code: 'CONFLICT' });
+
+      const rows = await db
+        .select({ id: products.id })
+        .from(products)
+        .where(eq(products.name, base.name));
+      expect(rows.map((item) => item.id)).toEqual([recovered.id]);
+
+      const creationAudits = await db
+        .select({ resourceId: auditLogs.resourceId })
+        .from(auditLogs)
+        .where(eq(auditLogs.actorStaffAccountId, actor!.id));
+      expect(creationAudits).toHaveLength(2);
+      expect(creationAudits.map((item) => item.resourceId).sort()).toEqual(
+        [other.id, recovered.id].sort(),
+      );
+    } finally {
+      vi.restoreAllMocks();
+      const creationAudits = await db
+        .select({ resourceId: auditLogs.resourceId })
+        .from(auditLogs)
+        .where(eq(auditLogs.actorStaffAccountId, actor!.id));
+      await db.delete(auditLogs).where(eq(auditLogs.actorStaffAccountId, actor!.id));
+      for (const { resourceId } of creationAudits) {
+        if (resourceId) {
+          await db.delete(skus).where(eq(skus.productId, resourceId));
+          await db.delete(products).where(eq(products.id, resourceId));
         }
       }
       await db.delete(staffAccounts).where(eq(staffAccounts.id, actor!.id));

@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, ilike, or, sql } from 'drizzle-orm';
 import type {
   AddressInput,
@@ -24,6 +24,11 @@ import {
   auditLogs,
 } from '@xiaohai/db';
 import type { createDatabase } from '@xiaohai/db';
+import {
+  legacyCatalogImpact,
+  signLegacyPreview,
+  verifyLegacyPreview,
+} from './hq-catalog-impact.js';
 
 type Db = ReturnType<typeof createDatabase>['db'];
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
@@ -57,6 +62,7 @@ export class CommerceService {
   constructor(
     private readonly db: Db,
     private readonly referrals?: ReferralAttributionWriter,
+    private readonly catalogPreviewSecret = '',
   ) {}
 
   async attributeReferral(tx: Tx, orderId: string, consumerUserId: string, referralCode?: string) {
@@ -444,14 +450,29 @@ export class CommerceService {
     return this.getOrder(consumerUserId, id);
   }
 
-  async listAdminProducts(
+  async listAdminProducts(q?: string, status?: 'DRAFT' | 'ACTIVE' | 'INACTIVE') {
+    return this.readAdminProducts(q, status);
+  }
+
+  /** A post-COMMIT read restricted to the single created product, never a catalog scan. */
+  async getAdminProductById(id: string) {
+    const result = await this.readAdminProducts(undefined, undefined, id, true);
+    return result.products[0] ?? null;
+  }
+
+  /** Filter by product ID without losing sibling SKUs for HQ edit selection. */
+  async getAdminProductsById(id: string) {
+    const result = await this.readAdminProducts(undefined, undefined, id);
+    return result.products;
+  }
+
+  private async readAdminProducts(
     q?: string,
     status?: 'DRAFT' | 'ACTIVE' | 'INACTIVE',
-    offset = 0,
-    limit = 30,
     productId?: string,
+    onlyOne = false,
   ) {
-    const rows = await this.db
+    const query = this.db
       .select({ product: products, sku: skus, book: books, edition: bookEditions })
       .from(products)
       .innerJoin(skus, eq(skus.productId, products.id))
@@ -459,29 +480,14 @@ export class CommerceService {
       .leftJoin(books, eq(bookEditions.bookId, books.id))
       .where(
         and(
-          status ? eq(products.status, status) : undefined,
           productId ? eq(products.id, productId) : undefined,
-          q
-            ? or(
-                ilike(products.name, `%${q}%`),
-                ilike(skus.code, `%${q}%`),
-                ilike(skus.name, `%${q}%`),
-                ilike(books.title, `%${q}%`),
-                ilike(books.author, `%${q}%`),
-                ilike(bookEditions.isbn, `%${q}%`),
-              )
-            : undefined,
+          status ? eq(products.status, status) : undefined,
+          q ? ilike(products.name, `%${q}%`) : undefined,
         ),
-      )
-      .orderBy(asc(products.name), asc(skus.code), asc(skus.id))
-      .limit(limit + 1)
-      .offset(offset);
-    const page = rows.slice(0, limit);
+      );
+    const rows = onlyOne ? await query.limit(1) : await query;
     return {
-      offset,
-      limit,
-      hasMore: rows.length > limit,
-      products: page.map(({ product, sku, book, edition }) => ({
+      products: rows.map(({ product, sku, book, edition }) => ({
         id: product.id,
         skuId: sku.id,
         bookId: book?.id ?? null,
@@ -512,214 +518,146 @@ export class CommerceService {
       })),
     };
   }
-
-  async lookupBook(code: string) {
-    const isbn = normalizeIsbn(code);
-    if (!isbn || !isValidIsbn(isbn)) {
-      throw new CommerceError('INVALID_INPUT', 'Invalid ISBN or book barcode');
-    }
-    const [local] = await this.db
-      .select({ book: books, edition: bookEditions, sku: skus, product: products })
-      .from(bookEditions)
-      .innerJoin(books, eq(books.id, bookEditions.bookId))
-      .leftJoin(products, eq(products.bookEditionId, bookEditions.id))
-      .leftJoin(skus, eq(skus.productId, products.id))
-      .where(eq(bookEditions.isbn, isbn))
-      .limit(1);
-    if (local) {
-      return {
-        source: 'LOCAL' as const,
-        existingProductId: local.product?.id ?? null,
-        book: {
-          title: local.book.title,
-          author: local.book.author,
-          isbn,
-          publisher: local.edition.publisher,
-          coverUrl: local.product?.coverUrl ?? null,
-        },
-        suggestedPriceMinor: local.sku?.priceMinor ?? null,
-      };
-    }
-
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 3000);
-    try {
-      const response = await fetch(
-        `https://openlibrary.org/api/books?bibkeys=${encodeURIComponent(`ISBN:${isbn}`)}&format=json&jscmd=data`,
-        { headers: { accept: 'application/json' }, signal: controller.signal },
-      );
-      if (!response.ok)
-        return {
-          source: 'NOT_FOUND' as const,
-          existingProductId: null,
-          book: null,
-          suggestedPriceMinor: null,
-        };
-      const payload: unknown = await response.json();
-      const record =
-        payload && typeof payload === 'object'
-          ? (payload as Record<string, unknown>)[`ISBN:${isbn}`]
-          : undefined;
-      if (!record || typeof record !== 'object') {
-        return {
-          source: 'NOT_FOUND' as const,
-          existingProductId: null,
-          book: null,
-          suggestedPriceMinor: null,
-        };
-      }
-      const data = record as Record<string, unknown>;
-      const title = typeof data.title === 'string' ? data.title.trim() : '';
-      const authors = Array.isArray(data.authors) ? data.authors : [];
-      const author = authors
-        .map((item) =>
-          item && typeof item === 'object' ? (item as Record<string, unknown>).name : null,
-        )
-        .find((name): name is string => typeof name === 'string' && name.trim().length > 0);
-      const publishers = Array.isArray(data.publishers) ? data.publishers : [];
-      const publisher = publishers
-        .map((item) =>
-          item && typeof item === 'object' ? (item as Record<string, unknown>).name : null,
-        )
-        .find((name): name is string => typeof name === 'string' && name.trim().length > 0);
-      const cover =
-        data.cover && typeof data.cover === 'object'
-          ? (data.cover as Record<string, unknown>)
-          : null;
-      const coverUrl =
-        typeof cover?.large === 'string'
-          ? cover.large
-          : typeof cover?.medium === 'string'
-            ? cover.medium
-            : null;
-      if (!title || !author)
-        return {
-          source: 'NOT_FOUND' as const,
-          existingProductId: null,
-          book: null,
-          suggestedPriceMinor: null,
-        };
-      return {
-        source: 'OPEN_LIBRARY' as const,
-        existingProductId: null,
-        book: {
-          title,
-          author: author.trim(),
-          isbn,
-          publisher: publisher?.trim() ?? null,
-          coverUrl,
-        },
-        suggestedPriceMinor: null,
-      };
-    } catch {
-      return {
-        source: 'NOT_FOUND' as const,
-        existingProductId: null,
-        book: null,
-        suggestedPriceMinor: null,
-      };
-    } finally {
-      clearTimeout(timeout);
-    }
-  }
   async createAdminProduct(
     input: AdminProductInput,
     actorStaffAccountId: string,
     requestId: string,
+    idempotencyKey = requestId,
   ) {
-    if (
-      input.book?.isbn !== undefined &&
-      input.book.isbn !== null &&
-      !isValidIsbn(normalizeIsbn(input.book.isbn))
-    ) {
-      throw new CommerceError('INVALID_INPUT', 'Invalid ISBN');
-    }
-    const normalizedIsbn = normalizeIsbn(input.book?.isbn);
-    if (normalizedIsbn) {
-      const [existing] = await this.db
-        .select({ id: bookEditions.id })
-        .from(bookEditions)
-        .where(eq(bookEditions.isbn, normalizedIsbn))
+    // Return a persisted read after commit; never query through a second
+    // pooled connection while the INSERT transaction is still open.
+    // A browser retry must carry the same key even when Fastify assigns a new request ID.
+    // Store only hashes in the immutable audit row; no new schema or secret is required.
+    const keyHash = createHash('sha256')
+      .update(`${actorStaffAccountId}:catalog.hq_create:${idempotencyKey}`)
+      .digest('hex');
+    const payloadHash = createHash('sha256').update(JSON.stringify(input)).digest('hex');
+    const createdId = await this.db.transaction(async (tx) => {
+      // Serializes concurrent requests for the same actor/key, including the
+      // first transaction's INSERT + audit. An unrelated hash collision only
+      // serializes two transactions; it cannot mix their audit identities.
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${keyHash}))`);
+      const [previous] = await tx
+        .select({ resourceId: auditLogs.resourceId, metadata: auditLogs.metadata })
+        .from(auditLogs)
+        .where(
+          and(
+            eq(auditLogs.actorStaffAccountId, actorStaffAccountId),
+            eq(auditLogs.actionKey, 'catalog.hq_create'),
+            sql`${auditLogs.metadata}->>'idempotencyKeyHash' = ${keyHash}`,
+          ),
+        )
         .limit(1);
-      if (existing) throw new CommerceError('CONFLICT', '该图书已存在，请查看或编辑已有图书');
-    }
-    // Never read a newly inserted product through this.db inside the transaction:
-    // that uses a different pooled connection and cannot see uncommitted rows.
-    let createdId: string;
-    try {
-      createdId = await this.db.transaction(async (tx) => {
-        let editionId: string | null = null;
-        if (input.book) {
-          const [book] = await tx
-            .insert(books)
-            .values({
-              title: input.book.title,
-              author: input.book.author,
-              description: input.description ?? null,
-            })
-            .returning({ id: books.id });
-          const [edition] = await tx
-            .insert(bookEditions)
-            .values({
-              bookId: book!.id,
-              isbn: normalizeIsbn(input.book.isbn) ?? null,
-              publisher: input.book.publisher ?? null,
-            })
-            .returning({ id: bookEditions.id });
-          editionId = edition!.id;
+      if (previous) {
+        if (previous.metadata.payloadHash !== payloadHash || !previous.resourceId) {
+          throw new CommerceError('CONFLICT', 'Idempotency key reused with different product');
         }
-        const [product] = await tx
-          .insert(products)
-          .values({
-            bookEditionId: editionId,
-            name: input.name,
-            description: input.description ?? null,
-            coverUrl: input.coverUrl ?? null,
-            status: input.status,
-          })
-          .returning({ id: products.id });
-        await tx.insert(skus).values({
-          productId: product!.id,
-          ...input.sku,
-          code: input.sku.code ?? `XH-SKU-${randomUUID()}`,
-        });
-        await tx.insert(auditLogs).values({
-          actorStaffAccountId,
-          actionKey: 'catalog.hq_create',
-          resourceType: 'PRODUCT',
-          resourceId: product!.id,
-          requestId,
-          metadata: {
-            changedFields: input.book ? ['product', 'book', 'edition', 'sku'] : ['product', 'sku'],
-            skuCount: 1,
-          },
-        });
-        return product!.id;
-      });
-    } catch (error) {
-      if (isBookEditionUniqueViolation(error)) {
-        throw new CommerceError('CONFLICT', '该图书已存在，请查看或编辑已有图书');
+        return previous.resourceId;
       }
-      throw error;
-    }
-
-    // Read only after the transaction has committed, so the API never reports
-    // failure or an empty response after persisting a new catalog product.
-    const created = (
-      await this.listAdminProducts(undefined, undefined, 0, Number.MAX_SAFE_INTEGER, createdId)
-    ).products.find((item) => item.id === createdId);
-    if (!created) throw new CommerceError('NOT_FOUND', 'Newly created product not found');
+      let editionId: string | null = null;
+      if (input.book) {
+        const [book] = await tx
+          .insert(books)
+          .values({
+            title: input.book.title,
+            author: input.book.author,
+            description: input.description ?? null,
+          })
+          .returning({ id: books.id });
+        const [edition] = await tx
+          .insert(bookEditions)
+          .values({
+            bookId: book!.id,
+            isbn: input.book.isbn ?? null,
+            publisher: input.book.publisher ?? null,
+          })
+          .returning({ id: bookEditions.id });
+        editionId = edition!.id;
+      }
+      const [product] = await tx
+        .insert(products)
+        .values({
+          bookEditionId: editionId,
+          name: input.name,
+          description: input.description ?? null,
+          coverUrl: input.coverUrl ?? null,
+          status: input.status,
+        })
+        .returning({ id: products.id });
+      await tx.insert(skus).values({ productId: product!.id, ...input.sku });
+      await tx.insert(auditLogs).values({
+        actorStaffAccountId,
+        actionKey: 'catalog.hq_create',
+        resourceType: 'PRODUCT',
+        resourceId: product!.id,
+        requestId,
+        metadata: {
+          changedFields: input.book ? ['product', 'book', 'edition', 'sku'] : ['product', 'sku'],
+          skuCount: 1,
+          idempotencyKeyHash: keyHash,
+          payloadHash,
+        },
+      });
+      return product!.id;
+    });
+    const created = await this.getAdminProductById(createdId);
+    // The transaction may already be committed if this read fails. Retrying with
+    // the same idempotency key resumes the original result without new INSERTs.
+    if (!created) throw new CommerceError('NOT_FOUND', 'Committed product not found');
     return created;
   }
+  async previewAdminProductUpdate(
+    id: string,
+    input: AdminProductUpdateInput,
+    actorStaffAccountId: string,
+  ) {
+    if (Buffer.byteLength(this.catalogPreviewSecret, 'utf8') < 32) {
+      throw new CommerceError('CONFLICT', 'HQ catalog preview signing is not configured');
+    }
+    const matches = await this.getAdminProductsById(id);
+    if (!matches.length) throw new CommerceError('NOT_FOUND', 'Product not found');
+    if (!input.expectedSkuId && matches.length > 1) {
+      throw new CommerceError('CONFLICT', 'Explicit SKU identity required');
+    }
+    const current = input.expectedSkuId
+      ? matches.find((item) => item.skuId === input.expectedSkuId)
+      : matches[0];
+    if (!current) throw new CommerceError('CONFLICT', 'SKU reference changed');
+    if (
+      input.expectedProductVersion !== current.productVersion ||
+      input.expectedSkuVersion !== current.skuVersion ||
+      (current.book &&
+        (input.expectedBookVersion !== current.bookVersion ||
+          input.expectedEditionVersion !== current.editionVersion))
+    )
+      throw new CommerceError('CONFLICT', 'Stale catalog preview');
+    const impact = await legacyCatalogImpact(this.db, current.id, current.skuId);
+    if (!impact || impact.bookId !== current.bookId || impact.editionId !== current.editionId)
+      throw new CommerceError('CONFLICT', 'Catalog relationships changed');
+    return {
+      impact: {
+        affectedStoreCount: impact.affectedStoreIds.length,
+        affectedStoreIds: impact.affectedStoreIds,
+      },
+      previewToken: signLegacyPreview(
+        this.catalogPreviewSecret,
+        actorStaffAccountId,
+        current.id,
+        current.skuId,
+        input,
+        impact,
+      ),
+    };
+  }
+
   async updateAdminProduct(
     id: string,
     input: AdminProductUpdateInput,
     actorStaffAccountId: string,
     requestId: string,
+    previewToken?: string,
   ) {
-    const matches = (
-      await this.listAdminProducts(undefined, undefined, 0, Number.MAX_SAFE_INTEGER, id)
-    ).products.filter((item) => item.id === id);
+    const matches = await this.getAdminProductsById(id);
     if (matches.length === 0) throw new CommerceError('NOT_FOUND', 'Product not found');
     // A product may have multiple SKUs: never update an arbitrary first SKU.
     if (!input.expectedSkuId && matches.length > 1) {
@@ -777,6 +715,24 @@ export class CommerceService {
     );
 
     await this.db.transaction(async (tx) => {
+      // The legacy PUT is a separate shared-master write path. It must not
+      // bypass the HQ preview policy enforced by the newer cross-store PATCH.
+      const impact = await legacyCatalogImpact(tx, current.id, current.skuId, true);
+      if (
+        !impact ||
+        impact.bookId !== current.bookId ||
+        impact.editionId !== current.editionId ||
+        !verifyLegacyPreview(
+          this.catalogPreviewSecret,
+          previewToken,
+          actorStaffAccountId,
+          current.id,
+          current.skuId,
+          input,
+          impact,
+        )
+      )
+        throw new CommerceError('CONFLICT', 'Stale or missing HQ catalog preview');
       const [updatedProduct] = await tx
         .update(products)
         .set({
@@ -853,6 +809,8 @@ export class CommerceService {
           skuId: current.skuId,
           bookId: current.bookId,
           editionId: current.editionId,
+          affectedStoreCount: impact.affectedStoreIds.length,
+          affectedStoreIds: impact.affectedStoreIds,
           changedFields: [
             'product',
             'sku',
@@ -883,9 +841,9 @@ export class CommerceService {
         },
       });
     });
-    const updated = (
-      await this.listAdminProducts(undefined, undefined, 0, Number.MAX_SAFE_INTEGER, id)
-    ).products.find((item) => item.id === id && item.skuId === current.skuId);
+    const updated = (await this.getAdminProductsById(id)).find(
+      (item) => item.skuId === current.skuId,
+    );
     if (!updated) throw new CommerceError('NOT_FOUND', 'Updated product not found');
     return updated;
   }

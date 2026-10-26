@@ -198,6 +198,8 @@ export const adminProductUpdateInputSchema = adminProductFieldsSchema.extend({
   expectedProductVersion: z.number().int().nonnegative(),
   expectedSkuVersion: z.number().int().nonnegative(),
 });
+/** Compatibility for callers of the original strict HQ update schema. */
+export const adminProductUpdateSchema = adminProductUpdateInputSchema;
 /** @deprecated Use the explicit create/update schemas at API boundaries. */
 export const adminProductInputSchema = adminProductCreateInputSchema;
 export const adminProductSchema = adminProductCreateInputSchema.extend({
@@ -323,6 +325,7 @@ export const storeCatalogEditResponseSchema = z.object({
 });
 export const storeCatalogEditPreviewResponseSchema = z.object({
   impact: storeCatalogEditImpactSchema,
+  previewToken: z.string().nullable(),
 });
 export type StoreCatalogEditRequest = z.infer<typeof storeCatalogEditRequestSchema>;
 export type StoreCatalogEditResponse = z.infer<typeof storeCatalogEditResponseSchema>;
@@ -384,6 +387,9 @@ export const catalogCorrectionRecordSchema = z.object({
   reviewedAt: z.iso.datetime().nullable(),
 });
 export const catalogCorrectionsResponseSchema = z.object({
+  offset: z.number().int().nonnegative(),
+  limit: z.number().int().positive().max(100),
+  hasMore: z.boolean(),
   requests: z.array(catalogCorrectionRecordSchema),
 });
 export type CreateCatalogCorrection = z.infer<typeof createCatalogCorrectionSchema>;
