@@ -46,6 +46,9 @@ suite('HQ catalog create and optimistic update on disposable PostgreSQL', () => 
       .returning({ id: staffAccounts.id });
     let createdId: string | null = null;
     let nonBookId: string | null = null;
+    let siblingEditionId: string | null = null;
+    let siblingProductId: string | null = null;
+    let siblingSkuId: string | null = null;
     let regionId: string | null = null;
     const storeIds: string[] = [];
     try {
@@ -184,9 +187,31 @@ suite('HQ catalog create and optimistic update on disposable PostgreSQL', () => 
         })
         .returning({ id: stores.id });
       storeIds.push(storeC!.id);
+      // Link through a *different* edition, product and SKU of the same book.
+      // A book-title correction must include this sibling branch in its impact.
+      const [siblingEdition] = await db
+        .insert(bookEditions)
+        .values({ bookId: created.bookId!, publisher: 'Untouched sibling publisher' })
+        .returning({ id: bookEditions.id });
+      siblingEditionId = siblingEdition!.id;
+      const [siblingProduct] = await db
+        .insert(products)
+        .values({ bookEditionId: siblingEditionId, name: 'Sibling edition', status: 'ACTIVE' })
+        .returning({ id: products.id });
+      siblingProductId = siblingProduct!.id;
+      const [siblingSku] = await db
+        .insert(skus)
+        .values({
+          productId: siblingProductId,
+          code: 'HQ-SIBLING-' + suffix,
+          name: 'Other SKU',
+          priceMinor: 2700,
+        })
+        .returning({ id: skus.id });
+      siblingSkuId = siblingSku!.id;
       await db.insert(storeInventory).values({
         storeId: storeC!.id,
-        skuId: created.skuId,
+        skuId: siblingSkuId,
         onHand: 1,
       });
       await expect(
@@ -219,14 +244,15 @@ suite('HQ catalog create and optimistic update on disposable PostgreSQL', () => 
 
       const reader = new StoreCatalogReadService(db);
       for (const storeId of storeIds) {
-        const item = await reader.get(storeId, created.skuId);
+        const sibling = storeId === storeC!.id;
+        const item = await reader.get(storeId, sibling ? siblingSkuId! : created.skuId);
         expect(item).toMatchObject({
           bookTitle: revisedBook.title,
           author: revisedBook.author,
-          publisher: revisedBook.publisher,
-          isbn: revisedBook.isbn,
+          publisher: sibling ? 'Untouched sibling publisher' : revisedBook.publisher,
+          isbn: sibling ? null : revisedBook.isbn,
           bookVersion: 1,
-          editionVersion: 1,
+          editionVersion: sibling ? 0 : 1,
         });
       }
 
@@ -384,6 +410,14 @@ suite('HQ catalog create and optimistic update on disposable PostgreSQL', () => 
       });
     } finally {
       await db.delete(auditLogs).where(eq(auditLogs.actorStaffAccountId, actor!.id));
+      if (siblingSkuId) {
+        await db.delete(storeInventory).where(eq(storeInventory.skuId, siblingSkuId));
+        await db.delete(skus).where(eq(skus.id, siblingSkuId));
+      }
+      if (siblingProductId) await db.delete(products).where(eq(products.id, siblingProductId));
+      if (siblingEditionId) {
+        await db.delete(bookEditions).where(eq(bookEditions.id, siblingEditionId));
+      }
       for (const productId of [createdId, nonBookId].filter((id): id is string => Boolean(id))) {
         const ownedSkus = await db
           .select({ id: skus.id })
