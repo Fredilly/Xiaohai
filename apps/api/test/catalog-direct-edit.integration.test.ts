@@ -42,7 +42,7 @@ const suite = disposableDatabase ? describe : describe.skip;
 
 suite('direct catalog editing on disposable PostgreSQL', () => {
   const db = disposableDatabase!.db;
-  const editor = new CatalogEditService(db);
+  const editor = new CatalogEditService(db, 'isolated-catalog-impact-test-signing-secret-12345');
   const reader = new StoreCatalogReadService(db);
 
   afterAll(async () => {
@@ -145,11 +145,24 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
         shelfLocation: 'Shelf A-01',
       };
 
-      const preview = await editor.preview(storeA!.id, sku!.id, input);
-      expect(preview.sharedFields).toEqual(['bookTitle', 'priceMinor']);
-      expect(preview.affectedStoreCount).toBe(2);
+      const preview = await editor.preview(storeA!.id, sku!.id, input, actor!.id, true);
+      expect(preview.impact.sharedFields).toEqual(['bookTitle', 'priceMinor']);
+      expect(preview.impact.affectedStoreCount).toBe(2);
+      expect(preview.previewToken).toMatch(/^\\d{10}\\./);
 
-      const updated = await editor.update(storeA!.id, sku!.id, actor!.id, randomUUID(), input);
+      await expect(
+        editor.update(storeA!.id, sku!.id, actor!.id, randomUUID(), input, true),
+      ).rejects.toMatchObject({ code: 'CONFLICT' });
+      await expect(
+        editor.update(storeA!.id, sku!.id, randomUUID(), randomUUID(), input, true, preview.previewToken!),
+      ).rejects.toMatchObject({ code: 'CONFLICT' });
+      await expect(
+        editor.update(storeA!.id, sku!.id, actor!.id, randomUUID(), input),
+      ).rejects.toMatchObject({ code: 'SHARED_FORBIDDEN' });
+
+      const updated = await editor.update(
+        storeA!.id, sku!.id, actor!.id, randomUUID(), input, true, preview.previewToken!,
+      );
       expect(updated.item.bookTitle).toBe('Edited Direct Edit Book');
       expect(updated.item.priceMinor).toBe(1200);
       expect(updated.item.shelfLocation).toBe('Shelf A-01');
@@ -164,8 +177,33 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
       expect(otherStore?.shelfLocation).toBeNull();
 
       await expect(
-        editor.update(storeA!.id, sku!.id, actor!.id, randomUUID(), input),
+        editor.update(storeA!.id, sku!.id, actor!.id, randomUUID(), input, true, preview.previewToken!),
       ).rejects.toMatchObject({ code: 'CONFLICT' } satisfies Partial<CatalogEditError>);
+
+      const changedImpactEdit = {
+        ...input,
+        expectedBookVersion: 1,
+        expectedSkuVersion: 1,
+        expectedLocalVersion: 1,
+        bookTitle: 'New HQ book title after scoped preview',
+      };
+      const changedPreview = await editor.preview(
+        storeA!.id, sku!.id, changedImpactEdit, actor!.id, true,
+      );
+      expect(changedPreview.impact.affectedStoreCount).toBe(2);
+      // A store becomes unlinked after the preview; versions remain unchanged,
+      // but the server must reject the old acknowledgement.
+      await db
+        .delete(storeInventory)
+        .where(and(eq(storeInventory.storeId, storeB!.id), eq(storeInventory.skuId, sku!.id)));
+      await expect(
+        editor.update(
+          storeA!.id, sku!.id, actor!.id, randomUUID(), changedImpactEdit, true,
+          changedPreview.previewToken!,
+        ),
+      ).rejects.toMatchObject({ code: 'CONFLICT' });
+      const afterInvalidImpact = await reader.get(storeA!.id, sku!.id);
+      expect(afterInvalidImpact?.bookTitle).toBe('Edited Direct Edit Book');
 
       const balances = await db
         .select({ storeId: storeInventory.storeId, onHand: storeInventory.onHand })
@@ -219,6 +257,29 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
         expect(ownRead.statusCode).toBe(200);
         const ownReadBody = ownRead.json<{ items: unknown[] }>();
         expect(ownReadBody.items).toHaveLength(1);
+
+        const bypassShared = {
+          expectedProductVersion: 0,
+          expectedBookVersion: 1,
+          expectedSkuVersion: 1,
+          expectedLocalVersion: 1,
+          bookTitle: 'Cross-store malicious title',
+        };
+        const deniedSharedPreview = await app.inject({
+          method: 'POST',
+          url: ownUrl + '/' + sku!.id + '/preview',
+          headers,
+          payload: bypassShared,
+        });
+        expect(deniedSharedPreview.statusCode).toBe(403);
+        const deniedSharedPatch = await app.inject({
+          method: 'PATCH',
+          url: ownUrl + '/' + sku!.id,
+          headers,
+          payload: bypassShared,
+        });
+        expect(deniedSharedPatch.statusCode).toBe(403);
+        expect((await reader.get(storeA!.id, sku!.id))?.bookTitle).toBe('Edited Direct Edit Book');
 
         const deniedRead = await app.inject({ method: 'GET', url: foreignUrl, headers });
         expect(deniedRead.statusCode).toBe(403);
