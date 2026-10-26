@@ -154,14 +154,28 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
         editor.update(storeA!.id, sku!.id, actor!.id, randomUUID(), input, true),
       ).rejects.toMatchObject({ code: 'CONFLICT' });
       await expect(
-        editor.update(storeA!.id, sku!.id, randomUUID(), randomUUID(), input, true, preview.previewToken!),
+        editor.update(
+          storeA!.id,
+          sku!.id,
+          randomUUID(),
+          randomUUID(),
+          input,
+          true,
+          preview.previewToken!,
+        ),
       ).rejects.toMatchObject({ code: 'CONFLICT' });
       await expect(
         editor.update(storeA!.id, sku!.id, actor!.id, randomUUID(), input),
       ).rejects.toMatchObject({ code: 'SHARED_FORBIDDEN' });
 
       const updated = await editor.update(
-        storeA!.id, sku!.id, actor!.id, randomUUID(), input, true, preview.previewToken!,
+        storeA!.id,
+        sku!.id,
+        actor!.id,
+        randomUUID(),
+        input,
+        true,
+        preview.previewToken!,
       );
       expect(updated.item.bookTitle).toBe('Edited Direct Edit Book');
       expect(updated.item.priceMinor).toBe(1200);
@@ -177,7 +191,15 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
       expect(otherStore?.shelfLocation).toBeNull();
 
       await expect(
-        editor.update(storeA!.id, sku!.id, actor!.id, randomUUID(), input, true, preview.previewToken!),
+        editor.update(
+          storeA!.id,
+          sku!.id,
+          actor!.id,
+          randomUUID(),
+          input,
+          true,
+          preview.previewToken!,
+        ),
       ).rejects.toMatchObject({ code: 'CONFLICT' } satisfies Partial<CatalogEditError>);
 
       const changedImpactEdit = {
@@ -188,7 +210,11 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
         bookTitle: 'New HQ book title after scoped preview',
       };
       const changedPreview = await editor.preview(
-        storeA!.id, sku!.id, changedImpactEdit, actor!.id, true,
+        storeA!.id,
+        sku!.id,
+        changedImpactEdit,
+        actor!.id,
+        true,
       );
       expect(changedPreview.impact.affectedStoreCount).toBe(2);
       // A store becomes unlinked after the preview; versions remain unchanged,
@@ -198,7 +224,12 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
         .where(and(eq(storeInventory.storeId, storeB!.id), eq(storeInventory.skuId, sku!.id)));
       await expect(
         editor.update(
-          storeA!.id, sku!.id, actor!.id, randomUUID(), changedImpactEdit, true,
+          storeA!.id,
+          sku!.id,
+          actor!.id,
+          randomUUID(),
+          changedImpactEdit,
+          true,
           changedPreview.previewToken!,
         ),
       ).rejects.toMatchObject({ code: 'CONFLICT' });

@@ -20,7 +20,8 @@ type Db = ReturnType<typeof createDatabase>['db'];
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
 type QueryContext = Db | Tx;
 
-export type CatalogEditErrorCode = 'NOT_FOUND' | 'CONFLICT' | 'INVALID_REFERENCE' | 'SHARED_FORBIDDEN';
+export type CatalogEditErrorCode =
+  'NOT_FOUND' | 'CONFLICT' | 'INVALID_REFERENCE' | 'SHARED_FORBIDDEN';
 
 export class CatalogEditError extends Error {
   constructor(readonly code: CatalogEditErrorCode) {
@@ -117,7 +118,11 @@ export class CatalogEditService {
           ? await this.findAffectedStores(tx, source, sharedFields)
           : [storeId];
         if (sharedFields.length) {
-          const impact = { sharedFields, affectedStoreCount: affectedStoreIds.length, affectedStoreIds };
+          const impact = {
+            sharedFields,
+            affectedStoreCount: affectedStoreIds.length,
+            affectedStoreIds,
+          };
           if (
             !previewToken ||
             !this.verifyImpact(previewToken, actorStaffAccountId, storeId, skuId, input, impact)
@@ -197,15 +202,30 @@ export class CatalogEditService {
     expiry = Math.floor(Date.now() / 1000) + 300,
   ): string {
     const fields = [
-      'expectedProductVersion', 'expectedBookVersion', 'expectedEditionVersion',
-      'expectedSkuVersion', 'expectedLocalVersion', 'productName', 'bookTitle',
-      'author', 'publisher', 'isbn', 'priceMinor', 'shelfLocation',
-      'storeNote', 'displayInfo',
+      'expectedProductVersion',
+      'expectedBookVersion',
+      'expectedEditionVersion',
+      'expectedSkuVersion',
+      'expectedLocalVersion',
+      'productName',
+      'bookTitle',
+      'author',
+      'publisher',
+      'isbn',
+      'priceMinor',
+      'shelfLocation',
+      'storeNote',
+      'displayInfo',
     ] as const;
     const payload = JSON.stringify([
-      'catalog-impact-v1', expiry, actorId, storeId, skuId,
+      'catalog-impact-v1',
+      expiry,
+      actorId,
+      storeId,
+      skuId,
       fields.map((field) => input[field] ?? null),
-      [...impact.sharedFields].sort(), [...impact.affectedStoreIds].sort(),
+      [...impact.sharedFields].sort(),
+      [...impact.affectedStoreIds].sort(),
     ]);
     const digest = createHmac('sha256', this.previewSecret).update(payload).digest('base64url');
     return `${expiry}.${digest}`;

@@ -71,8 +71,8 @@ export function StoreCatalogPanel({
         。仅显示与本店库存记录关联的商品及其基础资料。库存数量仍须通过库存盘点或调整流程变更。
       </p>
       <p>
-        本店员工仅能直接编辑本店货架、备注和陈列信息。
-        书名、作者、ISBN、出版社及 SKU 价格属于总部共享主数据，请通过商品纠错申请或联系总部处理。
+        本店员工仅能直接编辑本店货架、备注和陈列信息。 书名、作者、ISBN、出版社及 SKU
+        价格属于总部共享主数据，请通过商品纠错申请或联系总部处理。
       </p>
       <form className="book-search-form" onSubmit={search}>
         <input
@@ -266,7 +266,6 @@ function StoreCatalogEditForm({
         {status}
       </p>
       <div className="meiping-store-actions">
-
         <button type="submit">保存本店资料</button>
         <button type="button" onClick={onCancel}>
           取消

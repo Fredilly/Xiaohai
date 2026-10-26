@@ -12,7 +12,12 @@ import { CatalogEditError, type CatalogEditService } from './catalog-edit-servic
 
 export const CATALOG_EDIT_PERMISSION = 'catalog.edit';
 const sharedFieldKeys = [
-  'productName', 'bookTitle', 'author', 'publisher', 'isbn', 'priceMinor',
+  'productName',
+  'bookTitle',
+  'author',
+  'publisher',
+  'isbn',
+  'priceMinor',
 ] as const;
 function hasSharedFields(input: Record<string, unknown>) {
   return sharedFieldKeys.some((field) => input[field] !== undefined);
@@ -76,7 +81,10 @@ export function registerStoreCatalogEditRoutes(
       await options.stores.getStaffStore(params.data.id, actor);
       if (hasSharedFields(body.data)) return sharedForbidden(reply, request);
       return await options.catalog.preview(
-        params.data.id, params.data.skuId, body.data, actor.staffAccountId,
+        params.data.id,
+        params.data.skuId,
+        body.data,
+        actor.staffAccountId,
       );
     } catch (error) {
       return editFail(request, reply, error);
@@ -148,7 +156,11 @@ export function registerHqCatalogEditRoutes(
       const actor = await authorizeHq(request);
       await options.stores.getStaffStore(params.data.id, actor);
       return await options.editor.preview(
-        params.data.id, params.data.skuId, body.data, actor.staffAccountId, true,
+        params.data.id,
+        params.data.skuId,
+        body.data,
+        actor.staffAccountId,
+        true,
       );
     } catch (error) {
       return editFail(request, reply, error);
@@ -220,9 +232,13 @@ function editFail(request: FastifyRequest, reply: FastifyReply, error: unknown) 
     code = status === 403 ? 'STAFF_FORBIDDEN' : error.code;
   } else if (error instanceof CatalogEditError) {
     status =
-      error.code === 'NOT_FOUND' ? 404 :
-      error.code === 'INVALID_REFERENCE' ? 400 :
-      error.code === 'SHARED_FORBIDDEN' ? 403 : 409;
+      error.code === 'NOT_FOUND'
+        ? 404
+        : error.code === 'INVALID_REFERENCE'
+          ? 400
+          : error.code === 'SHARED_FORBIDDEN'
+            ? 403
+            : 409;
     code = error.code;
   }
   request.log.warn({ requestId: request.id, errorCode: code }, 'Store catalog edit failed');

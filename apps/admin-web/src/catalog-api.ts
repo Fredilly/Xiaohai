@@ -3,6 +3,7 @@ import {
   adminProductListResponseSchema,
   adminProductSchema,
   storeCatalogEditRequestSchema,
+  storeCatalogEditPreviewResponseSchema,
   storeCatalogResponseSchema,
   type AdminProductInput,
   type StoreCatalogEditRequest,
@@ -77,14 +78,14 @@ export async function previewHqStoreCatalogEdit(
   skuId: string,
   input: StoreCatalogEditRequest,
 ) {
-  return (await call(
-    `/api/v1/staff/catalog/stores/${encodeURIComponent(storeId)}/items/${encodeURIComponent(skuId)}/preview`,
-    token,
-    'POST',
-    storeCatalogEditRequestSchema.parse(input),
-  )) as {
-    impact: { affectedStoreCount: number; affectedStoreIds: string[]; sharedFields: string[] };
-  };
+  return storeCatalogEditPreviewResponseSchema.parse(
+    await call(
+      `/api/v1/staff/catalog/stores/${encodeURIComponent(storeId)}/items/${encodeURIComponent(skuId)}/preview`,
+      token,
+      'POST',
+      storeCatalogEditRequestSchema.parse(input),
+    ),
+  );
 }
 
 export async function updateHqStoreCatalog(
