@@ -200,10 +200,8 @@ suite('shared catalog dependency serialization on disposable PostgreSQL', () => 
         .from(auditLogs)
         .where(eq(auditLogs.actorStaffAccountId, actor!.id));
       expect(audit?.metadata).toMatchObject({ affectedStoreCount: 2 });
-      const affectedIds = (
-        audit?.metadata as { affectedStoreIds?: string[] } | undefined
-      )?.affectedStoreIds;
-      expect(affectedIds?.sort()).toEqual([storeA!.id, storeB!.id].sort());
+      const impact = audit?.metadata as { affectedStoreIds?: string[] } | undefined;
+      expect(impact?.affectedStoreIds?.sort()).toEqual([storeA!.id, storeB!.id].sort());
       const [newLink] = await db
         .select()
         .from(storeInventory)
