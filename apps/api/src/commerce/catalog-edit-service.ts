@@ -75,8 +75,9 @@ export class CatalogEditService {
   ) {
     const source = await this.loadSource(this.db, storeId, skuId);
     if (!source) throw new CatalogEditError('NOT_FOUND');
-    this.assertExpectedVersions(source, input);
-    const changed = this.changedFields(source, input);
+    const canonicalInput = this.canonicalizeIsbn(source, input);
+    this.assertExpectedVersions(source, canonicalInput);
+    const changed = this.changedFields(source, canonicalInput);
     const sharedFields = changed.filter((field) => !isLocalField(field));
     if (sharedFields.length && !sharedAllowed) throw new CatalogEditError('SHARED_FORBIDDEN');
     const affectedStoreIds = sharedFields.length
@@ -104,7 +105,8 @@ export class CatalogEditService {
       const result = await this.db.transaction(async (tx) => {
         const initial = await this.loadSource(tx, storeId, skuId);
         if (!initial) throw new CatalogEditError('NOT_FOUND');
-        const proposedChanges = this.changedFields(initial, input);
+        const proposal = this.canonicalizeIsbn(initial, input);
+        const proposedChanges = this.changedFields(initial, proposal);
         const proposedShared = proposedChanges.filter((field) => !isLocalField(field));
         if (proposedShared.length && !sharedAllowed) {
           throw new CatalogEditError('SHARED_FORBIDDEN');
@@ -126,9 +128,10 @@ export class CatalogEditService {
           source.bookId !== initial.bookId
         )
           throw new CatalogEditError('CONFLICT');
-        this.assertExpectedVersions(source, input);
+        const canonicalInput = this.canonicalizeIsbn(source, input);
+        this.assertExpectedVersions(source, canonicalInput);
 
-        const changed = this.changedFields(source, input);
+        const changed = this.changedFields(source, canonicalInput);
         if (!changed.length) return { impact: emptyImpact(), changed };
         const sharedFields = changed.filter((field) => !isLocalField(field));
         if (JSON.stringify(sharedFields) !== JSON.stringify(proposedShared)) {
@@ -154,19 +157,19 @@ export class CatalogEditService {
         }
 
         if (changed.includes('productName')) {
-          await this.updateProduct(tx, source, input.productName!);
+          await this.updateProduct(tx, source, canonicalInput.productName!);
         }
         if (changed.includes('bookTitle') || changed.includes('author')) {
-          await this.updateBook(tx, source, input);
+          await this.updateBook(tx, source, canonicalInput);
         }
         if (changed.includes('publisher') || changed.includes('isbn')) {
-          await this.updateEdition(tx, source, input);
+          await this.updateEdition(tx, source, canonicalInput);
         }
         if (changed.includes('priceMinor')) {
-          await this.updateSku(tx, source, input.priceMinor!);
+          await this.updateSku(tx, source, canonicalInput.priceMinor!);
         }
         if (changed.some(isLocalField)) {
-          await this.updateLocalMetadata(tx, source, input);
+          await this.updateLocalMetadata(tx, source, canonicalInput);
         }
 
         await tx.insert(auditLogs).values({
