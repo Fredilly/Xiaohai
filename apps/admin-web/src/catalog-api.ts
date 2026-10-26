@@ -1,10 +1,12 @@
 import {
   adminProductInputSchema,
+  adminProductUpdateInputSchema,
   adminProductListResponseSchema,
   adminProductSchema,
   storeCatalogEditRequestSchema,
   storeCatalogResponseSchema,
   type AdminProductInput,
+  type AdminProductUpdateInput,
   type StoreCatalogEditRequest,
 } from '@xiaohai/contracts/commerce';
 
@@ -17,10 +19,16 @@ export class CatalogApiError extends Error {
   }
 }
 
-async function call(path: string, token: string, method = 'GET', body?: object): Promise<unknown> {
+async function call(
+  path: string,
+  token: string,
+  method = 'GET',
+  body?: object,
+  extraHeaders: Record<string, string> = {},
+): Promise<unknown> {
   const response = await fetch(`${base}${path}`, {
     method,
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...extraHeaders },
     body: body ? JSON.stringify(body) : undefined,
   });
   if (!response.ok) throw new CatalogApiError(response.status);
@@ -44,13 +52,34 @@ export const createAdminProduct = async (token: string, input: AdminProductInput
     ),
   );
 
-export const updateAdminProduct = async (token: string, id: string, input: AdminProductInput) =>
+export const previewAdminProductUpdate = async (
+  token: string,
+  id: string,
+  input: AdminProductUpdateInput,
+) =>
+  (await call(
+    `/api/v1/staff/catalog/products/${encodeURIComponent(id)}/preview`,
+    token,
+    'POST',
+    adminProductUpdateInputSchema.parse(input),
+  )) as {
+    previewToken: string;
+    impact: { affectedStoreCount: number; affectedStoreIds: string[] };
+  };
+
+export const updateAdminProduct = async (
+  token: string,
+  id: string,
+  input: AdminProductUpdateInput,
+  previewToken: string,
+) =>
   adminProductSchema.parse(
     await call(
-      `/api/v1/staff/catalog/products/${id}`,
+      `/api/v1/staff/catalog/products/${encodeURIComponent(id)}`,
       token,
       'PUT',
-      adminProductInputSchema.parse(input),
+      adminProductUpdateInputSchema.parse(input),
+      { 'X-Catalog-Preview-Token': previewToken },
     ),
   );
 
