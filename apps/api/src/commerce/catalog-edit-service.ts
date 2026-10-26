@@ -1,3 +1,4 @@
+import { createHmac, timingSafeEqual } from 'node:crypto';
 import { and, eq, or, sql } from 'drizzle-orm';
 import {
   auditLogs,
@@ -19,7 +20,7 @@ type Db = ReturnType<typeof createDatabase>['db'];
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
 type QueryContext = Db | Tx;
 
-export type CatalogEditErrorCode = 'NOT_FOUND' | 'CONFLICT' | 'INVALID_REFERENCE';
+export type CatalogEditErrorCode = 'NOT_FOUND' | 'CONFLICT' | 'INVALID_REFERENCE' | 'SHARED_FORBIDDEN';
 
 export class CatalogEditError extends Error {
   constructor(readonly code: CatalogEditErrorCode) {
@@ -52,21 +53,39 @@ type Source = {
 export class CatalogEditService {
   private readonly reader: StoreCatalogReadService;
 
-  constructor(private readonly db: Db) {
+  constructor(
+    private readonly db: Db,
+    private readonly previewSecret: string,
+  ) {
+    if (Buffer.byteLength(previewSecret, 'utf8') < 32) {
+      throw new Error('Catalog impact signing secret must contain at least 32 bytes');
+    }
     this.reader = new StoreCatalogReadService(db);
   }
 
-  async preview(storeId: string, skuId: string, input: StoreCatalogEditRequest) {
+  async preview(
+    storeId: string,
+    skuId: string,
+    input: StoreCatalogEditRequest,
+    actorStaffAccountId: string,
+    sharedAllowed = false,
+  ) {
     const source = await this.loadSource(this.db, storeId, skuId);
     if (!source) throw new CatalogEditError('NOT_FOUND');
     this.assertExpectedVersions(source, input);
     const changed = this.changedFields(source, input);
-    if (!changed.length) return emptyImpact();
     const sharedFields = changed.filter((field) => !isLocalField(field));
+    if (sharedFields.length && !sharedAllowed) throw new CatalogEditError('SHARED_FORBIDDEN');
     const affectedStoreIds = sharedFields.length
       ? await this.findAffectedStores(this.db, source, sharedFields)
       : [storeId];
-    return { sharedFields, affectedStoreCount: affectedStoreIds.length, affectedStoreIds };
+    const impact = { sharedFields, affectedStoreCount: affectedStoreIds.length, affectedStoreIds };
+    return {
+      impact,
+      previewToken: sharedFields.length
+        ? this.signImpact(actorStaffAccountId, storeId, skuId, input, impact)
+        : null,
+    };
   }
 
   async update(
@@ -75,6 +94,8 @@ export class CatalogEditService {
     actorStaffAccountId: string,
     requestId: string,
     input: StoreCatalogEditRequest,
+    sharedAllowed = false,
+    previewToken?: string,
   ) {
     try {
       const result = await this.db.transaction(async (tx) => {
@@ -86,9 +107,24 @@ export class CatalogEditService {
         if (!changed.length) return { impact: emptyImpact(), changed };
 
         const sharedFields = changed.filter((field) => !isLocalField(field));
+        if (sharedFields.length && !sharedAllowed) throw new CatalogEditError('SHARED_FORBIDDEN');
+        // Before checking acknowledged impact, lock the shared SKU to block
+        // concurrent FK-backed store-inventory linking during this transaction.
+        if (sharedFields.length) {
+          await tx.select({ id: skus.id }).from(skus).where(eq(skus.id, skuId)).for('update');
+        }
         const affectedStoreIds = sharedFields.length
           ? await this.findAffectedStores(tx, source, sharedFields)
           : [storeId];
+        if (sharedFields.length) {
+          const impact = { sharedFields, affectedStoreCount: affectedStoreIds.length, affectedStoreIds };
+          if (
+            !previewToken ||
+            !this.verifyImpact(previewToken, actorStaffAccountId, storeId, skuId, input, impact)
+          ) {
+            throw new CatalogEditError('CONFLICT');
+          }
+        }
 
         if (changed.includes('productName')) {
           await this.updateProduct(tx, source, input.productName!);
@@ -150,6 +186,46 @@ export class CatalogEditService {
       if (hasPgCode(error, '23505')) throw new CatalogEditError('CONFLICT');
       throw error;
     }
+  }
+
+  private signImpact(
+    actorId: string,
+    storeId: string,
+    skuId: string,
+    input: StoreCatalogEditRequest,
+    impact: { sharedFields: string[]; affectedStoreIds: string[] },
+    expiry = Math.floor(Date.now() / 1000) + 300,
+  ): string {
+    const fields = [
+      'expectedProductVersion', 'expectedBookVersion', 'expectedEditionVersion',
+      'expectedSkuVersion', 'expectedLocalVersion', 'productName', 'bookTitle',
+      'author', 'publisher', 'isbn', 'priceMinor', 'shelfLocation',
+      'storeNote', 'displayInfo',
+    ] as const;
+    const payload = JSON.stringify([
+      'catalog-impact-v1', expiry, actorId, storeId, skuId,
+      fields.map((field) => input[field] ?? null),
+      [...impact.sharedFields].sort(), [...impact.affectedStoreIds].sort(),
+    ]);
+    const digest = createHmac('sha256', this.previewSecret).update(payload).digest('base64url');
+    return `${expiry}.${digest}`;
+  }
+
+  private verifyImpact(
+    token: string,
+    actorId: string,
+    storeId: string,
+    skuId: string,
+    input: StoreCatalogEditRequest,
+    impact: { sharedFields: string[]; affectedStoreIds: string[] },
+  ): boolean {
+    if (!/^\\d{10}\\.[A-Za-z0-9_-]{43}$/.test(token)) return false;
+    const expiry = Number(token.slice(0, 10));
+    const now = Math.floor(Date.now() / 1000);
+    if (expiry <= now || expiry > now + 300) return false;
+    const expected = Buffer.from(this.signImpact(actorId, storeId, skuId, input, impact, expiry));
+    const supplied = Buffer.from(token);
+    return supplied.length === expected.length && timingSafeEqual(supplied, expected);
   }
 
   private async loadSource(
