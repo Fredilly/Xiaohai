@@ -23,7 +23,11 @@ import {
   auditLogs,
 } from '@xiaohai/db';
 import type { createDatabase } from '@xiaohai/db';
-import { legacyCatalogImpact, signLegacyPreview, verifyLegacyPreview } from './hq-catalog-impact.js';
+import {
+  legacyCatalogImpact,
+  signLegacyPreview,
+  verifyLegacyPreview,
+} from './hq-catalog-impact.js';
 
 type Db = ReturnType<typeof createDatabase>['db'];
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
@@ -555,25 +559,26 @@ export class CommerceService {
     if (
       input.expectedProductVersion !== current.productVersion ||
       input.expectedSkuVersion !== current.skuVersion ||
-      (current.book && (
-        input.expectedBookVersion !== current.bookVersion ||
-        input.expectedEditionVersion !== current.editionVersion
-      ))
-    ) throw new CommerceError('CONFLICT', 'Stale catalog preview');
+      (current.book &&
+        (input.expectedBookVersion !== current.bookVersion ||
+          input.expectedEditionVersion !== current.editionVersion))
+    )
+      throw new CommerceError('CONFLICT', 'Stale catalog preview');
     const impact = await legacyCatalogImpact(this.db, current.id, current.skuId);
-    if (
-      !impact ||
-      impact.bookId !== current.bookId ||
-      impact.editionId !== current.editionId
-    ) throw new CommerceError('CONFLICT', 'Catalog relationships changed');
+    if (!impact || impact.bookId !== current.bookId || impact.editionId !== current.editionId)
+      throw new CommerceError('CONFLICT', 'Catalog relationships changed');
     return {
       impact: {
         affectedStoreCount: impact.affectedStoreIds.length,
         affectedStoreIds: impact.affectedStoreIds,
       },
       previewToken: signLegacyPreview(
-        this.catalogPreviewSecret, actorStaffAccountId,
-        current.id, current.skuId, input, impact,
+        this.catalogPreviewSecret,
+        actorStaffAccountId,
+        current.id,
+        current.skuId,
+        input,
+        impact,
       ),
     };
   }
@@ -634,10 +639,16 @@ export class CommerceService {
         impact.bookId !== current.bookId ||
         impact.editionId !== current.editionId ||
         !verifyLegacyPreview(
-          this.catalogPreviewSecret, previewToken, actorStaffAccountId,
-          current.id, current.skuId, input, impact,
+          this.catalogPreviewSecret,
+          previewToken,
+          actorStaffAccountId,
+          current.id,
+          current.skuId,
+          input,
+          impact,
         )
-      ) throw new CommerceError('CONFLICT', 'Stale or missing HQ catalog preview');
+      )
+        throw new CommerceError('CONFLICT', 'Stale or missing HQ catalog preview');
       const [updatedProduct] = await tx
         .update(products)
         .set({
