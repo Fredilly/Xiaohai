@@ -148,7 +148,7 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
       const preview = await editor.preview(storeA!.id, sku!.id, input, actor!.id, true);
       expect(preview.impact.sharedFields).toEqual(['bookTitle', 'priceMinor']);
       expect(preview.impact.affectedStoreCount).toBe(2);
-      expect(preview.previewToken).toMatch(/^\\d{10}\\./);
+      expect(preview.previewToken).toMatch(/^\d{10}\./);
 
       await expect(
         editor.update(storeA!.id, sku!.id, actor!.id, randomUUID(), input, true),
@@ -204,6 +204,7 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
       ).rejects.toMatchObject({ code: 'CONFLICT' });
       const afterInvalidImpact = await reader.get(storeA!.id, sku!.id);
       expect(afterInvalidImpact?.bookTitle).toBe('Edited Direct Edit Book');
+      await db.insert(storeInventory).values({ storeId: storeB!.id, skuId: sku!.id, onHand: 4 });
 
       const balances = await db
         .select({ storeId: storeInventory.storeId, onHand: storeInventory.onHand })
