@@ -165,7 +165,7 @@ export function CatalogManager({ token }: { token: string }) {
                 setEditing(null);
                 void load();
               }}
-              onSave={async (input) => {
+              onSave={async (input, requestKey) => {
                 if (editing) {
                   const updateInput = adminProductUpdateInputSchema.parse(input);
                   const preview = await previewAdminProductUpdate(token, editing.id, updateInput);
@@ -177,7 +177,7 @@ export function CatalogManager({ token }: { token: string }) {
                     return;
                   await updateAdminProduct(token, editing.id, updateInput, preview.previewToken);
                 } else {
-                  await createAdminProduct(token, input);
+                  await createAdminProduct(token, input, requestKey);
                 }
                 setCreating(false);
                 setEditing(null);
@@ -505,8 +505,10 @@ function ProductForm({
   initial: Product | AdminProductInput;
   onCancel: () => void;
   onReload: () => void;
-  onSave: (input: AdminProductInput) => Promise<void>;
+  onSave: (input: AdminProductInput, requestKey: string) => Promise<void>;
 }) {
+  const [requestKey] = useState(() => crypto.randomUUID());
+  const [saving, setSaving] = useState(false);
   const [v, setV] = useState<AdminProductInput>({
     name: initial.name,
     description: initial.description,
@@ -530,9 +532,11 @@ function ProductForm({
   const [stale, setStale] = useState(false);
   async function submit(e: FormEvent) {
     e.preventDefault();
-    // The parent gets a server-signed impact preview before asking for confirmation.
+    if (saving) return;
+    setSaving(true);
+    // Retain requestKey after a network error so retry cannot create a duplicate.
     try {
-      await onSave(v);
+      await onSave(v, requestKey);
     } catch (reason) {
       if (reason instanceof CatalogApiError && reason.status === 409) {
         setStale(true);
@@ -540,6 +544,8 @@ function ProductForm({
       } else {
         setError('保存失败，请检查字段、权限或 SKU code/ISBN 冲突');
       }
+    } finally {
+      setSaving(false);
     }
   }
   return (
@@ -712,7 +718,7 @@ function ProductForm({
       <button type="button" onClick={onCancel}>
         取消
       </button>
-      <button disabled={stale}>保存</button>
+      <button disabled={stale || saving}>{saving ? '保存中…' : '保存'}</button>
     </form>
   );
 }

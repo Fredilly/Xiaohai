@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, ilike, or, sql } from 'drizzle-orm';
 import type {
   AddressInput,
@@ -436,7 +436,21 @@ export class CommerceService {
   }
 
   async listAdminProducts(q?: string, status?: 'DRAFT' | 'ACTIVE' | 'INACTIVE') {
-    const rows = await this.db
+    return this.readAdminProducts(q, status);
+  }
+
+  /** A post-COMMIT read restricted to the single created product, never a catalog scan. */
+  async getAdminProductById(id: string) {
+    const result = await this.readAdminProducts(undefined, undefined, id);
+    return result.products[0] ?? null;
+  }
+
+  private async readAdminProducts(
+    q?: string,
+    status?: 'DRAFT' | 'ACTIVE' | 'INACTIVE',
+    productId?: string,
+  ) {
+    const query = this.db
       .select({ product: products, sku: skus, book: books, edition: bookEditions })
       .from(products)
       .innerJoin(skus, eq(skus.productId, products.id))
@@ -444,10 +458,12 @@ export class CommerceService {
       .leftJoin(books, eq(bookEditions.bookId, books.id))
       .where(
         and(
+          productId ? eq(products.id, productId) : undefined,
           status ? eq(products.status, status) : undefined,
           q ? ilike(products.name, `%${q}%`) : undefined,
         ),
       );
+    const rows = productId ? await query.limit(1) : await query;
     return {
       products: rows.map(({ product, sku, book, edition }) => ({
         id: product.id,
@@ -484,10 +500,38 @@ export class CommerceService {
     input: AdminProductInput,
     actorStaffAccountId: string,
     requestId: string,
+    idempotencyKey = requestId,
   ) {
     // Return a persisted read after commit; never query through a second
     // pooled connection while the INSERT transaction is still open.
+    // A browser retry must carry the same key even when Fastify assigns a new request ID.
+    // Store only hashes in the immutable audit row; no new schema or secret is required.
+    const keyHash = createHash('sha256')
+      .update(`${actorStaffAccountId}:catalog.hq_create:${idempotencyKey}`)
+      .digest('hex');
+    const payloadHash = createHash('sha256').update(JSON.stringify(input)).digest('hex');
     const createdId = await this.db.transaction(async (tx) => {
+      // Serializes concurrent requests for the same actor/key, including the
+      // first transaction's INSERT + audit. An unrelated hash collision only
+      // serializes two transactions; it cannot mix their audit identities.
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${keyHash}))`);
+      const [previous] = await tx
+        .select({ resourceId: auditLogs.resourceId, metadata: auditLogs.metadata })
+        .from(auditLogs)
+        .where(
+          and(
+            eq(auditLogs.actorStaffAccountId, actorStaffAccountId),
+            eq(auditLogs.actionKey, 'catalog.hq_create'),
+            sql`${auditLogs.metadata}->>'idempotencyKeyHash' = ${keyHash}`,
+          ),
+        )
+        .limit(1);
+      if (previous) {
+        if (previous.metadata.payloadHash !== payloadHash || !previous.resourceId) {
+          throw new CommerceError('CONFLICT', 'Idempotency key reused with different product');
+        }
+        return previous.resourceId;
+      }
       let editionId: string | null = null;
       if (input.book) {
         const [book] = await tx
@@ -528,12 +572,16 @@ export class CommerceService {
         metadata: {
           changedFields: input.book ? ['product', 'book', 'edition', 'sku'] : ['product', 'sku'],
           skuCount: 1,
+          idempotencyKeyHash: keyHash,
+          payloadHash,
         },
       });
       return product!.id;
     });
-    const created = (await this.listAdminProducts()).products.find((item) => item.id === createdId);
-    if (!created) throw new CommerceError('NOT_FOUND', 'Newly created product not found');
+    const created = await this.getAdminProductById(createdId);
+    // The transaction may already be committed if this read fails. Retrying with
+    // the same idempotency key resumes the original result without new INSERTs.
+    if (!created) throw new CommerceError('NOT_FOUND', 'Committed product not found');
     return created;
   }
   async previewAdminProductUpdate(

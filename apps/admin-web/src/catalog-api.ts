@@ -26,6 +26,7 @@ async function call(
   method = 'GET',
   body?: object,
   previewToken?: string | null,
+  idempotencyKey?: string,
 ): Promise<unknown> {
   const response = await fetch(`${base}${path}`, {
     method,
@@ -33,6 +34,7 @@ async function call(
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
       ...(previewToken ? { 'X-Catalog-Preview-Token': previewToken } : {}),
+      ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}),
     },
     body: body ? JSON.stringify(body) : undefined,
   });
@@ -47,13 +49,15 @@ export const listAdminProducts = async (token: string, q = '') =>
     await call(`/api/v1/staff/catalog/products${q ? `?q=${encodeURIComponent(q)}` : ''}`, token),
   );
 
-export const createAdminProduct = async (token: string, input: AdminProductInput) =>
+export const createAdminProduct = async (token: string, input: AdminProductInput, key: string) =>
   adminProductSchema.parse(
     await call(
       '/api/v1/staff/catalog/products',
       token,
       'POST',
       adminProductInputSchema.parse(input),
+      undefined,
+      key,
     ),
   );
 
