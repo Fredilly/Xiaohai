@@ -318,6 +318,8 @@ suite('HQ catalog create and optimistic update on disposable PostgreSQL', () => 
         skuId: created.skuId,
         bookId: created.bookId,
         editionId: created.editionId,
+        affectedStoreCount: 3,
+        affectedStoreIds: expect.arrayContaining(storeIds),
       });
 
       const nonBookInput = {
