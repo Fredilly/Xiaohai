@@ -1,8 +1,9 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import type {
-  AdminProductInput,
-  StoreCatalogEditRequest,
-  StoreCatalogItem,
+import {
+  adminProductUpdateInputSchema,
+  type AdminProductInput,
+  type StoreCatalogEditRequest,
+  type StoreCatalogItem,
 } from '@xiaohai/contracts/commerce';
 import type { StaffStore } from '@xiaohai/contracts/stores';
 import { displayStatus, money } from './display';
@@ -166,13 +167,15 @@ export function CatalogManager({ token }: { token: string }) {
               }}
               onSave={async (input) => {
                 if (editing) {
-                  const preview = await previewAdminProductUpdate(token, editing.id, input);
+                  const updateInput = adminProductUpdateInputSchema.parse(input);
+                  const preview = await previewAdminProductUpdate(token, editing.id, updateInput);
                   if (
                     !window.confirm(
                       `总部修改将影响 ${preview.impact.affectedStoreCount} 家门店。确认正式保存？`,
                     )
-                  ) return;
-                  await updateAdminProduct(token, editing.id, input, preview.previewToken);
+                  )
+                    return;
+                  await updateAdminProduct(token, editing.id, updateInput, preview.previewToken);
                 } else {
                   await createAdminProduct(token, input);
                 }
