@@ -30,23 +30,6 @@ Every PR answers:
 2. **Why / 为什么**
 3. **How tested / 如何测试**
 
-## Two reviews before approval / 批准前两次独立评审
-
-Per the team's review requirement, **two distinct human reviewers** must review and approve
-a PR before the owner decides to approve its integration or merge it. A green CI check,
-an AI summary, the PR author, and the two reviewers are not interchangeable.
-
-- Keep new work Draft while implementation or testing is incomplete. Request two
-  independent reviews only when the changes and test evidence are ready.
-- Reviewers must inspect the actual diff, affected data scope, security/rollback
-  implications and tests. Address blocking feedback before requesting approval.
-- Material changes following approval require reviewers to inspect the new commit.
-  For stacked PRs, review each changed layer and its dependency order.
-- **Branch-protection configuration must be checked by a repository administrator.**
-  The available GitHub integration cannot read that setting (403); this document
-  records the rule but does not claim GitHub is already enforcing two approvals.
-- No assistant, bot, CI job or PR author should self-approve or merge the PR.
-
 ## Learning rule / 学习规则
 Before merge, the intern should be able to explain the main file changes, data flow, one failure mode and the test proving the change works.
 

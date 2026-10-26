@@ -94,8 +94,6 @@ export {
 export {
   meipingReviewSessions,
   meipingReviewDecisions,
-  meipingReviewDecisionHistory,
   meipingReviewCorrections,
-  meipingReviewCorrectionHistory,
   meipingCorrectionReviews,
 } from './meiping-review-schema.js';
