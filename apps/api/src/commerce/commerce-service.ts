@@ -599,7 +599,7 @@ export class CommerceService {
     if (Buffer.byteLength(this.catalogPreviewSecret, 'utf8') < 32) {
       throw new CommerceError('CONFLICT', 'HQ catalog preview signing is not configured');
     }
-    const matches = (await this.getAdminProductsById(id));
+    const matches = await this.getAdminProductsById(id);
     if (!matches.length) throw new CommerceError('NOT_FOUND', 'Product not found');
     if (!input.expectedSkuId && matches.length > 1) {
       throw new CommerceError('CONFLICT', 'Explicit SKU identity required');
@@ -642,7 +642,7 @@ export class CommerceService {
     requestId: string,
     previewToken?: string,
   ) {
-    const matches = (await this.getAdminProductsById(id));
+    const matches = await this.getAdminProductsById(id);
     if (matches.length === 0) throw new CommerceError('NOT_FOUND', 'Product not found');
     // A product may have multiple SKUs: never update an arbitrary first SKU.
     if (!input.expectedSkuId && matches.length > 1) {
