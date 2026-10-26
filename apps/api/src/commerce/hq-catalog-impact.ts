@@ -1,6 +1,13 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { asc, eq, inArray } from 'drizzle-orm';
-import { bookEditions, books, products, skus, storeInventory, type createDatabase } from '@xiaohai/db';
+import {
+  bookEditions,
+  books,
+  products,
+  skus,
+  storeInventory,
+  type createDatabase,
+} from '@xiaohai/db';
 import type { AdminProductUpdateInput } from '@xiaohai/contracts/commerce';
 
 type Db = ReturnType<typeof createDatabase>['db'];
@@ -32,8 +39,11 @@ export async function legacyCatalogImpact(
     .limit(1);
   if (!source) return null;
   const [edition] = source.bookEditionId
-    ? await db.select({ bookId: bookEditions.bookId }).from(bookEditions)
-        .where(eq(bookEditions.id, source.bookEditionId)).limit(1)
+    ? await db
+        .select({ bookId: bookEditions.bookId })
+        .from(bookEditions)
+        .where(eq(bookEditions.id, source.bookEditionId))
+        .limit(1)
     : [];
   if (source.bookEditionId && !edition) return null;
   const bookId = edition?.bookId ?? null;
@@ -41,41 +51,63 @@ export async function legacyCatalogImpact(
   if (lock) {
     let productIds: string[];
     if (bookId) {
-      const lockedBooks = await db.select({ id: books.id }).from(books)
-        .where(eq(books.id, bookId)).for('update');
+      const lockedBooks = await db
+        .select({ id: books.id })
+        .from(books)
+        .where(eq(books.id, bookId))
+        .for('update');
       if (!lockedBooks.length) return null;
-      const editionRows = await db.select({ id: bookEditions.id }).from(bookEditions)
-        .where(eq(bookEditions.bookId, bookId)).orderBy(asc(bookEditions.id)).for('update');
+      const editionRows = await db
+        .select({ id: bookEditions.id })
+        .from(bookEditions)
+        .where(eq(bookEditions.bookId, bookId))
+        .orderBy(asc(bookEditions.id))
+        .for('update');
       const editionIds = editionRows.map((row) => row.id);
       if (!editionIds.includes(source.bookEditionId!)) return null;
-      const productRows = await db.select({ id: products.id }).from(products)
+      const productRows = await db
+        .select({ id: products.id })
+        .from(products)
         .where(inArray(products.bookEditionId, editionIds))
-        .orderBy(asc(products.id)).for('update');
+        .orderBy(asc(products.id))
+        .for('update');
       productIds = productRows.map((row) => row.id);
     } else {
-      const productRows = await db.select({ id: products.id }).from(products)
-        .where(eq(products.id, productId)).for('update');
+      const productRows = await db
+        .select({ id: products.id })
+        .from(products)
+        .where(eq(products.id, productId))
+        .for('update');
       productIds = productRows.map((row) => row.id);
     }
     if (!productIds.includes(productId)) return null;
-    const skuRows = await db.select({ id: skus.id }).from(skus)
+    const skuRows = await db
+      .select({ id: skus.id })
+      .from(skus)
       .where(inArray(skus.productId, productIds))
-      .orderBy(asc(skus.id)).for('update');
+      .orderBy(asc(skus.id))
+      .for('update');
     if (!skuRows.some((row) => row.id === skuId)) return null;
 
     // A parent association may have changed before the lock was acquired.
-    const [rechecked] = await db.select({ bookEditionId: products.bookEditionId })
-      .from(products).where(eq(products.id, productId));
+    const [rechecked] = await db
+      .select({ bookEditionId: products.bookEditionId })
+      .from(products)
+      .where(eq(products.id, productId));
     if (rechecked?.bookEditionId !== source.bookEditionId) return null;
   }
 
   const links = bookId
-    ? await db.selectDistinct({ storeId: storeInventory.storeId }).from(storeInventory)
+    ? await db
+        .selectDistinct({ storeId: storeInventory.storeId })
+        .from(storeInventory)
         .innerJoin(skus, eq(skus.id, storeInventory.skuId))
         .innerJoin(products, eq(products.id, skus.productId))
         .innerJoin(bookEditions, eq(bookEditions.id, products.bookEditionId))
         .where(eq(bookEditions.bookId, bookId))
-    : await db.selectDistinct({ storeId: storeInventory.storeId }).from(storeInventory)
+    : await db
+        .selectDistinct({ storeId: storeInventory.storeId })
+        .from(storeInventory)
         .innerJoin(skus, eq(skus.id, storeInventory.skuId))
         .where(inArray(skus.productId, [productId]));
   return {
@@ -95,10 +127,19 @@ function digest(
   impact: LegacyImpact,
 ) {
   return createHmac('sha256', secret)
-    .update(JSON.stringify([
-      'hq-legacy-catalog-impact-v1', expiresAt, actorId, productId, skuId,
-      input, impact.bookId, impact.editionId, impact.affectedStoreIds,
-    ]))
+    .update(
+      JSON.stringify([
+        'hq-legacy-catalog-impact-v1',
+        expiresAt,
+        actorId,
+        productId,
+        skuId,
+        input,
+        impact.bookId,
+        impact.editionId,
+        impact.affectedStoreIds,
+      ]),
+    )
     .digest('hex');
 }
 
@@ -123,11 +164,14 @@ export function verifyLegacyPreview(
   input: AdminProductUpdateInput,
   impact: LegacyImpact,
 ): boolean {
-  if (!token || !/^\\d{10}\\.[0-9a-f]{64}$/.test(token)) return false;
+  if (!token || !/^\d{10}\.[0-9a-f]{64}$/.test(token)) return false;
   const expiresAt = Number(token.slice(0, 10));
   const now = Math.floor(Date.now() / 1000);
   if (expiresAt <= now || expiresAt > now + 300) return false;
   const received = Buffer.from(token.slice(11), 'hex');
-  const expected = Buffer.from(digest(secret, expiresAt, actorId, productId, skuId, input, impact), 'hex');
+  const expected = Buffer.from(
+    digest(secret, expiresAt, actorId, productId, skuId, input, impact),
+    'hex',
+  );
   return received.length === expected.length && timingSafeEqual(received, expected);
 }
