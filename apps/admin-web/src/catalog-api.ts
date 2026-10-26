@@ -28,7 +28,11 @@ async function call(
 ): Promise<unknown> {
   const response = await fetch(`${base}${path}`, {
     method,
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...extraHeaders },
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      ...extraHeaders,
+    },
     body: body ? JSON.stringify(body) : undefined,
   });
   if (!response.ok) throw new CatalogApiError(response.status);
