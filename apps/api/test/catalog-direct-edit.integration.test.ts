@@ -436,6 +436,97 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
         });
         expect(accepted.statusCode).toBe(200);
         expect((await reader.get(storeB!.id, sku!.id))?.bookTitle).toBe('HQ approved shared title');
+
+        // A second SKU under a DIFFERENT product shares the edition.
+        // Its new inventory link must be visible to the HQ impact recheck,
+        // even though the edited URL still points to the first SKU.
+        const [storeC] = await db
+          .insert(stores)
+          .values({
+            code: 'DCE-S-C-' + suffix,
+            name: 'Concurrent newly linked store',
+            regionId: region!.id,
+            countryCode: 'CN',
+            countryName: 'China',
+            city: 'Chengdu',
+            timezone: 'Asia/Shanghai',
+            addressLine: 'Synthetic only',
+            latitude: 30,
+            longitude: 104,
+          })
+          .returning();
+        const [linkedProduct] = await db
+          .insert(products)
+          .values({
+            bookEditionId: edition!.id,
+            name: 'Different product, same shared edition',
+            status: 'ACTIVE',
+          })
+          .returning();
+        const [linkedSku] = await db
+          .insert(skus)
+          .values({
+            productId: linkedProduct!.id,
+            code: 'DCE-LINKED-' + suffix,
+            name: 'Another edition-linked SKU',
+            priceMinor: 1800,
+          })
+          .returning();
+        try {
+          const concurrentInput = {
+            expectedProductVersion: 0,
+            expectedBookVersion: 2,
+            expectedSkuVersion: 1,
+            expectedLocalVersion: 1,
+            bookTitle: 'Must reject changed affected-store graph',
+          };
+          const scopePreview = await editor.preview(
+            storeA!.id, sku!.id, concurrentInput, actor!.id, true,
+          );
+          expect(scopePreview.impact.affectedStoreCount).toBe(2);
+          let releaseLink!: () => void;
+          const pendingLink = new Promise<void>((resolve) => {
+            releaseLink = resolve;
+          });
+          let reportLinked!: () => void;
+          const linked = new Promise<void>((resolve) => {
+            reportLinked = resolve;
+          });
+          const linkTx = db.transaction(async (tx) => {
+            await tx.insert(storeInventory).values({
+              storeId: storeC!.id,
+              skuId: linkedSku!.id,
+              onHand: 1,
+            });
+            reportLinked();
+            await pendingLink;
+          });
+          await linked;
+          const concurrentSave = app.inject({
+            method: 'PATCH',
+            url: hqPatchUrl,
+            headers: {
+              ...headers,
+              'x-catalog-preview-token': scopePreview.previewToken!,
+            },
+            payload: concurrentInput,
+          });
+          // Let the HQ transaction reach its FK-parent graph lock before
+          // the second SKU's inventory link is committed.
+          await new Promise((resolve) => setTimeout(resolve, 100));
+          releaseLink();
+          await linkTx;
+          const staleImpact = await concurrentSave;
+          expect(staleImpact.statusCode).toBe(409);
+          expect((await reader.get(storeA!.id, sku!.id))?.bookTitle).toBe('HQ approved shared title');
+          expect((await reader.get(storeC!.id, linkedSku!.id))?.bookTitle).toBe('HQ approved shared title');
+        } finally {
+          await db.delete(storeInventory).where(eq(storeInventory.skuId, linkedSku!.id));
+          await db.delete(skus).where(eq(skus.id, linkedSku!.id));
+          await db.delete(products).where(eq(products.id, linkedProduct!.id));
+          await db.delete(stores).where(eq(stores.id, storeC!.id));
+        }
+
       } finally {
         await app.close();
       }
