@@ -355,7 +355,7 @@ function fail(request: FastifyRequest, reply: FastifyReply, error: unknown) {
     commerceErrorResponseSchema.parse({
       error: {
         code,
-        message: error instanceof CommerceError ? error.message : publicMessage(code),
+        message: publicMessage(code),
         requestId: request.id,
       },
     }),
