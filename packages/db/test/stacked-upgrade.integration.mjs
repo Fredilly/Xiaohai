@@ -1,4 +1,4 @@
-// Verifies the real 0036 -> 0038 migration path against a disposable CI database.
+// Verifies the real 0036 -> latest migration path against a disposable CI database.
 // Never run on a developer, staging or production database.
 import pg from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
@@ -40,9 +40,13 @@ try {
   mkdirSync(join(folder, 'meta'));
   const journal = JSON.parse(readFileSync(join(source, 'meta/_journal.json'), 'utf8'));
   const initial = journal.entries.filter((entry) => entry.idx <= 36);
+  // 0037 retains its historical out-of-order timestamp; Drizzle records the
+  // repair path once, so the applied count is one less than journal entries.
   if (
     initial.length !== 37 ||
-    journal.entries[38]?.tag !== '0038_store_catalog_direct_edit_upgrade_repair'
+    journal.entries.find(
+      (entry) => entry.tag === '0038_store_catalog_direct_edit_upgrade_repair',
+    ) === undefined
   ) {
     throw new Error('UNEXPECTED_MIGRATION_CHAIN');
   }
@@ -91,7 +95,7 @@ try {
     state.local_table !== true ||
     state.version_checks !== 4 ||
     state.edit_permission !== 1 ||
-    state.migrated_count !== 38
+    state.migrated_count !== journal.entries.length - 1
   ) {
     throw new Error('UPGRADE_0038_DID_NOT_REPAIR_STORE_CATALOG_SCHEMA');
   }
@@ -100,11 +104,11 @@ try {
   const same = await targetPool.query(
     'SELECT count(*)::int AS count FROM drizzle.__drizzle_migrations',
   );
-  if (same.rows[0]?.count !== 38) {
+  if (same.rows[0]?.count !== journal.entries.length - 1) {
     throw new Error('UPGRADE_MIGRATION_RERAN_UNEXPECTEDLY');
   }
   console.log(
-    'PASS: disposable 0036→0038 upgrade repaired all direct-edit schema/permissions; rerun did not reapply migrations.',
+    `PASS: disposable 0036→latest upgrade repaired direct-edit schema/permissions; ${journal.entries.length - 1} applied migrations and rerun did not reapply migrations.`,
   );
 } finally {
   closing = true;

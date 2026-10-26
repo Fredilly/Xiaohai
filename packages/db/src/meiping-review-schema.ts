@@ -60,6 +60,30 @@ export const meipingReviewDecisions = pgTable(
   ],
 );
 
+export const meipingReviewDecisionHistory = pgTable(
+  'meiping_review_decision_history',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    sessionId: uuid('session_id').notNull(),
+    sourceRowNumber: integer('source_row_number').notNull(),
+    action: text('action').notNull(),
+    countedQuantity: integer('counted_quantity'),
+    reason: text('reason'),
+    version: integer('version').notNull(),
+    updatedByStaffAccountId: uuid('updated_by_staff_account_id').notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull(),
+    capturedAt: timestamp('captured_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('meiping_review_decision_history_version_unique').on(
+      t.sessionId,
+      t.sourceRowNumber,
+      t.version,
+    ),
+    index('meiping_review_decision_history_row_idx').on(t.sessionId, t.sourceRowNumber),
+  ],
+);
+
 export const meipingReviewCorrections = pgTable(
   'meiping_review_corrections',
   {
@@ -87,6 +111,29 @@ export const meipingReviewCorrections = pgTable(
       'meiping_review_corrections_fields_check',
       sql.raw(`jsonb_typeof("proposed_fields") = 'object' AND "proposed_fields" <> '{}'::jsonb`),
     ),
+  ],
+);
+
+export const meipingReviewCorrectionHistory = pgTable(
+  'meiping_review_correction_history',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    sessionId: uuid('session_id').notNull(),
+    sourceRowNumber: integer('source_row_number').notNull(),
+    proposedFields: jsonb('proposed_fields').$type<Record<string, string | number>>().notNull(),
+    reason: text('reason').notNull(),
+    version: integer('version').notNull(),
+    updatedByStaffAccountId: uuid('updated_by_staff_account_id').notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull(),
+    capturedAt: timestamp('captured_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('meiping_review_correction_history_version_unique').on(
+      t.sessionId,
+      t.sourceRowNumber,
+      t.version,
+    ),
+    index('meiping_review_correction_history_row_idx').on(t.sessionId, t.sourceRowNumber),
   ],
 );
 
