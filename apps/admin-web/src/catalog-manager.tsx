@@ -398,7 +398,10 @@ function HqStoreCatalogForm({
         !window.confirm(`共享资料将影响 ${impact.impact.affectedStoreCount} 家门店，确认保存？`)
       )
         return;
-      await updateHqStoreCatalog(token, storeId, item.skuId, draft);
+      if (impact.impact.sharedFields.length && !impact.previewToken) {
+        throw new Error('总部共享资料修改缺少服务端预览凭证');
+      }
+      await updateHqStoreCatalog(token, storeId, item.skuId, draft, impact.previewToken);
       onSaved();
     } catch (error) {
       if (error instanceof CatalogApiError && error.status === 409) {

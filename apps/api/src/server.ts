@@ -134,13 +134,13 @@ registerStoreCatalogReadRoutes(app, {
 registerStoreCatalogEditRoutes(app, {
   staffAuthorization,
   stores,
-  catalog: new CatalogEditService(db),
+  catalog: new CatalogEditService(db, config.STAFF_SESSION_SECRET),
 });
 registerHqCatalogEditRoutes(app, {
   staffAuthorization,
   stores: new StoreNetworkService(db),
   catalog: new StoreCatalogReadService(db),
-  editor: new CatalogEditService(db),
+  editor: new CatalogEditService(db, config.STAFF_SESSION_SECRET),
 });
 registerCatalogCorrectionRoutes(app, {
   staffAuthorization,

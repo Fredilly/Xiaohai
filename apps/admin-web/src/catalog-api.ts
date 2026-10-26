@@ -4,6 +4,7 @@ import {
   adminProductListResponseSchema,
   adminProductSchema,
   storeCatalogEditRequestSchema,
+  storeCatalogEditPreviewResponseSchema,
   storeCatalogResponseSchema,
   type AdminProductInput,
   type AdminProductUpdateInput,
@@ -24,14 +25,14 @@ async function call(
   token: string,
   method = 'GET',
   body?: object,
-  extraHeaders: Record<string, string> = {},
+  previewToken?: string | null,
 ): Promise<unknown> {
   const response = await fetch(`${base}${path}`, {
     method,
     headers: {
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
-      ...extraHeaders,
+      ...(previewToken ? { 'X-Catalog-Preview-Token': previewToken } : {}),
     },
     body: body ? JSON.stringify(body) : undefined,
   });
@@ -83,7 +84,7 @@ export const updateAdminProduct = async (
       token,
       'PUT',
       adminProductUpdateInputSchema.parse(input),
-      { 'X-Catalog-Preview-Token': previewToken },
+      previewToken,
     ),
   );
 
@@ -100,14 +101,14 @@ export async function previewHqStoreCatalogEdit(
   skuId: string,
   input: StoreCatalogEditRequest,
 ) {
-  return (await call(
-    `/api/v1/staff/catalog/stores/${encodeURIComponent(storeId)}/items/${encodeURIComponent(skuId)}/preview`,
-    token,
-    'POST',
-    storeCatalogEditRequestSchema.parse(input),
-  )) as {
-    impact: { affectedStoreCount: number; affectedStoreIds: string[]; sharedFields: string[] };
-  };
+  return storeCatalogEditPreviewResponseSchema.parse(
+    await call(
+      `/api/v1/staff/catalog/stores/${encodeURIComponent(storeId)}/items/${encodeURIComponent(skuId)}/preview`,
+      token,
+      'POST',
+      storeCatalogEditRequestSchema.parse(input),
+    ),
+  );
 }
 
 export async function updateHqStoreCatalog(
@@ -115,11 +116,13 @@ export async function updateHqStoreCatalog(
   storeId: string,
   skuId: string,
   input: StoreCatalogEditRequest,
+  previewToken: string | null,
 ) {
   return call(
     `/api/v1/staff/catalog/stores/${encodeURIComponent(storeId)}/items/${encodeURIComponent(skuId)}`,
     token,
     'PATCH',
     storeCatalogEditRequestSchema.parse(input),
+    previewToken,
   );
 }

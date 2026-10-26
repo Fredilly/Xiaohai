@@ -36,7 +36,12 @@ import { registerStoreCatalogReadRoutes } from '../src/commerce/store-catalog-re
 import { CatalogCorrectionService } from '../src/commerce/catalog-correction-service.js';
 import { registerCatalogCorrectionRoutes } from '../src/commerce/catalog-correction-routes.js';
 
-const database = process.env.DATABASE_URL ? createDatabase(process.env) : null;
+const databaseUrl = process.env.DATABASE_URL;
+// Never run mutating fixtures against development, staging, or production.
+const database =
+  databaseUrl && /^xiaohai_(test|pr156_test)$/.test(new URL(databaseUrl).pathname.slice(1))
+    ? createDatabase(process.env)
+    : null;
 const suite = database ? describe : describe.skip;
 
 suite('daily catalog corrections against disposable PostgreSQL', () => {
@@ -384,6 +389,139 @@ suite('daily catalog corrections against disposable PostgreSQL', () => {
       expect(unchanged).toHaveLength(2);
     } finally {
       await app.close();
+      await f.cleanup();
+    }
+  });
+  it('paginates 63 records without hiding old PENDING requests', async () => {
+    const f = await fixture();
+    try {
+      const [sku] = await db
+        .select({ productId: skus.productId })
+        .from(skus)
+        .where(eq(skus.id, f.skuA.id));
+      const [pending] = await db
+        .insert(catalogCorrectionRequests)
+        .values({
+          storeId: f.storeA.id,
+          skuId: f.skuA.id,
+          sourceProductId: sku!.productId,
+          field: 'bookTitle',
+          originalValue: 'Original Book A',
+          proposedValue: 'Old pending recommendation',
+          expectedInventoryVersion: 2,
+          reason: 'Older request still needs review',
+          requestedByStaffAccountId: f.proposer.id,
+          createdAt: new Date('2020-01-01T00:00:00Z'),
+        })
+        .returning();
+      await db.insert(catalogCorrectionRequests).values(
+        Array.from({ length: 62 }, (_, i) => ({
+          storeId: f.storeA.id,
+          skuId: f.skuA.id,
+          sourceProductId: sku!.productId,
+          field: 'bookTitle',
+          originalValue: 'Original Book A',
+          proposedValue: 'Already rejected ' + i,
+          expectedInventoryVersion: 2,
+          reason: 'Archived history',
+          status: 'REJECTED',
+          requestedByStaffAccountId: f.proposer.id,
+          reviewedByStaffAccountId: f.reviewer.id,
+          reviewReason: 'No supporting evidence',
+          reviewedAt: new Date(),
+        })),
+      );
+      const first = await corrections.list(f.storeA.id, { offset: 0, limit: 20 });
+      expect(first.requests[0]?.id).toBe(pending!.id);
+      expect(first.requests[0]?.status).toBe('PENDING');
+      expect(first.hasMore).toBe(true);
+      const pages = await Promise.all(
+        [0, 20, 40, 60].map((offset) => corrections.list(f.storeA.id, { offset, limit: 20 })),
+      );
+      const ids = pages.flatMap((page) => page.requests.map((row) => row.id));
+      expect(ids).toHaveLength(63);
+      expect(new Set(ids).size).toBe(63);
+      expect(pages[3]?.hasMore).toBe(false);
+      expect(pages[3]?.requests).toHaveLength(3);
+      const foreign = await corrections.list(f.storeB.id, { offset: 0, limit: 20 });
+      expect(foreign.requests).toEqual([]);
+      const reviewed = await corrections.review(
+        f.storeA.id,
+        pending!.id,
+        f.reviewer.id,
+        randomUUID(),
+        { verdict: 'REJECTED', reason: 'Old request independently reviewed' },
+      );
+      expect(reviewed.status).toBe('REJECTED');
+      const [master] = await db
+        .select({ title: books.title })
+        .from(books)
+        .where(eq(books.id, f.bookA.id));
+      expect(master?.title).toBe('Original Book A');
+    } finally {
+      await f.cleanup();
+    }
+  });
+
+  it('rejects an HQ-edit race without review audit', async () => {
+    const f = await fixture();
+    try {
+      const created = await corrections.submit(f.storeA.id, f.proposer.id, randomUUID(), {
+        skuId: f.skuA.id,
+        expectedInventoryVersion: 2,
+        field: 'bookTitle',
+        proposedValue: 'Proposed new book title',
+        reason: 'Check the cover before recommending to HQ',
+      });
+      let releaseHq: () => void = () => undefined;
+      const allowCommit = new Promise<void>((resolve) => {
+        releaseHq = resolve;
+      });
+      let signalHqLocked: () => void = () => undefined;
+      const hqLocked = new Promise<void>((resolve) => {
+        signalHqLocked = resolve;
+      });
+      const hqEdit = db.transaction(async (tx) => {
+        await tx
+          .update(books)
+          .set({ title: 'HQ concurrent title change' })
+          .where(eq(books.id, f.bookA.id));
+        signalHqLocked();
+        await allowCommit;
+      });
+      await hqLocked;
+      // Review starts while the HQ transaction holds a write lock. An
+      // out-of-transaction SELECT would see the obsolete original title.
+      const reviewAttempt = corrections.review(
+        f.storeA.id,
+        created.id,
+        f.reviewer.id,
+        randomUUID(),
+        { verdict: 'ACCEPTED', reason: 'Checking canonical source concurrently' },
+      );
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      } finally {
+        releaseHq();
+      }
+      await hqEdit;
+      await expect(reviewAttempt).rejects.toMatchObject({ code: 'CONFLICT' });
+      const [stillPending] = await db
+        .select()
+        .from(catalogCorrectionRequests)
+        .where(eq(catalogCorrectionRequests.id, created.id));
+      expect(stillPending?.status).toBe('PENDING');
+      const reviews = await db.select().from(auditLogs).where(eq(auditLogs.resourceId, created.id));
+      const verdictAudits = reviews.filter((row) => row.actionKey === 'catalog.correction.review');
+      const submitAudits = reviews.filter((row) => row.actionKey === 'catalog.correction.submit');
+      expect(verdictAudits).toHaveLength(0);
+      expect(submitAudits).toHaveLength(1);
+      const [stock] = await db
+        .select()
+        .from(storeInventory)
+        .where(and(eq(storeInventory.storeId, f.storeA.id), eq(storeInventory.skuId, f.skuA.id)));
+      expect(stock).toMatchObject({ onHand: 5, version: 2 });
+    } finally {
       await f.cleanup();
     }
   });

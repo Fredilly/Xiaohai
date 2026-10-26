@@ -185,11 +185,14 @@ describe('authenticated store-scoped daily catalog read endpoint', () => {
 describe('authorized direct catalog editing', () => {
   const body = {
     expectedProductVersion: 0,
-    expectedBookVersion: 0,
-    expectedEditionVersion: 0,
     expectedSkuVersion: 0,
     expectedLocalVersion: 0,
-    bookTitle: 'Updated title',
+    storeNote: 'Shelf note for this store only',
+  };
+  const sharedBody = {
+    ...body,
+    expectedBookVersion: 0,
+    bookTitle: 'Attempted global title edit',
   };
 
   it('requires the unified catalog.edit permission', async () => {
@@ -204,7 +207,7 @@ describe('authorized direct catalog editing', () => {
     expect(update).not.toHaveBeenCalled();
   });
 
-  it('allows a scoped store account to preview and save without catalog.manage', async () => {
+  it('allows store-local edits but never shared master changes', async () => {
     const { app, preview, update } = setup(['stores.read', 'catalog.edit']);
     const headers = { authorization: ['Be', 'arer ', 'fake-staff-session'].join('') };
     const previewResponse = await app.inject({
@@ -214,7 +217,7 @@ describe('authorized direct catalog editing', () => {
       payload: body,
     });
     expect(previewResponse.statusCode).toBe(200);
-    expect(preview).toHaveBeenCalledWith(own, own, body);
+    expect(preview).toHaveBeenCalledWith(own, own, body, context.staffAccountId);
 
     const updateResponse = await app.inject({
       method: 'PATCH',
@@ -224,6 +227,23 @@ describe('authorized direct catalog editing', () => {
     });
     expect(updateResponse.statusCode).toBe(200);
     expect(update).toHaveBeenCalledWith(own, own, context.staffAccountId, expect.any(String), body);
+
+    const forbiddenPreview = await app.inject({
+      method: 'POST',
+      url: `/api/v1/staff/stores/${own}/catalog/${own}/preview`,
+      headers,
+      payload: sharedBody,
+    });
+    expect(forbiddenPreview.statusCode).toBe(403);
+    const forbiddenWrite = await app.inject({
+      method: 'PATCH',
+      url: `/api/v1/staff/stores/${own}/catalog/${own}`,
+      headers,
+      payload: sharedBody,
+    });
+    expect(forbiddenWrite.statusCode).toBe(403);
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(preview).toHaveBeenCalledTimes(1);
   });
 
   it('rejects an authorized identity outside its store scope', async () => {

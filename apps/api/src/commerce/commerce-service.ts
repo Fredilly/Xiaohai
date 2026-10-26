@@ -485,8 +485,8 @@ export class CommerceService {
     actorStaffAccountId: string,
     requestId: string,
   ) {
-    // Never read a newly inserted product through this.db inside the transaction:
-    // that uses a different pooled connection and cannot see uncommitted rows.
+    // Return a persisted read after commit; never query through a second
+    // pooled connection while the INSERT transaction is still open.
     const createdId = await this.db.transaction(async (tx) => {
       let editionId: string | null = null;
       if (input.book) {
@@ -532,9 +532,6 @@ export class CommerceService {
       });
       return product!.id;
     });
-
-    // Read only after the transaction has committed, so the API never reports
-    // failure or an empty response after persisting a new catalog product.
     const created = (await this.listAdminProducts()).products.find((item) => item.id === createdId);
     if (!created) throw new CommerceError('NOT_FOUND', 'Newly created product not found');
     return created;

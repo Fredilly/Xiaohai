@@ -29,20 +29,21 @@ import {
 import { StaffSessionService } from '../src/auth/staff-session.js';
 import { StoreNetworkService } from '../src/stores/store-service.js';
 import {
+  registerHqCatalogEditRoutes,
   registerStoreCatalogEditRoutes,
   registerStoreCatalogReadRoutes,
 } from '../src/commerce/store-catalog-read-routes.js';
 
 const databaseUrl = process.env.DATABASE_URL;
 const disposableDatabase =
-  databaseUrl && /^xiaohai_(test|pr160_uat)$/.test(new URL(databaseUrl).pathname.slice(1))
+  databaseUrl && /^xiaohai_(test|pr157_uat)$/.test(new URL(databaseUrl).pathname.slice(1))
     ? createDatabase(process.env)
     : null;
 const suite = disposableDatabase ? describe : describe.skip;
 
 suite('direct catalog editing on disposable PostgreSQL', () => {
   const db = disposableDatabase!.db;
-  const editor = new CatalogEditService(db);
+  const editor = new CatalogEditService(db, 'isolated-catalog-impact-test-signing-secret-12345');
   const reader = new StoreCatalogReadService(db);
 
   afterAll(async () => {
@@ -145,11 +146,38 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
         shelfLocation: 'Shelf A-01',
       };
 
-      const preview = await editor.preview(storeA!.id, sku!.id, input);
-      expect(preview.sharedFields).toEqual(['bookTitle', 'priceMinor']);
-      expect(preview.affectedStoreCount).toBe(2);
+      const preview = await editor.preview(storeA!.id, sku!.id, input, actor!.id, true);
+      expect(preview.impact.sharedFields).toEqual(['bookTitle', 'priceMinor']);
+      expect(preview.impact.affectedStoreCount).toBe(2);
+      expect(preview.previewToken).toMatch(/^\d{10}\./);
 
-      const updated = await editor.update(storeA!.id, sku!.id, actor!.id, randomUUID(), input);
+      await expect(
+        editor.update(storeA!.id, sku!.id, actor!.id, randomUUID(), input, true),
+      ).rejects.toMatchObject({ code: 'CONFLICT' });
+      await expect(
+        editor.update(
+          storeA!.id,
+          sku!.id,
+          randomUUID(),
+          randomUUID(),
+          input,
+          true,
+          preview.previewToken!,
+        ),
+      ).rejects.toMatchObject({ code: 'CONFLICT' });
+      await expect(
+        editor.update(storeA!.id, sku!.id, actor!.id, randomUUID(), input),
+      ).rejects.toMatchObject({ code: 'SHARED_FORBIDDEN' });
+
+      const updated = await editor.update(
+        storeA!.id,
+        sku!.id,
+        actor!.id,
+        randomUUID(),
+        input,
+        true,
+        preview.previewToken!,
+      );
       expect(updated.item.bookTitle).toBe('Edited Direct Edit Book');
       expect(updated.item.priceMinor).toBe(1200);
       expect(updated.item.shelfLocation).toBe('Shelf A-01');
@@ -164,8 +192,51 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
       expect(otherStore?.shelfLocation).toBeNull();
 
       await expect(
-        editor.update(storeA!.id, sku!.id, actor!.id, randomUUID(), input),
+        editor.update(
+          storeA!.id,
+          sku!.id,
+          actor!.id,
+          randomUUID(),
+          input,
+          true,
+          preview.previewToken!,
+        ),
       ).rejects.toMatchObject({ code: 'CONFLICT' } satisfies Partial<CatalogEditError>);
+
+      const changedImpactEdit = {
+        ...input,
+        expectedBookVersion: 1,
+        expectedSkuVersion: 1,
+        expectedLocalVersion: 1,
+        bookTitle: 'New HQ book title after scoped preview',
+      };
+      const changedPreview = await editor.preview(
+        storeA!.id,
+        sku!.id,
+        changedImpactEdit,
+        actor!.id,
+        true,
+      );
+      expect(changedPreview.impact.affectedStoreCount).toBe(2);
+      // A store becomes unlinked after the preview; versions remain unchanged,
+      // but the server must reject the old acknowledgement.
+      await db
+        .delete(storeInventory)
+        .where(and(eq(storeInventory.storeId, storeB!.id), eq(storeInventory.skuId, sku!.id)));
+      await expect(
+        editor.update(
+          storeA!.id,
+          sku!.id,
+          actor!.id,
+          randomUUID(),
+          changedImpactEdit,
+          true,
+          changedPreview.previewToken!,
+        ),
+      ).rejects.toMatchObject({ code: 'CONFLICT' });
+      const afterInvalidImpact = await reader.get(storeA!.id, sku!.id);
+      expect(afterInvalidImpact?.bookTitle).toBe('Edited Direct Edit Book');
+      await db.insert(storeInventory).values({ storeId: storeB!.id, skuId: sku!.id, onHand: 4 });
 
       const balances = await db
         .select({ storeId: storeInventory.storeId, onHand: storeInventory.onHand })
@@ -202,6 +273,11 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
       };
       registerStoreCatalogReadRoutes(app, { ...options, catalog: reader });
       registerStoreCatalogEditRoutes(app, { ...options, catalog: editor });
+      registerHqCatalogEditRoutes(app, {
+        ...options,
+        catalog: reader,
+        editor,
+      });
       const headers = { authorization: 'Bearer ' + sessions.issue(actor!.id).token };
       const ownUrl = `/api/v1/staff/stores/${storeA!.id}/catalog`;
       const foreignUrl = `/api/v1/staff/stores/${storeB!.id}/catalog`;
@@ -219,6 +295,29 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
         expect(ownRead.statusCode).toBe(200);
         const ownReadBody = ownRead.json<{ items: unknown[] }>();
         expect(ownReadBody.items).toHaveLength(1);
+
+        const bypassShared = {
+          expectedProductVersion: 0,
+          expectedBookVersion: 1,
+          expectedSkuVersion: 1,
+          expectedLocalVersion: 1,
+          bookTitle: 'Cross-store malicious title',
+        };
+        const deniedSharedPreview = await app.inject({
+          method: 'POST',
+          url: ownUrl + '/' + sku!.id + '/preview',
+          headers,
+          payload: bypassShared,
+        });
+        expect(deniedSharedPreview.statusCode).toBe(403);
+        const deniedSharedPatch = await app.inject({
+          method: 'PATCH',
+          url: ownUrl + '/' + sku!.id,
+          headers,
+          payload: bypassShared,
+        });
+        expect(deniedSharedPatch.statusCode).toBe(403);
+        expect((await reader.get(storeA!.id, sku!.id))?.bookTitle).toBe('Edited Direct Edit Book');
 
         const deniedRead = await app.inject({ method: 'GET', url: foreignUrl, headers });
         expect(deniedRead.statusCode).toBe(403);
@@ -262,6 +361,179 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
         });
         expect(revokedEdit.statusCode).toBe(403);
         expect((await app.inject({ method: 'GET', url: ownUrl, headers })).statusCode).toBe(200);
+        // HQ has its own GLOBAL approval authority. A single STORE-scope
+        // account cannot use this HQ route, even with catalog.edit.
+        const hqPreviewUrl = `/api/v1/staff/catalog/stores/${storeA!.id}/items/${sku!.id}/preview`;
+        const hqPatchUrl = `/api/v1/staff/catalog/stores/${storeA!.id}/items/${sku!.id}`;
+        const hqEdit = {
+          expectedProductVersion: 0,
+          expectedBookVersion: 1,
+          expectedSkuVersion: 1,
+          expectedLocalVersion: 1,
+          bookTitle: 'HQ approved shared title',
+        };
+        const noHqPermission = await app.inject({
+          method: 'POST',
+          url: hqPreviewUrl,
+          headers,
+          payload: hqEdit,
+        });
+        expect(noHqPermission.statusCode).toBe(403);
+
+        await db
+          .insert(permissions)
+          .values({ key: 'catalog.manage', displayName: 'HQ catalog manage' })
+          .onConflictDoNothing();
+        const [managePermission] = await db
+          .select({ id: permissions.id })
+          .from(permissions)
+          .where(eq(permissions.key, 'catalog.manage'));
+        await db.insert(rolePermissions).values({
+          roleId: role!.id,
+          permissionId: managePermission!.id,
+        });
+        await db.insert(staffDataScopes).values({
+          staffAccountId: actor!.id,
+          scopeType: 'GLOBAL',
+          scopeId: null,
+        });
+
+        const approvedPreview = await app.inject({
+          method: 'POST',
+          url: hqPreviewUrl,
+          headers,
+          payload: hqEdit,
+        });
+        expect(approvedPreview.statusCode).toBe(200);
+        const confirmed = approvedPreview.json<{
+          impact: { affectedStoreCount: number };
+          previewToken: string;
+        }>();
+        expect(confirmed.impact.affectedStoreCount).toBe(2);
+        expect(confirmed.previewToken).toMatch(/^\d{10}\./);
+
+        const missingAck = await app.inject({
+          method: 'PATCH',
+          url: hqPatchUrl,
+          headers,
+          payload: hqEdit,
+        });
+        expect(missingAck.statusCode).toBe(409);
+        const invalidAck = await app.inject({
+          method: 'PATCH',
+          url: hqPatchUrl,
+          headers: { ...headers, 'x-catalog-preview-token': 'invalid' },
+          payload: hqEdit,
+        });
+        expect(invalidAck.statusCode).toBe(409);
+        expect((await reader.get(storeB!.id, sku!.id))?.bookTitle).toBe('Edited Direct Edit Book');
+
+        const accepted = await app.inject({
+          method: 'PATCH',
+          url: hqPatchUrl,
+          headers: { ...headers, 'x-catalog-preview-token': confirmed.previewToken },
+          payload: hqEdit,
+        });
+        expect(accepted.statusCode).toBe(200);
+        expect((await reader.get(storeB!.id, sku!.id))?.bookTitle).toBe('HQ approved shared title');
+
+        // A second SKU under a DIFFERENT product shares the edition.
+        // Its new inventory link must be visible to the HQ impact recheck,
+        // even though the edited URL still points to the first SKU.
+        const [storeC] = await db
+          .insert(stores)
+          .values({
+            code: 'DCE-S-C-' + suffix,
+            name: 'Concurrent newly linked store',
+            regionId: region!.id,
+            countryCode: 'CN',
+            countryName: 'China',
+            city: 'Chengdu',
+            timezone: 'Asia/Shanghai',
+            addressLine: 'Synthetic only',
+            latitude: 30,
+            longitude: 104,
+          })
+          .returning();
+        const [linkedProduct] = await db
+          .insert(products)
+          .values({
+            bookEditionId: edition!.id,
+            name: 'Different product, same shared edition',
+            status: 'ACTIVE',
+          })
+          .returning();
+        const [linkedSku] = await db
+          .insert(skus)
+          .values({
+            productId: linkedProduct!.id,
+            code: 'DCE-LINKED-' + suffix,
+            name: 'Another edition-linked SKU',
+            priceMinor: 1800,
+          })
+          .returning();
+        try {
+          const concurrentInput = {
+            expectedProductVersion: 0,
+            expectedBookVersion: 2,
+            expectedSkuVersion: 1,
+            expectedLocalVersion: 1,
+            bookTitle: 'Must reject changed affected-store graph',
+          };
+          const scopePreview = await editor.preview(
+            storeA!.id,
+            sku!.id,
+            concurrentInput,
+            actor!.id,
+            true,
+          );
+          expect(scopePreview.impact.affectedStoreCount).toBe(2);
+          let releaseLink!: () => void;
+          const pendingLink = new Promise<void>((resolve) => {
+            releaseLink = resolve;
+          });
+          let reportLinked!: () => void;
+          const linked = new Promise<void>((resolve) => {
+            reportLinked = resolve;
+          });
+          const linkTx = db.transaction(async (tx) => {
+            await tx.insert(storeInventory).values({
+              storeId: storeC!.id,
+              skuId: linkedSku!.id,
+              onHand: 1,
+            });
+            reportLinked();
+            await pendingLink;
+          });
+          await linked;
+          const concurrentSave = app.inject({
+            method: 'PATCH',
+            url: hqPatchUrl,
+            headers: {
+              ...headers,
+              'x-catalog-preview-token': scopePreview.previewToken!,
+            },
+            payload: concurrentInput,
+          });
+          // Let the HQ transaction reach its FK-parent graph lock before
+          // the second SKU's inventory link is committed.
+          await new Promise((resolve) => setTimeout(resolve, 100));
+          releaseLink();
+          await linkTx;
+          const staleImpact = await concurrentSave;
+          expect(staleImpact.statusCode).toBe(409);
+          expect((await reader.get(storeA!.id, sku!.id))?.bookTitle).toBe(
+            'HQ approved shared title',
+          );
+          expect((await reader.get(storeC!.id, linkedSku!.id))?.bookTitle).toBe(
+            'HQ approved shared title',
+          );
+        } finally {
+          await db.delete(storeInventory).where(eq(storeInventory.skuId, linkedSku!.id));
+          await db.delete(skus).where(eq(skus.id, linkedSku!.id));
+          await db.delete(products).where(eq(products.id, linkedProduct!.id));
+          await db.delete(stores).where(eq(stores.id, storeC!.id));
+        }
       } finally {
         await app.close();
       }
