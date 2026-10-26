@@ -363,8 +363,7 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
         expect((await app.inject({ method: 'GET', url: ownUrl, headers })).statusCode).toBe(200);
         // HQ has its own GLOBAL approval authority. A single STORE-scope
         // account cannot use this HQ route, even with catalog.edit.
-        const hqPreviewUrl =
-          `/api/v1/staff/catalog/stores/${storeA!.id}/items/${sku!.id}/preview`;
+        const hqPreviewUrl = `/api/v1/staff/catalog/stores/${storeA!.id}/items/${sku!.id}/preview`;
         const hqPatchUrl = `/api/v1/staff/catalog/stores/${storeA!.id}/items/${sku!.id}`;
         const hqEdit = {
           expectedProductVersion: 0,
@@ -437,7 +436,6 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
         });
         expect(accepted.statusCode).toBe(200);
         expect((await reader.get(storeB!.id, sku!.id))?.bookTitle).toBe('HQ approved shared title');
-
       } finally {
         await app.close();
       }
