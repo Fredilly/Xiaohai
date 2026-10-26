@@ -219,7 +219,7 @@ export class CatalogEditService {
     input: StoreCatalogEditRequest,
     impact: { sharedFields: string[]; affectedStoreIds: string[] },
   ): boolean {
-    if (!/^\\d{10}\\.[A-Za-z0-9_-]{43}$/.test(token)) return false;
+    if (!/^\d{10}\.[A-Za-z0-9_-]{43}$/.test(token)) return false;
     const expiry = Number(token.slice(0, 10));
     const now = Math.floor(Date.now() / 1000);
     if (expiry <= now || expiry > now + 300) return false;
