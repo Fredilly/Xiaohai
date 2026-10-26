@@ -412,6 +412,20 @@ suite('HQ catalog create and optimistic update on disposable PostgreSQL', () => 
         bookId: null,
         editionId: null,
       });
+      const [extraSku] = await db
+        .insert(skus)
+        .values({
+          productId: created.id,
+          code: 'HQ-SECOND-' + suffix,
+          name: 'Different SKU on same product',
+          priceMinor: 3500,
+          status: 'ACTIVE',
+          availableForSale: true,
+        })
+        .returning({ id: skus.id });
+      expect(
+        (await commerce.getAdminProductsById(created.id)).map((item) => item.skuId).sort(),
+      ).toEqual([created.skuId, extraSku!.id].sort());
     } finally {
       await db.delete(auditLogs).where(eq(auditLogs.actorStaffAccountId, actor!.id));
       if (siblingSkuId) {
@@ -451,7 +465,8 @@ suite('HQ catalog create and optimistic update on disposable PostgreSQL', () => 
       }
       await db.delete(staffAccounts).where(eq(staffAccounts.id, actor!.id));
     }
-  });  it('uses targeted readback and idempotently replays after a committed read failure', async () => {
+  });
+  it('uses targeted readback and idempotently replays after a committed read failure' async () => {
     const suffix = randomUUID();
     const [actor] = await db
       .insert(staffAccounts)

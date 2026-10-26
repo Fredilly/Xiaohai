@@ -441,14 +441,21 @@ export class CommerceService {
 
   /** A post-COMMIT read restricted to the single created product, never a catalog scan. */
   async getAdminProductById(id: string) {
-    const result = await this.readAdminProducts(undefined, undefined, id);
+    const result = await this.readAdminProducts(undefined, undefined, id, true);
     return result.products[0] ?? null;
+  }
+
+  /** Filter by product ID without losing sibling SKUs for HQ edit selection. */
+  async getAdminProductsById(id: string) {
+    const result = await this.readAdminProducts(undefined, undefined, id);
+    return result.products;
   }
 
   private async readAdminProducts(
     q?: string,
     status?: 'DRAFT' | 'ACTIVE' | 'INACTIVE',
     productId?: string,
+    onlyOne = false,
   ) {
     const query = this.db
       .select({ product: products, sku: skus, book: books, edition: bookEditions })
@@ -463,7 +470,7 @@ export class CommerceService {
           q ? ilike(products.name, `%${q}%`) : undefined,
         ),
       );
-    const rows = productId ? await query.limit(1) : await query;
+    const rows = onlyOne ? await query.limit(1) : await query;
     return {
       products: rows.map(({ product, sku, book, edition }) => ({
         id: product.id,
@@ -592,7 +599,7 @@ export class CommerceService {
     if (Buffer.byteLength(this.catalogPreviewSecret, 'utf8') < 32) {
       throw new CommerceError('CONFLICT', 'HQ catalog preview signing is not configured');
     }
-    const matches = (await this.listAdminProducts()).products.filter((item) => item.id === id);
+    const matches = (await this.getAdminProductsById(id));
     if (!matches.length) throw new CommerceError('NOT_FOUND', 'Product not found');
     if (!input.expectedSkuId && matches.length > 1) {
       throw new CommerceError('CONFLICT', 'Explicit SKU identity required');
@@ -635,7 +642,7 @@ export class CommerceService {
     requestId: string,
     previewToken?: string,
   ) {
-    const matches = (await this.listAdminProducts()).products.filter((item) => item.id === id);
+    const matches = (await this.getAdminProductsById(id));
     if (matches.length === 0) throw new CommerceError('NOT_FOUND', 'Product not found');
     // A product may have multiple SKUs: never update an arbitrary first SKU.
     if (!input.expectedSkuId && matches.length > 1) {
@@ -800,8 +807,8 @@ export class CommerceService {
         },
       });
     });
-    const updated = (await this.listAdminProducts()).products.find(
-      (item) => item.id === id && item.skuId === current.skuId,
+    const updated = (await this.getAdminProductsById(id)).find(
+      (item) => item.skuId === current.skuId,
     );
     if (!updated) throw new CommerceError('NOT_FOUND', 'Updated product not found');
     return updated;
