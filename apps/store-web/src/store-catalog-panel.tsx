@@ -120,7 +120,7 @@ export function StoreCatalogPanel({
                 </td>
                 <td className="cell-code">{item.isbn || '—'}</td>
                 <td className="numeric">
-                  <strong>{formatYuan(item.priceMinor)}</strong>
+                  <strong>¥{(item.priceMinor / 100).toFixed(2)}</strong>
                   <small className="cell-meta">{item.availableForSale ? '可售' : '不可售'}</small>
                 </td>
                 <td className="numeric">
@@ -212,14 +212,7 @@ function draftFor(item: StoreCatalogItem): StoreCatalogEditRequest {
   };
 }
 
-type StoreCatalogImpact = Awaited<ReturnType<typeof previewStoreCatalogEdit>>['impact'];
-type StoreCatalogImpactPreview = { snapshot: string; impact: StoreCatalogImpact };
-
-function draftSnapshot(draft: StoreCatalogEditRequest): string {
-  return JSON.stringify(draft);
-}
-
-export function StoreCatalogEditForm({
+function StoreCatalogEditForm({
   token,
   storeId,
   item,
@@ -255,7 +248,9 @@ export function StoreCatalogEditForm({
       {label}（原值：{original ?? '未填写'}）
       <input
         value={typeof draft[key] === 'string' ? draft[key] : ''}
-        onChange={(event) => setDraftField(key, event.target.value || null)}
+        onChange={(event) =>
+          setDraft((current) => ({ ...current, [key]: event.target.value || null }))
+        }
       />
     </label>
   );
