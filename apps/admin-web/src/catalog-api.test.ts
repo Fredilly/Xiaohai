@@ -55,7 +55,7 @@ describe('M5 Admin catalog adapter', () => {
           status: 'ACTIVE',
           availableForSale: true,
         },
-      }),
+      }, 'hq-nonbook-test-request-0001'),
     ).resolves.toMatchObject({ book: null, bookId: null, editionId: null });
   });
 
