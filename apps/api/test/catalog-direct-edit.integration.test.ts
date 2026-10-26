@@ -476,10 +476,10 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
         // A second SKU under a DIFFERENT product shares the edition.
         // Its new inventory link must be visible to the HQ impact recheck,
         // even though the edited URL still points to the first SKU.
-        const [storeC] = await db
+        const [concurrentlyLinkedStore] = await db
           .insert(stores)
           .values({
-            code: 'DCE-S-C-' + suffix,
+            code: 'DCE-S-CONCURRENT-' + suffix,
             name: 'Concurrent newly linked store',
             regionId: region!.id,
             countryCode: 'CN',
@@ -534,7 +534,7 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
           });
           const linkTx = db.transaction(async (tx) => {
             await tx.insert(storeInventory).values({
-              storeId: storeC!.id,
+              storeId: concurrentlyLinkedStore!.id,
               skuId: linkedSku!.id,
               onHand: 1,
             });
@@ -561,14 +561,14 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
           expect((await reader.get(storeA!.id, sku!.id))?.bookTitle).toBe(
             'HQ approved shared title',
           );
-          expect((await reader.get(storeC!.id, linkedSku!.id))?.bookTitle).toBe(
+          expect((await reader.get(concurrentlyLinkedStore!.id, linkedSku!.id))?.bookTitle).toBe(
             'HQ approved shared title',
           );
         } finally {
           await db.delete(storeInventory).where(eq(storeInventory.skuId, linkedSku!.id));
           await db.delete(skus).where(eq(skus.id, linkedSku!.id));
           await db.delete(products).where(eq(products.id, linkedProduct!.id));
-          await db.delete(stores).where(eq(stores.id, storeC!.id));
+          await db.delete(stores).where(eq(stores.id, concurrentlyLinkedStore!.id));
         }
       } finally {
         await app.close();
