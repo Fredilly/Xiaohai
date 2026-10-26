@@ -77,8 +77,8 @@ jobs:
         run: pnpm check:workspace && pnpm check:miniapp && pnpm check:secrets
       - name: Temporary PR161 formatting diagnostic (remove before review)
         run: |
-          pnpm exec prettier --write apps/admin-web/src/catalog-api.test.ts apps/admin-web/src/catalog-api.ts apps/admin-web/src/catalog-manager.tsx apps/api/src/commerce/commerce-service.ts
-          git diff -- apps/admin-web/src/catalog-api.test.ts apps/admin-web/src/catalog-api.ts apps/admin-web/src/catalog-manager.tsx apps/api/src/commerce/commerce-service.ts
+          pnpm exec prettier --write apps/admin-web/src/catalog-api.test.ts apps/admin-web/src/catalog-api.ts apps/admin-web/src/catalog-manager.tsx apps/api/src/commerce/commerce-service.ts apps/api/test/hq-catalog-create.integration.test.ts
+          git diff -- apps/admin-web/src/catalog-api.test.ts apps/admin-web/src/catalog-api.ts apps/admin-web/src/catalog-manager.tsx apps/api/src/commerce/commerce-service.ts apps/api/test/hq-catalog-create.integration.test.ts
       - name: Format, lint and typecheck
         run: pnpm format:check && pnpm lint && pnpm typecheck
       - name: Unit tests
