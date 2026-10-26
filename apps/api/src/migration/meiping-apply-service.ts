@@ -339,26 +339,40 @@ export class MeipingApplyService {
     storeId: string,
     database: Database | Transaction = this.db,
   ) {
-    const [session] = await database
+    // Preview is read-only. APPROVE/EXECUTE must lock the persisted review
+    // snapshot until the batch transaction commits, so an in-flight decision,
+    // correction or independently accepted verdict cannot invalidate the
+    // inspected plan between its final comparison and stock writes.
+    //
+    // Lock order: batch -> session -> decisions (row number) -> corrections
+    // (row number). The correction reviewer also locks the session first.
+    const lockSnapshot = database !== this.db;
+    const sessionQuery = database
       .select()
       .from(meipingReviewSessions)
       .where(
         and(eq(meipingReviewSessions.id, sessionId), eq(meipingReviewSessions.storeId, storeId)),
-      )
-      .limit(1);
+      );
+    const [session] = lockSnapshot
+      ? await sessionQuery.for('update').limit(1)
+      : await sessionQuery.limit(1);
     if (!session) throw new MeipingApplyError('NOT_FOUND');
     const report = session.report as unknown as MeipingPreflightReport;
     if (report.sourceStoreId !== storeId || report.sourceChecksum !== session.sourceChecksum) {
       throw new MeipingApplyError('INVALID_SOURCE');
     }
-    const decisions = await database
+    const decisionQuery = database
       .select()
       .from(meipingReviewDecisions)
-      .where(eq(meipingReviewDecisions.sessionId, sessionId));
-    const corrections = await database
+      .where(eq(meipingReviewDecisions.sessionId, sessionId))
+      .orderBy(meipingReviewDecisions.sourceRowNumber);
+    const decisions = lockSnapshot ? await decisionQuery.for('update') : await decisionQuery;
+    const correctionQuery = database
       .select()
       .from(meipingReviewCorrections)
-      .where(eq(meipingReviewCorrections.sessionId, sessionId));
+      .where(eq(meipingReviewCorrections.sessionId, sessionId))
+      .orderBy(meipingReviewCorrections.sourceRowNumber);
+    const corrections = lockSnapshot ? await correctionQuery.for('update') : await correctionQuery;
     const reviews = await database
       .select()
       .from(meipingCorrectionReviews)
