@@ -245,7 +245,7 @@ suite('HQ catalog create and optimistic update on disposable PostgreSQL', () => 
       const reader = new StoreCatalogReadService(db);
       for (const storeId of storeIds) {
         const sibling = storeId === storeC!.id;
-        const item = await reader.get(storeId, sibling ? siblingSkuId! : created.skuId);
+        const item = await reader.get(storeId, sibling ? siblingSkuId : created.skuId);
         expect(item).toMatchObject({
           bookTitle: revisedBook.title,
           author: revisedBook.author,
@@ -319,8 +319,10 @@ suite('HQ catalog create and optimistic update on disposable PostgreSQL', () => 
         bookId: created.bookId,
         editionId: created.editionId,
         affectedStoreCount: 3,
-        affectedStoreIds: expect.arrayContaining(storeIds),
       });
+      const auditedStoreIds = (editAudit?.metadata as { affectedStoreIds?: string[] } | undefined)
+        ?.affectedStoreIds;
+      expect(auditedStoreIds?.slice().sort()).toEqual([...storeIds].sort());
 
       const nonBookInput = {
         name: 'HQ Non-book Integration ' + suffix,
