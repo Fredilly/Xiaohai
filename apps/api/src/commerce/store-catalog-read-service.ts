@@ -17,11 +17,16 @@ export class StoreCatalogReadService {
   constructor(private readonly db: Db) {}
 
   async get(storeId: string, skuId: string) {
-    const page = await this.list(storeId, { offset: 0, limit: 1000 });
-    return page.items.find((item) => item.skuId === skuId) ?? null;
+    // Never search just the first 1,000 catalogue rows after an edit has
+    // committed: large stores must resolve the exact scoped SKU by ID.
+    const page = await this.list(storeId, { offset: 0, limit: 1, skuId });
+    return page.items[0] ?? null;
   }
 
-  async list(storeId: string, input: { q?: string; offset: number; limit: number }) {
+  async list(
+    storeId: string,
+    input: { q?: string; skuId?: string; offset: number; limit: number },
+  ) {
     const rows = await this.db
       .select({
         storeId: storeInventory.storeId,
@@ -67,6 +72,7 @@ export class StoreCatalogReadService {
       .where(
         and(
           eq(storeInventory.storeId, storeId),
+          input.skuId ? eq(storeInventory.skuId, input.skuId) : undefined,
           input.q
             ? or(
                 ilike(products.name, `%${input.q}%`),

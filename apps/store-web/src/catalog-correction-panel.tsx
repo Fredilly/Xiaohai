@@ -39,6 +39,9 @@ export function CatalogCorrectionPanel({
   const canReview =
     permissions.includes('stores.read') && permissions.includes('catalog.correction.review');
   const [requests, setRequests] = useState<Correction[]>([]);
+  const [requestOffset, setRequestOffset] = useState(0);
+  const [requestHasMore, setRequestHasMore] = useState(false);
+  const requestPageSize = 30;
   const [items, setItems] = useState<StoreCatalogItem[]>([]);
   const [searchText, setSearchText] = useState('');
   const [appliedSearch, setAppliedSearch] = useState('');
@@ -53,10 +56,11 @@ export function CatalogCorrectionPanel({
 
   useEffect(() => {
     let active = true;
-    void listCatalogCorrections(token, storeId)
+    void listCatalogCorrections(token, storeId, { offset: requestOffset, limit: requestPageSize })
       .then((result) => {
         if (!active) return;
         setRequests(result.requests);
+        setRequestHasMore(result.hasMore);
         setStatus(
           result.requests.length ? '仅为建议记录，不改变正式商品' : '当前门店暂无商品纠错申请',
         );
@@ -64,12 +68,13 @@ export function CatalogCorrectionPanel({
       .catch((error: unknown) => {
         if (!active) return;
         setRequests([]);
+        setRequestHasMore(false);
         setStatus(error instanceof Error ? error.message : '读取纠错申请失败');
       });
     return () => {
       active = false;
     };
-  }, [token, storeId, refresh]);
+  }, [token, storeId, refresh, requestOffset]);
 
   useEffect(() => {
     if (!canSubmit) return;
@@ -114,6 +119,7 @@ export function CatalogCorrectionPanel({
       setProposedValue('');
       setReason('');
       setStatus('纠错申请已提交，等待独立复核；正式商品尚未修改');
+      setRequestOffset(0);
       setRefresh((n) => n + 1);
     } catch (error: unknown) {
       setStatus(error instanceof Error ? error.message : '提交失败');
@@ -140,6 +146,7 @@ export function CatalogCorrectionPanel({
       await reviewCatalogCorrection(token, storeId, request.id, { verdict, reason });
       setReviewReasons((all) => ({ ...all, [request.id]: '' }));
       setStatus('独立复核已记录；建议仍不会自动写入商品或库存');
+      setRequestOffset(0);
       setRefresh((n) => n + 1);
     } catch (error: unknown) {
       setStatus(error instanceof Error ? error.message : '复核失败');
@@ -232,7 +239,7 @@ export function CatalogCorrectionPanel({
           </form>
         </>
       )}
-      <h3>本店纠错记录（最近 50 条）</h3>
+      <h3>本店纠错记录（待审核优先，可翻页）</h3>
       <div
         className="data-table-scroll"
         role="region"
@@ -326,6 +333,21 @@ export function CatalogCorrectionPanel({
             )}
           </tbody>
         </table>
+      </div>
+      <div className="meiping-store-actions">
+        <button
+          disabled={busy || requestOffset === 0}
+          onClick={() => setRequestOffset((n) => Math.max(0, n - requestPageSize))}
+        >
+          上一页
+        </button>
+        <span>第 {Math.floor(requestOffset / requestPageSize) + 1} 页 · 待审核优先</span>
+        <button
+          disabled={busy || !requestHasMore}
+          onClick={() => setRequestOffset((n) => n + requestPageSize)}
+        >
+          下一页
+        </button>
       </div>
       <p role="status">{status}</p>
     </section>

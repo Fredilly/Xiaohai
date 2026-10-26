@@ -470,8 +470,8 @@ export class CommerceService {
     actorStaffAccountId: string,
     requestId: string,
   ) {
-    // Never read a newly inserted product through this.db inside the transaction:
-    // that uses a different pooled connection and cannot see uncommitted rows.
+    // Return a persisted read after commit; never query through a second
+    // pooled connection while the INSERT transaction is still open.
     const createdId = await this.db.transaction(async (tx) => {
       let editionId: string | null = null;
       if (input.book) {
@@ -517,9 +517,6 @@ export class CommerceService {
       });
       return product!.id;
     });
-
-    // Read only after the transaction has committed, so the API never reports
-    // failure or an empty response after persisting a new catalog product.
     const created = (await this.listAdminProducts()).products.find((item) => item.id === createdId);
     if (!created) throw new CommerceError('NOT_FOUND', 'Newly created product not found');
     return created;
@@ -532,8 +529,13 @@ export class CommerceService {
   ) {
     const current = (await this.listAdminProducts()).products.find((item) => item.id === id);
     if (!current) throw new CommerceError('NOT_FOUND', 'Product not found');
-    const expectedProductVersion = input.expectedProductVersion ?? current.productVersion;
-    const expectedSkuVersion = input.expectedSkuVersion ?? current.skuVersion;
+    // The legacy HQ PUT must require the versions the client actually read.
+    // Falling back to the latest DB versions silently bypasses optimistic locking.
+    if (input.expectedProductVersion === undefined || input.expectedSkuVersion === undefined) {
+      throw new CommerceError('CONFLICT', 'Expected product and SKU versions are required');
+    }
+    const expectedProductVersion = input.expectedProductVersion;
+    const expectedSkuVersion = input.expectedSkuVersion;
     await this.db.transaction(async (tx) => {
       const [updatedProduct] = await tx
         .update(products)

@@ -21,8 +21,16 @@ async function checked(response: Response) {
   return response.json() as Promise<unknown>;
 }
 
-export async function listCatalogCorrections(token: string, storeId: string) {
-  const response = await fetch(endpoint(storeId), {
+export async function listCatalogCorrections(
+  token: string,
+  storeId: string,
+  input: { offset?: number; limit?: number } = {},
+) {
+  const query = new URLSearchParams({
+    offset: String(input.offset ?? 0),
+    limit: String(input.limit ?? 30),
+  });
+  const response = await fetch(endpoint(storeId) + '?' + query.toString(), {
     headers: { Authorization: 'Bearer ' + token },
   });
   return catalogCorrectionsResponseSchema.parse(await checked(response));

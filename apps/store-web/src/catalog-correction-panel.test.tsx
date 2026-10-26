@@ -32,6 +32,9 @@ describe('daily catalog correction UI safety', () => {
     expect(html).not.toContain('保存商品');
     expect(html).toContain('<table');
     expect(html).toContain('独立复核操作');
+    expect(html).toContain('待审核优先，可翻页');
+    expect(html).toContain('上一页');
+    expect(html).toContain('下一页');
   });
 
   it('does not present a submission form to independent reviewer without inventory permissions', () => {

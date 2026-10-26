@@ -151,6 +151,10 @@ export const adminProductInputSchema = z
     }),
   })
   .strict();
+export const adminProductUpdateSchema = adminProductInputSchema.extend({
+  expectedProductVersion: z.number().int().nonnegative(),
+  expectedSkuVersion: z.number().int().nonnegative(),
+});
 export const adminProductSchema = adminProductInputSchema.extend({
   id: z.uuid(),
   skuId: z.uuid(),
@@ -267,6 +271,7 @@ export const storeCatalogEditResponseSchema = z.object({
 });
 export const storeCatalogEditPreviewResponseSchema = z.object({
   impact: storeCatalogEditImpactSchema,
+  previewToken: z.string().nullable(),
 });
 export type StoreCatalogEditRequest = z.infer<typeof storeCatalogEditRequestSchema>;
 export type StoreCatalogEditResponse = z.infer<typeof storeCatalogEditResponseSchema>;
@@ -328,6 +333,9 @@ export const catalogCorrectionRecordSchema = z.object({
   reviewedAt: z.iso.datetime().nullable(),
 });
 export const catalogCorrectionsResponseSchema = z.object({
+  offset: z.number().int().nonnegative(),
+  limit: z.number().int().positive().max(100),
+  hasMore: z.boolean(),
   requests: z.array(catalogCorrectionRecordSchema),
 });
 export type CreateCatalogCorrection = z.infer<typeof createCatalogCorrectionSchema>;

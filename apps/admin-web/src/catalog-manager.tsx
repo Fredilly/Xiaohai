@@ -379,7 +379,10 @@ function HqStoreCatalogForm({
         !window.confirm(`共享资料将影响 ${impact.impact.affectedStoreCount} 家门店，确认保存？`)
       )
         return;
-      await updateHqStoreCatalog(token, storeId, item.skuId, draft);
+      if (impact.impact.sharedFields.length && !impact.previewToken) {
+        throw new Error('总部共享资料修改缺少服务端预览凭证');
+      }
+      await updateHqStoreCatalog(token, storeId, item.skuId, draft, impact.previewToken);
       onSaved();
     } catch (error) {
       if (error instanceof CatalogApiError && error.status === 409) {
@@ -483,6 +486,7 @@ function ProductForm({
   onCancel: () => void;
   onSave: (input: AdminProductInput) => Promise<void>;
 }) {
+  const isEditing = 'id' in initial;
   const [v, setV] = useState<AdminProductInput>({
     name: initial.name,
     description: initial.description,
@@ -508,7 +512,13 @@ function ProductForm({
   }
   return (
     <form className="cms-form" onSubmit={(e) => void submit(e)}>
-      <h3>{'id' in initial ? '编辑商品' : '新增商品'}</h3>
+      <h3>{isEditing ? '编辑商品' : '新增商品'}</h3>
+      {isEditing && (
+        <p>
+          此处仅能修改商品状态与 SKU
+          信息。修改书名、作者、ISBN、出版社请使用下方总部跨店商品编辑器。
+        </p>
+      )}
       <label>
         商品名
         <input required value={v.name} onChange={(e) => setV({ ...v, name: e.target.value })} />
@@ -553,6 +563,7 @@ function ProductForm({
         书名
         <input
           required
+          disabled={isEditing}
           value={v.book?.title ?? ''}
           onChange={(e) =>
             setV({
@@ -571,6 +582,7 @@ function ProductForm({
         作者
         <input
           required
+          disabled={isEditing}
           value={v.book?.author ?? ''}
           onChange={(e) =>
             setV({
@@ -588,6 +600,7 @@ function ProductForm({
       <label>
         ISBN
         <input
+          disabled={isEditing}
           value={v.book?.isbn ?? ''}
           onChange={(e) =>
             setV({
@@ -605,6 +618,7 @@ function ProductForm({
       <label>
         出版社
         <input
+          disabled={isEditing}
           value={v.book?.publisher ?? ''}
           onChange={(e) =>
             setV({
