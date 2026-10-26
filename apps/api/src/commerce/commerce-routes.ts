@@ -228,6 +228,21 @@ export function registerCommerceRoutes(
       return fail(request, reply, error);
     }
   });
+  app.post('/api/v1/staff/catalog/products/:id/preview', async (request, reply) => {
+    const params = z.object({ id: z.uuid() }).safeParse(request.params);
+    const input = adminProductUpdateInputSchema.safeParse(request.body);
+    if (!params.success || !input.success) return invalid(reply, request.id);
+    try {
+      const actor = await staff(request);
+      return await options.commerce.previewAdminProductUpdate(
+        params.data.id,
+        input.data,
+        actor.staffAccountId,
+      );
+    } catch (error) {
+      return fail(request, reply, error);
+    }
+  });
   app.put('/api/v1/staff/catalog/products/:id', async (request, reply) => {
     const params = z.object({ id: z.uuid() }).safeParse(request.params);
     const input = adminProductUpdateInputSchema.safeParse(request.body);
@@ -239,6 +254,9 @@ export function registerCommerceRoutes(
         input.data,
         actor.staffAccountId,
         request.id,
+        typeof request.headers['x-catalog-preview-token'] === 'string'
+          ? request.headers['x-catalog-preview-token']
+          : undefined,
       );
     } catch (error) {
       return fail(request, reply, error);
