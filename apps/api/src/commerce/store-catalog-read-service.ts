@@ -8,7 +8,7 @@ import {
   storeInventory,
   type createDatabase,
 } from '@xiaohai/db';
-import { storeCatalogItemSchema, storeCatalogResponseSchema } from '@xiaohai/contracts/commerce';
+import { storeCatalogResponseSchema } from '@xiaohai/contracts/commerce';
 
 type Db = ReturnType<typeof createDatabase>['db'];
 
@@ -17,24 +17,13 @@ export class StoreCatalogReadService {
   constructor(private readonly db: Db) {}
 
   async get(storeId: string, skuId: string) {
-    // Never scan a fixed-size page: the requested SKU may be after the first
-    // 1,000 rows. An exact store + SKU lookup must have no page boundary.
-    const items = await this.selectItems(storeId, { skuId, offset: 0, limit: 1 });
-    return items[0] ? storeCatalogItemSchema.parse(items[0]) : null;
+    // Never search just the first 1,000 catalogue rows after an edit has
+    // committed: large stores must resolve the exact scoped SKU by ID.
+    const page = await this.list(storeId, { offset: 0, limit: 1, skuId });
+    return page.items[0] ?? null;
   }
 
-  async list(storeId: string, input: { q?: string; offset: number; limit: number }) {
-    const items = await this.selectItems(storeId, { ...input, limit: input.limit + 1 });
-    return storeCatalogResponseSchema.parse({
-      storeId,
-      offset: input.offset,
-      limit: input.limit,
-      hasMore: items.length > input.limit,
-      items: items.slice(0, input.limit),
-    });
-  }
-
-  private async selectItems(
+  async list(
     storeId: string,
     input: { q?: string; skuId?: string; offset: number; limit: number },
   ) {
@@ -83,7 +72,7 @@ export class StoreCatalogReadService {
       .where(
         and(
           eq(storeInventory.storeId, storeId),
-          input.skuId ? eq(skus.id, input.skuId) : undefined,
+          input.skuId ? eq(storeInventory.skuId, input.skuId) : undefined,
           input.q
             ? or(
                 ilike(products.name, `%${input.q}%`),
@@ -97,20 +86,26 @@ export class StoreCatalogReadService {
         ),
       )
       .orderBy(asc(products.name), asc(skus.code), asc(skus.id))
-      .limit(input.limit)
+      .limit(input.limit + 1)
       .offset(input.offset);
 
-    return rows.map((row) => ({
-      ...row,
-      productVersion: row.productVersion ?? 0,
-      bookVersion: row.bookVersion ?? 0,
-      editionVersion: row.editionVersion ?? 0,
-      skuVersion: row.skuVersion,
-      localVersion: row.localVersion ?? 0,
-      shelfLocation: row.shelfLocation ?? null,
-      storeNote: row.storeNote ?? null,
-      displayInfo: row.displayInfo ?? null,
-      available: Math.max(0, row.onHand - row.reserved - row.rentalReserved),
-    }));
+    return storeCatalogResponseSchema.parse({
+      storeId,
+      offset: input.offset,
+      limit: input.limit,
+      hasMore: rows.length > input.limit,
+      items: rows.slice(0, input.limit).map((row) => ({
+        ...row,
+        productVersion: row.productVersion ?? 0,
+        bookVersion: row.bookVersion ?? 0,
+        editionVersion: row.editionVersion ?? 0,
+        skuVersion: row.skuVersion,
+        localVersion: row.localVersion ?? 0,
+        shelfLocation: row.shelfLocation ?? null,
+        storeNote: row.storeNote ?? null,
+        displayInfo: row.displayInfo ?? null,
+        available: Math.max(0, row.onHand - row.reserved - row.rentalReserved),
+      })),
+    });
   }
 }

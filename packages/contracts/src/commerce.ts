@@ -1,18 +1,6 @@
 import { z } from 'zod';
 
 export const moneyMinorSchema = z.number().int().min(0).max(2147483647);
-export function normalizeIsbn(value: string | null | undefined) {
-  if (value === undefined || value === null) return value;
-  const normalized = value.trim().replace(/[\s-]+/g, '');
-  return normalized === '' ? null : normalized.toUpperCase();
-}
-export function isValidIsbn(value: string | null | undefined): value is string {
-  return value !== null && value !== undefined && /^(?:\d{9}[\dX]|\d{13})$/.test(value);
-}
-const isbnInputSchema = z.preprocess(
-  (value) => (typeof value === 'string' ? normalizeIsbn(value) : value),
-  z.string().max(32).nullable().optional(),
-);
 export const productStatusSchema = z.enum(['DRAFT', 'ACTIVE', 'INACTIVE']);
 export const skuStatusSchema = z.enum(['ACTIVE', 'INACTIVE']);
 export const orderStatusSchema = z.enum([
@@ -35,7 +23,6 @@ export const commerceErrorCodeSchema = z.enum([
   'CONFLICT',
   'NOT_PURCHASABLE',
   'INVALID_ORDER_STATE',
-  'INVALID_INPUT',
   'INTERNAL_ERROR',
 ]);
 export const commerceErrorResponseSchema = z.object({
@@ -136,28 +123,8 @@ export const orderSchema = z.object({
 });
 export const orderListResponseSchema = z.object({ orders: z.array(orderSchema) });
 export const adminCatalogQuerySchema = z
-  .object({
-    q: z.string().trim().max(120).optional(),
-    status: productStatusSchema.optional(),
-    offset: z.coerce.number().int().nonnegative().max(1000000).default(0),
-    limit: z.coerce.number().int().min(1).max(100).default(30),
-  })
+  .object({ q: z.string().trim().max(120).optional(), status: productStatusSchema.optional() })
   .strict();
-export const bookLookupQuerySchema = z.object({ code: z.string().trim().min(1).max(32) }).strict();
-export const bookLookupResponseSchema = z.object({
-  source: z.enum(['LOCAL', 'OPEN_LIBRARY', 'NOT_FOUND']),
-  existingProductId: z.uuid().nullable(),
-  book: z
-    .object({
-      title: z.string(),
-      author: z.string(),
-      isbn: z.string(),
-      publisher: z.string().nullable(),
-      coverUrl: z.string().nullable(),
-    })
-    .nullable(),
-  suggestedPriceMinor: moneyMinorSchema.nullable(),
-});
 const adminProductFieldsSchema = z
   .object({
     expectedSkuId: z.uuid().optional(),
@@ -171,7 +138,7 @@ const adminProductFieldsSchema = z
       .object({
         title: z.string().trim().min(1).max(200),
         author: z.string().trim().min(1).max(160),
-        isbn: isbnInputSchema,
+        isbn: z.string().trim().max(32).nullable().optional(),
         publisher: z.string().trim().max(160).nullable().optional(),
       })
       .nullable()
@@ -185,12 +152,7 @@ const adminProductFieldsSchema = z
     }),
   })
   .strict();
-const adminProductCreateFieldsSchema = adminProductFieldsSchema.extend({
-  sku: adminProductFieldsSchema.shape.sku.extend({
-    code: z.string().trim().min(1).max(80).optional(),
-  }),
-});
-export const adminProductCreateInputSchema = adminProductCreateFieldsSchema.extend({
+export const adminProductCreateInputSchema = adminProductFieldsSchema.extend({
   expectedProductVersion: z.number().int().nonnegative().optional(),
   expectedSkuVersion: z.number().int().nonnegative().optional(),
 });
@@ -198,34 +160,27 @@ export const adminProductUpdateInputSchema = adminProductFieldsSchema.extend({
   expectedProductVersion: z.number().int().nonnegative(),
   expectedSkuVersion: z.number().int().nonnegative(),
 });
+/** Compatibility for callers of the original strict HQ update schema. */
+export const adminProductUpdateSchema = adminProductUpdateInputSchema;
 /** @deprecated Use the explicit create/update schemas at API boundaries. */
 export const adminProductInputSchema = adminProductCreateInputSchema;
 export const adminProductSchema = adminProductCreateInputSchema.extend({
   id: z.uuid(),
   skuId: z.uuid(),
-  bookId: z.uuid().nullable(),
-  editionId: z.uuid().nullable(),
   productVersion: z.number().int().nonnegative(),
   bookVersion: z.number().int().nonnegative().nullable(),
   editionVersion: z.number().int().nonnegative().nullable(),
   skuVersion: z.number().int().nonnegative(),
 });
-export const adminProductListResponseSchema = z.object({
-  offset: z.number().int().nonnegative(),
-  limit: z.number().int().positive(),
-  hasMore: z.boolean(),
-  products: z.array(adminProductSchema),
-});
+export const adminProductListResponseSchema = z.object({ products: z.array(adminProductSchema) });
 
 export type CatalogProduct = z.infer<typeof catalogProductSchema>;
 export type CartResponse = z.infer<typeof cartResponseSchema>;
 export type AddressInput = z.infer<typeof addressInputSchema>;
 export type Address = z.infer<typeof addressSchema>;
 export type Order = z.infer<typeof orderSchema>;
-export type AdminProductCreateInput = z.infer<typeof adminProductCreateInputSchema>;
 export type AdminProductInput = z.infer<typeof adminProductInputSchema>;
 export type AdminProductUpdateInput = z.infer<typeof adminProductUpdateInputSchema>;
-export type BookLookupResponse = z.infer<typeof bookLookupResponseSchema>;
 export type CommerceErrorCode = z.infer<typeof commerceErrorCodeSchema>;
 
 /** Authenticated Staff read-model: only SKU rows linked to the scoped store's inventory. */
@@ -289,7 +244,12 @@ export const storeCatalogEditRequestSchema = z
     bookTitle: z.string().trim().min(1).max(200).optional(),
     author: z.string().trim().min(1).max(160).optional(),
     publisher: editableText(160),
-    isbn: isbnInputSchema,
+    isbn: z
+      .string()
+      .trim()
+      .regex(/^[0-9Xx-]{10,20}$/)
+      .nullable()
+      .optional(),
     priceMinor: moneyMinorSchema.optional(),
     shelfLocation: editableText(160),
     storeNote: z.string().trim().max(2000).nullable().optional(),
@@ -323,6 +283,7 @@ export const storeCatalogEditResponseSchema = z.object({
 });
 export const storeCatalogEditPreviewResponseSchema = z.object({
   impact: storeCatalogEditImpactSchema,
+  previewToken: z.string().nullable(),
 });
 export type StoreCatalogEditRequest = z.infer<typeof storeCatalogEditRequestSchema>;
 export type StoreCatalogEditResponse = z.infer<typeof storeCatalogEditResponseSchema>;
@@ -358,7 +319,7 @@ export const createCatalogCorrectionSchema = z
         message: 'Invalid minor-unit price',
       });
     }
-    if (value.field === 'isbn' && !isValidIsbn(normalizeIsbn(value.proposedValue))) {
+    if (value.field === 'isbn' && !/^[0-9Xx-]{10,20}$/.test(value.proposedValue)) {
       ctx.addIssue({ code: 'custom', path: ['proposedValue'], message: 'Invalid ISBN' });
     }
   });
@@ -384,6 +345,9 @@ export const catalogCorrectionRecordSchema = z.object({
   reviewedAt: z.iso.datetime().nullable(),
 });
 export const catalogCorrectionsResponseSchema = z.object({
+  offset: z.number().int().nonnegative(),
+  limit: z.number().int().positive().max(100),
+  hasMore: z.boolean(),
   requests: z.array(catalogCorrectionRecordSchema),
 });
 export type CreateCatalogCorrection = z.infer<typeof createCatalogCorrectionSchema>;

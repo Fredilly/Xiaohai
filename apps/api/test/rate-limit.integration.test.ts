@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { buildApp } from '../src/app.js';
 import { RedisRateLimitStore } from '../src/security/rate-limit.js';
@@ -6,7 +5,6 @@ import { RedisRateLimitStore } from '../src/security/rate-limit.js';
 const integration = process.env.REDIS_URL ? describe : describe.skip;
 integration('Redis security limiter', () => {
   it('atomically rejects requests shared by concurrent API instances', async () => {
-    const remoteAddress = `2001:db8::${randomUUID().replaceAll('-', '')}`;
     const stores = [
       new RedisRateLimitStore(process.env.REDIS_URL!),
       new RedisRateLimitStore(process.env.REDIS_URL!),
@@ -22,7 +20,6 @@ integration('Redis security limiter', () => {
           apps[index % 2]!.inject({
             method: 'POST',
             url: '/api/v1/franchise/applications',
-            remoteAddress,
             headers: { 'x-forwarded-for': String(index) },
           }),
         ),

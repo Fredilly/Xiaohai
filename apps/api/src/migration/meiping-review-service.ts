@@ -375,6 +375,29 @@ export class MeipingReviewService {
       }
     }
     const updated = await this.db.transaction(async (tx) => {
+      // Snapshot the old revision within the same transaction as the guarded
+      // mutation and audit insert. A stale writer is rejected before history
+      // is written; the optimistic UPDATE also protects a concurrent winner.
+      const [previous] = await tx
+        .select({
+          proposedFields: meipingReviewCorrections.proposedFields,
+          reason: meipingReviewCorrections.reason,
+          version: meipingReviewCorrections.version,
+        })
+        .from(meipingReviewCorrections)
+        .where(
+          and(
+            eq(meipingReviewCorrections.sessionId, id),
+            eq(meipingReviewCorrections.sourceRowNumber, sourceRowNumber),
+          ),
+        )
+        .limit(1);
+      if (
+        (input.expectedVersion === 0 && previous) ||
+        (input.expectedVersion !== 0 && previous?.version !== input.expectedVersion)
+      ) {
+        throw new MeipingReviewError('CONFLICT');
+      }
       const values = {
         proposedFields: clean,
         reason: input.reason.trim(),
@@ -421,11 +444,26 @@ export class MeipingReviewService {
         resourceId: id,
         requestId: audit.requestId,
         metadata: {
+          sessionId: id,
           storeId,
+          sourceChecksum: session.sourceChecksum,
           sourceRowNumber,
-          version: result.version,
-          proposedFieldNames: Object.keys(clean),
-          // Never log raw proposed values, barcode, or reason in audit metadata.
+          expectedVersion: input.expectedVersion,
+          previous: previous
+            ? {
+                proposedFields: previous.proposedFields,
+                reason: previous.reason,
+                version: previous.version,
+              }
+            : null,
+          next: {
+            proposedFields: clean,
+            reason: values.reason,
+            version: result.version,
+          },
+          // Complete, protected audit-store snapshots. Actor, timestamp and
+          // request ID are held in audit_logs columns. Never echo this
+          // metadata into application logs or ordinary API responses.
         },
       });
       return result;
@@ -465,6 +503,27 @@ export class MeipingReviewService {
     if (!row) throw new MeipingReviewError('INVALID_ROW');
 
     const result = await this.db.transaction(async (tx) => {
+      // Lock ordering is always session -> correction row. The session lock
+      // serializes the complete accepted-barcode lookup + verdict insert for
+      // different source rows, not just competing reviews of the same row.
+      // PostgreSQL READ COMMITTED rechecks accepted proposals after waiting.
+      const [lockedSession] = await tx
+        .select({
+          id: meipingReviewSessions.id,
+          status: meipingReviewSessions.status,
+          sourceChecksum: meipingReviewSessions.sourceChecksum,
+        })
+        .from(meipingReviewSessions)
+        .where(and(eq(meipingReviewSessions.id, id), eq(meipingReviewSessions.storeId, storeId)))
+        .for('update')
+        .limit(1);
+      if (
+        !lockedSession ||
+        lockedSession.status !== 'DRAFT' ||
+        lockedSession.sourceChecksum !== input.expectedChecksum
+      ) {
+        throw new MeipingReviewError('CONFLICT');
+      }
       // Lock this proposal so concurrent edits cannot change its version during review.
       const [current] = await tx
         .select()

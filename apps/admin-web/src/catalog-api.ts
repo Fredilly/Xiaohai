@@ -1,12 +1,12 @@
 import {
-  adminProductCreateInputSchema,
+  adminProductInputSchema,
   adminProductUpdateInputSchema,
   adminProductListResponseSchema,
   adminProductSchema,
-  bookLookupResponseSchema,
   storeCatalogEditRequestSchema,
+  storeCatalogEditPreviewResponseSchema,
   storeCatalogResponseSchema,
-  type AdminProductCreateInput,
+  type AdminProductInput,
   type AdminProductUpdateInput,
   type StoreCatalogEditRequest,
 } from '@xiaohai/contracts/commerce';
@@ -15,77 +15,80 @@ const configuredBase: unknown = import.meta.env.VITE_API_BASE_URL;
 const base = typeof configuredBase === 'string' ? configuredBase : 'http://127.0.0.1:3000';
 
 export class CatalogApiError extends Error {
-  constructor(
-    readonly status: number,
-    message?: string,
-  ) {
-    super(message ?? `Catalog API ${status}`);
+  constructor(readonly status: number) {
+    super(`Catalog API ${status}`);
   }
 }
 
-async function call(path: string, token: string, method = 'GET', body?: object): Promise<unknown> {
+async function call(
+  path: string,
+  token: string,
+  method = 'GET',
+  body?: object,
+  previewToken?: string | null,
+  idempotencyKey?: string,
+): Promise<unknown> {
   const response = await fetch(`${base}${path}`, {
     method,
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      ...(previewToken ? { 'X-Catalog-Preview-Token': previewToken } : {}),
+      ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}),
+    },
     body: body ? JSON.stringify(body) : undefined,
   });
-  if (!response.ok) {
-    const payload = (
-      typeof response.json === 'function' ? await response.json().catch(() => null) : null
-    ) as {
-      error?: { message?: unknown };
-    } | null;
-    throw new CatalogApiError(
-      response.status,
-      typeof payload?.error?.message === 'string' ? payload.error.message : undefined,
-    );
-  }
+  if (!response.ok) throw new CatalogApiError(response.status);
 
   const payload: unknown = await response.json();
   return payload;
 }
 
-export const listAdminProducts = async (token: string, q = '', offset = 0, limit = 30) =>
+export const listAdminProducts = async (token: string, q = '') =>
   adminProductListResponseSchema.parse(
-    await call(
-      `/api/v1/staff/catalog/products?${new URLSearchParams({
-        ...(q ? { q } : {}),
-        offset: String(offset),
-        limit: String(limit),
-      })}`,
-      token,
-    ),
+    await call(`/api/v1/staff/catalog/products${q ? `?q=${encodeURIComponent(q)}` : ''}`, token),
   );
 
-export const getAdminProduct = async (token: string, id: string) =>
-  adminProductSchema.parse(await call(`/api/v1/staff/catalog/products/${id}`, token));
-
-export const createAdminProduct = async (token: string, input: AdminProductCreateInput) =>
+export const createAdminProduct = async (token: string, input: AdminProductInput, key: string) =>
   adminProductSchema.parse(
     await call(
       '/api/v1/staff/catalog/products',
       token,
       'POST',
-      adminProductCreateInputSchema.parse(input),
+      adminProductInputSchema.parse(input),
+      undefined,
+      key,
     ),
   );
 
-export const lookupBook = async (token: string, code: string) =>
-  bookLookupResponseSchema.parse(
-    await call(`/api/v1/staff/catalog/books/lookup?${new URLSearchParams({ code })}`, token),
-  );
+export const previewAdminProductUpdate = async (
+  token: string,
+  id: string,
+  input: AdminProductUpdateInput,
+) =>
+  (await call(
+    `/api/v1/staff/catalog/products/${encodeURIComponent(id)}/preview`,
+    token,
+    'POST',
+    adminProductUpdateInputSchema.parse(input),
+  )) as {
+    previewToken: string;
+    impact: { affectedStoreCount: number; affectedStoreIds: string[] };
+  };
 
 export const updateAdminProduct = async (
   token: string,
   id: string,
   input: AdminProductUpdateInput,
+  previewToken: string,
 ) =>
   adminProductSchema.parse(
     await call(
-      `/api/v1/staff/catalog/products/${id}`,
+      `/api/v1/staff/catalog/products/${encodeURIComponent(id)}`,
       token,
       'PUT',
       adminProductUpdateInputSchema.parse(input),
+      previewToken,
     ),
   );
 
@@ -102,14 +105,14 @@ export async function previewHqStoreCatalogEdit(
   skuId: string,
   input: StoreCatalogEditRequest,
 ) {
-  return (await call(
-    `/api/v1/staff/catalog/stores/${encodeURIComponent(storeId)}/items/${encodeURIComponent(skuId)}/preview`,
-    token,
-    'POST',
-    storeCatalogEditRequestSchema.parse(input),
-  )) as {
-    impact: { affectedStoreCount: number; affectedStoreIds: string[]; sharedFields: string[] };
-  };
+  return storeCatalogEditPreviewResponseSchema.parse(
+    await call(
+      `/api/v1/staff/catalog/stores/${encodeURIComponent(storeId)}/items/${encodeURIComponent(skuId)}/preview`,
+      token,
+      'POST',
+      storeCatalogEditRequestSchema.parse(input),
+    ),
+  );
 }
 
 export async function updateHqStoreCatalog(
@@ -117,11 +120,13 @@ export async function updateHqStoreCatalog(
   storeId: string,
   skuId: string,
   input: StoreCatalogEditRequest,
+  previewToken: string | null,
 ) {
   return call(
     `/api/v1/staff/catalog/stores/${encodeURIComponent(storeId)}/items/${encodeURIComponent(skuId)}`,
     token,
     'PATCH',
     storeCatalogEditRequestSchema.parse(input),
+    previewToken,
   );
 }

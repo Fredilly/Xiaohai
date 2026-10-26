@@ -12,13 +12,12 @@ import {
 import {
   catalogCorrectionRecordSchema,
   catalogCorrectionsResponseSchema,
-  isValidIsbn,
-  normalizeIsbn,
   type CreateCatalogCorrection,
   type ReviewCatalogCorrection,
 } from '@xiaohai/contracts/commerce';
 
 type Db = ReturnType<typeof createDatabase>['db'];
+type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
 export type CatalogCorrectionErrorCode = 'NOT_FOUND' | 'CONFLICT' | 'STAFF_FORBIDDEN';
 export class CatalogCorrectionError extends Error {
   constructor(readonly code: CatalogCorrectionErrorCode) {
@@ -33,14 +32,26 @@ export class CatalogCorrectionError extends Error {
 export class CatalogCorrectionService {
   constructor(private readonly db: Db) {}
 
-  async list(storeId: string) {
+  async list(storeId: string, input: { offset: number; limit: number } = { offset: 0, limit: 30 }) {
     const rows = await this.db
       .select()
       .from(catalogCorrectionRequests)
       .where(eq(catalogCorrectionRequests.storeId, storeId))
-      .orderBy(desc(catalogCorrectionRequests.createdAt), desc(catalogCorrectionRequests.id))
-      .limit(50);
-    return catalogCorrectionsResponseSchema.parse({ requests: rows.map(toContract) });
+      // PENDING first, then stable newest-first history: old pending items
+      // cannot disappear behind 50 recently decided requests.
+      .orderBy(
+        sql`case when ${catalogCorrectionRequests.status} = 'PENDING' then 0 else 1 end`,
+        desc(catalogCorrectionRequests.createdAt),
+        desc(catalogCorrectionRequests.id),
+      )
+      .limit(input.limit + 1)
+      .offset(input.offset);
+    return catalogCorrectionsResponseSchema.parse({
+      offset: input.offset,
+      limit: input.limit,
+      hasMore: rows.length > input.limit,
+      requests: rows.slice(0, input.limit).map(toContract),
+    });
   }
 
   async submit(
@@ -49,23 +60,18 @@ export class CatalogCorrectionService {
     requestId: string,
     input: CreateCatalogCorrection,
   ) {
-    const source = await this.loadSource(storeId, input.skuId);
-    if (!source) throw new CatalogCorrectionError('NOT_FOUND');
-    if (source.inventoryVersion !== input.expectedInventoryVersion) {
-      throw new CatalogCorrectionError('CONFLICT');
-    }
-    const current = getSourceField(source, input.field);
-    if (current === undefined) throw new CatalogCorrectionError('CONFLICT');
-    const proposedValue =
-      input.field === 'isbn' ? normalizeIsbn(input.proposedValue)! : input.proposedValue;
-    const comparableCurrent = input.field === 'isbn' ? normalizeIsbn(current) : current;
-    if (comparableCurrent === proposedValue) throw new CatalogCorrectionError('CONFLICT');
-    if (input.field === 'isbn' && !isValidIsbn(proposedValue)) {
-      throw new CatalogCorrectionError('CONFLICT');
-    }
-
     try {
       const created = await this.db.transaction(async (tx) => {
+        // Protect original-value and inventory-version snapshots from HQ edits.
+        const source = await this.loadLockedSource(tx, storeId, input.skuId);
+        if (!source) throw new CatalogCorrectionError('NOT_FOUND');
+        if (source.inventoryVersion !== input.expectedInventoryVersion) {
+          throw new CatalogCorrectionError('CONFLICT');
+        }
+        const current = getSourceField(source, input.field);
+        if (current === undefined || current === input.proposedValue) {
+          throw new CatalogCorrectionError('CONFLICT');
+        }
         const [row] = await tx
           .insert(catalogCorrectionRequests)
           .values({
@@ -74,7 +80,7 @@ export class CatalogCorrectionService {
             sourceProductId: source.productId,
             field: input.field,
             originalValue: current,
-            proposedValue,
+            proposedValue: input.proposedValue,
             expectedInventoryVersion: input.expectedInventoryVersion,
             reason: input.reason,
             requestedByStaffAccountId: actorId,
@@ -122,8 +128,12 @@ export class CatalogCorrectionService {
         throw new CatalogCorrectionError('STAFF_FORBIDDEN');
       }
       if (input.verdict === 'ACCEPTED') {
-        const source = await this.loadSource(storeId, request.skuId);
-        if (!source || source.productId !== request.sourceProductId) {
+        const source = await this.loadLockedSource(tx, storeId, request.skuId);
+        if (
+          !source ||
+          source.productId !== request.sourceProductId ||
+          source.inventoryVersion !== request.expectedInventoryVersion
+        ) {
           throw new CatalogCorrectionError('CONFLICT');
         }
         const value = getSourceField(source, request.field);
@@ -133,8 +143,7 @@ export class CatalogCorrectionService {
         if (request.field === 'isbn') {
           // Serialize recommendation acceptance by ISBN, even across different stores.
           // This never locks or changes the canonical SKU, edition, or inventory rows.
-          const proposedIsbn = normalizeIsbn(request.proposedValue)!;
-          await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${proposedIsbn}))`);
+          await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${request.proposedValue}))`);
           const acceptedConflicts = await tx
             .select({ id: catalogCorrectionRequests.id })
             .from(catalogCorrectionRequests)
@@ -142,7 +151,7 @@ export class CatalogCorrectionService {
               and(
                 eq(catalogCorrectionRequests.field, 'isbn'),
                 eq(catalogCorrectionRequests.status, 'ACCEPTED'),
-                eq(catalogCorrectionRequests.proposedValue, proposedIsbn),
+                eq(catalogCorrectionRequests.proposedValue, request.proposedValue),
                 ne(catalogCorrectionRequests.sourceProductId, request.sourceProductId),
               ),
             )
@@ -153,7 +162,7 @@ export class CatalogCorrectionService {
             .from(bookEditions)
             .where(
               and(
-                eq(bookEditions.isbn, proposedIsbn),
+                eq(bookEditions.isbn, request.proposedValue),
                 source.bookEditionId ? ne(bookEditions.id, source.bookEditionId) : undefined,
               ),
             )
@@ -190,8 +199,40 @@ export class CatalogCorrectionService {
     });
   }
 
-  async loadSource(storeId: string, skuId: string) {
-    const [row] = await this.db
+  private async loadLockedSource(tx: Tx, storeId: string, skuId: string) {
+    // Fixed lock order: inventory, SKU, product, edition, book.
+    // SHARE locks conflict with a concurrent HQ UPDATE of these rows.
+    // Lock the three inner-joined records first: PostgreSQL rejects FOR SHARE
+    // on the nullable side of the later book/edition LEFT JOINs.
+    const [linked] = await tx
+      .select({ bookEditionId: products.bookEditionId })
+      .from(storeInventory)
+      .innerJoin(skus, eq(storeInventory.skuId, skus.id))
+      .innerJoin(products, eq(skus.productId, products.id))
+      .where(and(eq(storeInventory.storeId, storeId), eq(storeInventory.skuId, skuId)))
+      .for('share')
+      .limit(1);
+    if (!linked) return null;
+    if (linked.bookEditionId) {
+      const [edition] = await tx
+        .select({ bookId: bookEditions.bookId })
+        .from(bookEditions)
+        .where(eq(bookEditions.id, linked.bookEditionId))
+        .for('share')
+        .limit(1);
+      if (!edition) return null;
+      const [book] = await tx
+        .select({ id: books.id })
+        .from(books)
+        .where(eq(books.id, edition.bookId))
+        .for('share')
+        .limit(1);
+      if (!book) return null;
+    }
+    // Re-read AFTER locks in the SAME transaction. If HQ changed the master
+    // before lock acquisition, the refreshed value will fail stale checks;
+    // later HQ updates wait until the recommendation transaction commits.
+    const [row] = await tx
       .select({
         productId: products.id,
         productName: products.name,
@@ -214,7 +255,17 @@ export class CatalogCorrectionService {
   }
 }
 
-type Source = NonNullable<Awaited<ReturnType<CatalogCorrectionService['loadSource']>>>;
+type Source = {
+  productId: string;
+  productName: string;
+  bookTitle: string | null;
+  author: string | null;
+  publisher: string | null;
+  isbn: string | null;
+  bookEditionId: string | null;
+  priceMinor: number;
+  inventoryVersion: number;
+};
 
 function getSourceField(source: Source, field: string): string | null | undefined {
   switch (field) {
