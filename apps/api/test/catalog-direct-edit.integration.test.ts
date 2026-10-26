@@ -29,6 +29,7 @@ import {
 import { StaffSessionService } from '../src/auth/staff-session.js';
 import { StoreNetworkService } from '../src/stores/store-service.js';
 import {
+  registerHqCatalogEditRoutes,
   registerStoreCatalogEditRoutes,
   registerStoreCatalogReadRoutes,
 } from '../src/commerce/store-catalog-read-routes.js';
@@ -272,6 +273,11 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
       };
       registerStoreCatalogReadRoutes(app, { ...options, catalog: reader });
       registerStoreCatalogEditRoutes(app, { ...options, catalog: editor });
+      registerHqCatalogEditRoutes(app, {
+        ...options,
+        catalog: reader,
+        editor,
+      });
       const headers = { authorization: 'Bearer ' + sessions.issue(actor!.id).token };
       const ownUrl = `/api/v1/staff/stores/${storeA!.id}/catalog`;
       const foreignUrl = `/api/v1/staff/stores/${storeB!.id}/catalog`;
@@ -355,6 +361,83 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
         });
         expect(revokedEdit.statusCode).toBe(403);
         expect((await app.inject({ method: 'GET', url: ownUrl, headers })).statusCode).toBe(200);
+        // HQ has its own GLOBAL approval authority. A single STORE-scope
+        // account cannot use this HQ route, even with catalog.edit.
+        const hqPreviewUrl =
+          `/api/v1/staff/catalog/stores/${storeA!.id}/items/${sku!.id}/preview`;
+        const hqPatchUrl = `/api/v1/staff/catalog/stores/${storeA!.id}/items/${sku!.id}`;
+        const hqEdit = {
+          expectedProductVersion: 0,
+          expectedBookVersion: 1,
+          expectedSkuVersion: 1,
+          expectedLocalVersion: 1,
+          bookTitle: 'HQ approved shared title',
+        };
+        const noHqPermission = await app.inject({
+          method: 'POST',
+          url: hqPreviewUrl,
+          headers,
+          payload: hqEdit,
+        });
+        expect(noHqPermission.statusCode).toBe(403);
+
+        await db
+          .insert(permissions)
+          .values({ key: 'catalog.manage', displayName: 'HQ catalog manage' })
+          .onConflictDoNothing();
+        const [managePermission] = await db
+          .select({ id: permissions.id })
+          .from(permissions)
+          .where(eq(permissions.key, 'catalog.manage'));
+        await db.insert(rolePermissions).values({
+          roleId: role!.id,
+          permissionId: managePermission!.id,
+        });
+        await db.insert(staffDataScopes).values({
+          staffAccountId: actor!.id,
+          scopeType: 'GLOBAL',
+          scopeId: null,
+        });
+
+        const approvedPreview = await app.inject({
+          method: 'POST',
+          url: hqPreviewUrl,
+          headers,
+          payload: hqEdit,
+        });
+        expect(approvedPreview.statusCode).toBe(200);
+        const confirmed = approvedPreview.json<{
+          impact: { affectedStoreCount: number };
+          previewToken: string;
+        }>();
+        expect(confirmed.impact.affectedStoreCount).toBe(2);
+        expect(confirmed.previewToken).toMatch(/^\\d{10}\\./);
+
+        const missingAck = await app.inject({
+          method: 'PATCH',
+          url: hqPatchUrl,
+          headers,
+          payload: hqEdit,
+        });
+        expect(missingAck.statusCode).toBe(409);
+        const invalidAck = await app.inject({
+          method: 'PATCH',
+          url: hqPatchUrl,
+          headers: { ...headers, 'x-catalog-preview-token': 'invalid' },
+          payload: hqEdit,
+        });
+        expect(invalidAck.statusCode).toBe(409);
+        expect((await reader.get(storeB!.id, sku!.id))?.bookTitle).toBe('Edited Direct Edit Book');
+
+        const accepted = await app.inject({
+          method: 'PATCH',
+          url: hqPatchUrl,
+          headers: { ...headers, 'x-catalog-preview-token': confirmed.previewToken },
+          payload: hqEdit,
+        });
+        expect(accepted.statusCode).toBe(200);
+        expect((await reader.get(storeB!.id, sku!.id))?.bookTitle).toBe('HQ approved shared title');
+
       } finally {
         await app.close();
       }
