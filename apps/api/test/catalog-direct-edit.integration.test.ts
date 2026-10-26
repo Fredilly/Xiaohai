@@ -220,7 +220,7 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
       expect(updated.item.bookVersion).toBe(1);
       expect(updated.item.skuVersion).toBe(1);
       expect(updated.item.localVersion).toBe(1);
-      expect(updated.impact.affectedStoreCount).toBe(2);
+      expect(updated.impact.affectedStoreCount).toBe(4);
 
       const otherStore = await reader.get(storeB!.id, sku!.id);
       expect(otherStore?.bookTitle).toBe('Edited Direct Edit Book');
@@ -253,7 +253,7 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
         actor!.id,
         true,
       );
-      expect(changedPreview.impact.affectedStoreCount).toBe(2);
+      expect(changedPreview.impact.affectedStoreCount).toBe(4);
       // A store becomes unlinked after the preview; versions remain unchanged,
       // but the server must reject the old acknowledgement.
       await db
@@ -445,7 +445,7 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
           impact: { affectedStoreCount: number };
           previewToken: string;
         }>();
-        expect(confirmed.impact.affectedStoreCount).toBe(2);
+        expect(confirmed.impact.affectedStoreCount).toBe(4);
         expect(confirmed.previewToken).toMatch(/^\d{10}\./);
 
         const missingAck = await app.inject({
@@ -523,7 +523,7 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
             actor!.id,
             true,
           );
-          expect(scopePreview.impact.affectedStoreCount).toBe(2);
+          expect(scopePreview.impact.affectedStoreCount).toBe(4);
           let releaseLink!: () => void;
           const pendingLink = new Promise<void>((resolve) => {
             releaseLink = resolve;
