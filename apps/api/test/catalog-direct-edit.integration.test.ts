@@ -629,13 +629,10 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
             priceMinor: 950,
           }),
         ).rejects.toMatchObject({ code: 'SHARED_FORBIDDEN' });
-        const lastUpdated = await editor.update(
-          storeA!.id,
-          lastSku!.id,
-          actor!.id,
-          randomUUID(),
-          { ...baselineVersions, shelfLocation: 'Shelf Z-01' },
-        );
+        const lastUpdated = await editor.update(storeA!.id, lastSku!.id, actor!.id, randomUUID(), {
+          ...baselineVersions,
+          shelfLocation: 'Shelf Z-01',
+        });
         expect(lastUpdated.item).toMatchObject({
           skuId: lastSku!.id,
           priceMinor: 900,
@@ -643,7 +640,7 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
           shelfLocation: 'Shelf Z-01',
           localVersion: 1,
         });
-        expect((await reader.get(storeB!.id, lastSku!.id))).toBeNull();
+        expect(await reader.get(storeB!.id, lastSku!.id)).toBeNull();
       }
     } finally {
       await db.delete(auditLogs).where(eq(auditLogs.actorStaffAccountId, actor!.id));
