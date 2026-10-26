@@ -51,6 +51,7 @@ suite('HQ catalog create and optimistic update on disposable PostgreSQL', () => 
     let siblingSkuId: string | null = null;
     let regionId: string | null = null;
     const storeIds: string[] = [];
+    const pagedProductIds: string[] = [];
     try {
       const input = {
         name: 'HQ Catalog Integration ' + suffix,
@@ -466,6 +467,49 @@ suite('HQ catalog create and optimistic update on disposable PostgreSQL', () => 
       expect(
         (await commerce.getAdminProductsById(created.id)).map((item) => item.skuId).sort(),
       ).toEqual([created.skuId, extraSku!.id].sort());
+
+      const paged = await db
+        .insert(products)
+        .values(
+          Array.from({ length: 101 }, (_, index) => ({
+            name: `HQ Page Fixture ${String(index + 1).padStart(3, '0')} ${suffix}`,
+            status: 'ACTIVE' as const,
+          })),
+        )
+        .returning({ id: products.id });
+      pagedProductIds.push(...paged.map((item) => item.id));
+      await db.insert(skus).values(
+        paged.map((item, index) => ({
+          productId: item.id,
+          code: `HQ-PAGE-SKU-${suffix}-${index + 1}`,
+          name: 'Standard',
+          priceMinor: 100 + index,
+        })),
+      );
+      const firstPage = await commerce.listAdminProducts(undefined, undefined, 0, 30);
+      const secondPage = await commerce.listAdminProducts(undefined, undefined, 100, 30);
+      expect(firstPage.products).toHaveLength(30);
+      expect(firstPage.hasMore).toBe(true);
+      expect(secondPage.products.length).toBeGreaterThan(0);
+      const search = await commerce.listAdminProducts('HQ Page Fixture 101 ' + suffix, undefined, 0, 30);
+      expect(search.products).toHaveLength(1);
+      const target = search.products[0]!;
+      const change = {
+        name: target.name + ' edited',
+        description: target.description,
+        coverUrl: target.coverUrl,
+        status: target.status,
+        book: undefined,
+        sku: target.sku,
+        expectedProductVersion: target.productVersion,
+        expectedSkuId: target.skuId,
+        expectedSkuVersion: target.skuVersion,
+      };
+      const preview = await commerce.previewAdminProductUpdate(target.id, change, actor!.id);
+      const edited = await commerce.updateAdminProduct(
+        target.id, change, actor!.id, randomUUID(), preview.previewToken,
+      );
+      expect(edited.name).toContain('edited');
     } finally {
       await db.delete(auditLogs).where(eq(auditLogs.actorStaffAccountId, actor!.id));
       if (siblingSkuId) {
