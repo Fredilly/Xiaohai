@@ -436,7 +436,7 @@ export class MeipingReviewService {
           updatedByStaffAccountId: audit.actorStaffAccountId,
           updatedAt: values.updatedAt,
         })
-        .onConflictDoNothing();
+        ;
       await tx.insert(auditLogs).values({
         actorStaffAccountId: audit.actorStaffAccountId,
         actionKey: 'meiping.review.correction.save',
@@ -741,7 +741,7 @@ export class MeipingReviewService {
           updatedByStaffAccountId: audit.actorStaffAccountId,
           updatedAt: values.updatedAt,
         })
-        .onConflictDoNothing();
+        ;
       // An append-only audit event with complete before/after snapshots is
       // persisted in the same transaction as the mutable current decision.
       // A failed/stale mutation rolls back without producing a history entry.
