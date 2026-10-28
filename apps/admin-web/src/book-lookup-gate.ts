@@ -5,7 +5,9 @@ export function createBookLookupGate() {
   let revision = 0;
   return {
     start: () => ++revision,
-    invalidate: () => { revision += 1; },
+    invalidate: () => {
+      revision += 1;
+    },
     current: (token: number) => token === revision,
   };
 }

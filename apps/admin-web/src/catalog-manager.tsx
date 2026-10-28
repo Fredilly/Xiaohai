@@ -587,7 +587,12 @@ function ProductForm({
   const [existingBook, setExistingBook] = useState(false);
   // Every manual edit invalidates older pending ISBN lookup results.
   const lookupSequence = useRef(createBookLookupGate());
-  useEffect(() => () => { lookupSequence.current.invalidate(); }, []);
+  useEffect(
+    () => () => {
+      lookupSequence.current.invalidate();
+    },
+    [],
+  );
   function invalidateLookup() {
     lookupSequence.current.invalidate();
     setLookingUp(false);
@@ -736,7 +741,14 @@ function ProductForm({
         {!(!editingExisting && isBook) && (
           <>
             商品名
-            <input required value={v.name} onChange={(e) => { invalidateLookup(); setV({ ...v, name: e.target.value }); }} />
+            <input
+              required
+              value={v.name}
+              onChange={(e) => {
+                invalidateLookup();
+                setV({ ...v, name: e.target.value });
+              }}
+            />
           </>
         )}
       </label>
@@ -744,7 +756,10 @@ function ProductForm({
         简介
         <textarea
           value={v.description ?? ''}
-          onChange={(e) => { invalidateLookup(); setV({ ...v, description: e.target.value || null }); }}
+          onChange={(e) => {
+            invalidateLookup();
+            setV({ ...v, description: e.target.value || null });
+          }}
         />
       </label>
       <label>
@@ -752,7 +767,10 @@ function ProductForm({
         <input
           type="url"
           value={v.coverUrl ?? ''}
-          onChange={(e) => { invalidateLookup(); setV({ ...v, coverUrl: e.target.value || null }); }}
+          onChange={(e) => {
+            invalidateLookup();
+            setV({ ...v, coverUrl: e.target.value || null });
+          }}
         />
       </label>
       <label>
@@ -850,7 +868,10 @@ function ProductForm({
           <input
             required
             value={v.sku.code}
-            onChange={(e) => { invalidateLookup(); setV({ ...v, sku: { ...v.sku, code: e.target.value } }); }}
+            onChange={(e) => {
+              invalidateLookup();
+              setV({ ...v, sku: { ...v.sku, code: e.target.value } });
+            }}
           />
         </label>
       )}
@@ -859,7 +880,10 @@ function ProductForm({
         <input
           required
           value={v.sku.name}
-          onChange={(e) => { invalidateLookup(); setV({ ...v, sku: { ...v.sku, name: e.target.value } }); }}
+          onChange={(e) => {
+            invalidateLookup();
+            setV({ ...v, sku: { ...v.sku, name: e.target.value } });
+          }}
         />
       </label>
       <label>
@@ -883,7 +907,10 @@ function ProductForm({
           type="checkbox"
           checked={v.sku.availableForSale}
           disabled={!editingExisting && isBook}
-          onChange={(e) => { invalidateLookup(); setV({ ...v, sku: { ...v.sku, availableForSale: e.target.checked } }); }}
+          onChange={(e) => {
+            invalidateLookup();
+            setV({ ...v, sku: { ...v.sku, availableForSale: e.target.checked } });
+          }}
         />
         可售
       </label>

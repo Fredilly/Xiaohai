@@ -75,10 +75,6 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Workspace, Mini Program and secret checks
         run: pnpm check:workspace && pnpm check:miniapp && pnpm check:secrets
-      - name: Temporary PR166 Prettier patch diagnostic (remove before review)
-        run: |
-          pnpm exec prettier --write apps/admin-web/src/book-lookup-gate.ts apps/admin-web/src/catalog-manager.tsx apps/api/test/hq-catalog-create.integration.test.ts
-          git diff -- apps/admin-web/src/book-lookup-gate.ts apps/admin-web/src/catalog-manager.tsx apps/api/test/hq-catalog-create.integration.test.ts
       - name: Format, lint and typecheck
         run: pnpm format:check && pnpm lint && pnpm typecheck
       - name: Unit tests
