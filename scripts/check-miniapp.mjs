@@ -32,11 +32,14 @@ for (const environment of ['dev', 'staging', 'production']) {
   }
 }
 if (
-  !miniappConfig.includes("dev: 'http://127.0.0.1:3000'") ||
+  !miniappConfig.includes("dev: 'https://staging-api.pamboo.asia'") ||
   !miniappConfig.includes("staging: 'https://staging-api.pamboo.asia'") ||
   !miniappConfig.includes("production: 'https://api.example.invalid'")
 ) {
   throw new Error('Mini Program API endpoints must keep safe environment-specific defaults.');
+}
+if (/\bdev:\s*['"]http:\/\//.test(miniappConfig) || /\bdev:\s*['"]https?:\/\/(?:127\.0\.0\.1|localhost)/.test(miniappConfig)) {
+  throw new Error('Develop Mini Program API must not resolve to loopback or insecure HTTP.');
 }
 const ignore = await readFile('.gitignore', 'utf8');
 if (!ignore.includes('apps/miniapp/project.private.config.json')) {
