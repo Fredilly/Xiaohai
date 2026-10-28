@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { spawnSync } from 'node:child_process';
 import { reviewIssues } from './check-pr-review-gates.mjs';
 
 const body =
@@ -73,4 +74,19 @@ test('immutable history inserts cannot ignore conflicts', () => {
     ).join(','),
     /Immutable review history/,
   );
+});
+
+test('PR review scope cannot be skipped, even if all other gates pass', () => {
+  const check = (event, outcome) =>
+    spawnSync('bash', ['scripts/check-pr-review-result.sh', event, outcome], {
+      encoding: 'utf8',
+    }).status;
+  assert.equal(check('pull_request', 'success'), 0);
+  assert.notEqual(check('pull_request', 'skipped'), 0);
+  assert.notEqual(check('pull_request', 'failure'), 0);
+  assert.notEqual(check('pull_request', ''), 0);
+  assert.equal(check('push', 'skipped'), 0);
+  assert.equal(check('push', 'success'), 0);
+  assert.notEqual(check('push', 'failure'), 0);
+  assert.notEqual(check('workflow_dispatch', 'skipped'), 0);
 });
