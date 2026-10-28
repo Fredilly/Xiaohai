@@ -11,7 +11,8 @@ type DatabaseTestEnv = Pick<
 
 const DISPOSABLE_DATABASES = new Set(['xiaohai_test', 'xiaohai_pr162_security_test']);
 const LOCAL_DATABASE_HOSTS = new Set(['127.0.0.1', 'localhost', '[::1]']);
-const UNSAFE_TARGET = 'Meiping apply integration requires a local allowlisted disposable test database';
+const UNSAFE_TARGET =
+  'Meiping apply integration requires a local allowlisted disposable test database';
 
 function assertAllowedUrl(value: string): URL {
   let url: URL;

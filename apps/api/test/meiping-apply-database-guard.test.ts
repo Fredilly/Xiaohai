@@ -3,8 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { assertMeipingApplyDisposableDatabase } from './meiping-apply-database-guard.js';
 
 const local = 'postgresql://postgres:fixture@127.0.0.1:5432/xiaohai_test';
-const sandbox =
-  'postgresql://postgres:fixture@localhost:5432/xiaohai_pr162_security_test';
+const sandbox = 'postgresql://postgres:fixture@localhost:5432/xiaohai_pr162_security_test';
 const safeEnv = {
   DATABASE_URL: local,
   TEST_DATABASE_URL: local,
@@ -17,15 +16,18 @@ describe('Meiping apply integration disposable database guard', () => {
     expect(assertMeipingApplyDisposableDatabase({ NODE_ENV: 'test' })).toBe(false);
   });
 
-  it.each([local, sandbox])('permits explicitly allowlisted local disposable database %s', (url) => {
-    expect(
-      assertMeipingApplyDisposableDatabase({
-        ...safeEnv,
-        DATABASE_URL: url,
-        TEST_DATABASE_URL: url,
-      }),
-    ).toBe(true);
-  });
+  it.each([local, sandbox])(
+    'permits explicitly allowlisted local disposable database %s',
+    (url) => {
+      expect(
+        assertMeipingApplyDisposableDatabase({
+          ...safeEnv,
+          DATABASE_URL: url,
+          TEST_DATABASE_URL: url,
+        }),
+      ).toBe(true);
+    },
+  );
 
   it.each([
     'postgresql://postgres:fixture@127.0.0.1:5432/xiaohai_dev',
