@@ -4,9 +4,8 @@
  * createDatabase() uses TEST_DATABASE_URL (not DATABASE_URL) when NODE_ENV=test,
  * so checking only DATABASE_URL could otherwise validate the wrong target.
  */
-type DatabaseTestEnv = Pick<
-  NodeJS.ProcessEnv,
-  'DATABASE_URL' | 'TEST_DATABASE_URL' | 'NODE_ENV' | 'APP_ENV'
+type DatabaseTestEnv = Partial<
+  Pick<NodeJS.ProcessEnv, 'DATABASE_URL' | 'TEST_DATABASE_URL' | 'NODE_ENV' | 'APP_ENV'>
 >;
 
 const DISPOSABLE_DATABASES = new Set(['xiaohai_test', 'xiaohai_pr162_security_test']);
