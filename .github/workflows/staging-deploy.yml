@@ -61,6 +61,8 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
           printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
           test -n "$SSH_USER"
+      # This workflow changes application images only; schema/data writes require
+      # a separate DBA-approved migration or seed operation (Issue #169).
       - name: Deploy exact CI-verified revision
         env:
           HOST: ${{ secrets.STAGING_SSH_HOST }}
@@ -72,5 +74,5 @@ jobs:
           ssh "$USER@$HOST" 'mkdir -p ~/xiaohai-deploy'
           scp deploy/staging.compose.yml deploy/Caddyfile "$USER@$HOST:~/xiaohai-deploy/"
           printf '%s' "$GH_TOKEN" | ssh "$USER@$HOST" 'docker login ghcr.io -u xiaohai-deploy --password-stdin'
-          ssh "$USER@$HOST" "cd ~/xiaohai-deploy && test -f staging.env && printf 'REVISION=%s\\n' '$REVISION' > revision.env && docker compose --env-file staging.env --env-file revision.env -f staging.compose.yml pull && docker compose --env-file staging.env --env-file revision.env -f staging.compose.yml run --rm --no-deps api node packages/db/dist/src/migrate.js && docker compose --env-file staging.env --env-file revision.env -f staging.compose.yml up -d --remove-orphans && docker compose --env-file staging.env --env-file revision.env -f staging.compose.yml run --rm --no-deps api node packages/db/dist/src/seed-staging-home-cli.js && docker logout ghcr.io"
+          ssh "$USER@$HOST" "cd ~/xiaohai-deploy && test -f staging.env && printf 'REVISION=%s\\n' '$REVISION' > revision.env && docker compose --env-file staging.env --env-file revision.env -f staging.compose.yml pull && docker compose --env-file staging.env --env-file revision.env -f staging.compose.yml up -d --remove-orphans && docker logout ghcr.io"
           curl --fail --retry 8 --retry-delay 5 --retry-connrefused "https://staging-api.pamboo.asia/health"

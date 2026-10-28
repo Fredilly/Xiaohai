@@ -2,6 +2,9 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { StaffMeResponse } from '@xiaohai/contracts';
 import { MEIPING_PREFLIGHT_MAX_BYTES, MEIPING_PREFLIGHT_MAX_MIB } from '@xiaohai/contracts/meiping';
 import { loadHqStores } from './hq-operations-api';
+import { MeipingReviewManager } from './meiping-review-manager';
+import { MeipingReviewResumePanel } from './meiping-review-resume-panel';
+import { meipingReviewPermissions } from './meiping-review-permissions';
 import {
   downloadMeipingExceptions,
   MeipingPreflightApiError,
@@ -95,7 +98,13 @@ function renderIssue(issue: MeipingIssue) {
 export function MeipingPreflightManager({ token, me }: { token: string; me: StaffMeResponse }) {
   const permissions = useMemo(() => new Set(me.permissions), [me.permissions]);
   const canPreflight = permissions.has('inventory.receive');
+  const { canReadReview, canEditReview, canVerifyCorrection } = meipingReviewPermissions(
+    me.permissions,
+  );
   const canReadStores = permissions.has('stores.read');
+  const canImportPreview = permissions.has('meiping.import.preview');
+  const canImportApprove = permissions.has('meiping.import.approve');
+  const canImportExecute = permissions.has('meiping.import.execute');
   const [stores, setStores] = useState<Awaited<ReturnType<typeof loadHqStores>> | null>(null);
   const [storeId, setStoreId] = useState('');
   const [file, setFile] = useState<(File & { readonly name: string }) | null>(null);
@@ -136,12 +145,12 @@ export function MeipingPreflightManager({ token, me }: { token: string; me: Staf
   const selectedStore = stores?.stores.find((store) => store.id === storeId);
   const reportIsCurrent = isReportCurrent(reportStoreId, reportFile, storeId, file);
 
-  if (!canPreflight) {
+  if (!canPreflight && !canReadReview) {
     return (
       <section className="panel meiping-panel">
         <span className="badge">权限不足</span>
         <h2>美萍导入预检查</h2>
-        <p>当前账号没有 inventory.receive 权限，不能上传或预检查文件。</p>
+        <p>当前账号没有预检查或审核草稿读取权限。</p>
       </section>
     );
   }
@@ -181,7 +190,7 @@ export function MeipingPreflightManager({ token, me }: { token: string; me: Staf
   }
 
   async function submit() {
-    if (!storeId || !file) {
+    if (!canPreflight || !storeId || !file) {
       setStatus('请先选择授权门店和 Excel 文件。');
       return;
     }
@@ -215,7 +224,7 @@ export function MeipingPreflightManager({ token, me }: { token: string; me: Staf
   }
 
   async function downloadCsv() {
-    if (!file || !storeId || !reportIsCurrent) return;
+    if (!canPreflight || !file || !storeId || !reportIsCurrent) return;
     setBusy(true);
     try {
       const csv = await downloadMeipingExceptions(token, storeId, file);
@@ -237,9 +246,13 @@ export function MeipingPreflightManager({ token, me }: { token: string; me: Staf
       <div className="panel meiping-intro">
         <div className="meiping-heading">
           <div>
-            <span className="badge">只读预检查</span>
-            <h2>美萍 Excel 导入预检查</h2>
-            <p>先选择已授权门店并查看解析结果。当前版本不会写入商品、SKU 或库存。</p>
+            <span className="badge">{canPreflight ? '只读预检查' : '独立复核 · 只读草稿'}</span>
+            <h2>{canPreflight ? '美萍 Excel 导入预检查' : '美萍纠错建议独立复核'}</h2>
+            <p>
+              {canPreflight
+                ? '先选择已授权门店并查看解析结果。当前版本不会写入商品、SKU 或库存。'
+                : '选择授权门店并继续已有审核草稿。不能上传文件、修改原审核决定或修改纠错建议。'}
+            </p>
           </div>
           <span className="meiping-readonly">正式入库：未开放</span>
         </div>
@@ -266,33 +279,37 @@ export function MeipingPreflightManager({ token, me }: { token: string; me: Staf
               ))}
             </select>
           </label>
-          <label>
-            {meipingMaxFileSizeLabel()}
-            <input
-              ref={inputRef}
-              type="file"
-              accept=".xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-              disabled={busy}
-              onChange={(event) => chooseFile(event.target.files?.[0])}
-            />
-          </label>
+          {canPreflight && (
+            <label>
+              {meipingMaxFileSizeLabel()}
+              <input
+                ref={inputRef}
+                type="file"
+                accept=".xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                disabled={busy}
+                onChange={(event) => chooseFile(event.target.files?.[0])}
+              />
+            </label>
+          )}
         </div>
         <div className="meiping-upload-actions">
           <span>
             {selectedStore ? `当前门店：${selectedStore.name}` : '仅可使用服务端返回的授权门店'}
           </span>
-          <div className="button-row">
-            <button disabled={busy || !file || !storeId} onClick={() => void submit()}>
-              {busy ? '处理中…' : '开始只读预检查'}
-            </button>
-            <button
-              className="secondary"
-              disabled={busy || !reportIsCurrent}
-              onClick={() => void downloadCsv()}
-            >
-              下载问题明细 CSV
-            </button>
-          </div>
+          {canPreflight && (
+            <div className="button-row">
+              <button disabled={busy || !file || !storeId} onClick={() => void submit()}>
+                {busy ? '处理中…' : '开始只读预检查'}
+              </button>
+              <button
+                className="secondary"
+                disabled={busy || !reportIsCurrent}
+                onClick={() => void downloadCsv()}
+              >
+                下载问题明细 CSV
+              </button>
+            </div>
+          )}
         </div>
         {status && (
           <p className="meiping-status" role="alert">
@@ -301,10 +318,27 @@ export function MeipingPreflightManager({ token, me }: { token: string; me: Staf
         )}
       </div>
 
+      {!reportIsCurrent && (
+        <MeipingReviewResumePanel
+          key={storeId}
+          token={token}
+          storeId={storeId}
+          canReadReview={canReadReview}
+          canEditReview={canEditReview}
+          canVerifyCorrection={canVerifyCorrection}
+          canImportPreview={canImportPreview}
+          canImportApprove={canImportApprove}
+          canImportExecute={canImportExecute}
+        />
+      )}
       {!report ? (
         <div className="panel empty-state meiping-empty">
-          <strong>等待上传 Excel</strong>
-          <span>这里将展示商品数量、异常原因和待盘点库存计划。</span>
+          <strong>{canPreflight ? '等待上传 Excel' : '选择授权门店继续复核'}</strong>
+          <span>
+            {canPreflight
+              ? '这里将展示商品数量、异常原因和待盘点库存计划。'
+              : '选择门店后，在上方打开已有审核草稿，查看需要独立复核的纠错建议。'}
+          </span>
         </div>
       ) : (
         <>
@@ -412,11 +446,27 @@ export function MeipingPreflightManager({ token, me }: { token: string; me: Staf
               </div>
             )}
           </section>
+          {reportIsCurrent && file && (
+            <MeipingReviewManager
+              key={storeId + ':' + (report.sourceChecksum ?? '')}
+              token={token}
+              storeId={storeId}
+              file={file}
+              report={report}
+              canReadReview={canReadReview}
+              canEditReview={canEditReview}
+              canVerifyCorrection={canVerifyCorrection}
+              canImportPreview={canImportPreview}
+              canImportApprove={canImportApprove}
+              canImportExecute={canImportExecute}
+            />
+          )}
           <section className="panel meiping-future">
-            <span className="badge">后续位置</span>
-            <h3>人工审核与正式入库</h3>
+            <span className="badge">受保护流程</span>
+            <h3>正式导入与对账</h3>
             <p>
-              当前只生成预检查结果。管理员审核匹配、异常和实际盘点数量后，才可在后续版本进入带审计和幂等保护的
+              先完成每条记录的人工审核和实际盘点，再生成 Dry
+              Run。独立最终批准和环境执行开关同时满足后，才会进入 带审计、事务和幂等保护的
               INITIAL_MIGRATION 入库流程。
             </p>
           </section>
