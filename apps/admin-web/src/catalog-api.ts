@@ -1,13 +1,12 @@
 import {
-  adminProductCreateInputSchema,
-  bookLookupResponseSchema,
+  adminProductInputSchema,
   adminProductUpdateInputSchema,
   adminProductListResponseSchema,
   adminProductSchema,
   storeCatalogEditRequestSchema,
   storeCatalogEditPreviewResponseSchema,
   storeCatalogResponseSchema,
-  type AdminProductCreateInput,
+  type AdminProductInput,
   type AdminProductUpdateInput,
   type StoreCatalogEditRequest,
 } from '@xiaohai/contracts/commerce';
@@ -16,11 +15,8 @@ const configuredBase: unknown = import.meta.env.VITE_API_BASE_URL;
 const base = typeof configuredBase === 'string' ? configuredBase : 'http://127.0.0.1:3000';
 
 export class CatalogApiError extends Error {
-  constructor(
-    readonly status: number,
-    message?: string,
-  ) {
-    super(message ?? `Catalog API ${status}`);
+  constructor(readonly status: number) {
+    super(`Catalog API ${status}`);
   }
 }
 
@@ -42,65 +38,26 @@ async function call(
     },
     body: body ? JSON.stringify(body) : undefined,
   });
-  if (!response.ok) {
-    let payload: unknown;
-    try {
-      payload = await response.json();
-    } catch {
-      payload = null;
-    }
-    const message =
-      payload &&
-      typeof payload === 'object' &&
-      'error' in payload &&
-      payload.error &&
-      typeof payload.error === 'object' &&
-      'message' in payload.error &&
-      typeof payload.error.message === 'string'
-        ? payload.error.message
-        : undefined;
-    throw new CatalogApiError(response.status, message);
-  }
+  if (!response.ok) throw new CatalogApiError(response.status);
 
   const payload: unknown = await response.json();
   return payload;
 }
 
-export const listAdminProducts = async (token: string, q = '', offset = 0, limit = 30) =>
+export const listAdminProducts = async (token: string, q = '') =>
   adminProductListResponseSchema.parse(
-    await call(
-      `/api/v1/staff/catalog/products?${new URLSearchParams({
-        ...(q ? { q } : {}),
-        offset: String(offset),
-        limit: String(limit),
-      })}`,
-      token,
-    ),
+    await call(`/api/v1/staff/catalog/products${q ? `?q=${encodeURIComponent(q)}` : ''}`, token),
   );
 
-export const getAdminProduct = async (token: string, id: string) =>
-  adminProductSchema.parse(
-    await call(`/api/v1/staff/catalog/products/${encodeURIComponent(id)}`, token),
-  );
-
-export const lookupBook = async (token: string, code: string) =>
-  bookLookupResponseSchema.parse(
-    await call(`/api/v1/staff/catalog/books/lookup?${new URLSearchParams({ code })}`, token),
-  );
-
-export const createAdminProduct = async (
-  token: string,
-  input: AdminProductCreateInput,
-  requestKey: string,
-) =>
+export const createAdminProduct = async (token: string, input: AdminProductInput, key: string) =>
   adminProductSchema.parse(
     await call(
       '/api/v1/staff/catalog/products',
       token,
       'POST',
-      adminProductCreateInputSchema.parse(input),
+      adminProductInputSchema.parse(input),
       undefined,
-      requestKey,
+      key,
     ),
   );
 

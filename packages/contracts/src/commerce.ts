@@ -35,7 +35,6 @@ export const commerceErrorCodeSchema = z.enum([
   'CONFLICT',
   'NOT_PURCHASABLE',
   'INVALID_ORDER_STATE',
-  'INVALID_INPUT',
   'INTERNAL_ERROR',
 ]);
 export const commerceErrorResponseSchema = z.object({
@@ -136,28 +135,8 @@ export const orderSchema = z.object({
 });
 export const orderListResponseSchema = z.object({ orders: z.array(orderSchema) });
 export const adminCatalogQuerySchema = z
-  .object({
-    q: z.string().trim().max(120).optional(),
-    status: productStatusSchema.optional(),
-    offset: z.coerce.number().int().nonnegative().max(1000000).default(0),
-    limit: z.coerce.number().int().min(1).max(100).default(30),
-  })
+  .object({ q: z.string().trim().max(120).optional(), status: productStatusSchema.optional() })
   .strict();
-export const bookLookupQuerySchema = z.object({ code: z.string().trim().min(1).max(32) }).strict();
-export const bookLookupResponseSchema = z.object({
-  source: z.enum(['LOCAL', 'OPEN_LIBRARY', 'NOT_FOUND']),
-  existingProductId: z.uuid().nullable(),
-  book: z
-    .object({
-      title: z.string(),
-      author: z.string(),
-      isbn: z.string(),
-      publisher: z.string().nullable(),
-      coverUrl: z.string().nullable(),
-    })
-    .nullable(),
-  suggestedPriceMinor: moneyMinorSchema.nullable(),
-});
 const adminProductFieldsSchema = z
   .object({
     expectedSkuId: z.uuid().optional(),
@@ -185,12 +164,7 @@ const adminProductFieldsSchema = z
     }),
   })
   .strict();
-const adminProductCreateFieldsSchema = adminProductFieldsSchema.extend({
-  sku: adminProductFieldsSchema.shape.sku.extend({
-    code: z.string().trim().min(1).max(80).optional(),
-  }),
-});
-export const adminProductCreateInputSchema = adminProductCreateFieldsSchema.extend({
+export const adminProductCreateInputSchema = adminProductFieldsSchema.extend({
   expectedProductVersion: z.number().int().nonnegative().optional(),
   expectedSkuVersion: z.number().int().nonnegative().optional(),
 });
@@ -205,29 +179,20 @@ export const adminProductInputSchema = adminProductCreateInputSchema;
 export const adminProductSchema = adminProductCreateInputSchema.extend({
   id: z.uuid(),
   skuId: z.uuid(),
-  bookId: z.uuid().nullable(),
-  editionId: z.uuid().nullable(),
   productVersion: z.number().int().nonnegative(),
   bookVersion: z.number().int().nonnegative().nullable(),
   editionVersion: z.number().int().nonnegative().nullable(),
   skuVersion: z.number().int().nonnegative(),
 });
-export const adminProductListResponseSchema = z.object({
-  offset: z.number().int().nonnegative(),
-  limit: z.number().int().positive(),
-  hasMore: z.boolean(),
-  products: z.array(adminProductSchema),
-});
+export const adminProductListResponseSchema = z.object({ products: z.array(adminProductSchema) });
 
 export type CatalogProduct = z.infer<typeof catalogProductSchema>;
 export type CartResponse = z.infer<typeof cartResponseSchema>;
 export type AddressInput = z.infer<typeof addressInputSchema>;
 export type Address = z.infer<typeof addressSchema>;
 export type Order = z.infer<typeof orderSchema>;
-export type AdminProductCreateInput = z.infer<typeof adminProductCreateInputSchema>;
 export type AdminProductInput = z.infer<typeof adminProductInputSchema>;
 export type AdminProductUpdateInput = z.infer<typeof adminProductUpdateInputSchema>;
-export type BookLookupResponse = z.infer<typeof bookLookupResponseSchema>;
 export type CommerceErrorCode = z.infer<typeof commerceErrorCodeSchema>;
 
 /** Authenticated Staff read-model: only SKU rows linked to the scoped store's inventory. */

@@ -4,8 +4,6 @@ import {
   addCartItemRequestSchema,
   addressInputSchema,
   adminCatalogQuerySchema,
-  bookLookupQuerySchema,
-  bookLookupResponseSchema,
   adminProductCreateInputSchema,
   adminProductUpdateInputSchema,
   catalogListResponseSchema,
@@ -211,41 +209,7 @@ export function registerCommerceRoutes(
     if (!input.success) return invalid(reply, request.id);
     try {
       await staff(request);
-      return await options.commerce.listAdminProducts(
-        input.data.q,
-        input.data.status,
-        input.data.offset,
-        input.data.limit,
-      );
-    } catch (error) {
-      return fail(request, reply, error);
-    }
-  });
-  app.get('/api/v1/staff/catalog/products/:id', async (request, reply) => {
-    const params = z.object({ id: z.uuid() }).safeParse(request.params);
-    if (!params.success) return invalid(reply, request.id);
-    try {
-      await staff(request);
-      const result = await options.commerce.listAdminProducts(
-        undefined,
-        undefined,
-        0,
-        1,
-        params.data.id,
-      );
-      const product = result.products[0];
-      if (!product) throw new CommerceError('NOT_FOUND', 'Product not found');
-      return product;
-    } catch (error) {
-      return fail(request, reply, error);
-    }
-  });
-  app.get('/api/v1/staff/catalog/books/lookup', async (request, reply) => {
-    const input = bookLookupQuerySchema.safeParse(request.query);
-    if (!input.success) return invalid(reply, request.id);
-    try {
-      await staff(request);
-      return bookLookupResponseSchema.parse(await options.commerce.lookupBook(input.data.code));
+      return await options.commerce.listAdminProducts(input.data.q, input.data.status);
     } catch (error) {
       return fail(request, reply, error);
     }
@@ -314,7 +278,7 @@ function invalid(reply: FastifyReply, requestId: string) {
     }),
   );
 }
-export function fail(request: FastifyRequest, reply: FastifyReply, error: unknown) {
+function fail(request: FastifyRequest, reply: FastifyReply, error: unknown) {
   let status = 500;
   let code:
     | 'CONSUMER_AUTHENTICATION_REQUIRED'
@@ -324,7 +288,6 @@ export function fail(request: FastifyRequest, reply: FastifyReply, error: unknow
     | 'CONFLICT'
     | 'NOT_PURCHASABLE'
     | 'INVALID_ORDER_STATE'
-    | 'INVALID_INPUT'
     | 'INTERNAL_ERROR' = 'INTERNAL_ERROR';
   if (error instanceof CommerceAuthError) {
     status = 401;
@@ -346,18 +309,12 @@ export function fail(request: FastifyRequest, reply: FastifyReply, error: unknow
           ? 409
           : code === 'INVALID_ORDER_STATE'
             ? 409
-            : code === 'INVALID_INPUT'
-              ? 400
-              : 409;
+            : 409;
   }
   request.log.warn({ requestId: request.id, errorCode: code }, 'Commerce request failed');
   return reply.status(status).send(
     commerceErrorResponseSchema.parse({
-      error: {
-        code,
-        message: publicMessage(code),
-        requestId: request.id,
-      },
+      error: { code, message: publicMessage(code), requestId: request.id },
     }),
   );
 }
@@ -377,8 +334,6 @@ function publicMessage(code: string) {
       return 'SKU is not purchasable';
     case 'INVALID_ORDER_STATE':
       return 'Order state does not allow this action';
-    case 'INVALID_INPUT':
-      return 'Invalid catalog update';
     default:
       return 'Internal server error';
   }
