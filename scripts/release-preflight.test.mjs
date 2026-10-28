@@ -100,7 +100,7 @@ const validPaidImageEnvironment = {
   BOS_PREFLIGHT_OBJECT_URL: 'https://assets.example.com/preflight/health.png',
 };
 
-test('paid-image preflight accepts positive integer budgets at their limits', () => {
+test('accepts positive integer budgets at their limits', () => {
   const env = {
     ...validPaidImageEnvironment,
     PICTURE_BOOK_IMAGE_BUDGET_RESERVATION_MINOR: '500',
@@ -109,7 +109,7 @@ test('paid-image preflight accepts positive integer budgets at their limits', ()
   assert.deepEqual(validatePaidImageConfiguration(env), []);
 });
 
-test('paid-image preflight rejects nonpositive, fractional and unsafe budget numbers', () => {
+test('rejects invalid budget minor units', () => {
   const fields = [
     'PICTURE_BOOK_IMAGE_BUDGET_RESERVATION_MINOR',
     'PICTURE_BOOK_IMAGE_BUDGET_GLOBAL_LIMIT_MINOR',
@@ -122,15 +122,13 @@ test('paid-image preflight rejects nonpositive, fractional and unsafe budget num
         ...validPaidImageEnvironment,
         [key]: value,
       });
-      assert.ok(
-        failures.some((failure) => failure.includes(key) && failure.includes('positive safe integer')),
-        `${key} must reject malformed minor units`,
-      );
+      const problem = failures.find((failure) => failure.includes(key));
+      assert.match(problem ?? '', /positive safe integer/);
     }
   }
 });
 
-test('paid-image preflight blocks reservation exceeding either daily cap', () => {
+test('rejects reservations exceeding either daily cap', () => {
   for (const limit of [
     'PICTURE_BOOK_IMAGE_BUDGET_GLOBAL_LIMIT_MINOR',
     'PICTURE_BOOK_IMAGE_BUDGET_CONSUMER_LIMIT_MINOR',
@@ -139,14 +137,14 @@ test('paid-image preflight blocks reservation exceeding either daily cap', () =>
       ...validPaidImageEnvironment,
       [limit]: '99',
     });
-    assert.ok(failures.some((failure) => failure.includes('exceeds a configured budget limit')));
+    assert.ok(failures.join(',').includes('exceeds a configured budget limit'));
   }
 });
 
-test('paid-image preflight rejects missing numeric fields without exposing values', () => {
+test('rejects missing numeric fields without logging values', () => {
   const env = { ...validPaidImageEnvironment };
   delete env.PICTURE_BOOK_IMAGE_BUDGET_GLOBAL_LIMIT_MINOR;
   const failures = validatePaidImageConfiguration(env);
-  assert.ok(failures.some((failure) => failure.includes('GLOBAL_LIMIT_MINOR') && failure.includes('required')));
-  assert.equal(failures.some((failure) => failure.includes('dashscope.aliyuncs.com')), false);
+  assert.ok(failures.join(',').includes('GLOBAL_LIMIT_MINOR is required'));
+  assert.equal(failures.join(',').includes('dashscope.aliyuncs.com'), false);
 });
