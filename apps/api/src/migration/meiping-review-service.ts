@@ -4,6 +4,8 @@ import {
   bookEditions,
   skus,
   meipingCorrectionReviews,
+  meipingReviewCorrectionHistory,
+  meipingReviewDecisionHistory,
   meipingReviewCorrections,
   meipingReviewDecisions,
   meipingReviewSessions,
@@ -219,6 +221,30 @@ export class MeipingReviewService {
               ),
             )
         : [];
+    const decisionHistory =
+      rowNumbers.length > 0
+        ? await this.db
+            .select()
+            .from(meipingReviewDecisionHistory)
+            .where(
+              and(
+                eq(meipingReviewDecisionHistory.sessionId, id),
+                inArray(meipingReviewDecisionHistory.sourceRowNumber, rowNumbers),
+              ),
+            )
+        : [];
+    const correctionHistory =
+      rowNumbers.length > 0
+        ? await this.db
+            .select()
+            .from(meipingReviewCorrectionHistory)
+            .where(
+              and(
+                eq(meipingReviewCorrectionHistory.sessionId, id),
+                inArray(meipingReviewCorrectionHistory.sourceRowNumber, rowNumbers),
+              ),
+            )
+        : [];
     const reviewed =
       rowNumbers.length > 0
         ? await this.db
@@ -236,6 +262,18 @@ export class MeipingReviewService {
     );
     const correctionsByRow = new Map(corrections.map((item) => [item.sourceRowNumber, item]));
     const decisionsByRow = new Map(saved.map((item) => [item.sourceRowNumber, item]));
+    const decisionHistoryByRow = new Map<number, typeof decisionHistory>();
+    for (const item of decisionHistory) {
+      const history = decisionHistoryByRow.get(item.sourceRowNumber) ?? [];
+      history.push(item);
+      decisionHistoryByRow.set(item.sourceRowNumber, history);
+    }
+    const correctionHistoryByRow = new Map<number, typeof correctionHistory>();
+    for (const item of correctionHistory) {
+      const history = correctionHistoryByRow.get(item.sourceRowNumber) ?? [];
+      history.push(item);
+      correctionHistoryByRow.set(item.sourceRowNumber, history);
+    }
     return {
       sessionId: id,
       storeId: session.storeId,
@@ -254,7 +292,24 @@ export class MeipingReviewService {
         issueCodes: row.issues.map((issue) => issue.code),
         saleBlocked: row.saleBlocked.length > 0,
         decision: decisionsByRow.get(row.sourceRowNumber) ?? null,
+        decisionHistory: (decisionHistoryByRow.get(row.sourceRowNumber) ?? []).map((item) => ({
+          sourceRowNumber: item.sourceRowNumber,
+          action: item.action,
+          countedQuantity: item.countedQuantity,
+          reason: item.reason,
+          version: item.version,
+          updatedAt: item.updatedAt,
+          capturedAt: item.capturedAt,
+        })),
         correction: correctionsByRow.get(row.sourceRowNumber) ?? null,
+        correctionHistory: (correctionHistoryByRow.get(row.sourceRowNumber) ?? []).map((item) => ({
+          sourceRowNumber: item.sourceRowNumber,
+          proposedFields: item.proposedFields,
+          reason: item.reason,
+          version: item.version,
+          updatedAt: item.updatedAt,
+          capturedAt: item.capturedAt,
+        })),
         correctionReview:
           activeReview.get(
             row.sourceRowNumber + ':' + (correctionsByRow.get(row.sourceRowNumber)?.version ?? 0),
@@ -370,6 +425,15 @@ export class MeipingReviewService {
           .returning({ version: meipingReviewCorrections.version });
       }
       if (!result) throw new MeipingReviewError('CONFLICT');
+      await tx.insert(meipingReviewCorrectionHistory).values({
+        sessionId: id,
+        sourceRowNumber,
+        proposedFields: clean,
+        reason: input.reason.trim(),
+        version: result.version,
+        updatedByStaffAccountId: audit.actorStaffAccountId,
+        updatedAt: values.updatedAt,
+      });
       await tx.insert(auditLogs).values({
         actorStaffAccountId: audit.actorStaffAccountId,
         actionKey: 'meiping.review.correction.save',
@@ -662,6 +726,16 @@ export class MeipingReviewService {
           .returning({ version: meipingReviewDecisions.version });
       }
       if (!updated) throw new MeipingReviewError('CONFLICT');
+      await tx.insert(meipingReviewDecisionHistory).values({
+        sessionId: id,
+        sourceRowNumber,
+        action: values.action,
+        countedQuantity: values.countedQuantity,
+        reason: values.reason,
+        version: updated.version,
+        updatedByStaffAccountId: audit.actorStaffAccountId,
+        updatedAt: values.updatedAt,
+      });
       // An append-only audit event with complete before/after snapshots is
       // persisted in the same transaction as the mutable current decision.
       // A failed/stale mutation rolls back without producing a history entry.

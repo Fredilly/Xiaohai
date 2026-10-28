@@ -6,6 +6,7 @@ export type ReviewDecision = {
   version: number;
   updatedAt: string;
 };
+export type ReviewDecisionHistory = ReviewDecision & { capturedAt: string };
 export type ReviewCorrection = {
   sourceRowNumber: number;
   proposedFields: Partial<{
@@ -19,6 +20,7 @@ export type ReviewCorrection = {
   version: number;
   updatedAt: string;
 };
+export type ReviewCorrectionHistory = ReviewCorrection & { capturedAt: string };
 export type ReviewCorrectionInput = {
   expectedChecksum: string;
   expectedVersion: number;
@@ -56,7 +58,9 @@ export type ReviewItem = {
   issueCodes: string[];
   saleBlocked: boolean;
   decision: ReviewDecision | null;
+  decisionHistory?: ReviewDecisionHistory[];
   correction?: ReviewCorrection | null;
+  correctionHistory?: ReviewCorrectionHistory[];
   correctionReview?: CorrectionReview | null;
 };
 export type ReviewSession = {

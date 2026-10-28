@@ -1,4 +1,4 @@
-// Verifies the real 0036 -> 0038 migration path against a disposable CI database.
+// Verifies the real 0036 -> latest migration path against a disposable CI database.
 // Never run on a developer, staging or production database.
 import pg from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
@@ -40,9 +40,13 @@ try {
   mkdirSync(join(folder, 'meta'));
   const journal = JSON.parse(readFileSync(join(source, 'meta/_journal.json'), 'utf8'));
   const initial = journal.entries.filter((entry) => entry.idx <= 36);
+  // 0037 retains its historical out-of-order timestamp; Drizzle records the
+  // repair path once, so the applied count is one less than journal entries.
   if (
     initial.length !== 37 ||
-    journal.entries[38]?.tag !== '0038_store_catalog_direct_edit_upgrade_repair'
+    journal.entries.find(
+      (entry) => entry.tag === '0038_store_catalog_direct_edit_upgrade_repair',
+    ) === undefined
   ) {
     throw new Error('UNEXPECTED_MIGRATION_CHAIN');
   }
@@ -69,7 +73,71 @@ try {
     throw new Error('EXPECTED_0036_TO_HAVE_NO_STORE_CATALOG_METADATA');
   }
 
+  // Seed real pre-0039 mutable decision/correction rows in the isolated
+  // 0036 schema. 0039 MUST preserve this exact current version and actor.
+  const [actor] = (
+    await targetPool.query(
+      "INSERT INTO staff_accounts (login_identifier, password_hash) VALUES ('ci-history-0039@example.invalid', 'ci-fixture-only') RETURNING id",
+    )
+  ).rows;
+  const [region] = (
+    await targetPool.query(
+      "INSERT INTO regions (code, name, country_code, country_name) VALUES ('CI-HISTORY-0039', 'History test region', 'CN', 'China') RETURNING id",
+    )
+  ).rows;
+  const [store] = (
+    await targetPool.query(
+      `INSERT INTO stores
+        (code, region_id, name, country_code, country_name, city, timezone, address_line, latitude, longitude)
+       VALUES ('CI-HISTORY-0039-STORE', $1, 'History store', 'CN', 'China', 'Chengdu', 'Asia/Shanghai', 'Test fixture', 30, 104)
+       RETURNING id`,
+      [region.id],
+    )
+  ).rows;
+  const [session] = (
+    await targetPool.query(
+      `INSERT INTO meiping_review_sessions (store_id, source_checksum, report, created_by_staff_account_id)
+       VALUES ($1, repeat('a', 64), '{}'::jsonb, $2) RETURNING id`,
+      [store.id, actor.id],
+    )
+  ).rows;
+  await targetPool.query(
+    `INSERT INTO meiping_review_decisions
+      (session_id, source_row_number, action, counted_quantity, reason, version, updated_by_staff_account_id, updated_at)
+      VALUES ($1, 7, 'EXCLUDE', NULL, 'CI preserved decision', 2, $2, '2026-09-30T00:00:00Z')`,
+    [session.id, actor.id],
+  );
+  await targetPool.query(
+    `INSERT INTO meiping_review_corrections
+      (session_id, source_row_number, proposed_fields, reason, version, updated_by_staff_account_id, updated_at)
+      VALUES ($1, 7, '{"title":"CI previous correction"}'::jsonb, 'CI preserved correction', 3, $2, '2026-09-30T01:00:00Z')`,
+    [session.id, actor.id],
+  );
+
   await migrate(db, { migrationsFolder: source });
+  const snapshots = await targetPool.query(
+    `SELECT
+      (SELECT count(*)::int FROM meiping_review_decision_history
+        WHERE session_id = $1 AND source_row_number = 7 AND version = 2
+          AND action = 'EXCLUDE' AND reason = 'CI preserved decision'
+          AND counted_quantity IS NULL AND updated_by_staff_account_id = $2
+          AND updated_at = '2026-09-30T00:00:00Z') AS matching_decisions,
+      (SELECT count(*)::int FROM meiping_review_correction_history
+        WHERE session_id = $1 AND source_row_number = 7 AND version = 3
+          AND reason = 'CI preserved correction'
+          AND proposed_fields = '{"title":"CI previous correction"}'::jsonb
+          AND updated_by_staff_account_id = $2
+          AND updated_at = '2026-09-30T01:00:00Z') AS matching_corrections,
+      (SELECT count(*)::int FROM inventory_transactions) AS inventory_transactions`,
+    [session.id, actor.id],
+  );
+  if (
+    snapshots.rows[0]?.matching_decisions !== 1 ||
+    snapshots.rows[0]?.matching_corrections !== 1 ||
+    snapshots.rows[0]?.inventory_transactions !== 0
+  ) {
+    throw new Error('MIGRATION_0039_BACKFILL_MISMATCH');
+  }
   const result = await targetPool.query(`
     SELECT
       (SELECT count(*)::int FROM information_schema.columns
@@ -91,20 +159,31 @@ try {
     state.local_table !== true ||
     state.version_checks !== 4 ||
     state.edit_permission !== 1 ||
-    state.migrated_count !== 38
+    state.migrated_count !== journal.entries.length - 1
   ) {
     throw new Error('UPGRADE_0038_DID_NOT_REPAIR_STORE_CATALOG_SCHEMA');
   }
 
   await migrate(db, { migrationsFolder: source });
+  const noDuplicates = await targetPool.query(
+    `SELECT
+      (SELECT count(*)::int FROM meiping_review_decision_history
+        WHERE session_id = $1 AND source_row_number = 7) AS decisions,
+      (SELECT count(*)::int FROM meiping_review_correction_history
+        WHERE session_id = $1 AND source_row_number = 7) AS corrections`,
+    [session.id],
+  );
+  if (noDuplicates.rows[0]?.decisions !== 1 || noDuplicates.rows[0]?.corrections !== 1) {
+    throw new Error('MIGRATION_0039_RERUN_DUPLICATED_BACKFILL');
+  }
   const same = await targetPool.query(
     'SELECT count(*)::int AS count FROM drizzle.__drizzle_migrations',
   );
-  if (same.rows[0]?.count !== 38) {
+  if (same.rows[0]?.count !== journal.entries.length - 1) {
     throw new Error('UPGRADE_MIGRATION_RERAN_UNEXPECTEDLY');
   }
   console.log(
-    'PASS: disposable 0036→0038 upgrade repaired all direct-edit schema/permissions; rerun did not reapply migrations.',
+    `PASS: disposable 0036→latest upgrade repaired direct-edit schema/permissions; ${journal.entries.length - 1} applied migrations and rerun did not reapply migrations.`,
   );
 } finally {
   closing = true;
