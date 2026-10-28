@@ -481,9 +481,7 @@ export class PictureBookService {
         createdAt: revision.createdAt.toISOString(),
         updatedAt: revision.updatedAt.toISOString(),
         playbackUrl:
-          revision.status === 'READY' && media?.status === 'READY'
-            ? this.playbackUrl(media)
-            : null,
+          revision.status === 'READY' && media?.status === 'READY' ? this.playbackUrl(media) : null,
       })),
     };
   }

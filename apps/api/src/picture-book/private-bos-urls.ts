@@ -102,8 +102,8 @@ export function createPrivateBosPlaybackResolver(
         recorded.username ||
         recorded.password
       ) {
-      return null;
-    }
+        return null;
+      }
 
       const signed = new URL(
         signer.generatePresignedUrl(
@@ -122,8 +122,8 @@ export function createPrivateBosPlaybackResolver(
         !signed.search ||
         ![path, `/${bucket}${path}`].includes(signed.pathname)
       ) {
-      return null;
-    }
+        return null;
+      }
       return signed.toString();
     } catch {
       // Never fall back to a public or unsigned URL.
