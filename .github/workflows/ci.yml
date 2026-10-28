@@ -202,6 +202,7 @@ jobs:
     needs: [changes, review-scope, fast, migration-guard, migration-chain, critical]
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - name: Enforce required outcomes
         env:
           CHANGES: ${{ needs.changes.result }}
