@@ -45,6 +45,7 @@ Expected **immediately after schema-only rollout**: both new tables exist, all t
 
 - Only synthetic files on an isolated disposable database. Test other-store 403, unauthenticated 401, preview-only authorization, second distinct Staff approval, invalid/stale correction checksum and version, execution flag OFF, concurrent duplicate execute, duplicate ISBN/SKU resolution, nonzero existing inventory rejection, full transaction rollback and exact per-row/result/ledger count.
 - Confirm no silent inventory overwrite and no production import; an accepted correction alone never approves an import.
+- On a disposable database, include one pre-existing hyphenated ISBN-10 edition with lowercase `x` and a known SKU. Verify preview and guarded synthetic execution both reuse the exact edition/product/SKU IDs instead of creating a second catalog record; ensure an `INITIAL_MIGRATION` ledger entry is scoped only to the intended store and count. This regression is not permission to import real stock.
 - Capture signed dry-run reconciliation and evidence of independent approval with **no real data**. Confirm no credentials, complete file data or raw exception messages in HTTP responses/logs.
 
 ## Abort and recovery
