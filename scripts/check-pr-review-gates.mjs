@@ -101,9 +101,7 @@ export function reviewIssues({ files, patch = '', body = '', readSource = () => 
       /\bcreateDatabase\s*\(\s*process\.env\s*\)|\bnew\s+(?:(?:pg)\.)?(?:Pool|Client)\s*\(/,
     );
     if (connectionAt < 0) continue;
-    const guardAt = source.search(
-      /\bassert\w*DisposableDatabase\s*\(\s*process\.env\s*\)/,
-    );
+    const guardAt = source.search(/\bassert\w*DisposableDatabase\s*\(\s*process\.env\s*\)/);
     if (guardAt < 0 || guardAt > connectionAt) {
       issues.push(
         'New PostgreSQL integration suites require a fail-closed disposable DB guard before connecting.',
