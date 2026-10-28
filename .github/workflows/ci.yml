@@ -203,6 +203,7 @@ jobs:
         env:
           CHANGES: ${{ needs.changes.result }}
           REVIEW_SCOPE: ${{ needs.review-scope.result }}
+          EVENT_NAME: ${{ github.event_name }}
           FAST: ${{ needs.fast.result }}
           MIGRATION: ${{ needs.migration-guard.result }}
           MIGRATION_CHAIN: ${{ needs.migration-chain.result }}
@@ -210,10 +211,7 @@ jobs:
         run: |
           set -euo pipefail
           [ "$CHANGES" = "success" ]
-          if [ "$REVIEW_SCOPE" != "success" ] && [ "$REVIEW_SCOPE" != "skipped" ]; then
-            echo "::error::PR scope/security/migration review gate did not pass."
-            exit 1
-          fi
+          bash scripts/check-pr-review-result.sh "$EVENT_NAME" "$REVIEW_SCOPE"
           [ "$FAST" = "success" ]
           [ "$MIGRATION" = "success" ]
           [ "$MIGRATION_CHAIN" = "success" ]
