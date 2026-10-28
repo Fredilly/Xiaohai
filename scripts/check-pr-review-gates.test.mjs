@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { reviewIssues } from './check-pr-review-gates.mjs';
 
-const body = '## Scope: this changes catalog safety. ## Why: prevent data loss. ## Testing: CI and rollback checks.';
+const body = '## Scope: this changes catalog safety and preserves existing Staff permissions. ## Why: prevent data loss and unsafe public responses in future focused PRs. ## Testing: CI, authorization, idempotency, rollback and reconciliation checks.';
 const check = (files, patch = '', text = body, source = '') =>
   reviewIssues({ files, patch, body: text, readSource: () => source });
 
