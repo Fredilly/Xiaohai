@@ -693,8 +693,7 @@ function ProductForm({
       setError('该图书已存在，不能通过新增表单重复创建。请查看或编辑已有图书。');
       return;
     }
-    const nextPriceMinor =
-      !editingExisting && isBook ? parseYuanToMinor(priceYuan) : v.sku.priceMinor;
+    const nextPriceMinor = parseYuanToMinor(priceYuan);
     if (nextPriceMinor === null) {
       setError('价格请输入 0.00 至 21474836.47 元，最多两位小数。');
       return;
@@ -906,14 +905,12 @@ function ProductForm({
         <input
           inputMode="decimal"
           required
-          value={!editingExisting && isBook ? priceYuan : (v.sku.priceMinor / 100).toFixed(2)}
+          value={priceYuan}
           onChange={(e) => {
             invalidateLookup();
-            if (!editingExisting && isBook) setPriceYuan(e.target.value);
-            else {
-              const minor = parseYuanToMinor(e.target.value);
-              setV({ ...v, sku: { ...v.sku, priceMinor: minor ?? v.sku.priceMinor } });
-            }
+            // Keep partial decimal input intact until submission; do not rewrite
+            // "39." as "39.00" before the user can finish entering "39.80".
+            setPriceYuan(e.target.value);
           }}
         />
       </label>
