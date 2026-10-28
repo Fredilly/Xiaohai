@@ -11,14 +11,13 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe('Issue #76 Mini Program device API environment mapping', () => {
   it.each(['develop', 'trial'] as const)(
-    '%s resolves to a reachable HTTPS staging hostname rather than device loopback',
+    '%s maps to the configured staging HTTPS origin instead of loopback',
     (envVersion) => {
       useWeChatEnvironment(envVersion);
       const url = getApiBaseUrl();
       expect(url).toBe('https://staging-api.pamboo.asia');
-      expect(new URL(url).protocol).toBe('https:');
-      expect(new URL(url).hostname).not.toBe('127.0.0.1');
-      expect(new URL(url).hostname).not.toBe('localhost');
+      expect(url).toMatch(/^https:\/\//);
+      expect(url).not.toMatch(/(?:127\.0\.0\.1|localhost)/);
     },
   );
 

@@ -38,7 +38,10 @@ if (
 ) {
   throw new Error('Mini Program API endpoints must keep safe environment-specific defaults.');
 }
-if (/\bdev:\s*['"]http:\/\//.test(miniappConfig) || /\bdev:\s*['"]https?:\/\/(?:127\.0\.0\.1|localhost)/.test(miniappConfig)) {
+if (
+  /\bdev:\s*['"]http:\/\//.test(miniappConfig) ||
+  /\bdev:\s*['"]https?:\/\/(?:127\.0\.0\.1|localhost)/.test(miniappConfig)
+) {
   throw new Error('Develop Mini Program API must not resolve to loopback or insecure HTTP.');
 }
 const ignore = await readFile('.gitignore', 'utf8');
