@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { and, asc, desc, eq, ilike, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, ilike, inArray, or, sql } from 'drizzle-orm';
 import type {
   AddressInput,
   AdminProductInput,
@@ -480,6 +480,37 @@ export class CommerceService {
     offset = 0,
     limit = 30,
   ) {
+    const matching = and(
+      productId ? eq(products.id, productId) : undefined,
+      status ? eq(products.status, status) : undefined,
+      q
+        ? or(
+            ilike(products.name, `%${q}%`),
+            ilike(skus.code, `%${q}%`),
+            ilike(skus.name, `%${q}%`),
+            ilike(books.title, `%${q}%`),
+            ilike(books.author, `%${q}%`),
+            ilike(bookEditions.isbn, `%${q}%`),
+          )
+        : undefined,
+    );
+    // HQ pages count distinct PRODUCTS, not joined SKU rows. The ID page is
+    // deterministic and every SKU under a selected product stays on that page.
+    // Matching any SKU brings back all of its siblings for exact SKU editing.
+    const productPage = productId
+      ? null
+      : await this.db
+          .select({ id: products.id })
+          .from(products)
+          .innerJoin(skus, eq(skus.productId, products.id))
+          .leftJoin(bookEditions, eq(products.bookEditionId, bookEditions.id))
+          .leftJoin(books, eq(bookEditions.bookId, books.id))
+          .where(matching)
+          .groupBy(products.id, products.name)
+          .orderBy(asc(products.name), asc(products.id))
+          .limit(limit + 1)
+          .offset(offset);
+    const ids = productPage?.slice(0, limit).map((entry) => entry.id);
     const query = this.db
       .select({ product: products, sku: skus, book: books, edition: bookEditions })
       .from(products)
@@ -487,36 +518,18 @@ export class CommerceService {
       .leftJoin(bookEditions, eq(products.bookEditionId, bookEditions.id))
       .leftJoin(books, eq(bookEditions.bookId, books.id))
       .where(
-        and(
-          productId ? eq(products.id, productId) : undefined,
-          status ? eq(products.status, status) : undefined,
-          q
-            ? or(
-                ilike(products.name, `%${q}%`),
-                ilike(skus.code, `%${q}%`),
-                ilike(skus.name, `%${q}%`),
-                ilike(books.title, `%${q}%`),
-                ilike(books.author, `%${q}%`),
-                ilike(bookEditions.isbn, `%${q}%`),
-              )
-            : undefined,
-        ),
-      );
-    // Exact product paths keep every sibling SKU. A catalog page is bounded
-    // before reading records; never load the whole catalog to find one item.
-    const rows = productId
-      ? onlyOne
-        ? await query.limit(1)
-        : await query
-      : await query
-          .orderBy(asc(products.name), asc(skus.code), asc(skus.id))
-          .limit(limit + 1)
-          .offset(offset);
-    const page = productId ? rows : rows.slice(0, limit);
+        productId
+          ? and(eq(products.id, productId), status ? eq(products.status, status) : undefined)
+          : ids?.length
+            ? inArray(products.id, ids)
+            : sql`false`,
+      )
+      .orderBy(asc(products.name), asc(products.id), asc(skus.code), asc(skus.id));
+    const page = productId && onlyOne ? await query.limit(1) : await query;
     return {
       offset,
       limit,
-      hasMore: !productId && rows.length > limit,
+      hasMore: !productId && (productPage?.length ?? 0) > limit,
       products: page.map(({ product, sku, book, edition }) => ({
         id: product.id,
         skuId: sku.id,
