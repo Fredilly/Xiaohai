@@ -326,8 +326,36 @@ suite('Meiping guarded apply safety boundaries PostgreSQL integration', () => {
       productId: product!.id,
       skuId: sku!.id,
     });
-    // Preview is metadata-only; formal stock execution remains disabled.
+    // Preview is metadata-only. Explicitly enable only this synthetic
+    // disposable-DB test execution to cover the separate applyRow lookup path.
     expect(preview.canExecute).toBe(false);
+    await apply.approve(preview.batchId, data.storeA, {
+      actorStaffAccountId: data.approver,
+      requestId: randomUUID(),
+    });
+    const executed = await new MeipingApplyService(database!.db, true).execute(
+      preview.batchId,
+      data.storeA,
+      { actorStaffAccountId: data.approver, requestId: randomUUID() },
+    );
+    expect(executed.status).toBe('SUCCEEDED');
+    const imported = await database!.db
+      .select()
+      .from(meipingImportResults)
+      .where(eq(meipingImportResults.batchId, preview.batchId));
+    expect(imported).toHaveLength(1);
+    expect(imported[0]).toMatchObject({
+      outcome: 'REUSED',
+      bookId: book!.id,
+      bookEditionId: edition!.id,
+      productId: product!.id,
+      skuId: sku!.id,
+    });
+    const editionsForBook = await database!.db
+      .select({ id: bookEditions.id })
+      .from(bookEditions)
+      .where(eq(bookEditions.bookId, book!.id));
+    expect(editionsForBook).toHaveLength(1);
   });
 
   it('blocks shared overwrites, ambiguous SKUs, and historical inventory', async () => {
