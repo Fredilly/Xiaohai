@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { assertMeipingApplyDisposableDatabase } from './meiping-apply-database-guard.js';
 import { afterAll, describe, expect, it } from 'vitest';
 import { eq, inArray } from 'drizzle-orm';
 import {
@@ -31,7 +32,9 @@ import { MeipingApplyService } from '../src/migration/meiping-apply-service.js';
 import { StoreNetworkService } from '../src/stores/store-service.js';
 import type { MeipingPreflightReport } from '../src/migration/meiping-preflight.js';
 
-const database = process.env.DATABASE_URL ? createDatabase(process.env) : null;
+const database = assertMeipingApplyDisposableDatabase(process.env)
+  ? createDatabase(process.env)
+  : null;
 const suite = database ? describe : describe.skip;
 const sessionSecret = 'meiping-http-integration-secret-at-least-32-bytes';
 

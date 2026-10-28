@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { assertMeipingApplyDisposableDatabase } from './meiping-apply-database-guard.js';
 import { afterAll, describe, expect, it } from 'vitest';
 import { eq, inArray } from 'drizzle-orm';
 import {
@@ -23,7 +24,9 @@ import {
 import type { MeipingPreflightReport } from '../src/migration/meiping-preflight.js';
 import { MeipingApplyError, MeipingApplyService } from '../src/migration/meiping-apply-service.js';
 
-const database = process.env.DATABASE_URL ? createDatabase(process.env) : null;
+const database = assertMeipingApplyDisposableDatabase(process.env)
+  ? createDatabase(process.env)
+  : null;
 const suite = database ? describe : describe.skip;
 
 suite('Meiping guarded apply PostgreSQL integration', () => {
