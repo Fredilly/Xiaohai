@@ -60,7 +60,9 @@ export function createPrivateBosPlaybackResolver(
       o.hash ||
       !e.hostname.endsWith('.bcebos.com') ||
       o.hostname !== `${bucket}.${e.hostname}`
-    ) return disabled;
+    ) {
+      return disabled;
+    }
     endpointHost = e.hostname;
     originHost = o.hostname;
   } catch {
@@ -82,7 +84,9 @@ export function createPrivateBosPlaybackResolver(
       key.length > 512 ||
       !/^[A-Za-z0-9_/%.-]+\.png$/.test(key) ||
       key.split('/').some((segment) => segment === '.' || segment === '..' || !segment)
-    ) return null;
+    ) {
+      return null;
+    }
 
     const path = `/${key.split('/').map(encodeURIComponent).join('/')}`;
     try {
@@ -97,14 +101,18 @@ export function createPrivateBosPlaybackResolver(
         recorded.hash ||
         recorded.username ||
         recorded.password
-      ) return null;
+      ) {
+      return null;
+    }
 
-      const signed = new URL(signer.generatePresignedUrl(
-        bucket,
-        key,
-        Math.floor(now() / 1000),
-        PRIVATE_IMAGE_TTL_SECONDS,
-      ));
+      const signed = new URL(
+        signer.generatePresignedUrl(
+          bucket,
+          key,
+          Math.floor(now() / 1000),
+          PRIVATE_IMAGE_TTL_SECONDS,
+        ),
+      );
       if (
         signed.protocol !== 'https:' ||
         (signed.hostname !== endpointHost && signed.hostname !== originHost) ||
@@ -113,7 +121,9 @@ export function createPrivateBosPlaybackResolver(
         signed.password ||
         !signed.search ||
         ![path, `/${bucket}${path}`].includes(signed.pathname)
-      ) return null;
+      ) {
+      return null;
+    }
       return signed.toString();
     } catch {
       // Never fall back to a public or unsigned URL.

@@ -666,7 +666,7 @@ export class PictureBookService {
             media?.status === 'READY' &&
             media.provider === 'BAIDU_BOS' &&
             media.mimeType.startsWith('image/') &&
-            Boolean(this.playbackUrl(media) && isHttpsImageUrl(this.playbackUrl(media)!)),
+            isHttpsImageUrl(this.playbackUrl(media) ?? ''),
         )
         .map(({ illustration }) => illustration.pageId),
     );
