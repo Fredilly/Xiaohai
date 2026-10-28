@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import {
   adminProductUpdateInputSchema,
   type AdminProductInput,
@@ -154,7 +154,7 @@ export function CatalogManager({ token }: { token: string }) {
         >
           上一页
         </button>
-        <span>第 {Math.floor(offset / 30) + 1} 页</span>
+        <span>第 {Math.floor(offset / 30) + 1} 页 · 每页 30 种商品（展示全部 SKU）</span>
         <button disabled={!hasMore || state === 'loading'} onClick={() => setOffset(offset + 30)}>
           下一页
         </button>
@@ -584,8 +584,16 @@ function ProductForm({
   const [lookingUp, setLookingUp] = useState(false);
   const [existingProductId, setExistingProductId] = useState<string | null>(null);
   const [existingBook, setExistingBook] = useState(false);
+  // Every manual edit invalidates older pending ISBN lookup results.
+  const lookupSequence = useRef(0);
+  useEffect(() => () => { lookupSequence.current += 1; }, []);
+  function invalidateLookup() {
+    lookupSequence.current += 1;
+    setLookingUp(false);
+  }
 
   function updateBook(field: 'title' | 'author' | 'isbn' | 'publisher', value: string) {
+    invalidateLookup();
     setV((current) => ({
       ...current,
       name: !editingExisting && field === 'title' ? value : current.name,
@@ -604,8 +612,10 @@ function ProductForm({
   }
 
   async function lookupBook() {
+    const request = ++lookupSequence.current;
     const raw = v.book?.isbn ?? '';
     const isbn = normalizeIsbn(raw);
+    setLookingUp(false);
     if (!isbn) {
       setLookupStatus('请输入图书编码后再检索。');
       return;
@@ -618,6 +628,7 @@ function ProductForm({
     setLookupStatus('正在检索系统已有图书资料…');
     try {
       const result = await lookupBookData(token, isbn);
+      if (request !== lookupSequence.current) return;
       if (!result.book) {
         setExistingProductId(null);
         setExistingBook(false);
@@ -646,9 +657,10 @@ function ProductForm({
             : '已从系统现有资料回填，请确认后再保存。',
       );
     } catch {
-      setLookupStatus('图书资料检索失败，请手动填写必填字段。');
+      if (request === lookupSequence.current)
+        setLookupStatus('图书资料检索失败，请手动填写必填字段。');
     } finally {
-      setLookingUp(false);
+      if (request === lookupSequence.current) setLookingUp(false);
     }
   }
 
@@ -723,7 +735,7 @@ function ProductForm({
         {!(!editingExisting && isBook) && (
           <>
             商品名
-            <input required value={v.name} onChange={(e) => setV({ ...v, name: e.target.value })} />
+            <input required value={v.name} onChange={(e) => { invalidateLookup(); setV({ ...v, name: e.target.value }); }} />
           </>
         )}
       </label>
@@ -731,7 +743,7 @@ function ProductForm({
         简介
         <textarea
           value={v.description ?? ''}
-          onChange={(e) => setV({ ...v, description: e.target.value || null })}
+          onChange={(e) => { invalidateLookup(); setV({ ...v, description: e.target.value || null }); }}
         />
       </label>
       <label>
@@ -739,7 +751,7 @@ function ProductForm({
         <input
           type="url"
           value={v.coverUrl ?? ''}
-          onChange={(e) => setV({ ...v, coverUrl: e.target.value || null })}
+          onChange={(e) => { invalidateLookup(); setV({ ...v, coverUrl: e.target.value || null }); }}
         />
       </label>
       <label>
@@ -747,7 +759,8 @@ function ProductForm({
         <select
           value={v.status}
           disabled={!editingExisting && isBook}
-          onChange={(e) =>
+          onChange={(e) => {
+            invalidateLookup();
             setV({
               ...v,
               status:
@@ -756,8 +769,8 @@ function ProductForm({
                   : e.target.value === 'INACTIVE'
                     ? 'INACTIVE'
                     : 'DRAFT',
-            })
-          }
+            });
+          }}
         >
           <option>DRAFT</option>
           <option>ACTIVE</option>
@@ -770,6 +783,7 @@ function ProductForm({
             type="checkbox"
             checked={isBook}
             onChange={(event) => {
+              invalidateLookup();
               const next = event.target.checked;
               setIsBook(next);
               if (!next) setV((current) => ({ ...current, book: null }));
@@ -835,7 +849,7 @@ function ProductForm({
           <input
             required
             value={v.sku.code}
-            onChange={(e) => setV({ ...v, sku: { ...v.sku, code: e.target.value } })}
+            onChange={(e) => { invalidateLookup(); setV({ ...v, sku: { ...v.sku, code: e.target.value } }); }}
           />
         </label>
       )}
@@ -844,7 +858,7 @@ function ProductForm({
         <input
           required
           value={v.sku.name}
-          onChange={(e) => setV({ ...v, sku: { ...v.sku, name: e.target.value } })}
+          onChange={(e) => { invalidateLookup(); setV({ ...v, sku: { ...v.sku, name: e.target.value } }); }}
         />
       </label>
       <label>
@@ -854,6 +868,7 @@ function ProductForm({
           required
           value={!editingExisting && isBook ? priceYuan : (v.sku.priceMinor / 100).toFixed(2)}
           onChange={(e) => {
+            invalidateLookup();
             if (!editingExisting && isBook) setPriceYuan(e.target.value);
             else {
               const minor = parseYuanToMinor(e.target.value);
@@ -867,7 +882,7 @@ function ProductForm({
           type="checkbox"
           checked={v.sku.availableForSale}
           disabled={!editingExisting && isBook}
-          onChange={(e) => setV({ ...v, sku: { ...v.sku, availableForSale: e.target.checked } })}
+          onChange={(e) => { invalidateLookup(); setV({ ...v, sku: { ...v.sku, availableForSale: e.target.checked } }); }}
         />
         可售
       </label>
@@ -875,12 +890,13 @@ function ProductForm({
         SKU 状态
         <select
           value={v.sku.status}
-          onChange={(e) =>
+          onChange={(e) => {
+            invalidateLookup();
             setV({
               ...v,
               sku: { ...v.sku, status: e.target.value === 'ACTIVE' ? 'ACTIVE' : 'INACTIVE' },
-            })
-          }
+            });
+          }}
         >
           <option>ACTIVE</option>
           <option>INACTIVE</option>
