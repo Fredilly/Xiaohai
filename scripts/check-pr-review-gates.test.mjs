@@ -26,7 +26,7 @@ test('misleading HQ scope is rejected', () => {
   assert.match(check(['apps/admin-web/src/catalog-manager.tsx'], '', body + ' No HQ Admin Web changes.' ).join(','), /denies HQ/);
 });
 test('raw CommerceError messages are rejected', () => {
-  assert.match(check(['apps/api/src/commerce/commerce-routes.ts'], '+ message: error instanceof CommerceError ? error.message : publicMessage(code)').join(','), /Raw exception/);
+  assert.match(check(['apps/api/src/commerce/commerce-routes.ts'], 'diff --git a/apps/api/src/commerce/commerce-routes.ts b/apps/api/src/commerce/commerce-routes.ts\n+ message: error instanceof CommerceError ? error.message : publicMessage(code)').join(','), /Raw exception/);
 });
 test('immutable history inserts cannot ignore conflicts', () => {
   assert.match(check(['apps/api/src/migration/meiping-review-service.ts'], '', body, '.insert(meipingReviewDecisionHistory).values({}).onConflictDoNothing()').join(','), /Immutable review history/);
