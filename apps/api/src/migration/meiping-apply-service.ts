@@ -537,7 +537,7 @@ export class MeipingApplyService {
         ? await database
             .select()
             .from(bookEditions)
-            .where(sql`regexp_replace(${bookEditions.isbn}, '[-[:space:]]', '', 'g') = ${row.isbn}`)
+            .where(sql`upper(regexp_replace(${bookEditions.isbn}, '[-[:space:]]', '', 'g')) = ${row.isbn}`)
         : [];
       if (editions.length > 1) {
         addConflict(row.sourceRowNumber, 'DUPLICATE_ISBN_MATCH');
@@ -690,7 +690,7 @@ export class MeipingApplyService {
       const [edition] = await tx
         .select()
         .from(bookEditions)
-        .where(sql`regexp_replace(${bookEditions.isbn}, '[-[:space:]]', '', 'g') = ${row.isbn}`)
+        .where(sql`upper(regexp_replace(${bookEditions.isbn}, '[-[:space:]]', '', 'g')) = ${row.isbn}`)
         .limit(1);
       if (edition) {
         editionId = edition.id;

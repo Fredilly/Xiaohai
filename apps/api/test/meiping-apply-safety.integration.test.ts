@@ -264,6 +264,72 @@ suite('Meiping guarded apply safety boundaries PostgreSQL integration', () => {
     });
   });
 
+  it('reuses legacy hyphenated lowercase-x ISBN-10 without duplicating the catalog', async () => {
+    const data = await fixture();
+    // A legacy row can be displayed as-is after #165, but import must compare
+    // its canonical ISBN before creating a new book, product, SKU or inventory.
+    const [book] = await database!.db
+      .insert(books)
+      .values({ title: '既有 ISBN-10 图书', author: '既有作者' })
+      .returning({ id: books.id });
+    ids.books.push(book!.id);
+    const [edition] = await database!.db
+      .insert(bookEditions)
+      .values({ bookId: book!.id, isbn: '0-8044-2957-x', publisher: '测试出版社' })
+      .returning({ id: bookEditions.id });
+    ids.editions.push(edition!.id);
+    const [product] = await database!.db
+      .insert(products)
+      .values({ bookEditionId: edition!.id, name: '既有 ISBN-10 商品', status: 'DRAFT' })
+      .returning({ id: products.id });
+    ids.products.push(product!.id);
+    const code = `LEGACY-X-${randomUUID().slice(0, 8)}`;
+    const [sku] = await database!.db
+      .insert(skus)
+      .values({
+        productId: product!.id,
+        code,
+        name: '标准',
+        priceMinor: 3980,
+        availableForSale: false,
+      })
+      .returning({ id: skus.id });
+    ids.skus.push(sku!.id);
+    const sessionId = await createSession(
+      data.storeA,
+      data.actor,
+      '9'.repeat(64),
+      '080442957X',
+      code,
+    );
+    const apply = new MeipingApplyService(database!.db, false);
+    const preview = await apply.preview(sessionId, data.storeA, {
+      actorStaffAccountId: data.actor,
+      requestId: randomUUID(),
+    });
+
+    expect(preview.plan.conflicts).toEqual([]);
+    expect(preview.plan.counts).toMatchObject({
+      newBooks: 0,
+      reusedBooks: 1,
+      newProducts: 0,
+      reusedProducts: 1,
+      newSkus: 0,
+      reusedSkus: 1,
+    });
+    expect(preview.plan.rows[0]?.resolution).toMatchObject({
+      book: 'REUSE',
+      product: 'REUSE',
+      sku: 'REUSE',
+      bookId: book!.id,
+      bookEditionId: edition!.id,
+      productId: product!.id,
+      skuId: sku!.id,
+    });
+    // Preview is metadata-only; formal stock execution remains disabled.
+    expect(preview.canExecute).toBe(false);
+  });
+
   it('blocks shared overwrites, ambiguous SKUs, and historical inventory', async () => {
     const fixtureData = await fixture();
     const sharedIsbn = makeIsbn13(randomUUID().replaceAll('-', '').slice(0, 9));
