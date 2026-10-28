@@ -91,10 +91,6 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Workspace, Mini Program and secret checks
         run: pnpm check:workspace && pnpm check:miniapp && pnpm check:secrets
-      - name: Temporary PR167 Prettier diff diagnostic (remove after use)
-        run: |
-          pnpm exec prettier --write .github/pull_request_template.md scripts/check-pr-review-gates.mjs scripts/check-pr-review-gates.test.mjs
-          git diff -- .github/pull_request_template.md scripts/check-pr-review-gates.mjs scripts/check-pr-review-gates.test.mjs
       - name: Format, lint and typecheck
         run: pnpm format:check && pnpm lint && pnpm typecheck
       - name: Unit tests
