@@ -11,25 +11,25 @@ const safeEnv = {
   APP_ENV: 'dev',
 };
 
+const rejectedMessage = 'local allowlisted disposable test database';
+
+function expectRejected(env: Parameters<typeof assertMeipingApplyDisposableDatabase>[0]) {
+  expect(() => assertMeipingApplyDisposableDatabase(env)).toThrow(rejectedMessage);
+}
+
 describe('Meiping apply integration disposable database guard', () => {
-  it('skips only if no database was configured', () => {
+  it('skips only when no database is configured', () => {
     expect(assertMeipingApplyDisposableDatabase({ NODE_ENV: 'test' })).toBe(false);
   });
 
-  it.each([local, sandbox])(
-    'permits explicitly allowlisted local disposable database %s',
-    (url) => {
-      expect(
-        assertMeipingApplyDisposableDatabase({
-          ...safeEnv,
-          DATABASE_URL: url,
-          TEST_DATABASE_URL: url,
-        }),
-      ).toBe(true);
-    },
-  );
+  for (const url of [local, sandbox]) {
+    it('accepts allowlisted local database ' + url, () => {
+      const env = { ...safeEnv, DATABASE_URL: url, TEST_DATABASE_URL: url };
+      expect(assertMeipingApplyDisposableDatabase(env)).toBe(true);
+    });
+  }
 
-  it.each([
+  const deniedUrls = [
     'postgresql://postgres:fixture@127.0.0.1:5432/xiaohai_dev',
     'postgresql://postgres:fixture@127.0.0.1:5432/xiaohai_staging',
     'postgresql://postgres:fixture@127.0.0.1:5432/xiaohai_prod',
@@ -40,50 +40,53 @@ describe('Meiping apply integration disposable database guard', () => {
     'postgresql://postgres:fixture@127.0.0.1:5432/xiaohai_test?host=remote',
     'postgresql://postgres:fixture@127.0.0.1:5432/xiaohai_test/other',
     'not-a-postgresql-url',
-  ])('rejects non-disposable, remote, ambiguous or malformed URL: %s', (url) => {
-    expect(() =>
-      assertMeipingApplyDisposableDatabase({ ...safeEnv, DATABASE_URL: url }),
-    ).toThrow('local allowlisted disposable test database');
+  ];
+
+  for (const url of deniedUrls) {
+    it('rejects unsafe database URL ' + url, () => {
+      expectRejected({ ...safeEnv, DATABASE_URL: url });
+    });
+  }
+
+  it('rejects a production TEST_DATABASE_URL', () => {
+    const url = 'postgresql://postgres:fixture@127.0.0.1:5432/xiaohai_prod';
+    expectRejected({ ...safeEnv, TEST_DATABASE_URL: url });
   });
 
-  it('rejects a different effective TEST_DATABASE_URL before creating a pool', () => {
-    expect(() =>
-      assertMeipingApplyDisposableDatabase({
-        ...safeEnv,
-        TEST_DATABASE_URL: 'postgresql://postgres:fixture@127.0.0.1:5432/xiaohai_prod',
-      }),
-    ).toThrow('local allowlisted disposable test database');
-    expect(() =>
-      assertMeipingApplyDisposableDatabase({
-        ...safeEnv,
-        TEST_DATABASE_URL: sandbox,
-      }),
-    ).toThrow('local allowlisted disposable test database');
-    expect(() =>
-      assertMeipingApplyDisposableDatabase({ ...safeEnv, TEST_DATABASE_URL: undefined }),
-    ).toThrow('local allowlisted disposable test database');
+  it('rejects a different allowlisted TEST_DATABASE_URL', () => {
+    expectRejected({ ...safeEnv, TEST_DATABASE_URL: sandbox });
   });
 
-  it.each([
+  it('rejects a missing effective TEST_DATABASE_URL', () => {
+    expectRejected({ ...safeEnv, TEST_DATABASE_URL: undefined });
+  });
+
+  const unsafeEnvironments = [
     { NODE_ENV: 'production', APP_ENV: 'dev' },
     { NODE_ENV: 'test', APP_ENV: 'production' },
     { NODE_ENV: 'test', APP_ENV: 'staging' },
-  ])('blocks production and staging environments even with a test-looking name: %j', (values) => {
-    expect(() => assertMeipingApplyDisposableDatabase({ ...safeEnv, ...values })).toThrow(
-      'local allowlisted disposable test database',
-    );
-  });
+  ];
 
-  it.each([
+  for (const values of unsafeEnvironments) {
+    it('rejects unsafe environment ' + JSON.stringify(values), () => {
+      expectRejected({ ...safeEnv, ...values });
+    });
+  }
+
+  const guardedSuites = [
     'meiping-apply.integration.test.ts',
     'meiping-apply-safety.integration.test.ts',
     'meiping-apply-http.integration.test.ts',
-  ])('requires the guard before database creation in %s', (file) => {
-    const source = readFileSync(new URL(file, import.meta.url), 'utf8');
-    const guard = 'assertMeipingApplyDisposableDatabase(process.env)';
-    const connection = 'createDatabase(process.env)';
-    expect(source.indexOf(guard)).toBeGreaterThanOrEqual(0);
-    expect(source.indexOf(connection)).toBeGreaterThan(source.indexOf(guard));
-    expect(source).not.toContain('process.env.DATABASE_URL ? createDatabase(process.env)');
-  });
+  ];
+
+  for (const file of guardedSuites) {
+    it('checks database target before connecting in ' + file, () => {
+      const source = readFileSync(new URL(file, import.meta.url), 'utf8');
+      const guard = 'assertMeipingApplyDisposableDatabase(process.env)';
+      const connection = 'createDatabase(process.env)';
+      expect(source.indexOf(guard)).toBeGreaterThanOrEqual(0);
+      expect(source.indexOf(connection)).toBeGreaterThan(source.indexOf(guard));
+      expect(source).not.toContain('process.env.DATABASE_URL ? createDatabase(process.env)');
+    });
+  }
 });
