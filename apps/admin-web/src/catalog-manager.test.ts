@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseYuanToMinor } from './catalog-manager';
+import { bookLookupPolicy, parseYuanToMinor } from './catalog-manager';
 
 describe('HQ new-book price input', () => {
   it.each([
@@ -18,4 +18,30 @@ describe('HQ new-book price input', () => {
       expect(parseYuanToMinor(input)).toBeNull();
     },
   );
+});
+
+// Regression: editing an existing book must not call ISBN lookup on blur,
+// replace unsaved form fields, or be rejected as a duplicate new book.
+describe('HQ new-book lookup isolation', () => {
+  it('allows a lookup but blocks duplicate creation for a new book', () => {
+    expect(bookLookupPolicy(false, true)).toEqual({
+      canLookUp: true,
+      blockDuplicateCreate: true,
+    });
+    expect(bookLookupPolicy(false, false)).toEqual({
+      canLookUp: true,
+      blockDuplicateCreate: false,
+    });
+  });
+
+  it('never looks up or blocks saving when editing an existing book', () => {
+    expect(bookLookupPolicy(true, true)).toEqual({
+      canLookUp: false,
+      blockDuplicateCreate: false,
+    });
+    expect(bookLookupPolicy(true, false)).toEqual({
+      canLookUp: false,
+      blockDuplicateCreate: false,
+    });
+  });
 });
