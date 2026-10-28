@@ -39,6 +39,15 @@ const blank: AdminProductInput = {
   book: { title: '', author: '', isbn: null, publisher: null },
   sku: { code: '', name: '标准', priceMinor: 0, status: 'ACTIVE', availableForSale: false },
 };
+/** ISBN lookups and duplicate-create checks belong to the NEW-book flow only.
+ * Existing-book editing must never re-fetch itself or block a legitimate update.
+ */
+export function bookLookupPolicy(editingExisting: boolean, existingBook: boolean) {
+  return {
+    canLookUp: !editingExisting,
+    blockDuplicateCreate: !editingExisting && existingBook,
+  };
+}
 export function CatalogManager({ token }: { token: string }) {
   const [products, setProducts] = useState<Product[]>([]);
   const [state, setState] = useState('loading');
@@ -585,6 +594,7 @@ function ProductForm({
   const [lookingUp, setLookingUp] = useState(false);
   const [existingProductId, setExistingProductId] = useState<string | null>(null);
   const [existingBook, setExistingBook] = useState(false);
+  const lookupPolicy = bookLookupPolicy(editingExisting, existingBook);
   // Every manual edit invalidates older pending ISBN lookup results.
   const lookupSequence = useRef(createBookLookupGate());
   useEffect(
@@ -618,6 +628,7 @@ function ProductForm({
   }
 
   async function lookupBook() {
+    if (!lookupPolicy.canLookUp) return;
     const request = lookupSequence.current.start();
     const raw = v.book?.isbn ?? '';
     const isbn = normalizeIsbn(raw);
@@ -678,7 +689,7 @@ function ProductForm({
       setError('图书资料检索完成前不能保存。');
       return;
     }
-    if (existingBook) {
+    if (lookupPolicy.blockDuplicateCreate) {
       setError('该图书已存在，不能通过新增表单重复创建。请查看或编辑已有图书。');
       return;
     }
@@ -841,11 +852,15 @@ function ProductForm({
               required
               value={v.book?.isbn ?? ''}
               onChange={(e) => updateBook('isbn', e.target.value)}
-              onBlur={() => void lookupBook()}
+              onBlur={() => {
+                if (lookupPolicy.canLookUp) void lookupBook();
+              }}
             />
-            <button type="button" disabled={lookingUp} onClick={() => void lookupBook()}>
-              {lookingUp ? '检索中…' : '检索已有资料'}
-            </button>
+            {lookupPolicy.canLookUp && (
+              <button type="button" disabled={lookingUp} onClick={() => void lookupBook()}>
+                {lookingUp ? '检索中…' : '检索已有资料'}
+              </button>
+            )}
             {lookupStatus && <small role="status">{lookupStatus}</small>}
             {existingProductId && (
               <button type="button" onClick={() => void onOpenExisting(existingProductId)}>
