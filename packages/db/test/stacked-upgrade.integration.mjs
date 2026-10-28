@@ -138,6 +138,41 @@ try {
   ) {
     throw new Error('MIGRATION_0039_BACKFILL_MISMATCH');
   }
+  // 0040 must be schema-only: no inventory writes, no created import batch,
+  // and no role assignments merely from seeding permission definitions.
+  const guardedApply = await targetPool.query(`
+    SELECT
+      to_regclass('public.meiping_import_batches') IS NOT NULL AS batches_table,
+      to_regclass('public.meiping_import_results') IS NOT NULL AS results_table,
+      (SELECT count(*)::int FROM meiping_import_batches) AS batches,
+      (SELECT count(*)::int FROM meiping_import_results) AS results,
+      (SELECT count(*)::int FROM store_inventory) AS inventory_rows,
+      (SELECT count(*)::int FROM inventory_transactions) AS inventory_transactions,
+      (SELECT count(*)::int FROM permissions
+         WHERE key IN ('meiping.import.preview','meiping.import.approve','meiping.import.execute'))
+        AS permission_definitions,
+      (SELECT count(*)::int FROM role_permissions rp
+         JOIN permissions p ON rp.permission_id = p.id
+         WHERE p.key IN ('meiping.import.preview','meiping.import.approve','meiping.import.execute'))
+        AS permissions_granted,
+      (SELECT pg_get_constraintdef(oid) ILIKE '%INITIAL_MIGRATION%'
+         FROM pg_constraint WHERE conname = 'inventory_transactions_type_check' LIMIT 1)
+        AS migration_type_enabled
+  `);
+  const applyState = guardedApply.rows[0];
+  if (
+    !applyState?.batches_table ||
+    !applyState.results_table ||
+    applyState.batches !== 0 ||
+    applyState.results !== 0 ||
+    applyState.inventory_rows !== 0 ||
+    applyState.inventory_transactions !== 0 ||
+    applyState.permission_definitions !== 3 ||
+    applyState.permissions_granted !== 0 ||
+    applyState.migration_type_enabled !== true
+  ) {
+    throw new Error('MIGRATION_0040_SCHEMA_ONLY_OR_PERMISSION_BOUNDARY_FAILED');
+  }
   const result = await targetPool.query(`
     SELECT
       (SELECT count(*)::int FROM information_schema.columns

@@ -98,4 +98,6 @@ export {
   meipingReviewCorrections,
   meipingReviewCorrectionHistory,
   meipingCorrectionReviews,
+  meipingImportBatches,
+  meipingImportResults,
 } from './meiping-review-schema.js';

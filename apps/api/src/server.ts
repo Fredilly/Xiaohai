@@ -51,6 +51,8 @@ import { registerInventoryOperationsRoutes } from './inventory/inventory-operati
 import { registerMeipingXlsRoutes } from './migration/meiping-xls-routes.js';
 import { MeipingReviewService } from './migration/meiping-review-service.js';
 import { registerMeipingReviewRoutes } from './migration/meiping-review-routes.js';
+import { MeipingApplyService } from './migration/meiping-apply-service.js';
+import { registerMeipingApplyRoutes } from './migration/meiping-apply-routes.js';
 import { RentalService } from './rental/rental-service.js';
 import { registerRentalRoutes } from './rental/rental-routes.js';
 import { FulfillmentService } from './fulfillment/fulfillment-service.js';
@@ -163,6 +165,17 @@ registerMeipingReviewRoutes(app, {
   stores,
   inventory,
   db,
+});
+registerMeipingApplyRoutes(app, {
+  apply: new MeipingApplyService(
+    db,
+    process.env.MEIPING_IMPORT_EXECUTION_ENABLED === 'true' &&
+      process.env.MEIPING_IMPORT_EXECUTION_CONFIRMATION === 'LOCAL_ONLY' &&
+      process.env.APP_ENV !== 'production' &&
+      process.env.NODE_ENV !== 'production',
+  ),
+  staffAuthorization,
+  stores,
 });
 const pickupCodeSecret = config.PICKUP_CODE_SECRET ?? config.STAFF_SESSION_SECRET;
 registerRentalRoutes(app, {
