@@ -95,16 +95,13 @@ test('new unguarded PostgreSQL integration suites are blocked before human revie
   const path = 'apps/api/test/new-apply.integration.test.ts';
   const diff = `diff --git a/${path} b/${path}\nnew file mode 100644\n`;
   const unsafe = 'const database = process.env.DATABASE_URL ? createDatabase(process.env) : null;';
-  assert.match(
-    check([path], diff, body, unsafe).join(','),
-    /unchecked DATABASE_URL/,
-  );
+  assert.match(check([path], diff, body, unsafe).join(','), /unchecked DATABASE_URL/);
   assert.match(
     check([path], diff, body, 'const db = createDatabase(process.env);').join(','),
     /fail-closed disposable DB guard/,
   );
   const guarded =
-    "const database = assertMeipingApplyDisposableDatabase(process.env) ? createDatabase(process.env) : null;";
+    'const database = assertMeipingApplyDisposableDatabase(process.env) ? createDatabase(process.env) : null;';
   assert.deepEqual(check([path], diff, body, guarded), []);
 });
 
