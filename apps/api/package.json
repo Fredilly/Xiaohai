@@ -17,6 +17,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@baiducloud/sdk": "^1.0.7",
     "@stackline/xlsx": "1.0.9",
     "@xiaohai/config": "workspace:*",
     "@xiaohai/contracts": "workspace:*",
