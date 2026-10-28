@@ -25,6 +25,7 @@ import { structuredStorySchema } from '@xiaohai/contracts/story';
 import type { AiQueue } from '../ai/ai-queue.js';
 import type { ImageQueue } from './image-queue.js';
 import { AiBudgetError, reserveImageBudget } from '../ai/budget-service.js';
+import type { MediaPlaybackResolver, PlaybackAsset } from './private-bos-urls.js';
 
 type Db = ReturnType<typeof createDatabase>['db'];
 
@@ -81,6 +82,7 @@ export class PictureBookService {
     private readonly imageQueue: ImageQueue,
     private readonly config: PictureBookAiConfig,
     private readonly logger?: PictureBookLogger,
+    private readonly privateMediaUrl: MediaPlaybackResolver = () => null,
   ) {}
 
   async generateIllustration(
@@ -479,7 +481,9 @@ export class PictureBookService {
         createdAt: revision.createdAt.toISOString(),
         updatedAt: revision.updatedAt.toISOString(),
         playbackUrl:
-          revision.status === 'READY' && media?.status === 'READY' ? media.playbackUrl : null,
+          revision.status === 'READY' && media?.status === 'READY'
+            ? this.playbackUrl(media)
+            : null,
       })),
     };
   }
@@ -564,6 +568,8 @@ export class PictureBookService {
               pageId: workPageIllustrations.pageId,
               revisionNumber: workPageIllustrations.revisionNumber,
               playbackUrl: mediaAssets.playbackUrl,
+              objectKey: mediaAssets.objectKey,
+              provider: mediaAssets.provider,
             })
             .from(workPageIllustrations)
             .innerJoin(mediaAssets, eq(workPageIllustrations.mediaAssetId, mediaAssets.id))
@@ -582,7 +588,8 @@ export class PictureBookService {
     const coverPageById = new Map(coverPages.map((page) => [page.pageId, page.bookId]));
     const coverUrlByBook = new Map<string, string>();
     for (const illustration of realIllustrations) {
-      const { pageId, playbackUrl } = illustration;
+      const { pageId } = illustration;
+      const playbackUrl = this.playbackUrl(illustration);
       if (!playbackUrl || !isHttpsImageUrl(playbackUrl)) continue;
       readyPageIds.add(pageId);
       const coverBookId = coverPageById.get(pageId);
@@ -659,7 +666,7 @@ export class PictureBookService {
             media?.status === 'READY' &&
             media.provider === 'BAIDU_BOS' &&
             media.mimeType.startsWith('image/') &&
-            Boolean(media.playbackUrl && isHttpsImageUrl(media.playbackUrl)),
+            Boolean(this.playbackUrl(media) && isHttpsImageUrl(this.playbackUrl(media)!)),
         )
         .map(({ illustration }) => illustration.pageId),
     );
@@ -1131,6 +1138,14 @@ export class PictureBookService {
     };
   }
 
+  private playbackUrl(media: PlaybackAsset | null): string | null {
+    if (!media?.playbackUrl) return null;
+    // A MOCK_IMAGE uses the local development endpoint, never private BOS.
+    if (media.provider === 'MOCK_IMAGE') return media.playbackUrl;
+    if (media.provider !== 'BAIDU_BOS') return null;
+    return this.privateMediaUrl(media);
+  }
+
   private viewIllustration(
     illustration: typeof workPageIllustrations.$inferSelect,
     media: typeof mediaAssets.$inferSelect | null = null,
@@ -1147,7 +1162,9 @@ export class PictureBookService {
       sourceAiJobId: illustration.sourceAiJobId,
       mediaAssetId: illustration.mediaAssetId,
       playbackUrl:
-        illustration.status === 'READY' && media?.status === 'READY' ? media.playbackUrl : null,
+        illustration.status === 'READY' && media?.status === 'READY'
+          ? this.playbackUrl(media)
+          : null,
       createdAt: illustration.createdAt.toISOString(),
       updatedAt: illustration.updatedAt.toISOString(),
     };

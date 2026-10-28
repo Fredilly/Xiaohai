@@ -89,7 +89,16 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
   const imageQueue = queue;
 
   function service(overrides: Partial<PictureBookAiConfig> = {}) {
-    return new PictureBookService(db, queue, imageQueue, { ...config, ...overrides });
+    // Existing fixtures use a safe owned-media URL stub; the real API issues
+    // private 300-second BOS URLs or fails closed when credentials are absent.
+    return new PictureBookService(
+      db,
+      queue,
+      imageQueue,
+      { ...config, ...overrides },
+      undefined,
+      (media) => media.playbackUrl,
+    );
   }
 
   async function createApp(pictureBook = service()) {
