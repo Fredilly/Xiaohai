@@ -317,15 +317,19 @@ suite('Meiping guarded apply safety boundaries PostgreSQL integration', () => {
       newSkus: 0,
       reusedSkus: 1,
     });
-    expect(preview.plan.rows[0]?.resolution).toMatchObject({
-      book: 'REUSE',
-      product: 'REUSE',
-      sku: 'REUSE',
-      bookId: book!.id,
-      bookEditionId: edition!.id,
-      productId: product!.id,
-      skuId: sku!.id,
-    });
+    expect(preview.plan.rows).toMatchObject([
+      {
+        resolution: {
+          book: 'REUSE',
+          product: 'REUSE',
+          sku: 'REUSE',
+          bookId: book!.id,
+          bookEditionId: edition!.id,
+          productId: product!.id,
+          skuId: sku!.id,
+        },
+      },
+    ]);
     // Preview is metadata-only. Explicitly enable only this synthetic
     // disposable-DB test execution to cover the separate applyRow lookup path.
     expect(preview.canExecute).toBe(false);
