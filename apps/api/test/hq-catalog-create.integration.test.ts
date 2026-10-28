@@ -486,11 +486,53 @@ suite('HQ catalog create and optimistic update on disposable PostgreSQL', () => 
           priceMinor: 100 + index,
         })),
       );
-      const firstPage = await commerce.listAdminProducts(undefined, undefined, 0, 30);
-      const secondPage = await commerce.listAdminProducts(undefined, undefined, 100, 30);
-      expect(firstPage.products).toHaveLength(30);
+      // Product pagination: a 37-SKU product must stay on ONE page and
+      // every variant must be independently editable by its exact SKU ID.
+      const bulkySkuRows = await db.insert(skus).values(
+        Array.from({ length: 36 }, (_, index) => ({
+          productId: paged[0]!.id,
+          code: `HQ-PAGE-BULKY-${suffix}-${String(index).padStart(2, '0')}`,
+          name: `Variant ${index}`,
+          priceMinor: 3000 + index,
+        })),
+      ).returning({ id: skus.id });
+      const firstPage = await commerce.listAdminProducts('HQ Page Fixture', undefined, 0, 30);
+      const secondPage = await commerce.listAdminProducts('HQ Page Fixture', undefined, 30, 30);
+      expect(new Set(firstPage.products.map((p) => p.id)).size).toBe(30);
+      expect(new Set(secondPage.products.map((p) => p.id)).size).toBe(30);
       expect(firstPage.hasMore).toBe(true);
-      expect(secondPage.products.length).toBeGreaterThan(0);
+      expect(secondPage.hasMore).toBe(true);
+      expect(firstPage.products.filter((p) => p.id === paged[0]!.id)).toHaveLength(37);
+      expect(secondPage.products.some((p) => p.id === paged[0]!.id)).toBe(false);
+      const singleProductPage = await commerce.listAdminProducts('HQ Page Fixture', undefined, 0, 1);
+      expect(singleProductPage.products).toHaveLength(37);
+      expect(singleProductPage.hasMore).toBe(true);
+      const nextProductPage = await commerce.listAdminProducts('HQ Page Fixture', undefined, 1, 1);
+      expect(nextProductPage.products).toHaveLength(1);
+      expect(nextProductPage.products[0]!.id).toBe(paged[1]!.id);
+      const exactVariant = singleProductPage.products.find((p) => p.skuId === bulkySkuRows[35]!.id)!;
+      expect(exactVariant.sku.priceMinor).toBe(3035);
+      const selectedVariantChange = {
+        name: exactVariant.name,
+        description: exactVariant.description,
+        coverUrl: exactVariant.coverUrl,
+        status: exactVariant.status,
+        book: undefined,
+        sku: { ...exactVariant.sku, priceMinor: 3900 },
+        expectedProductVersion: exactVariant.productVersion,
+        expectedSkuId: exactVariant.skuId,
+        expectedSkuVersion: exactVariant.skuVersion,
+      };
+      const variantPreview = await commerce.previewAdminProductUpdate(
+        exactVariant.id, selectedVariantChange, actor!.id,
+      );
+      await commerce.updateAdminProduct(
+        exactVariant.id, selectedVariantChange, actor!.id, randomUUID(), variantPreview.previewToken,
+      );
+      const allVariants = await commerce.getAdminProductsById(exactVariant.id);
+      expect(allVariants).toHaveLength(37);
+      expect(allVariants.find((p) => p.skuId === exactVariant.skuId)?.sku.priceMinor).toBe(3900);
+      expect(allVariants.find((p) => p.skuId !== exactVariant.skuId)?.sku.priceMinor).not.toBe(3900);
       const search = await commerce.listAdminProducts(
         'HQ Page Fixture 101 ' + suffix,
         undefined,
