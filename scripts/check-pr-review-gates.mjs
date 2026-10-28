@@ -32,8 +32,15 @@ export function reviewIssues({ files, patch = '', body = '', readSource = () => 
   if (body.trim().length < 120 || !/test|CI|测试|验证/i.test(body)) {
     issues.push('Describe actual scope, risks and testing in the PR body.');
   }
+  // Examine changed API routes only; test fixtures intentionally contain
+  // unsafe examples and must not be mistaken for shipped response handlers.
+  let publicRoute = false;
   for (const line of patch.split('\n')) {
-    if (!line.startsWith('+') || line.startsWith('+++')) continue;
+    if (line.startsWith('diff --git a/')) {
+      const path = /^diff --git a\/(.+?) b\//.exec(line)?.[1] ?? '';
+      publicRoute = /^apps\/api\/src\/.*(?:routes|controller)\.ts$/.test(path);
+    }
+    if (!publicRoute || !line.startsWith('+') || line.startsWith('+++')) continue;
     if (/\bmessage\s*:\s*(?:(?:err|error)\??\.message\b|(?:err|error)\s+instanceof\b)/.test(line.slice(1))) {
       issues.push('Raw exception text may be exposed in an HTTP response; use allowlisted messages.');
       break;
