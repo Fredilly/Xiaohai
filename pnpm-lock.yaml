@@ -158,7 +158,7 @@ importers:
         version: 5.12.1
       zod:
         specifier: 'catalog:'
-        version: 4.6.4
+        version: 4.6.7
     devDependencies:
       '@types/node':
         specifier: 'catalog:'
@@ -244,7 +244,7 @@ importers:
         version: 5.12.1
       zod:
         specifier: 'catalog:'
-        version: 4.6.4
+        version: 4.6.7
     devDependencies:
       '@types/node':
         specifier: 'catalog:'
@@ -266,7 +266,7 @@ importers:
         version: link:../validation
       zod:
         specifier: 'catalog:'
-        version: 4.6.4
+        version: 4.6.7
     devDependencies:
       typescript:
         specifier: 'catalog:'
@@ -279,7 +279,7 @@ importers:
     dependencies:
       zod:
         specifier: 'catalog:'
-        version: 4.6.4
+        version: 4.6.7
     devDependencies:
       typescript:
         specifier: 'catalog:'
@@ -341,7 +341,7 @@ importers:
     dependencies:
       zod:
         specifier: 'catalog:'
-        version: 4.6.4
+        version: 4.6.7
     devDependencies:
       typescript:
         specifier: 'catalog:'
