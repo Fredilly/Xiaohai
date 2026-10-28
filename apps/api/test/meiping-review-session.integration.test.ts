@@ -937,41 +937,71 @@ suite('Meiping review staging PostgreSQL integration', () => {
     expect(stored).toMatchObject({ action: 'CREATE_DRAFT', version: 5 });
   });
 
-
   it('rolls back current decision and audit when a history version key already exists', async () => {
     const { actorId, storeId, report } = await fixture();
     const audit = { actorStaffAccountId: actorId, requestId: randomUUID() };
     const session = await review.createSession(report, audit);
     await review.saveDecision(
-      session.id, storeId, 2,
-      { sourceRowNumber: 2, action: 'CREATE_DRAFT', countedQuantity: 2, expectedVersion: 0, expectedChecksum: checksum },
+      session.id,
+      storeId,
+      2,
+      {
+        sourceRowNumber: 2,
+        action: 'CREATE_DRAFT',
+        countedQuantity: 2,
+        expectedVersion: 0,
+        expectedChecksum: checksum,
+      },
       audit,
     );
     // Deliberate collision with the NEXT version, while the mutable row is
     // still at version 1. No current-row or audit write may survive failure.
     await database!.db.insert(meipingReviewDecisionHistory).values({
-      sessionId: session.id, sourceRowNumber: 2, version: 2, action: 'EXCLUDE',
-      countedQuantity: null, reason: 'conflicting immutable snapshot',
-      updatedByStaffAccountId: actorId, updatedAt: new Date(),
+      sessionId: session.id,
+      sourceRowNumber: 2,
+      version: 2,
+      action: 'EXCLUDE',
+      countedQuantity: null,
+      reason: 'conflicting immutable snapshot',
+      updatedByStaffAccountId: actorId,
+      updatedAt: new Date(),
     });
-    const beforeAudit = await database!.db.select({ id: auditLogs.id }).from(auditLogs)
+    const beforeAudit = await database!.db
+      .select({ id: auditLogs.id })
+      .from(auditLogs)
       .where(eq(auditLogs.resourceId, session.id));
     await expect(
       review.saveDecision(
-        session.id, storeId, 2,
-        { sourceRowNumber: 2, action: 'EXCLUDE', reason: 'attempted overwrite', expectedVersion: 1, expectedChecksum: checksum },
+        session.id,
+        storeId,
+        2,
+        {
+          sourceRowNumber: 2,
+          action: 'EXCLUDE',
+          reason: 'attempted overwrite',
+          expectedVersion: 1,
+          expectedChecksum: checksum,
+        },
         audit,
       ),
     ).rejects.toThrow();
-    const [current] = await database!.db.select().from(meipingReviewDecisions)
+    const [current] = await database!.db
+      .select()
+      .from(meipingReviewDecisions)
       .where(eq(meipingReviewDecisions.sessionId, session.id));
-    const history = await database!.db.select().from(meipingReviewDecisionHistory)
+    const history = await database!.db
+      .select()
+      .from(meipingReviewDecisionHistory)
       .where(eq(meipingReviewDecisionHistory.sessionId, session.id));
-    const afterAudit = await database!.db.select({ id: auditLogs.id }).from(auditLogs)
+    const afterAudit = await database!.db
+      .select({ id: auditLogs.id })
+      .from(auditLogs)
       .where(eq(auditLogs.resourceId, session.id));
     expect(current).toMatchObject({ version: 1, action: 'CREATE_DRAFT', countedQuantity: 2 });
     expect(history).toHaveLength(2);
-    expect(history.find((entry) => entry.version === 2)?.reason).toBe('conflicting immutable snapshot');
+    expect(history.find((entry) => entry.version === 2)?.reason).toBe(
+      'conflicting immutable snapshot',
+    );
     expect(afterAudit).toEqual(beforeAudit);
   });
 
@@ -980,33 +1010,65 @@ suite('Meiping review staging PostgreSQL integration', () => {
     const audit = { actorStaffAccountId: actorId, requestId: randomUUID() };
     const session = await review.createSession(report, audit);
     await review.saveCorrection(
-      session.id, storeId, 2,
-      { expectedChecksum: checksum, expectedVersion: 0, proposedFields: { priceMinor: 100 }, reason: 'initial' },
+      session.id,
+      storeId,
+      2,
+      {
+        expectedChecksum: checksum,
+        expectedVersion: 0,
+        proposedFields: { priceMinor: 100 },
+        reason: 'initial',
+      },
       audit,
     );
     await database!.db.insert(meipingReviewCorrectionHistory).values({
-      sessionId: session.id, sourceRowNumber: 2, version: 2,
-      proposedFields: { priceMinor: 999 }, reason: 'conflicting immutable snapshot',
-      updatedByStaffAccountId: actorId, updatedAt: new Date(),
+      sessionId: session.id,
+      sourceRowNumber: 2,
+      version: 2,
+      proposedFields: { priceMinor: 999 },
+      reason: 'conflicting immutable snapshot',
+      updatedByStaffAccountId: actorId,
+      updatedAt: new Date(),
     });
-    const beforeAudit = await database!.db.select({ id: auditLogs.id }).from(auditLogs)
+    const beforeAudit = await database!.db
+      .select({ id: auditLogs.id })
+      .from(auditLogs)
       .where(eq(auditLogs.resourceId, session.id));
     await expect(
       review.saveCorrection(
-        session.id, storeId, 2,
-        { expectedChecksum: checksum, expectedVersion: 1, proposedFields: { priceMinor: 150 }, reason: 'attempted overwrite' },
+        session.id,
+        storeId,
+        2,
+        {
+          expectedChecksum: checksum,
+          expectedVersion: 1,
+          proposedFields: { priceMinor: 150 },
+          reason: 'attempted overwrite',
+        },
         audit,
       ),
     ).rejects.toThrow();
-    const [current] = await database!.db.select().from(meipingReviewCorrections)
+    const [current] = await database!.db
+      .select()
+      .from(meipingReviewCorrections)
       .where(eq(meipingReviewCorrections.sessionId, session.id));
-    const history = await database!.db.select().from(meipingReviewCorrectionHistory)
+    const history = await database!.db
+      .select()
+      .from(meipingReviewCorrectionHistory)
       .where(eq(meipingReviewCorrectionHistory.sessionId, session.id));
-    const afterAudit = await database!.db.select({ id: auditLogs.id }).from(auditLogs)
+    const afterAudit = await database!.db
+      .select({ id: auditLogs.id })
+      .from(auditLogs)
       .where(eq(auditLogs.resourceId, session.id));
-    expect(current).toMatchObject({ version: 1, proposedFields: { priceMinor: 100 }, reason: 'initial' });
+    expect(current).toMatchObject({
+      version: 1,
+      proposedFields: { priceMinor: 100 },
+      reason: 'initial',
+    });
     expect(history).toHaveLength(2);
-    expect(history.find((entry) => entry.version === 2)?.reason).toBe('conflicting immutable snapshot');
+    expect(history.find((entry) => entry.version === 2)?.reason).toBe(
+      'conflicting immutable snapshot',
+    );
     expect(afterAudit).toEqual(beforeAudit);
   });
 
