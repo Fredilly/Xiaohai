@@ -23,6 +23,7 @@ import {
 } from './catalog-api';
 import { loadHqStores } from './hq-operations-api';
 import { isValidIsbn, normalizeIsbn } from '@xiaohai/contracts/commerce';
+import { createBookLookupGate } from './book-lookup-gate';
 type Product = Awaited<ReturnType<typeof listAdminProducts>>['products'][number];
 export function parseYuanToMinor(value: string): number | null {
   if (!/^(?:0|[1-9]\d*)(?:\.\d{1,2})?$/.test(value)) return null;
@@ -585,10 +586,10 @@ function ProductForm({
   const [existingProductId, setExistingProductId] = useState<string | null>(null);
   const [existingBook, setExistingBook] = useState(false);
   // Every manual edit invalidates older pending ISBN lookup results.
-  const lookupSequence = useRef(0);
-  useEffect(() => () => { lookupSequence.current += 1; }, []);
+  const lookupSequence = useRef(createBookLookupGate());
+  useEffect(() => () => { lookupSequence.current.invalidate(); }, []);
   function invalidateLookup() {
-    lookupSequence.current += 1;
+    lookupSequence.current.invalidate();
     setLookingUp(false);
   }
 
@@ -612,7 +613,7 @@ function ProductForm({
   }
 
   async function lookupBook() {
-    const request = ++lookupSequence.current;
+    const request = lookupSequence.current.start();
     const raw = v.book?.isbn ?? '';
     const isbn = normalizeIsbn(raw);
     setLookingUp(false);
@@ -628,7 +629,7 @@ function ProductForm({
     setLookupStatus('正在检索系统已有图书资料…');
     try {
       const result = await lookupBookData(token, isbn);
-      if (request !== lookupSequence.current) return;
+      if (!lookupSequence.current.current(request)) return;
       if (!result.book) {
         setExistingProductId(null);
         setExistingBook(false);
@@ -657,10 +658,10 @@ function ProductForm({
             : '已从系统现有资料回填，请确认后再保存。',
       );
     } catch {
-      if (request === lookupSequence.current)
+      if (lookupSequence.current.current(request))
         setLookupStatus('图书资料检索失败，请手动填写必填字段。');
     } finally {
-      if (request === lookupSequence.current) setLookingUp(false);
+      if (lookupSequence.current.current(request)) setLookingUp(false);
     }
   }
 
