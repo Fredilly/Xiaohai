@@ -425,18 +425,15 @@ export class MeipingReviewService {
           .returning({ version: meipingReviewCorrections.version });
       }
       if (!result) throw new MeipingReviewError('CONFLICT');
-      await tx
-        .insert(meipingReviewCorrectionHistory)
-        .values({
-          sessionId: id,
-          sourceRowNumber,
-          proposedFields: clean,
-          reason: input.reason.trim(),
-          version: result.version,
-          updatedByStaffAccountId: audit.actorStaffAccountId,
-          updatedAt: values.updatedAt,
-        })
-        .onConflictDoNothing();
+      await tx.insert(meipingReviewCorrectionHistory).values({
+        sessionId: id,
+        sourceRowNumber,
+        proposedFields: clean,
+        reason: input.reason.trim(),
+        version: result.version,
+        updatedByStaffAccountId: audit.actorStaffAccountId,
+        updatedAt: values.updatedAt,
+      });
       await tx.insert(auditLogs).values({
         actorStaffAccountId: audit.actorStaffAccountId,
         actionKey: 'meiping.review.correction.save',
@@ -729,19 +726,16 @@ export class MeipingReviewService {
           .returning({ version: meipingReviewDecisions.version });
       }
       if (!updated) throw new MeipingReviewError('CONFLICT');
-      await tx
-        .insert(meipingReviewDecisionHistory)
-        .values({
-          sessionId: id,
-          sourceRowNumber,
-          action: values.action,
-          countedQuantity: values.countedQuantity,
-          reason: values.reason,
-          version: updated.version,
-          updatedByStaffAccountId: audit.actorStaffAccountId,
-          updatedAt: values.updatedAt,
-        })
-        .onConflictDoNothing();
+      await tx.insert(meipingReviewDecisionHistory).values({
+        sessionId: id,
+        sourceRowNumber,
+        action: values.action,
+        countedQuantity: values.countedQuantity,
+        reason: values.reason,
+        version: updated.version,
+        updatedByStaffAccountId: audit.actorStaffAccountId,
+        updatedAt: values.updatedAt,
+      });
       // An append-only audit event with complete before/after snapshots is
       // persisted in the same transaction as the mutable current decision.
       // A failed/stale mutation rolls back without producing a history entry.

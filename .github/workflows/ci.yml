@@ -60,6 +60,25 @@ jobs:
           echo "schema=$schema" >> "$GITHUB_OUTPUT"
           echo "migration=$migration" >> "$GITHUB_OUTPUT"
 
+  review-scope:
+    name: PR scope, migration and error safety
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      # Inspect the actual PR HEAD, not GitHub's synthetic HEAD merged with
+      # main: otherwise unrelated upstream migrations can trigger false scope alarms.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Test pre-review checks
+        run: node --test scripts/check-pr-review-gates.test.mjs
+      - name: Check changed files, public errors and migration runbooks
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: node scripts/check-pr-review-gates.mjs
+
   fast:
     name: fast checks
     needs: changes
@@ -180,12 +199,15 @@ jobs:
   gate:
     name: merge gate
     if: always()
-    needs: [changes, fast, migration-guard, migration-chain, critical]
+    needs: [changes, review-scope, fast, migration-guard, migration-chain, critical]
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - name: Enforce required outcomes
         env:
           CHANGES: ${{ needs.changes.result }}
+          REVIEW_SCOPE: ${{ needs.review-scope.result }}
+          EVENT_NAME: ${{ github.event_name }}
           FAST: ${{ needs.fast.result }}
           MIGRATION: ${{ needs.migration-guard.result }}
           MIGRATION_CHAIN: ${{ needs.migration-chain.result }}
@@ -193,6 +215,7 @@ jobs:
         run: |
           set -euo pipefail
           [ "$CHANGES" = "success" ]
+          bash scripts/check-pr-review-result.sh "$EVENT_NAME" "$REVIEW_SCOPE"
           [ "$FAST" = "success" ]
           [ "$MIGRATION" = "success" ]
           [ "$MIGRATION_CHAIN" = "success" ]
