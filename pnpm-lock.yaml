@@ -129,6 +129,9 @@ importers:
 
   apps/api:
     dependencies:
+      '@stackline/xlsx':
+        specifier: 1.0.9
+        version: 1.0.9
       '@xiaohai/config':
         specifier: workspace:*
         version: link:../../packages/config
@@ -1185,6 +1188,10 @@ packages:
     resolution: {integrity: sha512-6NHnk/K3eq2ZFYcU1X8g67s9qIJRCOTT92gwLMVBp08dB2uuuwI1/Q/empzL2Bfr2f2WRLJVwpp90RmacQyFkw==}
     cpu: [x64]
     os: [win32]
+
+  '@stackline/xlsx@1.0.9':
+    resolution: {integrity: sha512-3wxYIkGPxAlZorF+6uwNvf7DF8vO3w1W6GoNJPp1mAGVPFu8XlXWwrJfXUl1FraqjC+WXDhmP32CEpuMooXWxQ==}
+    engines: {node: '>=20'}
 
   '@tootallnate/once@2.0.1':
     resolution: {integrity: sha512-HqmEUIGRJ5fSXchkVgR5F7qn48bDBzv0kWj/Kfu5e6uci4UlEeng4331LnBkWffb++Ei3FOVLxo8JJWMFBDMeQ==}
@@ -2964,6 +2971,8 @@ snapshots:
 
   '@rollup/rollup-win32-x64-msvc@4.63.2':
     optional: true
+
+  '@stackline/xlsx@1.0.9': {}
 
   '@tootallnate/once@2.0.1': {}
 

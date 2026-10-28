@@ -28,7 +28,7 @@ The release preflight performs:
 3. paid-image configuration validation:
    - Bailian image mode explicitly enabled
    - server-side budget gate explicitly enabled
-   - per-request reservation + global/consumer limit names present
+   - per-request reservation + global/consumer limit configured as positive safe integer minor units; reservation no greater than either cap
    - public BOS origin present
 4. live dependency probes:
    - `GET <staging-api>/ready` must report `{ status: "ready" }`
@@ -56,14 +56,26 @@ The existing PostgreSQL integration suite already verifies:
 
 This issue does not duplicate that implementation.
 
-## Current staging blocker
+## Current staging prerequisites (after PR #171)
 
-At the start of #115, `apps/miniapp/config.ts` still maps:
+PR #171 merged the Mini Program configuration fix from #76: `develop` and
+`trial` now point at `https://staging-api.pamboo.asia`. The `release` domain
+remains deliberately blocked (`.invalid`) pending separate production approval.
 
-- `develop` → local dev using `http://127.0.0.1:3000`
-- `trial` → `https://staging-api.example.invalid`
+This is **source configuration only**, not proof of WeChat request-domain
+allowlisting, iOS/Android device connectivity, actual `/ready` health or BOS
+object reachability. The preflight must be run against an **authorized staging
+environment** after an operator provides the non-secret configuration values
+and a safe **read-only** DB migration-status check. Device test evidence stays
+under #32/#76.
 
-Therefore a real staging release preflight is expected to fail until #76 provides the real WeChat-allowlisted HTTPS API domain. #115 intentionally reports this blocker instead of silently changing #76 scope.
+The preflight additionally requires positive **safe integer** cost estimates
+in minor units; per-image reservation must not exceed the configured global
+or consumer cap. Invalid, zero, fractional, negative or imprecise amounts fail
+closed. This is configuration validation and does not replace the transactional
+budget enforcement confirmed separately in #118.
+
+A green mocked CI run is **not** authorization for real paid generation.
 
 ## Secrets and logging
 

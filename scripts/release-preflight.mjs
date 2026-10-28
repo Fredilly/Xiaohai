@@ -69,6 +69,34 @@ export function validatePaidImageConfiguration(env) {
     failures.push('PICTURE_BOOK_IMAGE_BUDGET_ENABLED must be true');
   }
 
+  // Budget reservation and caps are integer minor units. Never let strings
+  // such as NaN, decimals, exponent notation, negative or unsafe numbers
+  // make a paid provider preflight appear valid.
+  const budgetFields = [
+    'PICTURE_BOOK_IMAGE_BUDGET_RESERVATION_MINOR',
+    'PICTURE_BOOK_IMAGE_BUDGET_GLOBAL_LIMIT_MINOR',
+    'PICTURE_BOOK_IMAGE_BUDGET_CONSUMER_LIMIT_MINOR',
+  ];
+  const parsed = {};
+  for (const key of budgetFields) {
+    const raw = env[key];
+    if (!raw) continue; // The required-field check above reports missing values.
+    if (!/^[1-9][0-9]*$/u.test(raw) || !Number.isSafeInteger(Number(raw))) {
+      failures.push(`${key} must be a positive safe integer in minor units`);
+    } else {
+      parsed[key] = Number(raw);
+    }
+  }
+  if (
+    budgetFields.every((key) => parsed[key] !== undefined) &&
+    (parsed.PICTURE_BOOK_IMAGE_BUDGET_RESERVATION_MINOR >
+      parsed.PICTURE_BOOK_IMAGE_BUDGET_GLOBAL_LIMIT_MINOR ||
+      parsed.PICTURE_BOOK_IMAGE_BUDGET_RESERVATION_MINOR >
+        parsed.PICTURE_BOOK_IMAGE_BUDGET_CONSUMER_LIMIT_MINOR)
+  ) {
+    failures.push('PICTURE_BOOK_IMAGE_BUDGET_RESERVATION_MINOR exceeds a configured budget limit');
+  }
+
   if (env.PICTURE_BOOK_IMAGE_BASE_URL) {
     failures.push(
       ...validateHttpsPublicUrl(env.PICTURE_BOOK_IMAGE_BASE_URL, 'PICTURE_BOOK_IMAGE_BASE_URL'),

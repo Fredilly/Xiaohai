@@ -1,5 +1,13 @@
 <view class="page">
   <view class="brand-row"><image class="brand-logo" src="/assets/brand/xiaohai-logo.png" mode="aspectFit" /><view class="brand-copy"><text class="brand-name">小海童话</text><text class="brand-note">陪每一个好奇的故事长大</text></view></view>
+  <view class="storybook-intro">
+    <view class="storybook-intro-copy">
+      <text class="storybook-kicker">小海的故事世界 ✦</text>
+      <text class="storybook-heading">翻开一本书，\n开启一场奇妙冒险</text>
+      <text class="storybook-blurb">好故事、好童书，还有你的无限想象。</text>
+    </view>
+    <image class="storybook-scene" src="/assets/illustrations/home-reading-fox.svg" mode="aspectFit" aria-hidden="true" />
+  </view>
   <view class="home-search" bindtap="openShop">
     <image class="search-icon" src="/assets/ui/search.svg" />
     <text>搜索童书与好故事</text>
@@ -24,7 +32,7 @@
         bindtap="openAction"
       >
         <image wx:if="{{item.mediaUrl}}" class="hero-media" src="{{item.mediaUrl}}" mode="aspectFill" data-index="{{index}}" data-src="{{item.mediaUrl}}" binderror="mediaError" />
-        <view wx:if="{{!item.mediaUrl}}" class="hero-illustration" aria-hidden="true"><view class="illustration-book"><view class="book-left"></view><view class="book-right"></view></view><view class="illustration-spark">✦</view></view>
+        <image wx:if="{{!item.mediaUrl}}" class="hero-illustration storybook-hero-art" src="/assets/illustrations/home-reading-fox.svg" mode="aspectFit" aria-hidden="true" />
         <text wx:if="{{item.config.eyebrow}}" class="eyebrow">{{item.config.eyebrow}}</text>
         <text class="hero-title">{{item.title}}</text>
         <text wx:if="{{item.subtitle}}" class="hero-subtitle">{{item.subtitle}}</text>

@@ -84,3 +84,69 @@ test('release preflight probes API readiness and a public BOS object without pro
     { url: 'https://assets.example.com/preflight/public-smoke.png', method: 'HEAD' },
   ]);
 });
+
+const validPaidImageEnvironment = {
+  PICTURE_BOOK_IMAGE_ENABLED: 'true',
+  PICTURE_BOOK_IMAGE_PROVIDER: 'BAILIAN',
+  PICTURE_BOOK_IMAGE_BUDGET_ENABLED: 'true',
+  PICTURE_BOOK_IMAGE_MODEL: 'qwen-image-3.0',
+  PICTURE_BOOK_IMAGE_BASE_URL: 'https://dashscope.aliyuncs.com',
+  BAIDU_BOS_PUBLIC_ORIGIN: 'https://assets.example.com',
+  PICTURE_BOOK_IMAGE_BUDGET_KEY: 'image-daily',
+  PICTURE_BOOK_IMAGE_BUDGET_WINDOW_KEY: '2099-01-01',
+  PICTURE_BOOK_IMAGE_BUDGET_RESERVATION_MINOR: '100',
+  PICTURE_BOOK_IMAGE_BUDGET_GLOBAL_LIMIT_MINOR: '1000',
+  PICTURE_BOOK_IMAGE_BUDGET_CONSUMER_LIMIT_MINOR: '500',
+  BOS_PREFLIGHT_OBJECT_URL: 'https://assets.example.com/preflight/health.png',
+};
+
+test('paid-image preflight accepts positive integer budgets at their limits', () => {
+  const env = {
+    ...validPaidImageEnvironment,
+    PICTURE_BOOK_IMAGE_BUDGET_RESERVATION_MINOR: '500',
+    PICTURE_BOOK_IMAGE_BUDGET_GLOBAL_LIMIT_MINOR: '500',
+  };
+  assert.deepEqual(validatePaidImageConfiguration(env), []);
+});
+
+test('paid-image preflight rejects nonpositive, fractional and unsafe budget numbers', () => {
+  const fields = [
+    'PICTURE_BOOK_IMAGE_BUDGET_RESERVATION_MINOR',
+    'PICTURE_BOOK_IMAGE_BUDGET_GLOBAL_LIMIT_MINOR',
+    'PICTURE_BOOK_IMAGE_BUDGET_CONSUMER_LIMIT_MINOR',
+  ];
+  const invalid = ['0', '-1', '0.5', '1e3', 'Infinity', 'NaN', '9007199254740992', ' 3'];
+  for (const key of fields) {
+    for (const value of invalid) {
+      const failures = validatePaidImageConfiguration({
+        ...validPaidImageEnvironment,
+        [key]: value,
+      });
+      assert.ok(
+        failures.some((failure) => failure.includes(key) && failure.includes('positive safe integer')),
+        `${key} must reject malformed minor units`,
+      );
+    }
+  }
+});
+
+test('paid-image preflight blocks reservation exceeding either daily cap', () => {
+  for (const limit of [
+    'PICTURE_BOOK_IMAGE_BUDGET_GLOBAL_LIMIT_MINOR',
+    'PICTURE_BOOK_IMAGE_BUDGET_CONSUMER_LIMIT_MINOR',
+  ]) {
+    const failures = validatePaidImageConfiguration({
+      ...validPaidImageEnvironment,
+      [limit]: '99',
+    });
+    assert.ok(failures.some((failure) => failure.includes('exceeds a configured budget limit')));
+  }
+});
+
+test('paid-image preflight rejects missing numeric fields without exposing values', () => {
+  const env = { ...validPaidImageEnvironment };
+  delete env.PICTURE_BOOK_IMAGE_BUDGET_GLOBAL_LIMIT_MINOR;
+  const failures = validatePaidImageConfiguration(env);
+  assert.ok(failures.some((failure) => failure.includes('GLOBAL_LIMIT_MINOR') && failure.includes('required')));
+  assert.equal(failures.some((failure) => failure.includes('dashscope.aliyuncs.com')), false);
+});
