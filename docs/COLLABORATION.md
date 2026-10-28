@@ -38,3 +38,13 @@ Early foundation and high-risk domains (auth, RBAC, inventory, payments, migrati
 
 ## Conflict prevention
 Pull `main` before starting. One task per branch. Avoid two people editing the same high-churn file simultaneously. Never force-push shared branches unless explicitly agreed.
+
+## Required pre-review gate / 人工审核前必检
+
+Review **the actual GitHub diff against the current base**, not just the PR title or an earlier green SHA. One distinct business responsibility per PR. HQ catalog/ISBN/Meiping history/guarded apply must be separately reviewable; do not claim "no HQ", "no SQL" or "no database writes" when files contradict that.
+
+Every PR requires the template's scope, why, latest-head tests, Staff RBAC/data isolation, error-message whitelist, negative/concurrent/retry paths and dependency/merge order. For SQL migrations or backfills, include a **changed runbook** with backup, rehearsal, required owner approvals, write-window/lock expectations, safe application rollback and read-only before/after reconciliation. A successful migration test is not authorization to execute on production.
+
+Review history-key collisions, transaction atomicity, stale version tokens, duplicate create retries, cross-store shared fields, stock ledger idempotency and malformed legacy records. Immutable history version collisions must cause rollback: do not suppress them using \`onConflictDoNothing()\`.
+
+The CI job **PR scope, migration and error safety** enforces a subset of these requirements on pull requests using the actual changed files, added lines and source. Its unit tests protect against bypasses. Passing it never substitutes for two independent human reviews, a database owner's migration approval, staging UAT, or a production deployment decision.
