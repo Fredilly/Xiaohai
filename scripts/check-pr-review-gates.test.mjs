@@ -90,3 +90,33 @@ test('PR review scope cannot be skipped, even if all other gates pass', () => {
   assert.notEqual(check('push', 'failure'), 0);
   assert.notEqual(check('workflow_dispatch', 'skipped'), 0);
 });
+
+test('new unguarded PostgreSQL integration suites are blocked before human review', () => {
+  const path = 'apps/api/test/new-apply.integration.test.ts';
+  const diff = `diff --git a/${path} b/${path}\nnew file mode 100644\n`;
+  const unsafe = 'const database = process.env.DATABASE_URL ? createDatabase(process.env) : null;';
+  assert.match(
+    check([path], diff, body, unsafe).join(','),
+    /unchecked DATABASE_URL/,
+  );
+  assert.match(
+    check([path], diff, body, 'const db = createDatabase(process.env);').join(','),
+    /fail-closed disposable DB guard/,
+  );
+  const guarded =
+    "const database = assertMeipingApplyDisposableDatabase(process.env) ? createDatabase(process.env) : null;";
+  assert.deepEqual(check([path], diff, body, guarded), []);
+});
+
+test('modifying an older suite cannot reintroduce unconditional DATABASE_URL access', () => {
+  const path = 'apps/api/test/legacy.integration.test.ts';
+  assert.match(
+    check(
+      [path],
+      '',
+      body,
+      'const db = process.env.DATABASE_URL ? createDatabase(process.env) : null;',
+    ).join(','),
+    /unchecked DATABASE_URL/,
+  );
+});

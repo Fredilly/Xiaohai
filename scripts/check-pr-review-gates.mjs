@@ -65,6 +65,44 @@ export function reviewIssues({ files, patch = '', body = '', readSource = () => 
       break;
     }
   }
+  // Destructive DB integration suites must validate their effective target
+  // before creating any connection. Check added suites and the exact unsafe
+  // DATABASE_URL ternary across ALL modified suites.
+  const addedIntegrationSuites = new Set();
+  let diffPath = '';
+  for (const line of patch.split('\n')) {
+    if (line.startsWith('diff --git a/')) {
+      diffPath = /^diff --git a\/(.+?) b\//.exec(line)?.[1] ?? '';
+    } else if (
+      line.startsWith('new file mode ') &&
+      /^apps\/api\/test\/[^/]+\.integration\.test\.ts$/.test(diffPath)
+    ) {
+      addedIntegrationSuites.add(diffPath);
+    }
+  }
+  for (const file of files.filter((path) =>
+    /^apps\/api\/test\/[^/]+\.integration\.test\.ts$/.test(path),
+  )) {
+    // Deleted test files have no source; only newly added suites need a
+    // bootstrap check, while the changed diff detects unsafe shortcuts.
+    const source = readSource(file);
+    if (/process\.env\.DATABASE_URL\s*\?\s*createDatabase\(\s*process\.env\s*\)/.test(source)) {
+      issues.push('Mutating integration tests cannot connect from unchecked DATABASE_URL.');
+    }
+    if (!addedIntegrationSuites.has(file)) continue;
+    const connectionAt = source.search(
+      /\bcreateDatabase\s*\(\s*process\.env\s*\)|\bnew\s+(?:(?:pg)\.)?(?:Pool|Client)\s*\(/,
+    );
+    if (connectionAt < 0) continue;
+    const guardAt = source.search(
+      /\bassert\w*DisposableDatabase\s*\(\s*process\.env\s*\)/,
+    );
+    if (guardAt < 0 || guardAt > connectionAt) {
+      issues.push(
+        'New PostgreSQL integration suites require a fail-closed disposable DB guard before connecting.',
+      );
+    }
+  }
   if (files.includes('apps/api/src/migration/meiping-review-service.ts')) {
     const service = readSource('apps/api/src/migration/meiping-review-service.ts');
     if (
