@@ -66,9 +66,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
+      # Inspect the actual PR HEAD, not GitHub's synthetic HEAD merged with
+      # main: otherwise unrelated upstream migrations can trigger false scope alarms.
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
       - name: Test pre-review checks
         run: node --test scripts/check-pr-review-gates.test.mjs
       - name: Check changed files, public errors and migration runbooks
