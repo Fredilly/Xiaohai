@@ -98,7 +98,10 @@ suite('M6 paid refund and M16 reservation PostgreSQL integration', () => {
         .where(eq(paymentLedger.paymentId, f.paymentId));
       if (ledger.length)
         await db.delete(financeLedgerEntries).where(
-          inArray(financeLedgerEntries.paymentLedgerId, ledger.map((row) => row.id)),
+          inArray(
+            financeLedgerEntries.paymentLedgerId,
+            ledger.map((row) => row.id),
+          ),
         );
       await db.delete(paymentCallbacks).where(eq(paymentCallbacks.paymentId, f.paymentId));
       await db.delete(paymentLedger).where(eq(paymentLedger.paymentId, f.paymentId));
@@ -111,7 +114,10 @@ suite('M6 paid refund and M16 reservation PostgreSQL integration', () => {
         .where(eq(deliveries.orderId, f.orderId));
       if (deliveryRows.length)
         await db.delete(deliveryEvents).where(
-          inArray(deliveryEvents.deliveryId, deliveryRows.map((row) => row.id)),
+          inArray(
+            deliveryEvents.deliveryId,
+            deliveryRows.map((row) => row.id),
+          ),
         );
       await db.delete(deliveries).where(eq(deliveries.orderId, f.orderId));
       await db.delete(pickupCodes).where(eq(pickupCodes.orderId, f.orderId));
@@ -125,13 +131,16 @@ suite('M6 paid refund and M16 reservation PostgreSQL integration', () => {
         .where(eq(carts.consumerUserId, f.userId));
       if (cartRows.length)
         await db.delete(cartItems).where(
-          inArray(cartItems.cartId, cartRows.map((row) => row.id)),
+          inArray(
+            cartItems.cartId,
+            cartRows.map((row) => row.id),
+          ),
         );
       await db.delete(carts).where(eq(carts.consumerUserId, f.userId));
       await db.delete(userAddresses).where(eq(userAddresses.consumerUserId, f.userId));
-      await db.delete(storeInventory).where(
-        and(eq(storeInventory.storeId, f.storeId), eq(storeInventory.skuId, f.skuId)),
-      );
+      await db
+        .delete(storeInventory)
+        .where(and(eq(storeInventory.storeId, f.storeId), eq(storeInventory.skuId, f.skuId)));
       await db.delete(skus).where(eq(skus.id, f.skuId));
       await db.delete(products).where(eq(products.id, f.productId));
       await db.delete(bookEditions).where(eq(bookEditions.id, f.editionId));
@@ -311,10 +320,7 @@ suite('M6 paid refund and M16 reservation PostgreSQL integration', () => {
         .where(and(eq(storeInventory.storeId, f.storeId), eq(storeInventory.skuId, f.skuId)));
       expect(during).toMatchObject({ onHand: 3, reserved: 1 });
 
-      const [refund] = await db
-        .select()
-        .from(refunds)
-        .where(eq(refunds.paymentId, f.payment.id));
+      const [refund] = await db.select().from(refunds).where(eq(refunds.paymentId, f.payment.id));
       event = {
         id: randomUUID(),
         eventType: 'REFUND.SUCCESS',
@@ -351,7 +357,12 @@ suite('M6 paid refund and M16 reservation PostgreSQL integration', () => {
         await db
           .select()
           .from(financeLedgerEntries)
-          .where(inArray(financeLedgerEntries.paymentLedgerId, ledger.map((row) => row.id))),
+          .where(
+            inArray(
+              financeLedgerEntries.paymentLedgerId,
+              ledger.map((row) => row.id),
+            ),
+          ),
       ).toHaveLength(2);
 
       if (method === 'PICKUP') {
@@ -381,10 +392,7 @@ suite('M6 paid refund and M16 reservation PostgreSQL integration', () => {
     const f = await seed('PICKUP');
     setupRefund(f);
     await paymentService.requestRefund(f.payment.id, f.staffId);
-    const [refund] = await db
-      .select()
-      .from(refunds)
-      .where(eq(refunds.paymentId, f.payment.id));
+    const [refund] = await db.select().from(refunds).where(eq(refunds.paymentId, f.payment.id));
     event = {
       id: randomUUID(),
       eventType: 'REFUND.CLOSED',
@@ -404,10 +412,7 @@ suite('M6 paid refund and M16 reservation PostgreSQL integration', () => {
       .from(storeInventory)
       .where(and(eq(storeInventory.storeId, f.storeId), eq(storeInventory.skuId, f.skuId)));
     expect(balance).toMatchObject({ onHand: 3, reserved: 1, version: 1 });
-    const [pickup] = await db
-      .select()
-      .from(pickupCodes)
-      .where(eq(pickupCodes.orderId, f.orderId));
+    const [pickup] = await db.select().from(pickupCodes).where(eq(pickupCodes.orderId, f.orderId));
     expect(pickup?.status).toBe('ISSUED');
     const [order] = await db.select().from(orders).where(eq(orders.id, f.orderId));
     expect(order?.status).toBe('PAID');
