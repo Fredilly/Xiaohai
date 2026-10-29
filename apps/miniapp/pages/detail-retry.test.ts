@@ -138,10 +138,76 @@ describe('detail pages retry their original data reads', () => {
 
     await instance.load?.call(instance);
     expect(instance.data.error).toBe('租借记录不存在或无法访问');
-    await instance.load?.call(instance);
+    instance.retry?.call(instance);
 
+    await vi.waitFor(() => {
+      expect(mocks.getRental).toHaveBeenCalledTimes(2);
+      expect(instance.data.error).toBe('');
+      expect(instance.data.rental).toMatchObject({ id: 'rental-1', statusText: '借阅中' });
+    });
+  });
+
+  it('does not mislabel protected 401/403 responses as retryable outages', async () => {
+    const product = page(0);
+    product.data.id = 'private-product';
+    mocks.getProduct.mockRejectedValueOnce({ status: 401 });
+    await product.load?.call(product, 'private-product');
+    expect(product.data.accessMessage).toBe('请先登录后查看此详情');
+    product.retry?.call(product);
+    expect(mocks.getProduct).toHaveBeenCalledTimes(1);
+
+    const story = page(1);
+    story.data.id = 'private-series';
+    mocks.getSeries.mockRejectedValueOnce(new Error('Content API 403'));
+    await story.load?.call(story, 'private-series');
+    expect(story.data.accessMessage).toBe('当前账号无权查看此详情');
+    story.retry?.call(story);
+    expect(mocks.getSeries).toHaveBeenCalledTimes(1);
+
+    const store = page(2);
+    store.data.id = 'private-store';
+    mocks.getStore.mockRejectedValueOnce(new Error('Store API 403'));
+    await store.loadStore?.call(store, 'private-store');
+    expect(store.data.accessMessage).toBe('当前账号无权查看此详情');
+    expect(store.data.markers).toEqual([]);
+    store.retry?.call(store);
+    expect(mocks.getStore).toHaveBeenCalledTimes(1);
+
+    const rental = page(3);
+    rental.data.id = 'private-rental';
+    rental.data.rental = { id: 'stale-private-rental' };
+    mocks.getRental.mockRejectedValueOnce(new Error('AUTH_REQUIRED'));
+    await rental.load?.call(rental);
+    expect(rental.data.accessMessage).toBe('请先登录后查看此详情');
+    expect(rental.data.rental).toBeNull();
+    rental.retry?.call(rental);
+    expect(mocks.getRental).toHaveBeenCalledTimes(1);
+  });
+
+  it('ignores repeated rental retry taps while the same GET is in flight', async () => {
+    const rental = page(3);
+    rental.data.id = 'rental-inflight';
+    mocks.getRental.mockRejectedValueOnce(new Error('offline'));
+    await rental.load?.call(rental);
+
+    let resolveRead: (value: unknown) => void = () => {
+      throw new Error('read promise was not initialized');
+    };
+    mocks.getRental.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveRead = resolve;
+        }),
+    );
+    rental.retry?.call(rental);
+    rental.retry?.call(rental);
     expect(mocks.getRental).toHaveBeenCalledTimes(2);
-    expect(instance.data.error).toBe('');
-    expect(instance.data.rental).toMatchObject({ id: 'rental-1', statusText: '借阅中' });
+
+    resolveRead({ id: 'rental-inflight', status: 'BORROWED', dueAt: null });
+    await vi.waitFor(() => {
+      expect(rental.data.loading).toBe(false);
+      expect(rental.data.rental).toMatchObject({ id: 'rental-inflight' });
+    });
+    expect(mocks.getRental).toHaveBeenCalledTimes(2);
   });
 });

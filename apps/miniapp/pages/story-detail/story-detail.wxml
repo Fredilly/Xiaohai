@@ -3,7 +3,7 @@
     <text class="section-title">选集</text><view class="episode" wx:for="{{detail.episodes}}" wx:key="id" data-id="{{item.id}}" bindtap="play"><text>第{{item.episodeNumber}}集 · {{item.title}}</text><text class="state-pill {{item.accessMode === 'PREVIEW' ? 'pending' : ''}}">{{item.accessMode === 'FREE' ? '免费' : item.accessMode === 'PREVIEW' ? '试看' : '需观看权益'}}</text></view>
   </block>
   <view wx:else class="state-card">
-    <text class="state-title">{{error || '正在加载故事…'}}</text>
-    <button wx:if="{{error && id}}" class="primary-btn" bindtap="retry">重新加载</button>
+    <text class="state-title">{{accessMessage || error || '正在加载故事…'}}</text>
+    <button wx:if="{{error && id && !accessMessage}}" class="primary-btn" bindtap="retry">重新加载</button>
   </view>
 </view>

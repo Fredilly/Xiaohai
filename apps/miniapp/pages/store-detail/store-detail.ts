@@ -1,5 +1,6 @@
 import type { PublicStore } from '@xiaohai/contracts/stores';
 import { getStore } from '../../services/stores';
+import { detailAccessMessage } from '../../utils/detail-read-error';
 
 Page({
   data: {
@@ -7,6 +8,7 @@ Page({
     store: null as PublicStore | null,
     loading: true,
     error: false,
+    accessMessage: '',
     markers: [] as Array<{
       id: number;
       latitude: number;
@@ -25,7 +27,7 @@ Page({
   },
 
   async loadStore(id: string) {
-    this.setData({ loading: true, error: false });
+    this.setData({ loading: true, error: false, accessMessage: '' });
     try {
       const store = await getStore(id);
       this.setData({
@@ -44,13 +46,20 @@ Page({
         ],
       });
       void wx.setNavigationBarTitle({ title: store.name });
-    } catch {
-      this.setData({ loading: false, error: true, store: null, markers: [] });
+    } catch (error) {
+      this.setData({
+        loading: false,
+        error: true,
+        accessMessage: detailAccessMessage(error),
+        store: null,
+        markers: [],
+      });
     }
   },
 
   retry() {
-    if (this.data.id) void this.loadStore(this.data.id);
+    if (this.data.id && !this.data.loading && !this.data.accessMessage)
+      void this.loadStore(this.data.id);
   },
 
   navigate() {

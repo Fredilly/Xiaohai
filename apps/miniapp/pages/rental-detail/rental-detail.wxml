@@ -1,8 +1,8 @@
 <view class="page pangzhu">
   <view wx:if="{{loading}}" class="state-card">正在加载…</view>
   <view wx:if="{{error}}" class="demo-note">
-    <text>{{error}}</text>
-    <button wx:if="{{id && !loading}}" class="secondary-btn" bindtap="load">重新加载</button>
+    <text>{{accessMessage || error}}</text>
+    <button wx:if="{{id && !loading && !accessMessage}}" class="secondary-btn" bindtap="retry">重新加载</button>
   </view>
   <view wx:if="{{rental}}" class="card">
     <text class="hero-title">{{rental.statusText}}</text>

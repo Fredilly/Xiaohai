@@ -1,8 +1,8 @@
 <view class="page">
   <view wx:if="{{loading}}" class="state-card">正在加载商品…</view>
   <view wx:elif="{{error}}" class="state-card">
-    <text class="state-title">商品暂时不可用</text>
-    <button wx:if="{{id}}" class="primary-btn" bindtap="retry">重新加载</button>
+    <text class="state-title">{{accessMessage || '商品暂时不可用'}}</text>
+    <button wx:if="{{id && !accessMessage}}" class="primary-btn" bindtap="retry">重新加载</button>
   </view>
   <block wx:elif="{{product}}">
     <view class="product-cover-wrap"><image wx:if="{{product.displayCoverUrl}}" class="product-cover" src="{{product.displayCoverUrl}}" mode="aspectFit" binderror="coverError" /><view wx:else class="product-cover-empty">暂无封面</view></view>

@@ -1,5 +1,6 @@
 import type { RentalView } from '@xiaohai/contracts/rental';
 import { cancelRental, getRental } from '../../services/rental';
+import { detailAccessMessage } from '../../utils/detail-read-error';
 const label: Record<string, string> = {
   RESERVED: '已预约',
   BORROWED: '借阅中',
@@ -13,6 +14,7 @@ Page({
     loading: false,
     busy: false,
     error: '',
+    accessMessage: '',
     rental: null as (RentalView & { statusText: string; dueText: string }) | null,
   },
   onLoad(query: Record<string, string | undefined>) {
@@ -20,8 +22,8 @@ Page({
     void this.load();
   },
   async load() {
-    if (!this.data.id) return;
-    this.setData({ loading: true, error: '' });
+    if (!this.data.id || this.data.loading) return;
+    this.setData({ loading: true, error: '', accessMessage: '', rental: null });
     try {
       const item = await getRental(this.data.id);
       this.setData({
@@ -31,11 +33,19 @@ Page({
           dueText: item.dueAt ? new Date(item.dueAt).toLocaleString() : '门店借出时由服务端确定',
         },
       });
-    } catch {
-      this.setData({ error: '租借记录不存在或无法访问' });
+    } catch (error) {
+      this.setData({
+        error: '租借记录不存在或无法访问',
+        accessMessage: detailAccessMessage(error),
+        rental: null,
+      });
     } finally {
       this.setData({ loading: false });
     }
+  },
+  retry() {
+    if (this.data.error && !this.data.loading && !this.data.accessMessage)
+      void this.load();
   },
   async cancel() {
     if (this.data.busy) return;
