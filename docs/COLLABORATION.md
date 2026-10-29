@@ -48,3 +48,34 @@ Every PR requires the template's scope, why, latest-head tests, Staff RBAC/data 
 Review history-key collisions, transaction atomicity, stale version tokens, duplicate create retries, cross-store shared fields, stock ledger idempotency and malformed legacy records. Immutable history version collisions must cause rollback: do not suppress them using \`onConflictDoNothing()\`.
 
 The CI job **PR scope, migration and error safety** enforces a subset of these requirements on pull requests using the actual changed files, added lines and source. Its unit tests protect against bypasses. Passing it never substitutes for two independent human reviews, a database owner's migration approval, staging UAT, or a production deployment decision.
+
+## Destructive integration database safety / 破坏性集成测试的数据库保护
+
+A green test suite does **not** prove that its target database is safe. When a test calls
+`createDatabase(process.env)` under `NODE_ENV=test`, it connects through
+`TEST_DATABASE_URL`, not the `DATABASE_URL` that older guards might inspect.
+For every new or modified integration suite using `TRUNCATE`, `DROP TABLE`
+or Drizzle `.delete()`, require
+`assertMeipingApplyDisposableDatabase(process.env)` **before** creating the pool.
+It must fail closed on mismatched DATABASE_URL/TEST_DATABASE_URL, remote hosts,
+non-allowlisted database names, and staging/production environments.
+Keep negative regression tests for these cases. CI enforces this on changed
+destructive suites; legacy suites not touched by a PR may still need migration
+to the stricter guard. Never run legacy unguarded destructive tests against
+shared databases.
+
+## Private cloud media acceptance / 私有云图片验收
+
+A signed media URL is a temporary bearer capability, never a public asset URL.
+Review the owner entitlement, short TTL, exact bucket/key allowlist, credential
+failure behavior, least-privilege GetObject and cross-user/cross-bucket denial.
+Do not solve private bucket 403 by enabling anonymous public read. Production/staging
+access and real WeChat display cannot be asserted by SDK mocks or green CI alone:
+record synthetic-object GET/expiry, the actual signed hostname allowed by WeChat,
+and iOS/Android verification, or mark these NOT VERIFIED with an explicit
+deployment no-go owner and prerequisites. Do not log signed query strings.
+
+Never merge a PR with unresolved CHANGES_REQUESTED or pretend reviewer approval
+can be substituted by an author's merge permission. Request an up-to-date
+independent re-review after fixes; merge/delete only after required human
+approvals and current-head CI pass.

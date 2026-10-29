@@ -96,15 +96,25 @@ export function reviewIssues({ files, patch = '', body = '', readSource = () => 
     if (/process\.env\.DATABASE_URL\s*\?\s*createDatabase\(\s*process\.env\s*\)/.test(source)) {
       issues.push('Mutating integration tests cannot connect from unchecked DATABASE_URL.');
     }
-    if (!addedIntegrationSuites.has(file)) continue;
+    // Inspect every changed suite, not only newly added ones: a legacy test can
+    // silently switch to TEST_DATABASE_URL while checking DATABASE_URL alone.
     const connectionAt = source.search(
       /\bcreateDatabase\s*\(\s*process\.env\s*\)|\bnew\s+(?:(?:pg)\.)?(?:Pool|Client)\s*\(/,
     );
     if (connectionAt < 0) continue;
     const guardAt = source.search(/\bassert\w*DisposableDatabase\s*\(\s*process\.env\s*\)/);
-    if (guardAt < 0 || guardAt > connectionAt) {
+    if (addedIntegrationSuites.has(file) && (guardAt < 0 || guardAt > connectionAt)) {
       issues.push(
         'New PostgreSQL integration suites require a fail-closed disposable DB guard before connecting.',
+      );
+    }
+    const destructive = /\bTRUNCATE\b|\bDROP\s+TABLE\b|\.delete\s*\(/i.test(source);
+    const correctGuardAt = source.search(
+      /\bassertMeipingApplyDisposableDatabase\s*\(\s*process\.env\s*\)/,
+    );
+    if (destructive && (correctGuardAt < 0 || correctGuardAt > connectionAt)) {
+      issues.push(
+        'Changed destructive PostgreSQL integration suites require a fail-closed disposable DB guard validating effective TEST_DATABASE_URL before connecting.',
       );
     }
   }
