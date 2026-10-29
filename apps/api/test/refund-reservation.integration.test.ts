@@ -309,34 +309,38 @@ suite('M6 paid refund and M16 reservation PostgreSQL integration', () => {
     });
   }
 
-  it('does not release a pickup reservation when the refund is CLOSED', async () => {
-    const f = await seed('PICKUP');
-    setupRefund(f);
-    await paymentService.requestRefund(f.payment.id, f.staffId);
-    const [refund] = await db.select().from(refunds);
-    event = {
-      id: randomUUID(),
-      eventType: 'REFUND.CLOSED',
-      refund: {
-        mchid: provider.merchantId,
-        out_trade_no: f.payment.outTradeNo,
-        transaction_id: f.transaction.transaction_id!,
-        out_refund_no: refund!.outRefundNo,
-        refund_id: 'provider-refund',
-        status: 'CLOSED',
-        amount: { total: 2500, refund: 2500 },
-      },
-    };
-    await paymentService.callback('refund-closed', {});
-    const [balance] = await db
-      .select()
-      .from(storeInventory)
-      .where(and(eq(storeInventory.storeId, f.storeId), eq(storeInventory.skuId, f.skuId)));
-    expect(balance).toMatchObject({ onHand: 3, reserved: 1, version: 1 });
-    const [pickup] = await db.select().from(pickupCodes).where(eq(pickupCodes.orderId, f.orderId));
-    expect(pickup?.status).toBe('ISSUED');
-    const [order] = await db.select().from(orders).where(eq(orders.id, f.orderId));
-    expect(order?.status).toBe('PAID');
-    expect(await db.select().from(paymentLedger)).toHaveLength(1);
-  });
+  for (const originalState of ['PAID', 'PICKUP_READY'] as const) {
+    it(`refund CLOSED restores ${originalState} and keeps pickup reserved`, async () => {
+      const f = await seed('PICKUP');
+      if (originalState === 'PICKUP_READY')
+        await db.update(orders).set({ status: originalState }).where(eq(orders.id, f.orderId));
+      setupRefund(f);
+      await paymentService.requestRefund(f.payment.id, f.staffId);
+      const [refund] = await db.select().from(refunds);
+      event = {
+        id: randomUUID(),
+        eventType: 'REFUND.CLOSED',
+        refund: {
+          mchid: provider.merchantId,
+          out_trade_no: f.payment.outTradeNo,
+          transaction_id: f.transaction.transaction_id!,
+          out_refund_no: refund!.outRefundNo,
+          refund_id: 'provider-refund',
+          status: 'CLOSED',
+          amount: { total: 2500, refund: 2500 },
+        },
+      };
+      await paymentService.callback('refund-closed', {});
+      const [balance] = await db
+        .select()
+        .from(storeInventory)
+        .where(and(eq(storeInventory.storeId, f.storeId), eq(storeInventory.skuId, f.skuId)));
+      expect(balance).toMatchObject({ onHand: 3, reserved: 1, version: 1 });
+      const [pickup] = await db.select().from(pickupCodes).where(eq(pickupCodes.orderId, f.orderId));
+      expect(pickup?.status).toBe('ISSUED');
+      const [order] = await db.select().from(orders).where(eq(orders.id, f.orderId));
+      expect(order?.status).toBe(originalState);
+      expect(await db.select().from(paymentLedger)).toHaveLength(1);
+    });
+  }
 });
