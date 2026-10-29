@@ -159,7 +159,7 @@ test('new guarded integration suite cannot delete all user rows during cleanup',
     '  ? createDatabase(process.env) : null;',
     'await database.db.delete(consumerUsers);',
   ].join('\n');
-  assert.match(check([path], diff, body, unsafe).join(','), /unscoped \\.delete\\(consumerUsers\\)/);
+  assert.match(check([path], diff, body, unsafe).join(','), /unscoped \.delete\(consumerUsers\)/);
 });
 
 test('scoped multiline integration cleanup passes the review gate', () => {
@@ -186,7 +186,7 @@ test('adding an unscoped delete to a legacy guarded suite fails', () => {
     '  ? createDatabase(process.env) : null;',
     '  await db.delete(consumerUsers);',
   ].join('\n');
-  assert.match(check([path], diff, body, source).join(','), /unscoped \\.delete\\(consumerUsers\\)/);
+  assert.match(check([path], diff, body, source).join(','), /unscoped \.delete\(consumerUsers\)/);
 });
 
 test('unrelated legacy deletions are not re-litigated by a focused test update', () => {
@@ -231,5 +231,5 @@ test('returning() without where() remains an unsafe whole-table delete', () => {
     '  ? createDatabase(process.env) : null;',
     'await database.db.delete(orders).returning();',
   ].join('\n');
-  assert.match(check([path], diff, body, source).join(','), /unscoped \\.delete\\(orders\\)/);
+  assert.match(check([path], diff, body, source).join(','), /unscoped \.delete\(orders\)/);
 });
