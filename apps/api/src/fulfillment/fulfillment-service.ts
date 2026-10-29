@@ -157,7 +157,9 @@ export class FulfillmentService {
           ? await this.requireAddress(consumerUserId, input.addressId!)
           : null;
       const zone =
-        input.method === 'DELIVERY' ? await this.resolveDeliveryZone(input.storeId, address!) : null;
+        input.method === 'DELIVERY'
+          ? await this.resolveDeliveryZone(input.storeId, address!)
+          : null;
 
       const [cartRow] = await tx
         .select({ id: carts.id })
