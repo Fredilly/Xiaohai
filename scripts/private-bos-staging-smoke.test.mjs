@@ -60,19 +60,22 @@ test('passes only private 403, signed image 200, expired 403 and never prints se
 });
 
 test('rejects public-read, expired success, redirects and wrong content type', async () => {
-  for (const statuses of [
-    [200, 200, 403],
-    [403, 200, 200],
-    [403, 302, 403],
-    [403, 200, 403],
+  for (const scenario of [
+    { statuses: [200, 200, 403], badMime: false },
+    { statuses: [403, 200, 200], badMime: false },
+    { statuses: [403, 302, 403], badMime: false },
+    { statuses: [403, 200, 403], badMime: true },
   ]) {
     let index = 0;
     const logger = { log: () => {}, error: () => {} };
     const fetchImpl = async () => {
-      const status = statuses[index++];
+      const status = scenario.statuses[index++];
       return new Response(status === 200 ? 'image' : null, {
         status,
-        headers: { 'content-type': index === 2 && statuses === undefined ? 'image/png' : 'text/plain' },
+        headers: {
+          'content-type':
+            status === 200 && !scenario.badMime ? 'image/png' : 'text/plain',
+        },
       });
     };
     assert.equal(await runPrivateBosSmoke({ env: base, fetchImpl, logger }), 1);
