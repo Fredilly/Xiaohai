@@ -48,6 +48,17 @@ describe('Meiping apply integration disposable database guard', () => {
     });
   }
 
+  it('rejects a remote effective TEST_DATABASE_URL despite a safe DATABASE_URL', () => {
+    expectRejected({
+      ...safeEnv,
+      TEST_DATABASE_URL: 'postgresql://postgres:fixture@staging-db.example.com:5432/xiaohai_test',
+    });
+  });
+
+  it('rejects an unsafe APP_ENV despite both database URLs being local', () => {
+    expectRejected({ ...safeEnv, APP_ENV: 'staging' });
+  });
+
   it('rejects a production TEST_DATABASE_URL', () => {
     const url = 'postgresql://postgres:fixture@127.0.0.1:5432/xiaohai_prod';
     expectRejected({ ...safeEnv, TEST_DATABASE_URL: url });
@@ -77,6 +88,7 @@ describe('Meiping apply integration disposable database guard', () => {
     'meiping-apply.integration.test.ts',
     'meiping-apply-safety.integration.test.ts',
     'meiping-apply-http.integration.test.ts',
+    'picture-book.integration.test.ts',
   ];
 
   for (const file of guardedSuites) {

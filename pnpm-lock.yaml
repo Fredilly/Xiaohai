@@ -129,6 +129,9 @@ importers:
 
   apps/api:
     dependencies:
+      '@baiducloud/sdk':
+        specifier: ^1.0.7
+        version: 1.0.7(supports-color@7.2.0)
       '@stackline/xlsx':
         specifier: 1.0.9
         version: 1.0.9

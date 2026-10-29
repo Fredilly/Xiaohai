@@ -37,6 +37,7 @@ import { StoryService } from './story/story-service.js';
 import { registerStoryRoutes } from './story/story-routes.js';
 import { PictureBookService } from './picture-book/picture-book-service.js';
 import { registerPictureBookRoutes } from './picture-book/picture-book-routes.js';
+import { createPrivateBosPlaybackResolver } from './picture-book/private-bos-urls.js';
 import { RedisImageQueue } from './picture-book/image-queue.js';
 import { AnimationService } from './animation/animation-service.js';
 import { registerAnimationRoutes } from './animation/animation-routes.js';
@@ -262,6 +263,7 @@ const pictureBook = new PictureBookService(
         : undefined,
   },
   app.log,
+  createPrivateBosPlaybackResolver(process.env),
 );
 
 registerPictureBookRoutes(app, {
