@@ -1,10 +1,12 @@
 import type { PictureBook } from '@xiaohai/contracts/picture-book';
-import { listPictureBooks } from '../../services/picture-book';
+import { consumerToken } from '../../services/consumer-session';
+import { PictureBookApiError, listPictureBooks } from '../../services/picture-book';
 
 Page({
   data: {
     loading: true,
     error: '',
+    needsLogin: false,
     books: [] as (PictureBook & { coverPlaybackUrl: string | null })[],
     imageErrors: {},
   },
@@ -12,15 +14,28 @@ Page({
     void this.load();
   },
   async load() {
-    this.setData({ loading: true, error: '' });
+    if (!consumerToken()) {
+      this.setData({ loading: false, error: '', needsLogin: true, books: [], imageErrors: {} });
+      return;
+    }
+
+    this.setData({ loading: true, error: '', needsLogin: false });
     try {
       const result = await listPictureBooks();
-      this.setData({ books: result.pictureBooks, imageErrors: {} });
-    } catch {
-      this.setData({ error: '绘本加载失败，请检查登录状态和网络。' });
-    } finally {
-      this.setData({ loading: false });
+      this.setData({ books: result.pictureBooks, imageErrors: {}, loading: false });
+    } catch (error) {
+      const needsLogin = error instanceof PictureBookApiError && error.status === 401;
+      this.setData({
+        books: [],
+        imageErrors: {},
+        loading: false,
+        needsLogin,
+        error: needsLogin ? '' : '绘本加载失败，请检查网络后重试。',
+      });
     }
+  },
+  goToLogin() {
+    void wx.switchTab({ url: '/pages/me/me' });
   },
   open(event: WechatMiniprogram.TouchEvent) {
     const id = String(event.currentTarget.dataset.id || '');
