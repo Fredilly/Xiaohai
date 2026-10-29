@@ -5,6 +5,8 @@ import {
   type PictureBookPreviewPage,
 } from '../../services/picture-book-preview';
 
+const emptyImageErrors = (): Record<string, boolean> => ({});
+
 Page({
   data: {
     id: '',
@@ -12,14 +14,14 @@ Page({
     pages: [] as PictureBookPreviewPage[],
     loading: true,
     error: '',
-    imageErrors: {} as Record<string, boolean>,
+    imageErrors: emptyImageErrors(),
   },
   // BOS playback URLs are short-lived bearer links. Refresh metadata via the
   // existing authenticated GET, never by regenerating images or extending TTL.
   refreshAfterHide: false,
   requestVersion: 0,
   imageRefreshInProgress: false,
-  imageRefreshAttempted: {} as Record<string, boolean>,
+  imageRefreshAttempted: emptyImageErrors(),
   onLoad(query: Record<string, string | undefined>) {
     const id = String(query.id || '');
     this.setData({ id });
