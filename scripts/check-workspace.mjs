@@ -20,14 +20,3 @@ if (!workspace.includes('apps/*') || !workspace.includes('packages/*')) {
   throw new Error('pnpm workspace globs are incomplete');
 }
 console.log(`Workspace structure validated (${required.length} packages).`);
-
-// Temporary CI formatting diagnostic for one test-only file; remove before review.
-const { execFileSync } = await import('node:child_process');
-const formattedTest = execFileSync(
-  'pnpm',
-  ['exec', 'prettier', 'apps/api/test/refund-reservation.integration.test.ts'],
-  { encoding: 'utf8' },
-);
-console.log('REFUND_TEST_PRETTIER_BEGIN');
-console.log(Buffer.from(formattedTest).toString('base64'));
-console.log('REFUND_TEST_PRETTIER_END');
