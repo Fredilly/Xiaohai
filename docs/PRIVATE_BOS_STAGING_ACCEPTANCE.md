@@ -14,6 +14,10 @@ requests for **the same non-sensitive synthetic PNG** under `picture-books/`:
 
 It rejects mismatched bucket/object paths, non-HTTPS/foreign hosts, missing
 signatures, redirect responses, unexpected status or MIME and network errors.
+The expired-link result assumes the operator produced a correctly signed URL
+whose expiration is in the past; an HTTP 403 alone cannot distinguish expiry
+from an invalid signature. Record that generation method in private operator
+evidence, never the signed URL itself.
 It never requests an AI image, uploads data, writes to DB, or prints URL queries,
 credentials, response bodies, or image contents. Unit tests use mock fetch.
 
