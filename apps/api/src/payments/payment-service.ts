@@ -137,10 +137,7 @@ export class PaymentService {
       const { payment: locked, order } = await this.lock(tx, payment);
       const [existing] = await tx.select().from(refunds).where(eq(refunds.paymentId, paymentId));
       if (existing) return existing;
-      if (
-        locked.status !== 'SUCCEEDED' ||
-        !['PAID', 'PICKUP_READY', 'CANCELLED'].includes(order.status)
-      )
+      if (locked.status !== 'SUCCEEDED' || !['PAID', 'CANCELLED'].includes(order.status))
         throw new PaymentError('INVALID_REFUND_STATE');
       const [created] = await tx
         .insert(refunds)
@@ -152,7 +149,7 @@ export class PaymentService {
           originalOrderStatus: order.status,
         })
         .returning();
-      if (order.status === 'PAID' || order.status === 'PICKUP_READY')
+      if (order.status === 'PAID')
         await tx
           .update(orders)
           .set({ status: 'REFUNDING', updatedAt: new Date() })
