@@ -24,8 +24,11 @@ import {
 import { CommerceService } from '../src/commerce/commerce-service.js';
 import { ManualDeliveryProvider } from '../src/fulfillment/delivery-provider.js';
 import { FulfillmentService } from '../src/fulfillment/fulfillment-service.js';
+import { assertMeipingApplyDisposableDatabase } from './meiping-apply-database-guard.js';
 
-const database = process.env.DATABASE_URL ? createDatabase(process.env) : null;
+const database = assertMeipingApplyDisposableDatabase(process.env)
+  ? createDatabase(process.env)
+  : null;
 const suite = database ? describe : describe.skip;
 
 suite('M16 fulfillment store inventory reservation integration', () => {
@@ -160,6 +163,75 @@ suite('M16 fulfillment store inventory reservation integration', () => {
         .from(orders)
         .where(eq(orders.consumerUserId, d.consumerA.id)),
     ).toHaveLength(0);
+  });
+
+  it('creates one order when the same consumer submits two distinct checkout keys', async () => {
+    const d = await seed(3);
+    await commerce.addCartItem(d.consumerA.id, d.sku.id, 1);
+
+    const attempts = await Promise.allSettled([
+      fulfillment.createOrder(d.consumerA.id, {
+        method: 'PICKUP',
+        storeId: d.store.id,
+        clientRequestId: `cart-race-a-${crypto.randomUUID()}`,
+      }),
+      fulfillment.createOrder(d.consumerA.id, {
+        method: 'PICKUP',
+        storeId: d.store.id,
+        clientRequestId: `cart-race-b-${crypto.randomUUID()}`,
+      }),
+    ]);
+
+    const completed = attempts.filter((result) => result.status === 'fulfilled');
+    const rejected = attempts.filter((result) => result.status === 'rejected');
+    expect(completed).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0]).toMatchObject({
+      status: 'rejected',
+      reason: { code: 'CONFLICT' },
+    });
+
+    const persisted = await database!.db
+      .select({ id: orders.id })
+      .from(orders)
+      .where(eq(orders.consumerUserId, d.consumerA.id));
+    expect(persisted).toHaveLength(1);
+    const items = await database!.db
+      .select()
+      .from(orderItems)
+      .where(eq(orderItems.orderId, persisted[0]!.id));
+    expect(items).toHaveLength(1);
+    expect(items[0]!.quantity).toBe(1);
+    expect((await balance(d.store.id, d.sku.id)).reserved).toBe(1);
+    expect((await commerce.getCart(d.consumerA.id)).items).toHaveLength(0);
+  });
+
+  it('replays concurrent identical checkout keys without reserving a second time', async () => {
+    const d = await seed(3);
+    await commerce.addCartItem(d.consumerA.id, d.sku.id, 1);
+    const input = {
+      method: 'PICKUP' as const,
+      storeId: d.store.id,
+      clientRequestId: `same-request-${crypto.randomUUID()}`,
+    };
+
+    const [first, second] = await Promise.all([
+      fulfillment.createOrder(d.consumerA.id, input),
+      fulfillment.createOrder(d.consumerA.id, input),
+    ]);
+
+    expect(first).toBe(second);
+    expect(
+      await database!.db
+        .select({ id: orders.id })
+        .from(orders)
+        .where(eq(orders.consumerUserId, d.consumerA.id)),
+    ).toHaveLength(1);
+    expect(
+      await database!.db.select().from(orderItems).where(eq(orderItems.orderId, first)),
+    ).toHaveLength(1);
+    expect((await balance(d.store.id, d.sku.id)).reserved).toBe(1);
+    expect((await commerce.getCart(d.consumerA.id)).items).toHaveLength(0);
   });
 
   it('serializes concurrent orders and releases the winner reservation on cancellation', async () => {
