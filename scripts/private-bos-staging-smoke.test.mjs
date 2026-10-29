@@ -27,15 +27,19 @@ test('rejects mixed buckets, localhost, unsafe keys and missing/identical signat
     { BOS_PRIVATE_SMOKE_SIGNED_URL: 'https://' + host + '/other/image.png?token=1' },
     { BOS_PRIVATE_SMOKE_UNSIGNED_URL: 'https://' + host + path + '?token=oops' },
     { BOS_PRIVATE_SMOKE_EXPIRED_URL: base.BOS_PRIVATE_SMOKE_SIGNED_URL },
-    { BOS_PRIVATE_SMOKE_SIGNED_URL: 'https://' + host + '/picture-books/../other.png?token=1' },
-    { BOS_PRIVATE_SMOKE_SIGNED_URL: 'https://' + host + '/picture-books/%2e%2e/other.png?token=1' },
+    {
+      BOS_PRIVATE_SMOKE_SIGNED_URL: 'https://' + host + '/picture-books/../other.png?token=1',
+    },
+    {
+      BOS_PRIVATE_SMOKE_SIGNED_URL: 'https://' + host + '/picture-books/%2e%2e/other.png?token=1',
+    },
     { BOS_PRIVATE_SMOKE_SIGNED_URL: '' },
   ]) {
     assert.notEqual(validatePrivateBosSmoke({ ...base, ...overrides }).failures.length, 0);
   }
 });
 
-test('passes only private 403, signed image 200, expired 403 and never prints secrets', async () => {
+test('enforces private/signed/expired GET and redacts secrets', async () => {
   const urls = [];
   const output = [];
   const logger = {
@@ -74,8 +78,7 @@ test('rejects public-read, expired success, redirects and wrong content type', a
       return new Response(status === 200 ? 'image' : null, {
         status,
         headers: {
-          'content-type':
-            status === 200 && !scenario.badMime ? 'image/png' : 'text/plain',
+          'content-type': status === 200 && !scenario.badMime ? 'image/png' : 'text/plain',
         },
       });
     };
