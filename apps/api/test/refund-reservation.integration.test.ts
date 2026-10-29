@@ -378,7 +378,7 @@ suite('M6 paid refund and M16 reservation PostgreSQL integration', () => {
   }
 
   it('does not release a pickup reservation when the refund is CLOSED', async () => {
-  const f = await seed('PICKUP');
+    const f = await seed('PICKUP');
     setupRefund(f);
     await paymentService.requestRefund(f.payment.id, f.staffId);
     const [refund] = await db
@@ -410,8 +410,8 @@ suite('M6 paid refund and M16 reservation PostgreSQL integration', () => {
       .where(eq(pickupCodes.orderId, f.orderId));
     expect(pickup?.status).toBe('ISSUED');
     const [order] = await db.select().from(orders).where(eq(orders.id, f.orderId));
-  expect(order?.status).toBe('PAID');
-  expect(
+    expect(order?.status).toBe('PAID');
+    expect(
       await db.select().from(paymentLedger).where(eq(paymentLedger.paymentId, f.payment.id)),
     ).toHaveLength(1);
   });
