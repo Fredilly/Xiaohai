@@ -23,7 +23,12 @@ Page({
   },
   async load() {
     if (!this.data.id || this.data.loading) return;
-    this.setData({ loading: true, error: '', accessMessage: '', rental: null });
+    this.setData({
+      loading: true,
+      error: '',
+      accessMessage: '',
+      rental: null,
+    });
     try {
       const item = await getRental(this.data.id);
       this.setData({
@@ -44,8 +49,9 @@ Page({
     }
   },
   retry() {
-    if (this.data.error && !this.data.loading && !this.data.accessMessage)
+    if (this.data.error && !this.data.loading && !this.data.accessMessage) {
       void this.load();
+    }
   },
   async cancel() {
     if (this.data.busy) return;

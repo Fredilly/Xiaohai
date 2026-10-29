@@ -26,8 +26,9 @@ Page({
     }
   },
   retry() {
-    if (this.data.id && this.data.error && !this.data.accessMessage)
+    if (this.data.id && this.data.error && !this.data.accessMessage) {
       void this.load(this.data.id);
+    }
   },
   play(e: WechatMiniprogram.TouchEvent) {
     void wx.navigateTo({

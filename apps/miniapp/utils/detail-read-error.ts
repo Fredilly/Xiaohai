@@ -5,7 +5,8 @@ export function detailAccessMessage(error: unknown): string {
       : undefined;
   const message = error instanceof Error ? error.message : '';
   const isUnauthorized =
-    status === 401 || /(?:^AUTH_REQUIRED$|(?:API |HTTP_)401\b|^UNAUTHORIZED$)/.test(message);
+    status === 401 ||
+    /(?:^AUTH_REQUIRED$|(?:API |HTTP_)401\b|^UNAUTHORIZED$)/.test(message);
   const isForbidden =
     status === 403 || /(?:^FORBIDDEN$|(?:API |HTTP_)403\b)/.test(message);
   if (isUnauthorized) return '请先登录后查看此详情';
