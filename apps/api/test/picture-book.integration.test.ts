@@ -1,4 +1,5 @@
 import Fastify from 'fastify';
+import { assertMeipingApplyDisposableDatabase } from './meiping-apply-database-guard.js';
 import { eq, inArray } from 'drizzle-orm';
 import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
@@ -22,7 +23,11 @@ import {
   type PictureBookAiConfig,
 } from '../src/picture-book/picture-book-service.js';
 
-const database = process.env.DATABASE_URL ? createDatabase(process.env) : null;
+// This suite TRUNCATES multiple tables. Validate the actual TEST_DATABASE_URL
+// and DATABASE_URL together before creating a pool; unsafe config fails closed.
+const database = assertMeipingApplyDisposableDatabase(process.env)
+  ? createDatabase(process.env)
+  : null;
 const suite = database ? describe : describe.skip;
 
 const sessionSecret = 'm10-picture-book-consumer-session-secret-at-least-32-characters';
@@ -89,7 +94,16 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
   const imageQueue = queue;
 
   function service(overrides: Partial<PictureBookAiConfig> = {}) {
-    return new PictureBookService(db, queue, imageQueue, { ...config, ...overrides });
+    // Existing fixtures use a safe owned-media URL stub; the real API issues
+    // private 300-second BOS URLs or fails closed when credentials are absent.
+    return new PictureBookService(
+      db,
+      queue,
+      imageQueue,
+      { ...config, ...overrides },
+      undefined,
+      (media) => media.playbackUrl,
+    );
   }
 
   async function createApp(pictureBook = service()) {

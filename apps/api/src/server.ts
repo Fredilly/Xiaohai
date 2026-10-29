@@ -16,6 +16,15 @@ import { StaffSessionService } from './auth/staff-session.js';
 import { HomeCmsService } from './cms/home-cms-service.js';
 import { CommerceService } from './commerce/commerce-service.js';
 import { registerCommerceRoutes } from './commerce/commerce-routes.js';
+import { StoreCatalogReadService } from './commerce/store-catalog-read-service.js';
+import {
+  registerHqCatalogEditRoutes,
+  registerStoreCatalogEditRoutes,
+  registerStoreCatalogReadRoutes,
+} from './commerce/store-catalog-read-routes.js';
+import { CatalogEditService } from './commerce/catalog-edit-service.js';
+import { CatalogCorrectionService } from './commerce/catalog-correction-service.js';
+import { registerCatalogCorrectionRoutes } from './commerce/catalog-correction-routes.js';
 import { loadWeChatPayProvider } from './payments/wechat-pay.js';
 import { PaymentService } from './payments/payment-service.js';
 import { registerPaymentRoutes } from './payments/payment-routes.js';
@@ -28,6 +37,7 @@ import { StoryService } from './story/story-service.js';
 import { registerStoryRoutes } from './story/story-routes.js';
 import { PictureBookService } from './picture-book/picture-book-service.js';
 import { registerPictureBookRoutes } from './picture-book/picture-book-routes.js';
+import { createPrivateBosPlaybackResolver } from './picture-book/private-bos-urls.js';
 import { RedisImageQueue } from './picture-book/image-queue.js';
 import { AnimationService } from './animation/animation-service.js';
 import { registerAnimationRoutes } from './animation/animation-routes.js';
@@ -39,6 +49,11 @@ import { InventorySearchService } from './inventory/inventory-service.js';
 import { registerInventoryRoutes } from './inventory/inventory-routes.js';
 import { InventoryOperationsService } from './inventory/inventory-operations-service.js';
 import { registerInventoryOperationsRoutes } from './inventory/inventory-operations-routes.js';
+import { registerMeipingXlsRoutes } from './migration/meiping-xls-routes.js';
+import { MeipingReviewService } from './migration/meiping-review-service.js';
+import { registerMeipingReviewRoutes } from './migration/meiping-review-routes.js';
+import { MeipingApplyService } from './migration/meiping-apply-service.js';
+import { registerMeipingApplyRoutes } from './migration/meiping-apply-routes.js';
 import { RentalService } from './rental/rental-service.js';
 import { registerRentalRoutes } from './rental/rental-routes.js';
 import { FulfillmentService } from './fulfillment/fulfillment-service.js';
@@ -91,7 +106,9 @@ const staffAuthorization = new StaffAuthorizationService(
 );
 const homeCms = new HomeCmsService(db);
 const commission = new CommissionService(db);
-const commerce = new CommerceService(db, commission);
+const commerce = new CommerceService(db, commission, config.STAFF_SESSION_SECRET);
+const stores = new StoreNetworkService(db);
+const inventory = new InventoryOperationsService(db);
 const content = new ContentService(db);
 const rateLimitStore = new RedisRateLimitStore(config.REDIS_URL);
 const app = buildApp({
@@ -111,17 +128,55 @@ const app = buildApp({
   trustProxy: config.APP_ENV === 'dev' ? false : 1,
 });
 registerCommerceRoutes(app, { commerce, consumerSessions: sessions, staffAuthorization });
+const storeCatalogRead = new StoreCatalogReadService(db);
+registerStoreCatalogReadRoutes(app, {
+  staffAuthorization,
+  stores,
+  catalog: storeCatalogRead,
+});
+registerStoreCatalogEditRoutes(app, {
+  staffAuthorization,
+  stores,
+  catalog: new CatalogEditService(db, config.STAFF_SESSION_SECRET),
+});
+registerHqCatalogEditRoutes(app, {
+  staffAuthorization,
+  stores: new StoreNetworkService(db),
+  catalog: new StoreCatalogReadService(db),
+  editor: new CatalogEditService(db, config.STAFF_SESSION_SECRET),
+});
+registerCatalogCorrectionRoutes(app, {
+  staffAuthorization,
+  stores,
+  corrections: new CatalogCorrectionService(db),
+});
 registerPaymentRoutes(app, {
   payments: new PaymentService(db, loadWeChatPayProvider(process.env), commission),
   consumerSessions: sessions,
   staffAuthorization,
 });
 registerContentRoutes(app, { content, consumerSessions: sessions, staffAuthorization });
-registerStoreRoutes(app, { stores: new StoreNetworkService(db), staffAuthorization });
+registerStoreRoutes(app, { stores, staffAuthorization });
 registerInventoryRoutes(app, { inventory: new InventorySearchService(db) });
-registerInventoryOperationsRoutes(app, {
-  operations: new InventoryOperationsService(db),
+registerInventoryOperationsRoutes(app, { operations: inventory, staffAuthorization });
+registerMeipingXlsRoutes(app, { staffAuthorization, stores, inventory, db });
+registerMeipingReviewRoutes(app, {
+  review: new MeipingReviewService(db),
   staffAuthorization,
+  stores,
+  inventory,
+  db,
+});
+registerMeipingApplyRoutes(app, {
+  apply: new MeipingApplyService(
+    db,
+    process.env.MEIPING_IMPORT_EXECUTION_ENABLED === 'true' &&
+      process.env.MEIPING_IMPORT_EXECUTION_CONFIRMATION === 'LOCAL_ONLY' &&
+      process.env.APP_ENV !== 'production' &&
+      process.env.NODE_ENV !== 'production',
+  ),
+  staffAuthorization,
+  stores,
 });
 const pickupCodeSecret = config.PICKUP_CODE_SECRET ?? config.STAFF_SESSION_SECRET;
 registerRentalRoutes(app, {
@@ -208,6 +263,7 @@ const pictureBook = new PictureBookService(
         : undefined,
   },
   app.log,
+  createPrivateBosPlaybackResolver(process.env),
 );
 
 registerPictureBookRoutes(app, {

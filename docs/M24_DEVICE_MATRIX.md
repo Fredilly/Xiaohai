@@ -3,7 +3,7 @@
 ## Runtime audit
 
 - `app.json` registers the existing pages and fixed tabs 首页 / 胖竹全球 / 我的. Tab navigation uses `switchTab`; details and creation routes use `navigateTo` or `redirectTo`. Referral shares carry a bounded referral code; no token/session/openid is placed in a share URL.
-- `project.config.json` uses `touristappid`; staging and production API URLs remain `.invalid` placeholders. These settings cannot prove real-device request-domain, payment or privacy behavior.
+- `project.config.json` still uses `touristappid`. After Issue #76, Mini Program `develop` and `trial` use the non-production HTTPS endpoint `https://staging-api.pamboo.asia`; `release` still intentionally uses `https://api.example.invalid` until an explicitly approved production domain exists. This code mapping does **not** prove the request domain is authorized for a real AppID or that device login/payment/privacy work.
 - Services now set a 10-second `wx.request` timeout. The session helper stores expiry/user identity, removes expired credentials before requests and clears them on 401. A network timeout preserves the session so the user can retry.
 - Checkout reuses its server idempotency key and ignores outdated quote responses; order detail reloads on foreground entry and never infers `PAID` from `wx.requestPayment`. Story, picture-book and animation terminal failures are reported; video reports playback errors and saves the current position only on full playback completion.
 - Location is requested only after the user taps nearby. Denial leaves the non-location store list available; no location is fabricated. The map's default viewport is not a device position.
@@ -27,7 +27,7 @@ For each execution record **device/model, OS, WeChat version, DevTools version, 
 
 ## Manual run instructions
 
-1. In WeChat DevTools, open the repository's `apps/miniapp/` directory. Use an authorized **test** AppID in local private configuration and a reachable non-production API with approved request domains. Record DevTools version, test environment and compile errors. The committed `touristappid` and `.invalid` URLs cannot perform real network journeys.
+1. In WeChat DevTools, open the repository's `apps/miniapp/` directory. Use an authorized **test** AppID in local private configuration and the HTTPS staging API `https://staging-api.pamboo.asia`; add it to that AppID's **request 合法域名** in the WeChat console, using the real domain approval process. Record the AppID/environment (not secrets), DevTools version, TLS/request-domain results and compile errors. The committed `touristappid` is insufficient for authorized real-device journeys, and the release `.invalid` URL must remain blocked until separately approved.
 2. Click **编译**, then exercise 首页 → 胖竹全球 → 我的, product → cart → checkout → order detail, stories → playback, and each AI creation page. For each error state, capture a screenshot with sensitive data hidden. Check payment return by opening the order detail and using **刷新订单状态**; never use production payment credentials.
 3. In DevTools Network settings, simulate slow network and disconnection during login, checkout, order refresh, video and AI polling. Reconnect and use the visible retry/refresh action. Record whether a timeout is recoverable and whether the server remains authoritative.
 4. On 胖竹全球 and 找书, tap **附近**. Test allowed and denied location permission separately; verify denial still permits ordinary search. Capture the permission outcome and map/list view with precise location hidden.
