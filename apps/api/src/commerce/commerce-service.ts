@@ -283,7 +283,10 @@ export class CommerceService {
         .select({ id: orders.id })
         .from(orders)
         .where(
-          and(eq(orders.consumerUserId, consumerUserId), eq(orders.clientRequestId, clientRequestId)),
+          and(
+            eq(orders.consumerUserId, consumerUserId),
+            eq(orders.clientRequestId, clientRequestId),
+          ),
         )
         .limit(1);
       if (again) return this.getOrder(consumerUserId, again.id);
