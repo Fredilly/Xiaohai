@@ -41,7 +41,6 @@ function playbackUrls(
     .sort();
 }
 
-
 Page({
   data: {
     id: '',
@@ -63,12 +62,7 @@ Page({
     this.refreshAfterHide = true;
   },
   onShow() {
-    if (
-      !this.refreshAfterHide ||
-      !this.data.id ||
-      this.data.busy ||
-      this.data.polling
-    ) {
+    if (!this.refreshAfterHide || !this.data.id || this.data.busy || this.data.polling) {
       return;
     }
     this.refreshAfterHide = false;
@@ -123,8 +117,7 @@ Page({
       if (!this.pageClosed && revision === this.loadRevision)
         this.setData({ error: '绘本加载失败' });
     } finally {
-      if (!this.pageClosed && revision === this.loadRevision)
-        this.setData({ loading: false });
+      if (!this.pageClosed && revision === this.loadRevision) this.setData({ loading: false });
     }
   },
   async reference(event: WechatMiniprogram.TouchEvent) {
