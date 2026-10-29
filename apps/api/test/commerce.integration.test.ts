@@ -18,7 +18,10 @@ import {
 } from '@xiaohai/db';
 import { CommerceService } from '../src/commerce/commerce-service.js';
 import { CommissionService } from '../src/commission/commission-service.js';
-const database = process.env.DATABASE_URL ? createDatabase(process.env) : null;
+import { assertMeipingApplyDisposableDatabase } from './meiping-apply-database-guard.js';
+const database = assertMeipingApplyDisposableDatabase(process.env)
+  ? createDatabase(process.env)
+  : null;
 const suite = database ? describe : describe.skip;
 suite('M5 Commerce PostgreSQL integration', () => {
   const commission = new CommissionService(database!.db);
@@ -95,6 +98,50 @@ suite('M5 Commerce PostgreSQL integration', () => {
       code: 'NOT_PURCHASABLE',
     });
   });
+  it('preserves every concurrent first-time add to the same SKU', async () => {
+    const user = await consumer();
+    const skuId = await sku();
+
+    await Promise.all(Array.from({ length: 12 }, () => commerce.addCartItem(user, skuId, 1)));
+
+    const cart = await commerce.getCart(user);
+    expect(cart.items).toHaveLength(1);
+    expect(cart.items[0]?.quantity).toBe(12);
+    expect(cart.subtotalMinor).toBe(30000);
+
+    const [storedCart] = await database!.db
+      .select({ id: carts.id })
+      .from(carts)
+      .where(eq(carts.consumerUserId, user));
+    expect(
+      await database!.db.select().from(cartItems).where(eq(cartItems.cartId, storedCart!.id)),
+    ).toHaveLength(1);
+  });
+
+  it('rejects concurrent additions that would exceed 99 without losing updates', async () => {
+    const user = await consumer();
+    const skuId = await sku();
+    await commerce.addCartItem(user, skuId, 98);
+
+    const results = await Promise.allSettled([
+      commerce.addCartItem(user, skuId, 1),
+      commerce.addCartItem(user, skuId, 1),
+    ]);
+
+    expect(results.filter((item) => item.status === 'fulfilled')).toHaveLength(1);
+    const failure = results.find((item) => item.status === 'rejected');
+    expect(failure).toMatchObject({
+      status: 'rejected',
+      reason: { code: 'CONFLICT' },
+    });
+    expect((await commerce.getCart(user)).items[0]?.quantity).toBe(99);
+
+    await expect(commerce.addCartItem(user, skuId, 1)).rejects.toMatchObject({
+      code: 'CONFLICT',
+    });
+    expect((await commerce.getCart(user)).items[0]?.quantity).toBe(99);
+  });
+
   it('calculates checkout/order totals from current server SKU price and snapshots the order', async () => {
     const user = await consumer(),
       skuId = await sku(2599),
