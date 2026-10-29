@@ -100,13 +100,6 @@ jobs:
         run: node --test scripts/private-bos-staging-smoke.test.mjs
       - name: Format, lint and typecheck
         run: pnpm format:check && pnpm lint && pnpm typecheck
-      - name: Print checkout formatter changes for temporary diagnosis
-        if: failure()
-        run: |
-          for file in apps/api/src/commerce/commerce-service.ts apps/api/test/commerce.integration.test.ts; do
-            pnpm exec prettier "$file" > /tmp/checkout-format.ts
-            diff -u "$file" /tmp/checkout-format.ts || true
-          done
       - name: Staging deployment must not run schema or seed writes
         run: node --test scripts/staging-no-automatic-db-writes.test.mjs
       - name: Unit tests
