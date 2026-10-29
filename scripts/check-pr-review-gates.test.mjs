@@ -150,3 +150,86 @@ test('a changed read-only integration suite does not trip the destructive gate',
     'const database = createDatabase(process.env); await database.db.select().from(books);';
   assert.deepEqual(check(['apps/api/test/read-only.integration.test.ts'], '', body, source), []);
 });
+
+test('new guarded integration suite cannot delete all user rows during cleanup', () => {
+  const path = 'apps/api/test/refund-reservation.integration.test.ts';
+  const diff = `diff --git a/${path} b/${path}\nnew file mode 100644\n`;
+  const unsafe = [
+    'const database = assertMeipingApplyDisposableDatabase(process.env)',
+    '  ? createDatabase(process.env) : null;',
+    'await database.db.delete(consumerUsers);',
+  ].join('\n');
+  assert.match(check([path], diff, body, unsafe).join(','), /unscoped \.delete\(consumerUsers\)/);
+});
+
+test('scoped multiline integration cleanup passes the review gate', () => {
+  const path = 'apps/api/test/refund-reservation.integration.test.ts';
+  const diff = `diff --git a/${path} b/${path}\nnew file mode 100644\n`;
+  const safe = [
+    'const database = assertMeipingApplyDisposableDatabase(process.env)',
+    '  ? createDatabase(process.env) : null;',
+    'await database.db.delete(consumerUsers)',
+    '  .where(eq(consumerUsers.id, fixture.userId));',
+  ].join('\n');
+  assert.deepEqual(check([path], diff, body, safe), []);
+});
+
+test('adding an unscoped delete to a legacy guarded suite fails', () => {
+  const path = 'apps/api/test/commerce.integration.test.ts';
+  const diff = [
+    `diff --git a/${path} b/${path}`,
+    '@@ -11,0 +12 @@',
+    '+  await db.delete(consumerUsers);',
+  ].join('\n');
+  const source = [
+    'const database = assertMeipingApplyDisposableDatabase(process.env)',
+    '  ? createDatabase(process.env) : null;',
+    '  await db.delete(consumerUsers);',
+  ].join('\n');
+  assert.match(check([path], diff, body, source).join(','), /unscoped \.delete\(consumerUsers\)/);
+});
+
+test('unrelated legacy deletions are not re-litigated by a focused test update', () => {
+  const path = 'apps/api/test/legacy.integration.test.ts';
+  const diff = [
+    `diff --git a/${path} b/${path}`,
+    '@@ -25,0 +26 @@',
+    '+  expect(account.status).toBe("ACTIVE");',
+  ].join('\n');
+  const source = [
+    'const database = assertMeipingApplyDisposableDatabase(process.env)',
+    '  ? createDatabase(process.env) : null;',
+    'await database.db.delete(consumerUsers);',
+    'expect(account.status).toBe("ACTIVE");',
+  ].join('\n');
+  assert.deepEqual(check([path], diff, body, source), []);
+});
+
+test('new scoped cleanup does not inherit an old unscoped delete warning', () => {
+  const path = 'apps/api/test/legacy.integration.test.ts';
+  const diff = [
+    `diff --git a/${path} b/${path}`,
+    '@@ -25,0 +26,2 @@',
+    '+  await db.delete(orders)',
+    '+    .where(eq(orders.id, fixture.orderId));',
+  ].join('\n');
+  const source = [
+    'const database = assertMeipingApplyDisposableDatabase(process.env)',
+    '  ? createDatabase(process.env) : null;',
+    'await db.delete(consumerUsers);',
+    '  await db.delete(orders)',
+    '    .where(eq(orders.id, fixture.orderId));',
+  ].join('\n');
+  assert.deepEqual(check([path], diff, body, source), []);
+});
+
+test('returning() without where() remains an unsafe whole-table delete', () => {
+  const path = 'apps/api/test/cleanup.integration.test.ts';
+  const diff = `diff --git a/${path} b/${path}\nnew file mode 100644\n`;
+  const source = [
+    'const database = assertMeipingApplyDisposableDatabase(process.env)',
+    '  ? createDatabase(process.env) : null;',
+    'await database.db.delete(orders).returning();',
+  ].join('\n');
+  assert.match(check([path], diff, body, source).join(','), /unscoped \.delete\(orders\)/);
+});
