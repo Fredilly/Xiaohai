@@ -20,3 +20,15 @@ if (!workspace.includes('apps/*') || !workspace.includes('packages/*')) {
   throw new Error('pnpm workspace globs are incomplete');
 }
 console.log(`Workspace structure validated (${required.length} packages).`);
+
+// TEMP ISSUE189 PRETTIER EXACT OUTPUT; revert before review.
+const { execFileSync } = await import('node:child_process');
+for (const [name, path] of [
+  ['DETAIL_TS', 'apps/miniapp/pages/picture-book-detail/picture-book-detail.ts'],
+  ['DETAIL_TEST', 'apps/miniapp/pages/picture-book-detail/picture-book-detail.test.ts'],
+]) {
+  const formatted = execFileSync('pnpm', ['exec', 'prettier', path], { encoding: 'utf8' });
+  console.log('ISSUE189_' + name + '_BEGIN');
+  console.log(Buffer.from(formatted).toString('base64'));
+  console.log('ISSUE189_' + name + '_END');
+}
