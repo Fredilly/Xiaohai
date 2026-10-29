@@ -217,7 +217,14 @@ suite('M6 paid refund and M16 reservation PostgreSQL integration', () => {
       .from(storeInventory)
       .where(and(eq(storeInventory.storeId, store!.id), eq(storeInventory.skuId, sku!.id)));
     expect(reserved).toMatchObject({ onHand: 3, reserved: 1 });
-    return { orderId, storeId: store!.id, skuId: sku!.id, payment: payment!, transaction, staffId: staff!.id };
+    return {
+      orderId,
+      storeId: store!.id,
+      skuId: sku!.id,
+      payment: payment!,
+      transaction,
+      staffId: staff!.id,
+    };
   }
 
   function setupRefund(f: Awaited<ReturnType<typeof seed>>) {
@@ -259,7 +266,10 @@ suite('M6 paid refund and M16 reservation PostgreSQL integration', () => {
           amount: { total: 2500, refund: 2500 },
         },
       };
-      await Promise.all([paymentService.callback('refunded', {}), paymentService.callback('refunded', {})]);
+      await Promise.all([
+        paymentService.callback('refunded', {}),
+        paymentService.callback('refunded', {}),
+      ]);
       event = { ...event, id: randomUUID() };
       await paymentService.callback('refunded-replay', {});
 
@@ -274,11 +284,17 @@ suite('M6 paid refund and M16 reservation PostgreSQL integration', () => {
       expect(await db.select().from(financeLedgerEntries)).toHaveLength(2);
 
       if (method === 'PICKUP') {
-        const [pickup] = await db.select().from(pickupCodes).where(eq(pickupCodes.orderId, f.orderId));
+        const [pickup] = await db
+          .select()
+          .from(pickupCodes)
+          .where(eq(pickupCodes.orderId, f.orderId));
         expect(pickup).toMatchObject({ status: 'CANCELLED', version: 1 });
         expect(pickup?.cancelledAt).toBeTruthy();
       } else {
-        const [delivery] = await db.select().from(deliveries).where(eq(deliveries.orderId, f.orderId));
+        const [delivery] = await db
+          .select()
+          .from(deliveries)
+          .where(eq(deliveries.orderId, f.orderId));
         expect(delivery).toMatchObject({ status: 'CANCELLED', version: 1 });
         expect(delivery?.cancelledAt).toBeTruthy();
         const events = await db.select().from(deliveryEvents);
