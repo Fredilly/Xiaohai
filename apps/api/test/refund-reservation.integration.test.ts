@@ -336,7 +336,10 @@ suite('M6 paid refund and M16 reservation PostgreSQL integration', () => {
         .from(storeInventory)
         .where(and(eq(storeInventory.storeId, f.storeId), eq(storeInventory.skuId, f.skuId)));
       expect(balance).toMatchObject({ onHand: 3, reserved: 1, version: 1 });
-      const [pickup] = await db.select().from(pickupCodes).where(eq(pickupCodes.orderId, f.orderId));
+      const [pickup] = await db
+        .select()
+        .from(pickupCodes)
+        .where(eq(pickupCodes.orderId, f.orderId));
       expect(pickup?.status).toBe('ISSUED');
       const [order] = await db.select().from(orders).where(eq(orders.id, f.orderId));
       expect(order?.status).toBe(originalState);
