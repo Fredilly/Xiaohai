@@ -1,4 +1,5 @@
 import Fastify from 'fastify';
+import { assertMeipingApplyDisposableDatabase } from './meiping-apply-database-guard.js';
 import { eq, inArray } from 'drizzle-orm';
 import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
@@ -22,22 +23,11 @@ import {
   type PictureBookAiConfig,
 } from '../src/picture-book/picture-book-service.js';
 
-// This suite TRUNCATES multiple tables. Fail closed unless on the dedicated
-// local disposable CI database, never a staging or production database.
-const databaseUrl = process.env.DATABASE_URL;
-let disposableTarget = false;
-try {
-  if (databaseUrl) {
-    const url = new URL(databaseUrl);
-    disposableTarget =
-      url.protocol === 'postgresql:' &&
-      ['127.0.0.1', 'localhost'].includes(url.hostname) &&
-      url.pathname === '/xiaohai_test';
-  }
-} catch {
-  disposableTarget = false;
-}
-const database = disposableTarget ? createDatabase(process.env) : null;
+// This suite TRUNCATES multiple tables. Validate the actual TEST_DATABASE_URL
+// and DATABASE_URL together before creating a pool; unsafe config fails closed.
+const database = assertMeipingApplyDisposableDatabase(process.env)
+  ? createDatabase(process.env)
+  : null;
 const suite = database ? describe : describe.skip;
 
 const sessionSecret = 'm10-picture-book-consumer-session-secret-at-least-32-characters';
