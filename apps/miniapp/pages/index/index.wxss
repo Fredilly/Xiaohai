@@ -21,8 +21,14 @@
   flex-direction: column;
   gap: 3rpx;
 }
+.brand-kicker {
+  color: #8c7ea2;
+  font-size: 17rpx;
+  font-weight: 700;
+  letter-spacing: 2rpx;
+}
 .brand-name {
-  font-size: 30rpx;
+  font-size: 32rpx;
   font-weight: 800;
   color: #285575;
 }
@@ -36,7 +42,7 @@
   gap: 14rpx;
   min-height: 76rpx;
   padding: 0 22rpx;
-  margin-bottom: 22rpx;
+  margin-bottom: 18rpx;
   border-radius: 24rpx;
   background: #fff;
   color: #858d97;
@@ -76,7 +82,7 @@
 }
 .hero {
   overflow: hidden;
-  min-height: 268rpx;
+  min-height: 248rpx;
   position: relative;
   background: #e9f0f5;
   border-color: #e8edf2;
@@ -86,6 +92,7 @@
 }
 .hero-with-media {
   background: #fff;
+  padding: 20rpx;
 }
 .hero-illustration {
   position: absolute;
@@ -187,7 +194,7 @@
   border: 0;
   box-shadow: none;
   background: transparent;
-  padding: 8rpx 0;
+  padding: 4rpx 0;
 }
 .card,
 .list-card {
@@ -212,7 +219,7 @@
   grid-template-columns: 68rpx 1fr;
   align-content: center;
   column-gap: 18rpx;
-  background: #e7f0ed;
+  background: linear-gradient(135deg, #e7f0ed, #edf2f6);
   border: 0;
 }
 .card-featured .feature-icon {

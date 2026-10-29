@@ -88,6 +88,13 @@
   flex: 1;
   min-width: 0;
 }
+.profile-kicker {
+  display: block;
+  margin-bottom: 8rpx;
+  color: #778b9c;
+  font-size: 19rpx;
+  letter-spacing: 1rpx;
+}
 
 .profile-name {
   display: block;
@@ -134,40 +141,12 @@
   border: 0;
 }
 
-.profile-stats {
+.profile-caption {
   position: relative;
   z-index: 1;
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  margin-top: 34rpx;
-}
-
-.profile-stat {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8rpx;
-}
-
-.profile-stat + .profile-stat::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 18rpx;
-  width: 1rpx;
-  height: 50rpx;
-  background: rgba(91, 108, 132, 0.18);
-}
-
-.stat-value {
-  font-size: 34rpx;
-  font-weight: 800;
-}
-
-.stat-label {
-  font-size: 23rpx;
+  margin-top: 28rpx;
   color: #687887;
+  font-size: 22rpx;
 }
 
 .content-shell {
@@ -208,6 +187,11 @@
   gap: 6rpx;
   color: #92939a;
   font-size: 23rpx;
+}
+.card-heading-note {
+  margin-left: auto;
+  color: #9a9ca4;
+  font-size: 21rpx;
 }
 
 .chevron {
@@ -309,5 +293,14 @@
   color: #45464b;
   font-size: 22rpx;
   text-align: center;
+  white-space: nowrap;
+}
+.service-status {
+  margin-top: 5rpx;
+  padding: 3rpx 9rpx;
+  border-radius: 999rpx;
+  background: #f2f1f6;
+  color: #8a8496;
+  font-size: 17rpx;
   white-space: nowrap;
 }

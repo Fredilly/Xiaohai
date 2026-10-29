@@ -28,8 +28,10 @@
     "check:miniapp": "node scripts/check-miniapp.mjs",
     "check": "pnpm check:workspace && pnpm check:miniapp && pnpm check:secrets && pnpm test:preflight && pnpm test:picture-book-quality && pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build",
     "preflight:image": "node --env-file-if-exists .env scripts/image-preflight.mjs",
-    "test:preflight": "node --test scripts/local-startup.test.mjs scripts/image-preflight.test.mjs",
-    "test:picture-book-quality": "node --test benchmarks/picture-book-quality/review.test.mjs"
+    "test:preflight": "node --test scripts/local-startup.test.mjs scripts/image-preflight.test.mjs scripts/release-preflight.test.mjs scripts/private-bos-staging-smoke.test.mjs",
+    "preflight:private-bos": "node --env-file-if-exists .env scripts/private-bos-staging-smoke.mjs",
+    "test:picture-book-quality": "node --test benchmarks/picture-book-quality/review.test.mjs",
+    "preflight:release": "node --env-file-if-exists .env scripts/release-preflight.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.35.0",
