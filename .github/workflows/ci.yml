@@ -96,6 +96,8 @@ jobs:
         run: pnpm check:workspace && pnpm check:miniapp && pnpm check:secrets
       - name: Staging CI-only deployment regression
         run: node --test scripts/staging-deploy-gate.test.mjs
+      - name: Private BOS synthetic GET smoke unit regressions (offline)
+        run: node --test scripts/private-bos-staging-smoke.test.mjs
       - name: Format, lint and typecheck
         run: pnpm format:check && pnpm lint && pnpm typecheck
       - name: Staging deployment must not run schema or seed writes
