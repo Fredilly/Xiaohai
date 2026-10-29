@@ -118,9 +118,7 @@ test('modifying an older suite cannot reintroduce unconditional DATABASE_URL acc
   );
 });
 
-test(
-  'a modified TRUNCATE suite cannot validate DATABASE_URL while using TEST_DATABASE_URL',
-  () => {
+test('a modified TRUNCATE suite cannot validate DATABASE_URL while using TEST_DATABASE_URL', () => {
     const path = 'apps/api/test/picture-book.integration.test.ts';
     const unsafe = [
       'const databaseUrl = process.env.DATABASE_URL;',
@@ -129,12 +127,9 @@ test(
       'await database.pool.query("TRUNCATE TABLE consumer_users CASCADE");',
     ].join('\n');
     assert.match(check([path], '', body, unsafe).join(','), /effective TEST_DATABASE_URL/);
-  },
-);
+});
 
-test(
-  'a modified destructive suite must run the effective-target guard before connection',
-  () => {
+test('a modified destructive suite must run the effective-target guard before connection', () => {
     const path = 'apps/api/test/picture-book.integration.test.ts';
     const unsafe = [
       'const database = createDatabase(process.env);',
@@ -148,8 +143,7 @@ test(
       'await database.pool.query("TRUNCATE TABLE consumer_users CASCADE");',
     ].join('\n');
     assert.deepEqual(check([path], '', body, safe), []);
-  },
-);
+});
 
 test('a changed read-only integration suite does not trip the destructive gate', () => {
   const source =
