@@ -143,7 +143,12 @@ export class FulfillmentService {
       const skuRows = await this.db
         .select({ id: skus.id, code: skus.code })
         .from(skus)
-        .where(inArray(skus.id, cart.items.map((item) => item.skuId)));
+        .where(
+          inArray(
+            skus.id,
+            cart.items.map((item) => item.skuId),
+          ),
+        );
       const skuCodes = new Map(skuRows.map((row) => [row.id, row.code]));
       if (skuCodes.size !== cart.items.length) throw new FulfillmentError('CONFLICT');
 
