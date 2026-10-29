@@ -240,9 +240,15 @@ suite('M6 paid refund and M16 reservation PostgreSQL integration', () => {
     );
   }
 
-  for (const method of ['PICKUP', 'DELIVERY'] as const) {
-    it(`releases exactly one ${method} reservation on confirmed refund and callback replay`, async () => {
+  for (const { method, pickupReady } of [
+    { method: 'PICKUP', pickupReady: false },
+    { method: 'PICKUP', pickupReady: true },
+    { method: 'DELIVERY', pickupReady: false },
+  ] as const) {
+    it(`${method}${pickupReady ? ' ready' : ''} refund release is idempotent`, async () => {
       const f = await seed(method);
+      if (pickupReady)
+        await db.update(orders).set({ status: 'PICKUP_READY' }).where(eq(orders.id, f.orderId));
       setupRefund(f);
       const intent = await paymentService.requestRefund(f.payment.id, f.staffId);
       expect(intent.status).toBe('PROCESSING');
