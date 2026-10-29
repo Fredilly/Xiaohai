@@ -126,7 +126,7 @@ describe('picture-book detail owner-scoped media refresh (#189)', () => {
     await vi.waitFor(() => expect(readDetail).toHaveBeenCalledTimes(2));
   });
 
-  it('never logs raw WeChat image errors or signed bearer URLs', async () => {
+  it('never logs raw WeChat image errors or signed bearer URLs', () => {
     const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const info = vi.spyOn(console, 'log').mockImplementation(() => {});
     const page = instance();
