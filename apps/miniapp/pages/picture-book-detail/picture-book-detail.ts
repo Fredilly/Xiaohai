@@ -79,7 +79,7 @@ Page({
     this.pollingToken += 1;
     this.setData({ polling: false });
   },
-  onImageError(_event: WechatMiniprogram.CustomEvent<{ errMsg?: string }>) {
+  onImageError() {
     // WeChat image error strings can include signed bearer URLs; never log them.
     this.setData({ imageError: true });
   },
