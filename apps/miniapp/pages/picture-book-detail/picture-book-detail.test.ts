@@ -101,7 +101,9 @@ describe('picture-book detail owner-scoped media refresh (#189)', () => {
     page.onImageError({ detail: { errMsg: oldUrl } } as never);
     page.onHide();
     page.onShow();
-    await vi.waitFor(() => expect(page.data.detail?.pages[0]?.illustrations[0]?.playbackUrl).toBe(newUrl));
+    await vi.waitFor(() =>
+      expect(page.data.detail?.pages[0]?.illustrations[0]?.playbackUrl).toBe(newUrl),
+    );
     expect(readDetail).toHaveBeenCalledTimes(2);
     expect(readReferences).toHaveBeenCalledTimes(2);
     expect(page.data.imageError).toBe(false);
@@ -148,15 +150,20 @@ describe('picture-book detail owner-scoped media refresh (#189)', () => {
   it('ignores older loads after a newer resume load succeeds', async () => {
     let resolveOld: (detail: PictureBookDetail) => void = () => {};
     readDetail
-      .mockImplementationOnce(() => new Promise<PictureBookDetail>((resolve) => {
-        resolveOld = resolve;
-      }))
+      .mockImplementationOnce(
+        () =>
+          new Promise<PictureBookDetail>((resolve) => {
+            resolveOld = resolve;
+          }),
+      )
       .mockResolvedValueOnce(book(newUrl, false));
     const page = instance();
     const oldLoad = page.load();
     page.onHide();
     page.onShow();
-    await vi.waitFor(() => expect(page.data.detail?.pages[0]?.illustrations[0]?.playbackUrl).toBe(newUrl));
+    await vi.waitFor(() =>
+      expect(page.data.detail?.pages[0]?.illustrations[0]?.playbackUrl).toBe(newUrl),
+    );
     resolveOld(book(oldUrl, false));
     await oldLoad;
     expect(page.data.detail?.pages[0]?.illustrations[0]?.playbackUrl).toBe(newUrl);
@@ -164,9 +171,12 @@ describe('picture-book detail owner-scoped media refresh (#189)', () => {
 
   it('ignores pending owner reads after page unload', async () => {
     let resolveRead: (detail: PictureBookDetail) => void = () => {};
-    readDetail.mockImplementationOnce(() => new Promise<PictureBookDetail>((resolve) => {
-      resolveRead = resolve;
-    }));
+    readDetail.mockImplementationOnce(
+      () =>
+        new Promise<PictureBookDetail>((resolve) => {
+          resolveRead = resolve;
+        }),
+    );
     const page = instance();
     const pending = page.load();
     page.onUnload();
