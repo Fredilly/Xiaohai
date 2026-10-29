@@ -66,7 +66,7 @@ export function validatePrivateBosSmoke(env) {
       const objectKey = path.slice(prefix.length);
       if (
         !objectKey.startsWith('picture-books/') ||
-        !/^[A-Za-z0-9_/%.-]+\.png$/.test(objectKey) ||
+        !/^[A-Za-z0-9_/.-]+\.png$/.test(objectKey) ||
         objectKey.length > 512 ||
         objectKey.split('/').some((segment) => !segment || segment === '.' || segment === '..')
       ) {
