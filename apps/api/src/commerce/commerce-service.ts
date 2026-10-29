@@ -275,9 +275,23 @@ export class CommerceService {
         and(eq(orders.consumerUserId, consumerUserId), eq(orders.clientRequestId, clientRequestId)),
       );
     if (existing) return this.getOrder(consumerUserId, existing.id);
-    const preview = await this.checkoutPreview(consumerUserId, addressId);
-    const cartId = await this.getCartId(consumerUserId);
     return this.db.transaction(async (tx) => {
+      // Share the per-consumer checkout lock with FulfillmentService. Different
+      // request keys must never consume the same cart snapshot twice.
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${consumerUserId}))`);
+      const [again] = await tx
+        .select({ id: orders.id })
+        .from(orders)
+        .where(
+          and(eq(orders.consumerUserId, consumerUserId), eq(orders.clientRequestId, clientRequestId)),
+        )
+        .limit(1);
+      if (again) return this.getOrder(consumerUserId, again.id);
+
+      // The winner clears the cart on commit. Later requests see an empty cart,
+      // while same-key retries return above without needing its old contents.
+      const preview = await this.checkoutPreview(consumerUserId, addressId);
+      const cartId = await this.getCartId(consumerUserId);
       const [order] = await tx
         .insert(orders)
         .values({
