@@ -28,6 +28,7 @@ test('rejects mixed buckets, localhost, unsafe keys and missing/identical signat
     { BOS_PRIVATE_SMOKE_UNSIGNED_URL: 'https://' + host + path + '?token=oops' },
     { BOS_PRIVATE_SMOKE_EXPIRED_URL: base.BOS_PRIVATE_SMOKE_SIGNED_URL },
     { BOS_PRIVATE_SMOKE_SIGNED_URL: 'https://' + host + '/picture-books/../other.png?token=1' },
+    { BOS_PRIVATE_SMOKE_SIGNED_URL: 'https://' + host + '/picture-books/%2e%2e/other.png?token=1' },
     { BOS_PRIVATE_SMOKE_SIGNED_URL: '' },
   ]) {
     assert.notEqual(validatePrivateBosSmoke({ ...base, ...overrides }).failures.length, 0);
