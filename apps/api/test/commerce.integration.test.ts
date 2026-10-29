@@ -173,10 +173,7 @@ suite('M5 Commerce PostgreSQL integration', () => {
       reason: { code: 'CONFLICT' },
     });
 
-    const saved = await database!.db
-      .select()
-      .from(orders)
-      .where(eq(orders.consumerUserId, user));
+    const saved = await database!.db.select().from(orders).where(eq(orders.consumerUserId, user));
     expect(saved).toHaveLength(1);
     expect(saved[0]).toMatchObject({
       status: 'UNPAID',
