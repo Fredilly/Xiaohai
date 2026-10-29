@@ -1,15 +1,22 @@
 export function detailAccessMessage(error: unknown): string {
-  const status =
-    typeof error === 'object' && error !== null && 'status' in error
-      ? (error as { status?: unknown }).status
-      : undefined;
+  const status = (error as { status?: number } | null)?.status;
   const message = error instanceof Error ? error.message : '';
-  const isUnauthorized =
-    status === 401 ||
-    /(?:^AUTH_REQUIRED$|(?:API |HTTP_)401\b|^UNAUTHORIZED$)/.test(message);
-  const isForbidden =
-    status === 403 || /(?:^FORBIDDEN$|(?:API |HTTP_)403\b)/.test(message);
-  if (isUnauthorized) return '请先登录后查看此详情';
-  if (isForbidden) return '当前账号无权查看此详情';
-  return '';
+  if (status === 401) return '请先登录后查看此详情';
+  if (status === 403) return '当前账号无权查看此详情';
+
+  switch (message) {
+    case 'AUTH_REQUIRED':
+    case 'UNAUTHORIZED':
+    case 'HTTP_401':
+    case 'Content API 401':
+    case 'Store API 401':
+      return '请先登录后查看此详情';
+    case 'FORBIDDEN':
+    case 'HTTP_403':
+    case 'Content API 403':
+    case 'Store API 403':
+      return '当前账号无权查看此详情';
+    default:
+      return '';
+  }
 }
