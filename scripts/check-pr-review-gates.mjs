@@ -118,6 +118,49 @@ export function reviewIssues({ files, patch = '', body = '', readSource = () => 
       );
     }
   }
+  // A safe disposable database is not proof that bulk test teardown is safe:
+  // another suite can still own rows in the same DB (see #184).
+  // Examine whole new integration suites; for existing suites inspect only
+  // newly added delete expressions so legacy unrelated changes are not blocked.
+  const addedLinesByFile = new Map();
+  let activeFile = '';
+  for (const line of patch.split('\n')) {
+    if (line.startsWith('diff --git a/')) {
+      activeFile = /^diff --git a\/(.+?) b\//.exec(line)?.[1] ?? '';
+    } else if (
+      /^apps\/api\/test\/[^/]+\.integration\.test\.ts$/.test(activeFile) &&
+      line.startsWith('+') &&
+      !line.startsWith('+++')
+    ) {
+      const addedLines = addedLinesByFile.get(activeFile) ?? new Set();
+      addedLines.add(line.slice(1).trim());
+      addedLinesByFile.set(activeFile, addedLines);
+    }
+  }
+  for (const file of files.filter((path) =>
+    /^apps\/api\/test\/[^/]+\.integration\.test\.ts$/.test(path),
+  )) {
+    if (deletedIntegrationSuites.has(file)) continue;
+    const isNew = addedIntegrationSuites.has(file);
+    const addedLines = addedLinesByFile.get(file) ?? new Set();
+    if (!isNew && ![...addedLines].some((line) => /\.delete\s*\(/.test(line))) continue;
+    const source = readSource(file);
+    const sourceLines = source.split('\n');
+    const deleteCall = /\.delete\s*\(\s*([A-Za-z_$][\w$]*)\s*\)/g;
+    for (const match of source.matchAll(deleteCall)) {
+      const lineNumber = source.slice(0, match.index).split('\n').length;
+      const sourceLine = sourceLines[lineNumber - 1]?.trim() ?? '';
+      if (!isNew && !addedLines.has(sourceLine)) continue;
+      // Drizzle DELETE without a chained WHERE deletes every row of the table.
+      // A later unrelated .where() elsewhere in the function does not count.
+      const remainder = source.slice(match.index + match[0].length);
+      if (!/^\s*\.where\s*\(/.test(remainder)) {
+        issues.push(
+          `Integration test ${file} contains an unscoped .delete(${match[1]}); scope cleanup to fixture IDs with .where(...) instead of deleting an entire shared table.`,
+        );
+      }
+    }
+  }
   if (files.includes('apps/api/src/migration/meiping-review-service.ts')) {
     const service = readSource('apps/api/src/migration/meiping-review-service.ts');
     if (
