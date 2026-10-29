@@ -88,6 +88,12 @@
       "import": "./dist/inventory.js",
       "default": "./dist/inventory.js"
     },
+    "./meiping": {
+      "types": "./src/meiping.ts",
+      "development": "./src/meiping.ts",
+      "import": "./dist/meiping.js",
+      "default": "./dist/meiping.js"
+    },
     "./rental": {
       "types": "./src/rental.ts",
       "development": "./src/rental.ts",

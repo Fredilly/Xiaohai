@@ -7,21 +7,29 @@ function useWeChatEnvironment(envVersion: 'develop' | 'trial' | 'release') {
   });
 }
 
-describe('Mini Program API environment selection', () => {
-  afterEach(() => vi.unstubAllGlobals());
+afterEach(() => vi.unstubAllGlobals());
 
-  it('keeps local loopback only for the developer environment', () => {
-    useWeChatEnvironment('develop');
-    expect(getApiBaseUrl()).toBe('http://127.0.0.1:3000');
-  });
+describe('Issue #76 Mini Program device API environment mapping', () => {
+  it.each(['develop', 'trial'] as const)(
+    '%s maps to the configured staging HTTPS origin instead of loopback',
+    (envVersion) => {
+      useWeChatEnvironment(envVersion);
+      const url = getApiBaseUrl();
+      expect(url).toBe('https://staging-api.pamboo.asia');
+      expect(url).toMatch(/^https:\/\//);
+      expect(url).not.toMatch(/(?:127\.0\.0\.1|localhost)/);
+    },
+  );
 
-  it('uses the verified HTTPS staging API for trial builds', () => {
-    useWeChatEnvironment('trial');
-    expect(getApiBaseUrl()).toBe('https://staging-api.pamboo.asia');
-  });
-
-  it('does not silently use staging for release builds', () => {
+  it('keeps release pointed at an intentionally non-functional placeholder', () => {
     useWeChatEnvironment('release');
     expect(getApiBaseUrl()).toBe('https://api.example.invalid');
+  });
+
+  it('fails closed on unknown WeChat environment instead of selecting live production', () => {
+    vi.stubGlobal('wx', {
+      getAccountInfoSync: () => ({ miniProgram: { envVersion: 'unknown' } }),
+    });
+    expect(() => getApiBaseUrl()).toThrow('Unsupported WeChat environment version');
   });
 });

@@ -25,6 +25,22 @@ const sleep = (milliseconds: number) =>
 const IMAGE_POLL_TIMEOUT_MS = 620_000;
 const IMAGE_POLL_INTERVAL_MS = 1_000;
 
+type PlaybackReference = { playbackUrl: string | null };
+
+function playbackUrls(
+  detail: PictureBookDetail | null,
+  references: Record<string, PlaybackReference[]>,
+): string[] {
+  return [
+    ...(detail?.pages.flatMap((page) =>
+      page.illustrations.map((revision) => revision.playbackUrl),
+    ) ?? []),
+    ...Object.values(references).flatMap((items) => items.map((item) => item.playbackUrl)),
+  ]
+    .filter((url): url is string => Boolean(url))
+    .sort();
+}
+
 Page({
   data: {
     id: '',
@@ -37,22 +53,39 @@ Page({
     error: '',
     imageError: false,
   },
+  // A short-lived BOS GET signature must be reissued by the owned read API,
+  // not logged, cached locally, or regenerated using a paid AI endpoint.
+  refreshAfterHide: false,
+  pageClosed: false,
+  loadRevision: 0,
+  onHide() {
+    this.refreshAfterHide = true;
+  },
+  onShow() {
+    if (!this.refreshAfterHide || !this.data.id || this.data.busy || this.data.polling) {
+      return;
+    }
+    this.refreshAfterHide = false;
+    void this.load();
+  },
   onLoad(query: Record<string, string | undefined>) {
     this.setData({ id: String(query.id || '') });
     if (this.data.id) void this.load();
     else this.setData({ loading: false, error: '绘本参数无效' });
   },
   onUnload() {
+    this.pageClosed = true;
+    this.loadRevision += 1;
     this.pollingToken += 1;
     this.setData({ polling: false });
   },
-  onImageError(event: WechatMiniprogram.CustomEvent<{ errMsg?: string }>) {
-    const errMsg = String(event.detail?.errMsg || 'unknown image load error');
-    console.warn(`[picture-book] local image display failed: ${errMsg}`);
+  onImageError() {
+    // WeChat image error strings can include signed bearer URLs; never log them.
     this.setData({ imageError: true });
   },
   pollingToken: 0,
   async load() {
+    const revision = ++this.loadRevision;
     try {
       const detail = await getPictureBook(this.data.id);
       const references = await Promise.all(
@@ -64,18 +97,27 @@ Page({
             ] as const,
         ),
       );
+      if (this.pageClosed || revision !== this.loadRevision) return;
+      const freshReferences = Object.fromEntries(references);
+      const previousUrls = playbackUrls(this.data.detail, this.data.references);
+      const freshUrls = playbackUrls(detail, freshReferences);
+      const urlChanged =
+        previousUrls.length !== freshUrls.length ||
+        previousUrls.some((url, index) => url !== freshUrls[index]);
       this.setData({
         detail,
-        references: Object.fromEntries(references),
+        references: freshReferences,
+        imageError: this.data.imageError && !urlChanged,
         characterBibleConfirmed:
           detail.characters.length > 0 &&
           detail.characters.every((character) => character.confirmed && character.locked),
         error: '',
       });
     } catch {
-      this.setData({ error: '绘本加载失败' });
+      if (!this.pageClosed && revision === this.loadRevision)
+        this.setData({ error: '绘本加载失败' });
     } finally {
-      this.setData({ loading: false });
+      if (!this.pageClosed && revision === this.loadRevision) this.setData({ loading: false });
     }
   },
   async reference(event: WechatMiniprogram.TouchEvent) {
