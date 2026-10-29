@@ -144,18 +144,21 @@ export class CommerceService {
   async addCartItem(consumerUserId: string, skuId: string, quantity: number) {
     const cartId = await this.getCartId(consumerUserId);
     await this.requirePurchasableSku(skuId);
-    const [existing] = await this.db
-      .select()
-      .from(cartItems)
-      .where(and(eq(cartItems.cartId, cartId), eq(cartItems.skuId, skuId)));
-    const next = (existing?.quantity ?? 0) + quantity;
-    if (next > 99) throw new CommerceError('CONFLICT', 'Cart quantity exceeds limit');
-    if (existing)
-      await this.db
-        .update(cartItems)
-        .set({ quantity: next, updatedAt: new Date() })
-        .where(eq(cartItems.id, existing.id));
-    else await this.db.insert(cartItems).values({ cartId, skuId, quantity });
+    // The unique (cartId, skuId) index serializes competing inserts/updates.
+    // A conditional UPSERT prevents lost increments and never exceeds quantity 99.
+    const [added] = await this.db
+      .insert(cartItems)
+      .values({ cartId, skuId, quantity })
+      .onConflictDoUpdate({
+        target: [cartItems.cartId, cartItems.skuId],
+        set: {
+          quantity: sql`${cartItems.quantity} + ${quantity}`,
+          updatedAt: new Date(),
+        },
+        setWhere: sql`${cartItems.quantity} + ${quantity} <= 99`,
+      })
+      .returning({ id: cartItems.id });
+    if (!added) throw new CommerceError('CONFLICT', 'Cart quantity exceeds limit');
     return this.getCart(consumerUserId);
   }
 
