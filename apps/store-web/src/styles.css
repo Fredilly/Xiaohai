@@ -547,3 +547,309 @@ button:disabled {
     grid-column: 1 / -1;
   }
 }
+
+/* Store-scoped, one-time Meiping migration review; does not create catalog stock. */
+.meiping-store-panel {
+  display: grid;
+  gap: 14px;
+}
+.meiping-store-panel h2,
+.meiping-store-panel h3,
+.meiping-store-panel h4 {
+  margin: 0;
+}
+.meiping-store-panel p {
+  line-height: 1.5;
+}
+.meiping-store-list {
+  display: grid;
+  gap: 10px;
+}
+.meiping-store-entry {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid #dde6df;
+  border-radius: 10px;
+}
+.meiping-store-entry > div {
+  display: grid;
+  gap: 4px;
+}
+.meiping-store-entry small {
+  color: #56665c;
+}
+.meiping-store-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.meiping-store-row {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid #dde6df;
+  border-radius: 12px;
+  background: #fff;
+}
+.meiping-store-editor {
+  border-top: 1px solid #e3eae5;
+  padding-top: 12px;
+}
+.meiping-store-editor summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.meiping-store-editor form,
+.meiping-store-review form {
+  display: grid;
+  gap: 12px;
+  padding-top: 12px;
+}
+.meiping-store-editor label,
+.meiping-store-review label {
+  display: grid;
+  gap: 5px;
+}
+.meiping-store-editor input,
+.meiping-store-editor select,
+.meiping-store-editor textarea,
+.meiping-store-review select,
+.meiping-store-review textarea {
+  width: 100%;
+  max-width: 540px;
+  padding: 8px;
+  border-radius: 6px;
+  border: 1px solid #adbeb2;
+  background: white;
+  color: #243a2d;
+}
+.meiping-store-panel button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.meiping-store-review {
+  border-top: 1px solid #e3eae5;
+  padding-top: 12px;
+  display: grid;
+  gap: 10px;
+}
+.meiping-store-review dl {
+  margin: 0;
+  display: grid;
+  gap: 8px;
+}
+.meiping-store-review dl > div {
+  display: grid;
+  gap: 4px;
+}
+.meiping-store-review dt {
+  font-weight: 700;
+}
+.meiping-store-review dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.catalog-correction-form {
+  display: grid;
+  gap: 12px;
+  margin: 18px 0 28px;
+  max-width: 720px;
+}
+.catalog-correction-form label {
+  display: grid;
+  gap: 6px;
+}
+.catalog-correction-form input,
+.catalog-correction-form select,
+.catalog-correction-form textarea {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #d5cdbf;
+  border-radius: 8px;
+}
+
+/* Shared, responsive tables for store back-office datasets. */
+.data-table-scroll {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  margin: 18px 0 12px;
+  border: 1px solid #dfe6dd;
+  border-radius: 12px;
+  background: #fff;
+}
+.data-table-scroll:focus-visible {
+  outline: 2px solid #526345;
+  outline-offset: 3px;
+}
+.data-table {
+  width: 100%;
+  min-width: 950px;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 13px;
+  line-height: 1.55;
+}
+.data-table thead {
+  background: #eef2eb;
+  color: #3c513b;
+}
+.data-table th,
+.data-table td {
+  padding: 13px 14px;
+  border-bottom: 1px solid #ebeee8;
+  text-align: left;
+  vertical-align: middle;
+}
+.data-table th {
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 700;
+}
+.data-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+.data-table tbody tr:nth-child(even) {
+  background: #fafbf9;
+}
+.data-table tbody tr:hover {
+  background: #f2f6ef;
+}
+.data-table .numeric {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.data-table .cell-title {
+  display: block;
+  font-weight: 650;
+  color: #2e402f;
+}
+.data-table .cell-meta {
+  display: block;
+  margin-top: 4px;
+  color: #68736a;
+  font-size: 12px;
+  font-weight: 400;
+}
+.data-table .cell-code {
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+.data-table .cell-detail {
+  min-width: 150px;
+  max-width: 240px;
+  overflow-wrap: anywhere;
+}
+.data-table .status-pill {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: #eaf0e7;
+  color: #426040;
+  font-size: 12px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+.data-table .data-table-empty {
+  padding: 35px 12px;
+  text-align: center;
+  color: #767e76;
+}
+.data-table-corrections {
+  min-width: 1120px;
+}
+.data-table .cell-actions {
+  display: grid;
+  gap: 7px;
+  min-width: 155px;
+}
+.data-table .cell-actions label {
+  display: grid;
+  gap: 4px;
+}
+.data-table .cell-actions textarea {
+  width: 100%;
+  min-width: 140px;
+  border: 1px solid #d5cdbf;
+  border-radius: 8px;
+  padding: 8px;
+  font: inherit;
+}
+.data-table .cell-actions button {
+  border: 0;
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: #4e5c3f;
+  color: #fff;
+  font: inherit;
+}
+.data-table .cell-actions button:disabled {
+  opacity: 0.5;
+}
+@media (max-width: 820px) {
+  .data-table {
+    min-width: 840px;
+  }
+  .data-table-corrections {
+    min-width: 1120px;
+  }
+}
+
+.data-table-compact {
+  min-width: 640px;
+}
+.data-table .inline-actions {
+  min-width: 160px;
+}
+
+/* Modal workspace for editing catalog rows without moving the list scroll position. */
+.catalog-editor-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 20px;
+  background: rgba(17, 30, 20, 0.5);
+}
+.catalog-editor-dialog {
+  position: relative;
+  width: min(760px, 100%);
+  max-height: calc(100dvh - 40px);
+  overflow-y: auto;
+  border-radius: 16px;
+  background: #fff;
+  padding: 28px;
+  box-shadow: 0 20px 65px rgba(0, 0, 0, 0.24);
+}
+.catalog-editor-dialog .catalog-correction-form {
+  margin: 0;
+  max-width: none;
+}
+.catalog-editor-close {
+  position: sticky;
+  top: 0;
+  float: right;
+  z-index: 1;
+  border: 1px solid #d9e0d6;
+  border-radius: 8px;
+  padding: 5px 12px;
+  background: #fff;
+  cursor: pointer;
+}
+@media (max-width: 640px) {
+  .catalog-editor-overlay {
+    padding: 10px;
+  }
+  .catalog-editor-dialog {
+    padding: 16px;
+    max-height: calc(100dvh - 20px);
+  }
+}
