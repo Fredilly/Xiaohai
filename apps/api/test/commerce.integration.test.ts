@@ -155,6 +155,71 @@ suite('M5 Commerce PostgreSQL integration', () => {
     const same = await commerce.createOrder(user, addr.id, 'request-0001');
     expect(same.id).toBe(order.id);
   });
+  it('creates only one legacy order for concurrent distinct keys on the same cart', async () => {
+    const user = await consumer();
+    const skuId = await sku(2500);
+    const addr = await address(user);
+    await commerce.addCartItem(user, skuId, 2);
+
+    const results = await Promise.allSettled([
+      commerce.createOrder(user, addr.id, 'parallel-legacy-key-a'),
+      commerce.createOrder(user, addr.id, 'parallel-legacy-key-b'),
+    ]);
+    const completed = results.filter((result) => result.status === 'fulfilled');
+    const rejected = results.find((result) => result.status === 'rejected');
+    expect(completed).toHaveLength(1);
+    expect(rejected).toMatchObject({
+      status: 'rejected',
+      reason: { code: 'CONFLICT' },
+    });
+
+    const saved = await database!.db
+      .select()
+      .from(orders)
+      .where(eq(orders.consumerUserId, user));
+    expect(saved).toHaveLength(1);
+    expect(saved[0]).toMatchObject({
+      status: 'UNPAID',
+      totalMinor: 5000,
+    });
+    const items = await database!.db
+      .select()
+      .from(orderItems)
+      .where(eq(orderItems.orderId, saved[0]!.id));
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({
+      quantity: 2,
+      unitPriceMinor: 2500,
+      lineTotalMinor: 5000,
+    });
+    expect((await commerce.getCart(user)).items).toHaveLength(0);
+  });
+
+  it('replays concurrent identical legacy checkout keys without a second order', async () => {
+    const user = await consumer();
+    const skuId = await sku();
+    const addr = await address(user);
+    await commerce.addCartItem(user, skuId, 1);
+
+    const [first, second] = await Promise.all([
+      commerce.createOrder(user, addr.id, 'parallel-legacy-same-key'),
+      commerce.createOrder(user, addr.id, 'parallel-legacy-same-key'),
+    ]);
+    expect(first.id).toBe(second.id);
+    expect(first.totalMinor).toBe(2500);
+    expect(second.totalMinor).toBe(2500);
+
+    const saved = await database!.db
+      .select({ id: orders.id })
+      .from(orders)
+      .where(eq(orders.consumerUserId, user));
+    expect(saved).toHaveLength(1);
+    expect(
+      await database!.db.select().from(orderItems).where(eq(orderItems.orderId, first.id)),
+    ).toHaveLength(1);
+    expect((await commerce.getCart(user)).items).toHaveLength(0);
+  });
+
   it('does not block checkout for invalid, disabled, or self referral codes', async () => {
     const buyer = await consumer(),
       other = await consumer(),
