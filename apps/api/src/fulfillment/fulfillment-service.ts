@@ -118,11 +118,9 @@ export class FulfillmentService {
     }
 
     return this.db.transaction(async (tx) => {
-      await tx.execute(
-        // Serialize ALL fulfillment checkouts of this consumer, regardless of request key.
-        // Otherwise two different keys can consume the same pre-transaction cart snapshot.
-        sql`select pg_advisory_xact_lock(hashtext(${consumerUserId}))`,
-      );
+      // Serialize every checkout for this consumer, even with different request IDs.
+      // A new request must not reuse a cart snapshot consumed by another checkout.
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${consumerUserId}))`);
       const [again] = await tx
         .select({ id: orders.id, fingerprint: orders.fulfillmentFingerprint })
         .from(orders)
@@ -145,12 +143,7 @@ export class FulfillmentService {
       const skuRows = await this.db
         .select({ id: skus.id, code: skus.code })
         .from(skus)
-        .where(
-          inArray(
-            skus.id,
-            cart.items.map((item) => item.skuId),
-          ),
-        );
+        .where(inArray(skus.id, cart.items.map((item) => item.skuId)));
       const skuCodes = new Map(skuRows.map((row) => [row.id, row.code]));
       if (skuCodes.size !== cart.items.length) throw new FulfillmentError('CONFLICT');
 
@@ -160,7 +153,6 @@ export class FulfillmentService {
           : null;
       const zone =
         input.method === 'DELIVERY' ? await this.resolveDeliveryZone(input.storeId, address!) : null;
-
 
       const [cartRow] = await tx
         .select({ id: carts.id })
