@@ -115,7 +115,10 @@ describe('private BOS picture-book preview metadata refresh (#187)', () => {
   it('coalesces concurrent image failures into one metadata GET', async () => {
     let release: (value: PictureBookDetail) => void = () => {};
     read.mockResolvedValueOnce(detail([oldUrl, oldUrl])).mockImplementationOnce(
-      () => new Promise<PictureBookDetail>((resolve) => { release = resolve; }),
+      () =>
+        new Promise<PictureBookDetail>((resolve) => {
+          release = resolve;
+        }),
     );
     const page = instance();
     await page.load();
@@ -151,7 +154,10 @@ describe('private BOS picture-book preview metadata refresh (#187)', () => {
 
     let release: (value: PictureBookDetail) => void = () => {};
     read.mockImplementationOnce(
-      () => new Promise<PictureBookDetail>((resolve) => { release = resolve; }),
+      () =>
+        new Promise<PictureBookDetail>((resolve) => {
+          release = resolve;
+        }),
     );
     page.onHide();
     page.onShow();
