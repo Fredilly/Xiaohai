@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { clearFailedHeroMedia, homeDisplaySections } from './home-display';
+import { clearFailedHeroMedia, hasCmsHero, homeDisplaySections } from './home-display';
 import type { HomeSection } from '../../services/home';
 import { miniappRemoteAssets } from '../../src/config/assets';
 
@@ -76,6 +76,29 @@ describe('home display content', () => {
     expect(clearFailedHeroMedia(newerHero, 0, miniappRemoteAssets.home.parentChildReading)).toBe(
       newerHero,
     );
+  });
+
+  it('uses the static illustration only when the CMS response has no HERO', () => {
+    const feature: HomeSection = {
+      id: 'features',
+      sectionType: 'FEATURE_GRID',
+      title: '阅读入口',
+      displayOrder: 1,
+      config: { items: [{ key: 'shop', title: '商城' }] },
+    };
+    const hero: HomeSection = {
+      id: 'cms-hero',
+      sectionType: 'HERO',
+      title: '真实 CMS 主视觉',
+      displayOrder: 0,
+      config: {},
+      mediaUrl: 'https://cdn.example.com/hero.png',
+    };
+
+    expect(hasCmsHero([])).toBe(false);
+    expect(hasCmsHero([feature])).toBe(false);
+    expect(hasCmsHero(homeDisplaySections([hero, feature]))).toBe(true);
+    expect(hasCmsHero([feature, hero])).toBe(true);
   });
 
   it('uses BOS editorial art when a CMS hero has no media and preserves explicit CMS media', () => {
