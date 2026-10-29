@@ -21,6 +21,8 @@ export default defineConfig({
     './src/commission-schema.ts',
     './src/finance-schema.ts',
     './src/audit-schema.ts',
+    './src/meiping-review-schema.ts',
+    './src/catalog-correction-schema.ts',
   ],
   out: './migrations',
   dbCredentials: {

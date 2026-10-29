@@ -232,6 +232,62 @@
       "when": 1791536585219,
       "tag": "0032_special_whizzer",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1792512000000,
+      "tag": "0033_meiping_review_sessions",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1792512600000,
+      "tag": "0034_meiping_review_corrections",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1792513200000,
+      "tag": "0035_meiping_correction_reviews",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1792590000000,
+      "tag": "0036_store_catalog_correction_requests",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1792584849830,
+      "tag": "0037_store_catalog_direct_edit",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1792590600000,
+      "tag": "0038_store_catalog_direct_edit_upgrade_repair",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1792661978009,
+      "tag": "0039_awesome_snowbird",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1792729939280,
+      "tag": "0040_brief_kid_colt",
+      "breakpoints": true
     }
   ]
 }
