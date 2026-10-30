@@ -48,6 +48,7 @@
           wx:for="{{orderActions}}"
           wx:key="title"
           data-key="{{item.key}}"
+          data-view="{{item.view}}"
           bindtap="openFeature"
         >
           <view class="order-icon"><image class="tile-symbol" src="/assets/ui/{{item.icon}}.svg" /></view>
