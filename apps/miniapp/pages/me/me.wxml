@@ -10,6 +10,7 @@
       </button>
 
       <view class="profile-copy">
+        <text class="profile-kicker">小海童话 · 阅读空间</text>
         <text class="profile-name">{{isLoggedIn ? '小海用户' : '欢迎来到小海'}}</text>
         <text class="profile-status">{{status}}</text>
         <text wx:if="{{isLoggedIn}}" class="profile-id">ID {{consumerDisplayId}}</text>
@@ -28,20 +29,7 @@
       微信登录
     </button>
 
-    <view class="profile-stats">
-      <view class="profile-stat">
-        <text class="stat-value">—</text>
-        <text class="stat-label">收藏</text>
-      </view>
-      <view class="profile-stat">
-        <text class="stat-value">—</text>
-        <text class="stat-label">优惠券</text>
-      </view>
-      <view class="profile-stat">
-        <text class="stat-value">—</text>
-        <text class="stat-label">积分</text>
-      </view>
-    </view>
+    <view class="profile-caption">登录后查看订单、租借与创作内容</view>
   </view>
 
   <view class="content-shell">
@@ -72,6 +60,7 @@
     <view class="me-card service-card">
       <view class="card-heading">
         <text class="card-heading-title">我的服务</text>
+        <text class="card-heading-note">按需探索</text>
       </view>
 
       <view class="service-grid">
@@ -84,6 +73,7 @@
         >
           <view class="service-icon tone-{{item.tone}}"><image class="tile-symbol" src="/assets/ui/{{item.icon}}.svg" /></view>
           <text class="service-title">{{item.title}}</text>
+          <text wx:if="{{item.key === 'purchased' || item.key === 'member' || item.key === 'settings'}}" class="service-status">即将开放</text>
         </view>
       </view>
     </view>
