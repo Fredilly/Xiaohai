@@ -6,6 +6,7 @@ const workflow = await readFile(
   new URL('../.github/workflows/staging-deploy.yml', import.meta.url),
   'utf8',
 );
+const remoteDeploy = await readFile(new URL('./staging-remote-deploy.sh', import.meta.url), 'utf8');
 
 test('staging deploy is triggered only by completed CI runs on main', () => {
   const triggers = workflow.match(/^on:\n([\s\S]*?)^permissions:/m)?.[1];
@@ -43,13 +44,33 @@ test('both staging jobs use the exact CI-verified commit, never a fallback ref',
   assert.doesNotMatch(workflow, /\|\|\s*github\.sha/u);
 });
 
-test('capacity gate runs before revision switch and pull, with no automatic deletion', () => {
-  const pre = workflow.indexOf('bash staging-disk-gate.sh pre');
-  const revisionWrite = workflow.indexOf('> revision.env');
-  const pull = workflow.indexOf('staging.compose.yml pull');
-  assert.ok(pre > 0 && pre < revisionWrite && revisionWrite < pull);
-  assert.match(workflow, /flock -n 9/u);
+test('capacity gate and host lock run before registry login, revision switch and pull', () => {
+  const lock = remoteDeploy.indexOf('flock -n 9');
+  const gate = remoteDeploy.indexOf('bash staging-disk-gate.sh pre');
+  const login = remoteDeploy.indexOf('docker login ghcr.io');
+  const revisionWrite = remoteDeploy.indexOf('> revision.env');
+  const pull = remoteDeploy.indexOf('staging.compose.yml pull');
+  assert.ok(lock > 0 && lock < gate && gate < login && login < revisionWrite);
+  assert.ok(revisionWrite < pull);
+  assert.match(workflow, /scripts\/staging-remote-deploy\.sh/u);
+  assert.match(workflow, /bash staging-remote-deploy\.sh/u);
   assert.match(workflow, /staging-disk-gate.sh post/u);
+});
+
+test('remote registry auth is isolated and always cleaned on exit', () => {
+  const tempConfig = remoteDeploy.indexOf('mktemp -d');
+  const trap = remoteDeploy.indexOf('trap cleanup EXIT');
+  const login = remoteDeploy.indexOf('docker login ghcr.io');
+  assert.ok(tempConfig > 0 && tempConfig < trap && trap < login);
+  assert.match(remoteDeploy, /export DOCKER_CONFIG=/u);
+  assert.match(remoteDeploy, /docker logout ghcr\.io/u);
+  assert.match(remoteDeploy, /rm -f -- "\$docker_config\/config\.json"/u);
+  assert.match(remoteDeploy, /rmdir -- "\$docker_config"/u);
+  assert.match(workflow, /printf '%s' "\$GH_TOKEN" \| ssh/u);
+  assert.doesNotMatch(workflow, /ssh[^\n]*docker login ghcr\.io/u);
+});
+
+test('retention remains opt-in dry run, not active deletion', () => {
   assert.match(workflow, /staging-image-retention.sh --dry-run/u);
   assert.doesNotMatch(workflow, /staging-image-retention.sh --execute/u);
   assert.match(workflow, /STAGING_RETENTION_PLAN_READY == 'true'/u);
