@@ -136,3 +136,12 @@ test('execute requires separate owner authorization and exact approved-ID manife
   assert.notEqual(r.status, 0);
   assert.match(r.stderr, /execution not authorized/);
 });
+
+test('different rollback tags resolving to the same image ID fail closed', async () => {
+  const r = await runRetention({
+    images: { ...baseImages(), [api(rollbackB)]: id('3') },
+  });
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /share image ID/);
+  assert.doesNotMatch(r.stdout, /AUDIT mode=--dry-run/);
+});
