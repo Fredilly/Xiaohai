@@ -145,10 +145,7 @@ test('successful deployment also cleans isolated registry credentials', async ()
     'up',
     'logout',
   ]);
-  assert.equal(
-    await readFile(join(fx.dir, 'revision.env'), 'utf8'),
-    `REVISION=${revision}\n`,
-  );
+  assert.equal(await readFile(join(fx.dir, 'revision.env'), 'utf8'), `REVISION=${revision}\n`);
   await assertCleaned(fx);
   assert.doesNotMatch(result.stdout + result.stderr, /synthetic-token-never-log/u);
 });
