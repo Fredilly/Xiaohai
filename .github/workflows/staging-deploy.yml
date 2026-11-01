@@ -63,7 +63,8 @@ jobs:
           test -n "$SSH_USER"
       # This workflow changes application images only; schema/data writes require
       # a separate DBA-approved migration or seed operation (Issue #169).
-      - name: Deploy exact CI-verified revision
+      # No image removal is wired here; maintenance scripts default to dry-run.
+      - name: Deploy exact CI-verified revision with disk/inode capacity gate
         env:
           HOST: ${{ secrets.STAGING_SSH_HOST }}
           USER: ${{ secrets.STAGING_SSH_USER }}
@@ -72,7 +73,25 @@ jobs:
         run: |
           set -eu
           ssh "$USER@$HOST" 'mkdir -p ~/xiaohai-deploy'
-          scp deploy/staging.compose.yml deploy/Caddyfile "$USER@$HOST:~/xiaohai-deploy/"
+          scp deploy/staging.compose.yml deploy/Caddyfile scripts/staging-disk-gate.sh scripts/staging-image-retention.sh "$USER@$HOST:~/xiaohai-deploy/"
           printf '%s' "$GH_TOKEN" | ssh "$USER@$HOST" 'docker login ghcr.io -u xiaohai-deploy --password-stdin'
-          ssh "$USER@$HOST" "cd ~/xiaohai-deploy && test -f staging.env && printf 'REVISION=%s\\n' '$REVISION' > revision.env && docker compose --env-file staging.env --env-file revision.env -f staging.compose.yml pull && docker compose --env-file staging.env --env-file revision.env -f staging.compose.yml up -d --remove-orphans && docker logout ghcr.io"
+          # A shared flock prevents competing live deployments/retention. Gate
+          # MUST pass before writing revision.env or starting any Docker pull.
+          ssh "$USER@$HOST" "cd ~/xiaohai-deploy && test -f staging.env && exec 9>/tmp/xiaohai-staging-deploy.lock && flock -n 9 && bash staging-disk-gate.sh pre && printf 'REVISION=%s\\n' '$REVISION' > revision.env && docker compose --env-file staging.env --env-file revision.env -f staging.compose.yml pull && docker compose --env-file staging.env --env-file revision.env -f staging.compose.yml up -d --remove-orphans && docker logout ghcr.io"
           curl --fail --retry 8 --retry-delay 5 --retry-connrefused "https://staging-api.pamboo.asia/health"
+          curl --fail --retry 8 --retry-delay 5 --retry-connrefused "https://staging-api.pamboo.asia/ready"
+          ssh "$USER@$HOST" 'cd ~/xiaohai-deploy && bash staging-disk-gate.sh post'
+      - name: Dry-run retention audit (explicitly enabled; no deletes)
+        if: vars.STAGING_RETENTION_PLAN_READY == 'true'
+        env:
+          HOST: ${{ secrets.STAGING_SSH_HOST }}
+          USER: ${{ secrets.STAGING_SSH_USER }}
+          REVISION: ${{ github.event.workflow_run.head_sha }}
+          ROLLBACKS: ${{ vars.STAGING_ROLLBACK_REVISIONS }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$ROLLBACKS" =~ ^[0-9a-f]{40}[[:space:]][0-9a-f]{40}$ ]]; then
+            echo '::error::Expected exactly two explicit verified rollback revisions.'
+            exit 1
+          fi
+          ssh "$USER@$HOST" "cd ~/xiaohai-deploy && STAGING_CURRENT_REVISION='$REVISION' STAGING_ROLLBACK_REVISIONS='$ROLLBACKS' bash staging-image-retention.sh --dry-run"
