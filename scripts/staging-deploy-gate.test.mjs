@@ -39,6 +39,18 @@ test('staging deploy rejects manual, PR and unsuccessful CI events', () => {
 test('both staging jobs use the exact CI-verified commit, never a fallback ref', () => {
   const pinnedRef = '${{ github.event.workflow_run.head_sha }}';
   const usages = workflow.split(pinnedRef).length - 1;
-  assert.equal(usages, 4, 'build checkout, image tag, deploy checkout and revision must match');
+  assert.equal(usages, 5, 'build and deploy use pinned SHA, including the optional audit');
   assert.doesNotMatch(workflow, /\|\|\s*github\.sha/u);
+});
+
+test('capacity gate runs before revision switch and pull, with no automatic deletion', () => {
+  const pre = workflow.indexOf('bash staging-disk-gate.sh pre');
+  const revisionWrite = workflow.indexOf('> revision.env');
+  const pull = workflow.indexOf('staging.compose.yml pull');
+  assert.ok(pre > 0 && pre < revisionWrite && revisionWrite < pull);
+  assert.match(workflow, /flock -n 9/u);
+  assert.match(workflow, /staging-disk-gate.sh post/u);
+  assert.match(workflow, /staging-image-retention.sh --dry-run/u);
+  assert.doesNotMatch(workflow, /staging-image-retention.sh --execute/u);
+  assert.match(workflow, /STAGING_RETENTION_PLAN_READY == 'true'/u);
 });
