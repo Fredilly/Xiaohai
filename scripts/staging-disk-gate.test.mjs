@@ -7,14 +7,27 @@ import test from 'node:test';
 
 const script = new URL('./staging-disk-gate.sh', import.meta.url).pathname;
 
-async function runGate({ usage = 69, inode = 10, available = 10485760, mode = 'pre', minimum } = {}) {
+async function runGate({
+  usage = 69,
+  inode = 10,
+  available = 10485760,
+  mode = 'pre',
+  minimum,
+} = {}) {
   const dir = await mkdtemp(join(tmpdir(), 'xiaohai-disk-gate-'));
   const df = join(dir, 'df');
-  await writeFile(df, `#!/bin/sh\nif [ "$1" = '-Pi' ]; then\n  echo 'Filesystem Inodes IUsed IFree IUse% Mounted on'\n  echo '/dev/vda3 1000 ${inode * 10} ${1000 - inode * 10} ${inode}% /'\nelse\n  echo 'Filesystem 1024-blocks Used Available Capacity Mounted on'\n  echo '/dev/vda3 51200000 1 ${available} ${usage}% /'\nfi\n`);
+  await writeFile(
+    df,
+    `#!/bin/sh\nif [ "$1" = '-Pi' ]; then\n  echo 'Filesystem Inodes IUsed IFree IUse% Mounted on'\n  echo '/dev/vda3 1000 ${inode * 10} ${1000 - inode * 10} ${inode}% /'\nelse\n  echo 'Filesystem 1024-blocks Used Available Capacity Mounted on'\n  echo '/dev/vda3 51200000 1 ${available} ${usage}% /'\nfi\n`,
+  );
   await chmod(df, 0o755);
   return spawnSync('bash', [script, mode], {
     encoding: 'utf8',
-    env: { ...process.env, PATH: `${dir}:${process.env.PATH}`, ...(minimum ? { STAGING_MIN_FREE_KIB: minimum } : {}) },
+    env: {
+      ...process.env,
+      PATH: `${dir}:${process.env.PATH}`,
+      ...(minimum ? { STAGING_MIN_FREE_KIB: minimum } : {}),
+    },
   });
 }
 
