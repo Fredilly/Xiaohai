@@ -73,11 +73,11 @@ jobs:
         run: |
           set -eu
           ssh "$USER@$HOST" 'mkdir -p ~/xiaohai-deploy'
-          scp deploy/staging.compose.yml deploy/Caddyfile scripts/staging-disk-gate.sh scripts/staging-image-retention.sh "$USER@$HOST:~/xiaohai-deploy/"
-          printf '%s' "$GH_TOKEN" | ssh "$USER@$HOST" 'docker login ghcr.io -u xiaohai-deploy --password-stdin'
-          # A shared flock prevents competing live deployments/retention. Gate
-          # MUST pass before writing revision.env or starting any Docker pull.
-          ssh "$USER@$HOST" "cd ~/xiaohai-deploy && test -f staging.env && exec 9>/tmp/xiaohai-staging-deploy.lock && flock -n 9 && bash staging-disk-gate.sh pre && printf 'REVISION=%s\\n' '$REVISION' > revision.env && docker compose --env-file staging.env --env-file revision.env -f staging.compose.yml pull && docker compose --env-file staging.env --env-file revision.env -f staging.compose.yml up -d --remove-orphans && docker logout ghcr.io"
+          scp deploy/staging.compose.yml deploy/Caddyfile scripts/staging-disk-gate.sh scripts/staging-image-retention.sh scripts/staging-remote-deploy.sh "$USER@$HOST:~/xiaohai-deploy/"
+          # Send the token through stdin only; the remote script first acquires
+          # the shared lock and passes the capacity gate, then uses isolated
+          # Docker credentials and an EXIT trap for success/failure cleanup.
+          printf '%s' "$GH_TOKEN" | ssh "$USER@$HOST" "cd ~/xiaohai-deploy && REVISION='$REVISION' bash staging-remote-deploy.sh"
           curl --fail --retry 8 --retry-delay 5 --retry-connrefused "https://staging-api.pamboo.asia/health"
           curl --fail --retry 8 --retry-delay 5 --retry-connrefused "https://staging-api.pamboo.asia/ready"
           ssh "$USER@$HOST" 'cd ~/xiaohai-deploy && bash staging-disk-gate.sh post'
