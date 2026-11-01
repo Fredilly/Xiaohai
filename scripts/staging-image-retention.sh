@@ -32,10 +32,17 @@ flock -n 9 || fail 'deployment/retention operation already running'
 api_repo='ghcr.io/fredilly/xiaohai-api'
 worker_repo='ghcr.io/fredilly/xiaohai-worker'
 declare -A protected_ids=()
+declare -A seen_revision_images=()
 for rev in "$current" "$rollback_a" "$rollback_b"; do
   for repo in "$api_repo" "$worker_repo"; do
     id=$(docker image inspect --format '{{.Id}}' "$repo:$rev") || fail "protected image missing: $repo:$rev"
     [[ "$id" =~ ^sha256:[0-9a-f]{64}$ ]] || fail 'invalid protected image ID'
+    # Multiple release labels pointing at one image do not represent
+    # two independently restorable rollback releases.
+    role="${repo##*-}"
+    [[ -z "${seen_revision_images["$role:$id"]:-}" ]] ||
+      fail "current/rollback ${role} releases share image ID: $id"
+    seen_revision_images["$role:$id"]=1
     protected_ids["$id"]=1
   done
 done
@@ -53,7 +60,10 @@ if [[ "$mode" == --execute ]]; then
   done
   for service in api worker; do
     ref="ghcr.io/fredilly/xiaohai-$service:$current"
-    [[ "$(docker inspect --format '{{.Config.Image}}' "xiaohai-staging-$service-1")" == "$ref" ]] || fail "running $service revision changed"
+    [[ "$(docker inspect --format '{{.Config.Image}}' "xiaohai-staging-$service-1")" == "$ref" ]] ||
+      fail "running $service revision changed"
+    [[ "$(docker inspect --format '{{.State.Running}}' "xiaohai-staging-$service-1")" == true ]] ||
+      fail "$service container is not running"
   done
 fi
 
