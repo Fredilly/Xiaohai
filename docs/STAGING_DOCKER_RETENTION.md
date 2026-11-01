@@ -38,7 +38,14 @@ restart services, modify application business logic, or enable live image deleti
   `GET https://staging-api.pamboo.asia/ready`. Neither gate triggers cleanup.
 
 The GitHub workflow retains the exact green-CI-SHA deployment, existing concurrency group,
-and no-automatic-migrations invariant. The shared host lock
+and no-automatic-migrations invariant. The registry token is passed through SSH stdin only:
+`scripts/staging-remote-deploy.sh` acquires the host lock, checks disk/inode capacity **before
+GHCR login**, then uses a unique temporary `DOCKER_CONFIG` and an `EXIT` cleanup trap that
+attempts `docker logout ghcr.io` and removes its isolated `config.json` on success,
+login failure or Compose failure. The original user's Docker credentials are not replaced.
+Offline tests explicitly cover a failed gate, failed lock, failed login, pull/up failure,
+successful logout, credential cleanup and no token exposure in console output.
+The shared host lock
 `/tmp/xiaohai-staging-deploy.lock` additionally protects against simultaneous retention.
 Review operational approval **before merging**, since a merged `main` workflow affects the
 staging deployment path. Do not assume a green PR alone authorizes a server-side rollout.
@@ -88,7 +95,7 @@ No staging variables, secrets, server files, or volumes have been changed by pre
 Offline tests use faked `df` and `docker` commands. CI executes:
 
 ```bash
-node --test scripts/staging-deploy-gate.test.mjs
+node --test scripts/staging-deploy-gate.test.mjs scripts/staging-remote-deploy.test.mjs
 node --test scripts/staging-disk-gate.test.mjs scripts/staging-image-retention.test.mjs scripts/staging-retention-execute.test.mjs
 node --test scripts/staging-no-automatic-db-writes.test.mjs
 ```
