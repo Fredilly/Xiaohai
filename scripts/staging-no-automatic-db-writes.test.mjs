@@ -6,6 +6,8 @@ const workflow = await readFile(
   new URL('../.github/workflows/staging-deploy.yml', import.meta.url),
   'utf8',
 );
+const remoteDeploy = await readFile(new URL('./staging-remote-deploy.sh', import.meta.url), 'utf8');
+const deploymentSource = `${workflow}\n${remoteDeploy}`;
 
 const forbiddenCommands = [
   /(?:pnpm|npm|yarn)\s+(?:--[^\s]+\s+)*db:(?:migrate|push|seed)\b/u,
@@ -19,13 +21,13 @@ function unexpectedWrites(source) {
 }
 
 test('ordinary staging deployment contains no automatic schema, SQL or seed writes', () => {
-  assert.deepEqual(unexpectedWrites(workflow), []);
-  assert.match(workflow, /docker compose[^\n]+\bpull\b/u);
-  assert.match(workflow, /docker compose[^\n]+\bup -d --remove-orphans\b/u);
+  assert.deepEqual(unexpectedWrites(deploymentSource), []);
+  assert.match(remoteDeploy, /docker compose[^\n]+\bpull\b/u);
+  assert.match(remoteDeploy, /docker compose[^\n]+\bup -d --remove-orphans\b/u);
 });
 
 test('migration guard rejects regression into the deployment SSH command', () => {
-  const modified = workflow.replace(
+  const modified = remoteDeploy.replace(
     ' up -d --remove-orphans',
     ' run --rm --no-deps api node packages/db/dist/src/migrate.js && docker compose up -d --remove-orphans',
   );
