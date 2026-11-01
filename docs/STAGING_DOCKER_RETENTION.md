@@ -88,17 +88,18 @@ Offline tests use faked `df` and `docker` commands. CI executes:
 
 ```bash
 node --test scripts/staging-deploy-gate.test.mjs
-node --test scripts/staging-disk-gate.test.mjs scripts/staging-image-retention.test.mjs
+node --test scripts/staging-disk-gate.test.mjs scripts/staging-image-retention.test.mjs scripts/staging-retention-execute.test.mjs
 node --test scripts/staging-no-automatic-db-writes.test.mjs
 ```
 
 Review the simulation coverage for: 70/85% thresholds, inode exhaustion, insufficient
 headroom, read-only dry run, exact IDs, stopped containers, shared tags, incomplete
-pairs, no-tag candidates, unknown rollback, missing authorization and grep's
-normal no-match exit. Before enabling execution under a **separate approval**, extend
-fixtures to cover post-deploy readiness failure, partial Docker deletion failure,
-concurrent deploy contention, real approved-ID plan validation and rollback recovery.
-These are **not claimed as live-verified** by CI.
+pairs, no-tag candidates, unknown rollback, missing authorization, grep's normal
+no-match exit, failed API readiness, partial Docker deletion failure, a validated
+exact-ID approval manifest, and concurrent deploy contention. The enabled-mode tests
+are simulated **only**: live rollback recovery and physical staging Docker storage
+behavior are **not** demonstrated by CI. Do not enable real deletion without a
+separate owner-approved dry-run/recovery rehearsal.
 
 ## Decisions needed / rollout boundary
 
