@@ -51,7 +51,8 @@ worker=... worker_id=...` and `SKIP revision=... reason=...`.
 
 - Requires a current **40-character commit SHA** and **two different, explicitly verified
   rollback SHAs**, supplied via `STAGING_CURRENT_REVISION` and
-  `STAGING_ROLLBACK_REVISIONS`. Missing/ambiguous mappings fail closed.
+  `STAGING_ROLLBACK_REVISIONS`. Missing/ambiguous mappings or different release tags
+  resolving to an identical image ID for the same role fail closed.
 - Only fully SHA-tagged `ghcr.io/fredilly/xiaohai-api` and `xiaohai-worker` revisions
   qualify, and only **complete pairs**. Unknown/dangling tags, non-Xiaohai repositories,
   infrastructure images, untagged images and persistent data are outside scope.
@@ -64,7 +65,7 @@ worker=... worker_id=...` and `SKIP revision=... reason=...`.
   tests cover the Batch 4 false-error case.
 - Protects the staging host's shared lock. Execution mode has additional independent
   gates (explicit enable flag, successful-deployment SHA, owner approval reference,
-  expected host name and **an exact-ID approved plan file**), plus live healthy
+  expected host name, **running API/Worker containers**, and **an exact-ID approved plan file**), plus live healthy
   PostgreSQL/Redis/`/ready`, reference revalidation before each deletion, at most
   two revision pairs per execution, no force/prune and filesystem-space monitoring.
   On refusal or no reclaimed space it stops instead of bypassing the guard.
@@ -95,7 +96,8 @@ node --test scripts/staging-no-automatic-db-writes.test.mjs
 Review the simulation coverage for: 70/85% thresholds, inode exhaustion, insufficient
 headroom, read-only dry run, exact IDs, stopped containers, shared tags, incomplete
 pairs, no-tag candidates, unknown rollback, missing authorization, grep's normal
-no-match exit, failed API readiness, partial Docker deletion failure, a validated
+no-match exit, duplicated rollback image IDs, stopped current Worker, failed API
+readiness, partial Docker deletion failure, a validated
 exact-ID approval manifest, and concurrent deploy contention. The enabled-mode tests
 are simulated **only**: live rollback recovery and physical staging Docker storage
 behavior are **not** demonstrated by CI. Do not enable real deletion without a
