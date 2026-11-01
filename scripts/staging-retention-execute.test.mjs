@@ -14,7 +14,7 @@ const id = (n) => `sha256:${n.repeat(64)}`;
 const api = (r) => `ghcr.io/fredilly/xiaohai-api:${r}`;
 const worker = (r) => `ghcr.io/fredilly/xiaohai-worker:${r}`;
 
-async function fixture({ ready = true, failRemove = null } = {}) {
+async function fixture({ ready = true, failRemove = null, workerRunning = true } = {}) {
   const dir = await mkdtemp(join(tmpdir(), 'xiaohai-exec-fixture-'));
   const statePath = join(dir, 'state.json');
   const images = Object.fromEntries([
@@ -30,7 +30,7 @@ async function fixture({ ready = true, failRemove = null } = {}) {
     [api(old), id('a')],
     [worker(old), id('b')],
   ]);
-  await writeFile(statePath, JSON.stringify({ images, removed: [], failRemove }));
+  await writeFile(statePath, JSON.stringify({ images, removed: [], failRemove, workerRunning }));
   const docker = join(dir, 'docker');
   await writeFile(
     docker,
@@ -52,6 +52,7 @@ else if (a[0] === 'image' && a[1] === 'inspect') {
 else if (a[0] === 'inspect') {
   const ref = a[a.length - 1];
   if (a.includes('{{.State.Health.Status}}')) out('healthy');
+  else if (a.includes('{{.State.Running}}')) out(ref.includes('worker') && !state.workerRunning ? 'false' : 'true');
   else if (a.includes('{{.Config.Image}}')) out(ref.includes('api') ? process.env.MOCK_CURRENT_API : process.env.MOCK_CURRENT_WORKER);
   else if (a.includes('{{.Image}}')) out(ref.includes('api') ? state.images[process.env.MOCK_CURRENT_API] : state.images[process.env.MOCK_CURRENT_WORKER]);
   else process.exit(2);
@@ -149,4 +150,12 @@ test('concurrent deployment lock stops retention without image changes', async (
   } finally {
     holder.kill();
   }
+});
+
+test('stopped current Worker blocks removal even if API readiness passes', async () => {
+  const fx = await fixture({ workerRunning: false });
+  const result = fx.run();
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /worker container is not running/);
+  assert.deepEqual((await fx.state()).removed, []);
 });
