@@ -35,7 +35,7 @@ test('migration guard rejects regression into the deployment SSH command', () =>
 });
 
 test('staging content seeding is also a separately approved operation', () => {
-  const modified = workflow.replace(
+  const modified = remoteDeploy.replace(
     ' up -d --remove-orphans',
     ' run --rm --no-deps api node packages/db/dist/src/seed-staging-home-cli.js && docker compose up -d --remove-orphans',
   );
