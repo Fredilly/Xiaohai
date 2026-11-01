@@ -23,10 +23,7 @@ async function fixture({
   await writeFile(join(dir, 'staging.compose.yml'), 'services: {}\n');
   await writeFile(join(dir, 'revision.env'), 'REVISION=old\n');
   const gate = join(dir, 'staging-disk-gate.sh');
-  await writeFile(
-    gate,
-    '#!/bin/sh\necho gate >> "$MOCK_EVENTS"\n[ "$MOCK_GATE_FAILURE" != 1 ]\n',
-  );
+  await writeFile(gate, '#!/bin/sh\necho gate >> "$MOCK_EVENTS"\n[ "$MOCK_GATE_FAILURE" != 1 ]\n');
   await chmod(gate, 0o755);
   const docker = join(dir, 'docker');
   await writeFile(
