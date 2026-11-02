@@ -77,7 +77,10 @@ else process.exit(2);
   await writeFile(grep, '#!/bin/sh\nexit 1\n');
   await chmod(grep, 0o755);
   const sudo = join(dir, 'sudo');
-  await writeFile(sudo, '#!/bin/sh\n[ "$MOCK_SCAN_FAILURE" != "1" ] || exit 2\n[ "$1" = "-n" ] && shift\nexec "$@"\n');
+  await writeFile(
+    sudo,
+    '#!/bin/sh\n[ "$MOCK_SCAN_FAILURE" != "1" ] || exit 2\n[ "$1" = "-n" ] && shift\nexec "$@"\n',
+  );
   await chmod(sudo, 0o755);
   const lock = join(dir, 'lock');
   const result = spawnSync('bash', [script, mode], {
