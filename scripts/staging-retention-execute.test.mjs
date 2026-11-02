@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { chmod, mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { spawn, spawnSync } from 'node:child_process';
 import { hostname, tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -17,6 +17,19 @@ const worker = (r) => `ghcr.io/fredilly/xiaohai-worker:${r}`;
 
 async function fixture({ ready = true, failRemove = null, workerRunning = true } = {}) {
   const dir = await mkdtemp(join(tmpdir(), 'xiaohai-exec-fixture-'));
+  const deployDir = join(dir, 'xiaohai-deploy');
+  await mkdir(deployDir);
+  for (const file of [
+    'revision.env',
+    'staging.env',
+    'staging.compose.yml',
+    'Caddyfile',
+    'staging-remote-deploy.sh',
+    'staging-disk-gate.sh',
+    'staging-image-retention.sh',
+  ]) {
+    await writeFile(join(deployDir, file), '# fixture deployment config\\n');
+  }
   const statePath = join(dir, 'state.json');
   const images = Object.fromEntries([
     [api(current), id('1')],
@@ -108,6 +121,8 @@ console.log('/dev/vda3 51200000 100000  ' + (5000000 + removed * 600000) + ' ' +
     STAGING_ROLLBACK_REVISIONS: `${rollbackA} ${rollbackB}`,
     STAGING_EXTRA_PROTECTED_REVISION: extraProtected,
     STAGING_DEPLOY_LOCK: lock,
+    STAGING_DEPLOY_CONFIG_DIR: deployDir,
+    STAGING_CONFIG_COVERAGE_CONFIRMED: 'true',
     STAGING_RETENTION_EXECUTE_ENABLED: 'true',
     STAGING_DEPLOY_SUCCEEDED_REVISION: current,
     STAGING_RETENTION_APPROVED_PLAN: plan,
