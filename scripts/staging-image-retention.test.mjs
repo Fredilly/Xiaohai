@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { existsSync } from 'node:fs';
 import { chmod, mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -79,7 +80,7 @@ else process.exit(2);
   await writeFile(sudo, '#!/bin/sh\n[ "$MOCK_SCAN_FAILURE" != "1" ] || exit 2\n[ "$1" = "-n" ] && shift\nexec "$@"\n');
   await chmod(sudo, 0o755);
   const lock = join(dir, 'lock');
-  return spawnSync('bash', [script, mode], {
+  const result = spawnSync('bash', [script, mode], {
     encoding: 'utf8',
     env: {
       ...process.env,
@@ -92,6 +93,7 @@ else process.exit(2);
       ...env,
     },
   });
+  return { ...result, lockCreated: existsSync(lock) };
 }
 
 test('dry-run emits exact API+worker IDs and never calls removal', async () => {
@@ -111,6 +113,7 @@ test('dry-run leaves no lock file behind and excludes extra protected release', 
   assert.equal(r.status, 0, r.stderr);
   assert.doesNotMatch(r.stdout, new RegExp('AUDIT mode=--dry-run revision=' + extraProtected));
   assert.match(r.stdout, new RegExp('PROTECTED_REVISION revision=' + extraProtected));
+  assert.equal(r.lockCreated, false, 'dry-run must not create a lock file');
 });
 
 test('missing or ambiguous extra protected release fails closed', async () => {
