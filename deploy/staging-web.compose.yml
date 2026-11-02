@@ -1,0 +1,8 @@
+# CANDIDATE ONLY. Use only after Fred approves staging web activation and
+# independently verifies DNS/TLS, available disk space and reversible static files.
+# Add this as a SECOND compose file; never modify the base API/Worker deployment.
+services:
+  proxy:
+    volumes:
+      - ./staging-web.Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./web:/srv/xiaohai-web:ro

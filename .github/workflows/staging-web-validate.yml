@@ -1,0 +1,67 @@
+name: Validate staging Store + HQ Web candidate
+
+on:
+  pull_request:
+    paths:
+      - 'deploy/staging-web.Caddyfile'
+      - 'deploy/staging-web.compose.yml'
+      - 'scripts/staging-web-config.test.mjs'
+      - 'docs/STAGING_WEB_RELEASE.md'
+      - 'apps/store-web/**'
+      - 'apps/admin-web/**'
+      - '.github/workflows/staging-web-validate.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate-hosting:
+    name: Caddy, Compose and safety checks (offline)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify opt-in configuration boundaries
+        run: node --test scripts/staging-web-config.test.mjs
+      - name: Validate Compose overlay, without starting containers
+        run: |
+          set -euo pipefail
+          printf 'POSTGRES_DB=test\nPOSTGRES_USER=test\nPOSTGRES_PASSWORD=fixture\nREVISION=%040d\n' 0 > "$RUNNER_TEMP/staging-web.env"
+          docker compose --env-file "$RUNNER_TEMP/staging-web.env" \
+            -f deploy/staging.compose.yml -f deploy/staging-web.compose.yml config --quiet
+      - name: Validate candidate Caddy config without deploying
+        run: |
+          docker run --rm \
+            --mount "type=bind,source=$PWD/deploy/staging-web.Caddyfile,target=/etc/caddy/Caddyfile,readonly" \
+            caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+
+  build-web:
+    name: Build approved staging static candidates (${{ matrix.site }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        site: [store-web, admin-web]
+    env:
+      # Empty => fetch('/api/v1/...'), same-origin through the candidate Caddy.
+      # Never embed production or separate staging API hostnames in browser JS.
+      VITE_API_BASE_URL: ''
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter "@xiaohai/${{ matrix.site }}" build
+      - name: Check static output exists; report bounded size
+        run: |
+          set -euo pipefail
+          test -s "apps/${{ matrix.site }}/dist/index.html"
+          du -sh "apps/${{ matrix.site }}/dist"
+          test "$(du -sm "apps/${{ matrix.site }}/dist" | cut -f1)" -le 30
+      - uses: actions/upload-artifact@v4
+        with:
+          name: staging-${{ matrix.site }}-candidate
+          path: apps/${{ matrix.site }}/dist/
+          if-no-files-found: error
+          retention-days: 7
