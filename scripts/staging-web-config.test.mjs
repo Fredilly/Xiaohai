@@ -37,6 +37,7 @@ test('each approved staging hostname serves ONLY its static site and same-origin
     assert.match(block, /X-Content-Type-Options nosniff/u);
     assert.match(block, /X-Frame-Options DENY/u);
   }
+  assert.equal((candidate.match(/X-Robots-Tag "noindex, nofollow, noarchive"/gu) ?? []).length, 2);
   assert.doesNotMatch(candidate, /(?<!staging-)\b(?:api|store|admin)\.pamboo\.asia\s*\{/u);
   assert.doesNotMatch(candidate, /api\.example\.invalid|\*\.pamboo/u);
 });
