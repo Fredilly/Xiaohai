@@ -55,7 +55,9 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter "@xiaohai/${{ matrix.site }}" build
+      # Turbo builds the client workspace dependencies first (contracts/domain/etc).
+      # --env-mode=loose explicitly forwards the same-origin Vite variable.
+      - run: pnpm exec turbo run build --filter="@xiaohai/${{ matrix.site }}" --env-mode=loose
       - name: Check static output exists; report bounded size
         run: |
           set -euo pipefail
