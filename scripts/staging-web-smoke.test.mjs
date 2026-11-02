@@ -43,19 +43,27 @@ function fixture({ dnsBad = false, broken = '', fetchFailure = false } = {}) {
     }
     assert.equal(url.pathname, '/');
     if (broken === label + ':redirect') return new Response('', { status: 302 });
-    if (broken === label + ':headers') return new Response(html, { status: 200, headers: { 'content-type': 'text/html' } });
+    if (broken === label + ':headers') {
+      return new Response(html, {
+        status: 200,
+        headers: { 'content-type': 'text/html' },
+      });
+    }
     if (broken === label + ':body') return new Response('not html', { status: 200, headers });
     return new Response(html, { status: 200, headers });
   };
   return { resolver, fetcher, visited };
 }
 
-test('healthy Store/HQ probes pass all 14 checks with GET-only unauthenticated traffic', async () => {
+test('healthy Store/HQ probes pass all 14 GET-only checks', async () => {
   const environment = fixture();
   const result = await inspectStagingWeb(environment);
   assert.equal(result.failed, 0);
   assert.equal(result.passed, 14);
-  assert.equal(environment.visited.filter((item) => item.pathname === '/api/v1/staff/me').length, 2);
+  assert.equal(
+    environment.visited.filter((item) => item.pathname === '/api/v1/staff/me').length,
+    2,
+  );
   assert.ok(result.checks.every((item) => item.status === 'PASS'));
 });
 
@@ -69,14 +77,19 @@ for (const [broken, reason] of [
 ]) {
   test(`fails closed for ${broken}`, async () => {
     const result = await inspectStagingWeb(fixture({ broken }));
-    assert.ok(result.checks.some((item) => item.status === 'FAIL' && item.reason === reason));
+    assert.ok(
+      result.checks.some((item) => item.status === 'FAIL' && item.reason === reason),
+    );
     assert.ok(result.failed > 0);
   });
 }
 
 test('incorrect CNAME is a failure, not a DNS control-plane success claim', async () => {
   const result = await inspectStagingWeb(fixture({ dnsBad: true }));
-  assert.equal(result.checks.filter((item) => item.reason === 'CNAME_TARGET_MISMATCH').length, 2);
+  assert.equal(
+    result.checks.filter((item) => item.reason === 'CNAME_TARGET_MISMATCH').length,
+    2,
+  );
 });
 
 test('network errors are sanitized and never expose diagnostics or response bodies', async () => {
