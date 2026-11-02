@@ -9,6 +9,7 @@ const script = new URL('./staging-image-retention.sh', import.meta.url).pathname
 const current = 'e38a1796b7f6eb08a7b10932567c5b781eed606c';
 const rollbackA = 'f8e1fe86bbb904a4e7871901442a5b3dac7890e0';
 const rollbackB = 'd79ca0ff400f52f05a140235565b9c981163ead5';
+const extraProtected = 'b'.repeat(40);
 const old = 'c'.repeat(40);
 const id = (hex) => `sha256:${hex.repeat(64)}`;
 const api = (tag) => `ghcr.io/fredilly/xiaohai-api:${tag}`;
@@ -22,6 +23,8 @@ function baseImages() {
     [worker(rollbackA), id('4')],
     [api(rollbackB), id('5')],
     [worker(rollbackB), id('6')],
+    [api(extraProtected), id('d')],
+    [worker(extraProtected), id('e')],
     ['postgres:17-alpine', id('7')],
     ['redis:7.4-alpine', id('8')],
     ['caddy:2-alpine', id('9')],
@@ -72,6 +75,10 @@ else process.exit(2);
   const grep = join(dir, 'grep');
   await writeFile(grep, '#!/bin/sh\nexit 1\n');
   await chmod(grep, 0o755);
+  const sudo = join(dir, 'sudo');
+  await writeFile(sudo, '#!/bin/sh\n[ "$MOCK_SCAN_FAILURE" != "1" ] || exit 2\n[ "$1" = "-n" ] && shift\nexec "$@"\n');
+  await chmod(sudo, 0o755);
+  const lock = join(dir, 'lock');
   return spawnSync('bash', [script, mode], {
     encoding: 'utf8',
     env: {
@@ -80,7 +87,8 @@ else process.exit(2);
       DOCKER_FIXTURE: JSON.stringify({ images, containers, aliases }),
       STAGING_CURRENT_REVISION: current,
       STAGING_ROLLBACK_REVISIONS: rollback,
-      STAGING_DEPLOY_LOCK: join(dir, 'lock'),
+      STAGING_EXTRA_PROTECTED_REVISION: extraProtected,
+      STAGING_DEPLOY_LOCK: lock,
       ...env,
     },
   });
@@ -94,6 +102,27 @@ test('dry-run emits exact API+worker IDs and never calls removal', async () => {
   assert.match(r.stdout, /deleted_pairs=0/);
   assert.doesNotMatch(r.stdout, /UNEXPECTED_DELETE/);
   assert.doesNotMatch(r.stderr, /STOP/); // grep exit 1 means no match, not an error
+});
+
+test('dry-run leaves no lock file behind and excludes extra protected release', async () => {
+  // A missing lock path should remain absent, even when candidate inspection succeeds.
+  // Individual fixtures use fresh temp directories.
+  const r = await runRetention();
+  assert.equal(r.status, 0, r.stderr);
+  assert.doesNotMatch(r.stdout, new RegExp('AUDIT mode=--dry-run revision=' + extraProtected));
+  assert.match(r.stdout, new RegExp('PROTECTED_REVISION revision=' + extraProtected));
+});
+
+test('missing or ambiguous extra protected release fails closed', async () => {
+  const r = await runRetention({ env: { STAGING_EXTRA_PROTECTED_REVISION: '' } });
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /additional protected historical revision is required/);
+});
+
+test('configuration scan error is a hard stop, not an eligible candidate', async () => {
+  const r = await runRetention({ env: { MOCK_SCAN_FAILURE: '1' } });
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /configuration scan failed/);
 });
 
 test('missing or ambiguous rollback mapping fails closed', async () => {
