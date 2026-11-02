@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
-import { chmod, mkdtemp, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -43,6 +43,19 @@ async function runRetention({
   env = {},
 } = {}) {
   const dir = await mkdtemp(join(tmpdir(), 'xiaohai-retention-'));
+  const deployDir = join(dir, 'xiaohai-deploy');
+  await mkdir(deployDir);
+  for (const file of [
+    'revision.env',
+    'staging.env',
+    'staging.compose.yml',
+    'Caddyfile',
+    'staging-remote-deploy.sh',
+    'staging-disk-gate.sh',
+    'staging-image-retention.sh',
+  ]) {
+    await writeFile(join(deployDir, file), '# fixture deployment config\\n');
+  }
   const docker = join(dir, 'docker');
   await writeFile(
     docker,
@@ -79,9 +92,15 @@ else process.exit(2);
   const sudo = join(dir, 'sudo');
   await writeFile(
     sudo,
-    '#!/bin/sh\n[ "$MOCK_SCAN_FAILURE" != "1" ] || exit 2\n[ "$1" = "-n" ] && shift\nexec "$@"\n',
+    '#!/bin/sh\n[ "$1" = "-n" ] && shift\nif [ "$1" = "grep" ] && [ "$MOCK_SCAN_FAILURE" = "1" ]; then exit 2; fi\nif [ "$1" = "test" ] && [ "$MOCK_ACCESS_DENIED" = "1" ]; then exit 1; fi\nexec "$@"\n',
   );
   await chmod(sudo, 0o755);
+  const timeout = join(dir, 'timeout');
+  await writeFile(
+    timeout,
+    '#!/bin/sh\n[ "$MOCK_SCAN_TIMEOUT" != "1" ] || exit 124\nexec /usr/bin/timeout "$@"\n',
+  );
+  await chmod(timeout, 0o755);
   const lock = join(dir, 'lock');
   const result = spawnSync('bash', [script, mode], {
     encoding: 'utf8',
@@ -93,6 +112,8 @@ else process.exit(2);
       STAGING_ROLLBACK_REVISIONS: rollback,
       STAGING_EXTRA_PROTECTED_REVISION: extraProtected,
       STAGING_DEPLOY_LOCK: lock,
+      STAGING_DEPLOY_CONFIG_DIR: deployDir,
+      STAGING_CONFIG_COVERAGE_CONFIRMED: 'true',
       ...env,
     },
   });
@@ -129,6 +150,40 @@ test('configuration scan error is a hard stop, not an eligible candidate', async
   const r = await runRetention({ env: { MOCK_SCAN_FAILURE: '1' } });
   assert.notEqual(r.status, 0);
   assert.match(r.stderr, /configuration scan failed/);
+});
+
+test('config coverage attestation is mandatory even in dry-run', async () => {
+  const r = await runRetention({ env: { STAGING_CONFIG_COVERAGE_CONFIRMED: '' } });
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /deployment configuration coverage not verified/);
+  assert.equal(r.lockCreated, false);
+});
+
+test('unexpected path / containerd path is rejected before scanning', async () => {
+  for (const path of ['/opt/containerd/data.yml', '/var/lib/docker/config.yml', '/tmp/../etc/passwd']) {
+    const r = await runRetention({ env: { STAGING_EXTRA_DEPLOY_CONFIG_FILES: path } });
+    assert.equal(r.status, 1, r.stderr);
+    assert.match(r.stderr, /unsafe configuration path/);
+  }
+});
+
+test('missing deployment file fails closed instead of scanning partial coverage', async () => {
+  const r = await runRetention({ env: { STAGING_DEPLOY_CONFIG_DIR: '/nonexistent/xiaohai-deploy' } });
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /deployment directory missing or symlinked/);
+});
+
+test('denied file access fails closed', async () => {
+  const r = await runRetention({ env: { MOCK_ACCESS_DENIED: '1' } });
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /configuration file unreadable/);
+});
+
+test('bounded scan timeout fails closed without deletion', async () => {
+  const r = await runRetention({ env: { MOCK_SCAN_TIMEOUT: '1' } });
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /bounded configuration scan failed \(exit=124\)/);
+  assert.doesNotMatch(r.stdout, /AUDIT mode=--dry-run revision=/);
 });
 
 test('missing or ambiguous rollback mapping fails closed', async () => {
