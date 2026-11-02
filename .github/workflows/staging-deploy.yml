@@ -88,10 +88,19 @@ jobs:
           USER: ${{ secrets.STAGING_SSH_USER }}
           REVISION: ${{ github.event.workflow_run.head_sha }}
           ROLLBACKS: ${{ vars.STAGING_ROLLBACK_REVISIONS }}
+          EXTRA_PROTECTED: ${{ vars.STAGING_EXTRA_PROTECTED_REVISION }}
         run: |
           set -euo pipefail
           if [[ ! "$ROLLBACKS" =~ ^[0-9a-f]{40}[[:space:]][0-9a-f]{40}$ ]]; then
             echo '::error::Expected exactly two explicit verified rollback revisions.'
             exit 1
           fi
-          ssh "$USER@$HOST" "cd ~/xiaohai-deploy && STAGING_CURRENT_REVISION='$REVISION' STAGING_ROLLBACK_REVISIONS='$ROLLBACKS' bash staging-image-retention.sh --dry-run"
+          if [[ ! "$EXTRA_PROTECTED" =~ ^[0-9a-f]{40}$ ]]; then
+            echo '::error::An explicit third historically protected revision is required.'
+            exit 1
+          fi
+          if [[ " $ROLLBACKS " == *" $EXTRA_PROTECTED "* || "$EXTRA_PROTECTED" == "$REVISION" ]]; then
+            echo '::error::Extra protected revision must be distinct from the current/two rollback SHAs.'
+            exit 1
+          fi
+          ssh "$USER@$HOST" "cd ~/xiaohai-deploy && STAGING_CURRENT_REVISION='$REVISION' STAGING_ROLLBACK_REVISIONS='$ROLLBACKS' STAGING_EXTRA_PROTECTED_REVISION='$EXTRA_PROTECTED' bash staging-image-retention.sh --dry-run"
