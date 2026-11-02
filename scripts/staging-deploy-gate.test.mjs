@@ -49,7 +49,7 @@ test('capacity gate and host lock run before registry login, revision switch and
   const gate = remoteDeploy.indexOf('bash staging-disk-gate.sh pre');
   const login = remoteDeploy.indexOf('docker login ghcr.io');
   const revisionWrite = remoteDeploy.indexOf('> revision.env');
-  const pull = remoteDeploy.indexOf('staging.compose.yml pull');
+  const pull = remoteDeploy.indexOf('"${compose_files[@]}" pull');
   assert.ok(lock > 0 && lock < gate && gate < login && login < revisionWrite);
   assert.ok(revisionWrite < pull);
   assert.match(workflow, /scripts\/staging-remote-deploy\.sh/u);
@@ -83,4 +83,22 @@ test('retention remains opt-in dry run, not active deletion', () => {
     /Deployment configuration scan coverage has not been independently verified/u,
   );
   assert.match(workflow, /STAGING_CONFIG_COVERAGE_CONFIRMED=true STAGING_CURRENT_REVISION/u);
+});
+
+test('web activation is opt-in, sha pinned and protects later deployments', () => {
+  assert.match(workflow, /STAGING_WEB_ENABLED: \$\{\{ vars\.STAGING_WEB_ENABLED \}\}/u);
+  assert.match(workflow, /STAGING_WEB_RELEASE_SHA: \$\{\{ vars\.STAGING_WEB_RELEASE_SHA \}\}/u);
+  assert.match(workflow, /staging-web-verify\.sh/u);
+  assert.match(workflow, /staging-web\.compose\.yml/u);
+  assert.match(remoteDeploy, /web_enabled="\$\{STAGING_WEB_ENABLED:-false\}"/u);
+  assert.match(remoteDeploy, /compose_files\+=\(-f staging-web\.compose\.yml\)/u);
+  assert.match(remoteDeploy, /web release or Compose overlay preflight failed/u);
+  assert.match(remoteDeploy, /pending or active web overlay cannot silently revert/u);
+  const pending = remoteDeploy.indexOf('write_web_guard pending');
+  const up = remoteDeploy.indexOf('"${compose_files[@]}" up -d --remove-orphans');
+  const active = remoteDeploy.indexOf('write_web_guard active');
+  assert.ok(pending > 0 && pending < up && up < active);
+  assert.match(remoteDeploy, /sync -f \./u);
+  assert.match(remoteDeploy, /staging-web\.active/u);
+  assert.doesNotMatch(workflow, /staging-web-verify\.sh --execute/u);
 });

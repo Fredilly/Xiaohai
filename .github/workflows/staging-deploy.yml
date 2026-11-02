@@ -70,14 +70,29 @@ jobs:
           USER: ${{ secrets.STAGING_SSH_USER }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REVISION: ${{ github.event.workflow_run.head_sha }}
+          STAGING_WEB_ENABLED: ${{ vars.STAGING_WEB_ENABLED }}
+          STAGING_WEB_RELEASE_SHA: ${{ vars.STAGING_WEB_RELEASE_SHA }}
+          STAGING_WEB_DEACTIVATION_APPROVED: ${{ vars.STAGING_WEB_DEACTIVATION_APPROVED }}
         run: |
-          set -eu
+          set -euo pipefail
+          # Check untrusted repository variables BEFORE inserting them into SSH.
+          [[ "$STAGING_WEB_ENABLED" == '' || "$STAGING_WEB_ENABLED" == true || "$STAGING_WEB_ENABLED" == false ]]
+          [[ "$STAGING_WEB_DEACTIVATION_APPROVED" == '' || "$STAGING_WEB_DEACTIVATION_APPROVED" == true || "$STAGING_WEB_DEACTIVATION_APPROVED" == false ]]
+          if [[ "$STAGING_WEB_ENABLED" == true ]]; then
+            [[ "$STAGING_WEB_RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo '::error::Approved merged-main web release SHA required'; exit 1; }
+          else
+            [[ "$STAGING_WEB_RELEASE_SHA" == '' || "$STAGING_WEB_RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          fi
           ssh "$USER@$HOST" 'mkdir -p ~/xiaohai-deploy'
-          scp deploy/staging.compose.yml deploy/Caddyfile scripts/staging-disk-gate.sh scripts/staging-image-retention.sh scripts/staging-remote-deploy.sh "$USER@$HOST:~/xiaohai-deploy/"
+          scp deploy/staging.compose.yml deploy/Caddyfile scripts/staging-disk-gate.sh scripts/staging-image-retention.sh scripts/staging-remote-deploy.sh scripts/staging-web-verify.sh "$USER@$HOST:~/xiaohai-deploy/"
+          if [[ "$STAGING_WEB_ENABLED" == true ]]; then
+            # Files are inactive until separately approved release assets exist.
+            scp deploy/staging-web.Caddyfile deploy/staging-web.compose.yml "$USER@$HOST:~/xiaohai-deploy/"
+          fi
           # Send the token through stdin only; the remote script first acquires
           # the shared lock and passes the capacity gate, then uses isolated
           # Docker credentials and an EXIT trap for success/failure cleanup.
-          printf '%s' "$GH_TOKEN" | ssh "$USER@$HOST" "cd ~/xiaohai-deploy && REVISION='$REVISION' bash staging-remote-deploy.sh"
+          printf '%s' "$GH_TOKEN" | ssh "$USER@$HOST" "cd ~/xiaohai-deploy && REVISION='$REVISION' STAGING_WEB_ENABLED='$STAGING_WEB_ENABLED' STAGING_WEB_RELEASE_SHA='$STAGING_WEB_RELEASE_SHA' STAGING_WEB_DEACTIVATION_APPROVED='$STAGING_WEB_DEACTIVATION_APPROVED' bash staging-remote-deploy.sh"
           curl --fail --retry 8 --retry-delay 5 --retry-connrefused "https://staging-api.pamboo.asia/health"
           curl --fail --retry 8 --retry-delay 5 --retry-connrefused "https://staging-api.pamboo.asia/ready"
           ssh "$USER@$HOST" 'cd ~/xiaohai-deploy && bash staging-disk-gate.sh post'
