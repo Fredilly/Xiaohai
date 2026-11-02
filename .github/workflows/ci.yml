@@ -98,6 +98,8 @@ jobs:
         run: node --test scripts/staging-deploy-gate.test.mjs scripts/staging-remote-deploy.test.mjs
       - name: Staging disk and retention safety tests (offline)
         run: node --test scripts/staging-disk-gate.test.mjs scripts/staging-image-retention.test.mjs scripts/staging-retention-execute.test.mjs
+      - name: Staging Store/HQ read-only smoke unit regressions (offline)
+        run: node --test scripts/staging-web-smoke.test.mjs
       - name: Private BOS synthetic GET smoke unit regressions (offline)
         run: node --test scripts/private-bos-staging-smoke.test.mjs
       - name: Format, lint and typecheck
