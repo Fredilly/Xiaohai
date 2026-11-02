@@ -128,16 +128,60 @@ check_candidate() {
   REPLY="$id"
 }
 
+# Only explicitly known deployment files may be searched. Never traverse /opt,
+# /home or containerd: root-recursive scans risk substantial I/O on a small host.
+# An operator must verify other live service references independently before
+# setting coverage; no successful audit is implied by this code-only PR.
+init_config_scan() {
+  [[ "${STAGING_CONFIG_COVERAGE_CONFIRMED:-false}" == true ]] ||
+    fail 'deployment configuration coverage not verified; explicit operator attestation required'
+
+  local base="${STAGING_DEPLOY_CONFIG_DIR:-/home/admin/xiaohai-deploy}" file size canonical
+  [[ "$base" == /* && "$base" != *'/../'* && "$base" != *'/./'* && "$base" != *'//'*
+    && "$base" != / && "$base" != /home && "$base" != /opt ]] ||
+    fail 'invalid bounded deployment directory'
+  [[ -d "$base" && ! -L "$base" ]] || fail 'deployment directory missing or symlinked'
+  config_files=()
+  # Derived from staging-remote-deploy.sh and deploy/staging.compose.yml.
+  # All must exist: absence means deployment references are not fully known.
+  for file in revision.env staging.env staging.compose.yml Caddyfile \
+    staging-remote-deploy.sh staging-disk-gate.sh staging-image-retention.sh; do
+    config_files+=("$base/$file")
+  done
+
+  local -a additional_files=()
+  read -r -a additional_files <<< "${STAGING_EXTRA_DEPLOY_CONFIG_FILES:-}"
+  (( ${#additional_files[@]} <= 16 )) || fail 'too many additional configuration paths'
+  for file in "${additional_files[@]}"; do config_files+=("$file"); done
+
+  for file in "${config_files[@]}"; do
+    [[ "$file" == /* && "$file" != *'/../'* && "$file" != *'/./'* && "$file" != *'//'*
+      && "$file" != *'*'* && "$file" != *'?'* && "$file" != *'['*
+      && "$file" != /opt/containerd/* && "$file" != /var/lib/containerd/*
+      && "$file" != /var/lib/docker/* ]] || fail 'unsafe configuration path'
+    [[ -f "$file" && ! -L "$file" ]] || fail 'deployment config file missing or symlinked'
+    canonical=$(realpath -e -- "$file") || fail 'cannot resolve configuration file'
+    [[ "$canonical" == "$file" ]] || fail 'configuration path resolves outside allowlist'
+    size=$(stat -c '%s' -- "$file") || fail 'cannot size configuration file'
+    [[ "$size" =~ ^[0-9]+$ ]] || fail 'invalid configuration file size'
+    (( size <= 1048576 )) || fail 'configuration file exceeds bounded 1MiB scan limit'
+    sudo -n test -r "$file" || fail 'configuration file unreadable with readonly privilege'
+  done
+  (( ${#config_files[@]} <= 23 )) || fail 'configuration allowlist exceeds bounded limit'
+  printf 'AUDIT config_scan=bounded files=%s max_file_bytes=1048576 timeout_seconds=5\n' "${#config_files[@]}"
+}
+
+init_config_scan
+
 check_config() {
-  local rev="$1" matches status
-  # Read-only sudo is needed for /opt/containerd on the actual staging host.
-  # Exit 1 = no match; exit >=2 (including denied sudo) must STOP.
-  if matches=$(sudo -n grep -RIlF --include='*.env' --include='*.yml' --include='*.yaml' --include='*.sh' \
-    -- "$rev" /opt /home /etc/systemd/system 2>/dev/null); then
+  local rev="$1" status
+  # Eight or fewer known deployment files, plus at most 16 owner-attested
+  # additional paths; no recursion and no contents or filenames are printed.
+  if timeout --signal=TERM --kill-after=1s 5s sudo -n grep -Fq -- "$rev" "${config_files[@]}"; then
     return 1 # A deployment reference: protect.
   else
     status=$?
-    [[ "$status" -eq 1 ]] || fail 'deployment configuration scan failed'
+    [[ "$status" -eq 1 ]] || fail "bounded configuration scan failed (exit=$status)"
   fi
 }
 
