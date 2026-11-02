@@ -160,7 +160,11 @@ test('config coverage attestation is mandatory even in dry-run', async () => {
 });
 
 test('unexpected path / containerd path is rejected before scanning', async () => {
-  for (const path of ['/opt/containerd/data.yml', '/var/lib/docker/config.yml', '/tmp/../etc/passwd']) {
+  for (const path of [
+    '/opt/containerd/data.yml',
+    '/var/lib/docker/config.yml',
+    '/tmp/../etc/passwd',
+  ]) {
     const r = await runRetention({ env: { STAGING_EXTRA_DEPLOY_CONFIG_FILES: path } });
     assert.equal(r.status, 1, r.stderr);
     assert.match(r.stderr, /unsafe configuration path/);
@@ -168,7 +172,9 @@ test('unexpected path / containerd path is rejected before scanning', async () =
 });
 
 test('missing deployment file fails closed instead of scanning partial coverage', async () => {
-  const r = await runRetention({ env: { STAGING_DEPLOY_CONFIG_DIR: '/nonexistent/xiaohai-deploy' } });
+  const r = await runRetention({
+    env: { STAGING_DEPLOY_CONFIG_DIR: '/nonexistent/xiaohai-deploy' },
+  });
   assert.equal(r.status, 1);
   assert.match(r.stderr, /deployment directory missing or symlinked/);
 });
