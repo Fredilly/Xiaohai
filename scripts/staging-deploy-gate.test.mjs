@@ -93,7 +93,12 @@ test('web activation is opt-in, sha pinned and protects later deployments', () =
   assert.match(remoteDeploy, /web_enabled="\$\{STAGING_WEB_ENABLED:-false\}"/u);
   assert.match(remoteDeploy, /compose_files\+=\(-f staging-web\.compose\.yml\)/u);
   assert.match(remoteDeploy, /web release or Compose overlay preflight failed/u);
-  assert.match(remoteDeploy, /previously activated web overlay cannot silently revert/u);
+  assert.match(remoteDeploy, /pending or active web overlay cannot silently revert/u);
+  const pending = remoteDeploy.indexOf('write_web_guard pending');
+  const up = remoteDeploy.indexOf('"${compose_files[@]}" up -d --remove-orphans');
+  const active = remoteDeploy.indexOf('write_web_guard active');
+  assert.ok(pending > 0 && pending < up && up < active);
+  assert.match(remoteDeploy, /sync -f \./u);
   assert.match(remoteDeploy, /staging-web\.active/u);
   assert.doesNotMatch(workflow, /staging-web-verify\.sh --execute/u);
 });
