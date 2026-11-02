@@ -21,11 +21,14 @@ execute a staging deployment or activate Caddy.
 - If enabled, the remote deploy passes **both** Compose files to `pull` and
   `up -d --remove-orphans`, so later routine API deployments retain web mounts.
   The existing five services and volumes are unchanged.
-- A successful enabled deployment writes `staging-web.active` with the approved
-  SHA. When that sentinel exists, a future default-OFF deployment **stops**
-  unless `STAGING_WEB_DEACTIVATION_APPROVED=true` is explicitly set by the owner.
-  The sentinel is changed only after Compose success, so a failed deploy does
-  not falsely claim a newly activated release.
+- An enabled deploy persists a `WEB_STATE=pending` guard in
+  `staging-web.active` **before** its potentially activating Compose `up`,
+  using a temporary file, atomic rename, and file/directory sync. On success,
+  the guard transitions to `WEB_STATE=active`. If SSH/runner/host fails in
+  the gap, `pending` remains; both `pending` and `active` block ordinary
+  default-OFF deployments until explicit owner-approved reconciliation or
+  deactivation (`STAGING_WEB_DEACTIVATION_APPROVED=true`). Guard checks happen
+  under the shared deployment lock; no silent base-only fallback.
 
 ## Immutable build provenance (build only, no staging deployment)
 
@@ -61,7 +64,7 @@ configuration. Keep immutable releases and any previous successful API/Worker
 images. If activation fails or either URL/API route or authorization isolation
 check fails: **STOP**. An owner-approved rollback holds the same deployment
 lock, restores previously recorded links/Caddy config, and restores the
-previous base-vs-overlay Compose selection. The `staging-web.active` sentinel
+previous base-vs-overlay Compose selection. The `staging-web.active` pending/active guard
 must **not** be cleared merely because a deploy failed; disabling an active
 web surface needs distinct `STAGING_WEB_DEACTIVATION_APPROVED=true` and an
 approved deployment. Verify `/health`, `/ready`, both site URLs, and the
