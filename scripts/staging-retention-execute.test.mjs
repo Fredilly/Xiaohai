@@ -9,6 +9,7 @@ const script = new URL('./staging-image-retention.sh', import.meta.url).pathname
 const current = 'e38a1796b7f6eb08a7b10932567c5b781eed606c';
 const rollbackA = 'f8e1fe86bbb904a4e7871901442a5b3dac7890e0';
 const rollbackB = 'd79ca0ff400f52f05a140235565b9c981163ead5';
+const extraProtected = 'b'.repeat(40);
 const old = 'c'.repeat(40);
 const id = (n) => `sha256:${n.repeat(64)}`;
 const api = (r) => `ghcr.io/fredilly/xiaohai-api:${r}`;
@@ -24,6 +25,8 @@ async function fixture({ ready = true, failRemove = null, workerRunning = true }
     [worker(rollbackA), id('4')],
     [api(rollbackB), id('5')],
     [worker(rollbackB), id('6')],
+    [api(extraProtected), id('d')],
+    [worker(extraProtected), id('e')],
     ['postgres:17-alpine', id('7')],
     ['redis:7.4-alpine', id('8')],
     ['caddy:2-alpine', id('9')],
@@ -74,6 +77,9 @@ else if (a[0] === 'exec' && a.includes('persistence')) {
   const grep = join(dir, 'grep');
   await writeFile(grep, '#!/bin/sh\n[ "$1" = "-RIlF" ] && exit 1\nexec /usr/bin/grep "$@"\n');
   await chmod(grep, 0o755);
+  const sudo = join(dir, 'sudo');
+  await writeFile(sudo, '#!/bin/sh\n[ "$1" = "-n" ] && shift\nexec "$@"\n');
+  await chmod(sudo, 0o755);
   const curl = join(dir, 'curl');
   await writeFile(curl, `#!/bin/sh\nprintf '%s' '${ready ? '200' : '503'}'\n`);
   await chmod(curl, 0o755);
@@ -100,6 +106,7 @@ console.log('/dev/vda3 51200000 100000  ' + (5000000 + removed * 600000) + ' ' +
     MOCK_CURRENT_WORKER: worker(current),
     STAGING_CURRENT_REVISION: current,
     STAGING_ROLLBACK_REVISIONS: `${rollbackA} ${rollbackB}`,
+    STAGING_EXTRA_PROTECTED_REVISION: extraProtected,
     STAGING_DEPLOY_LOCK: lock,
     STAGING_RETENTION_EXECUTE_ENABLED: 'true',
     STAGING_DEPLOY_SUCCEEDED_REVISION: current,
