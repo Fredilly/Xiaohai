@@ -25,8 +25,11 @@ jobs:
       - name: Validate Compose overlay, without starting containers
         run: |
           set -euo pipefail
-          printf 'POSTGRES_DB=test\nPOSTGRES_USER=test\nPOSTGRES_PASSWORD=fixture\nREVISION=%040d\n' 0 > "$RUNNER_TEMP/staging-web.env"
-          docker compose --env-file "$RUNNER_TEMP/staging-web.env" \
+          # Compose resolves service.env_file paths relative to the first YAML file.
+          # This is an untracked synthetic fixture; it contains NO real credentials.
+          trap 'rm -f deploy/staging.env' EXIT
+          printf 'POSTGRES_DB=test\nPOSTGRES_USER=test\nPOSTGRES_PASSWORD=fixture\nREVISION=%040d\n' 0 > deploy/staging.env
+          docker compose --env-file deploy/staging.env \
             -f deploy/staging.compose.yml -f deploy/staging-web.compose.yml config --quiet
       - name: Validate candidate Caddy config without deploying
         run: |
