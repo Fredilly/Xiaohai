@@ -10,14 +10,20 @@ const base = await fromRepo('deploy/staging.compose.yml');
 const action = await fromRepo('.github/workflows/staging-web-validate.yml');
 
 test('candidate is opt-in: existing production/staging deployment stays API-only', () => {
-  assert.equal(active.trim(), 'staging-api.pamboo.asia {\n  encode zstd gzip\n  reverse_proxy api:3000\n}');
+  assert.equal(
+    active.trim(),
+    'staging-api.pamboo.asia {\n  encode zstd gzip\n  reverse_proxy api:3000\n}',
+  );
   assert.doesNotMatch(base, /staging-web\.Caddyfile|xiaohai-web|staging-web\.compose/u);
   assert.doesNotMatch(action, /ssh |scp |workflow_dispatch:|docker compose .*up -d/u);
 });
 
 test('each approved staging hostname serves ONLY its static site and same-origin API', () => {
   assert.equal((candidate.match(/^staging-api\.pamboo\.asia \{/gmu) ?? []).length, 1);
-  assert.match(candidate, /staging-api\.pamboo\.asia \{\s*encode zstd gzip\s*reverse_proxy api:3000/u);
+  assert.match(
+    candidate,
+    /staging-api\.pamboo\.asia \{\s*encode zstd gzip\s*reverse_proxy api:3000/u,
+  );
   for (const [hostname, root] of [
     ['staging-store.pamboo.asia', 'store'],
     ['staging-admin.pamboo.asia', 'admin'],
