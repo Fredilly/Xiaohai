@@ -11,6 +11,23 @@ export const PORTALS = [
   { name: 'admin', host: 'staging-admin.pamboo.asia' },
 ];
 
+const SAFE_FAILURE_CODES = new Set([
+  'API_HEALTH_NOT_200',
+  'API_READY_NOT_200',
+  'CNAME_TARGET_MISMATCH',
+  'INDEX_NOT_200',
+  'INDEX_NOT_HTML',
+  'INDEX_BODY_NOT_HTML',
+  'SPA_ROUTE_NOT_200',
+  'SPA_ROUTE_NOT_HTML',
+  'ASSET_NOT_404',
+  'STAFF_NO_TOKEN_NOT_401',
+  'HEADER_PROBE_NOT_200',
+  'NOINDEX_MISSING',
+  'NOSNIFF_MISSING',
+  'FRAME_DENY_MISSING',
+]);
+
 const fail = (code) => {
   throw new Error(code);
 };
@@ -27,9 +44,10 @@ export async function inspectStagingWeb({
       checks.push({ name, status: 'PASS' });
     } catch (error) {
       // Never echo response content, network URL parameters or exception details.
-      const reason = error instanceof Error && /^[A-Z_]{3,36}$/u.test(error.message)
-        ? error.message
-        : 'PROBE_ERROR';
+      const reason =
+        error instanceof Error && SAFE_FAILURE_CODES.has(error.message)
+          ? error.message
+          : 'PROBE_ERROR';
       checks.push({ name, status: 'FAIL', reason });
     }
   }
