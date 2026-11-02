@@ -121,12 +121,16 @@ export async function inspectStagingWeb({
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   if (process.argv.length !== 3 || process.argv[2] !== '--run') {
-    process.stderr.write('Read-only staging probes are opt-in: node scripts/staging-web-smoke.mjs --run\n');
+    process.stderr.write(
+      'Read-only staging probes are opt-in: node scripts/staging-web-smoke.mjs --run\n',
+    );
     process.exitCode = 2;
   } else {
     const result = await inspectStagingWeb();
     for (const item of result.checks) {
-      process.stdout.write(`${item.status} ${item.name}${item.reason ? ' reason=' + item.reason : ''}\n`);
+      process.stdout.write(
+        `${item.status} ${item.name}${item.reason ? ' reason=' + item.reason : ''}\n`,
+      );
     }
     process.stdout.write(`STAGING_WEB_SMOKE passed=${result.passed} failed=${result.failed}\n`);
     // A green public smoke is NOT authenticated Store/HQ RBAC or deployment approval.
