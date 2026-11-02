@@ -71,16 +71,32 @@ worker=... worker_id=...` and `SKIP revision=... reason=...`.
 - Protects all current/rollback image IDs, known infrastructure IDs, and **all containers
   including stopped containers**, by both image ID and tag. Shared-image aliases are
   excluded, and candidate tag/image IDs are checked via `docker image inspect`.
-- Scans deployment-related `.env/.yaml/.yml/.sh` configuration under `/opt`,
-  `/home` and `/etc/systemd/system`; any matching revision is excluded. Scan errors
-  fail closed. Normal `grep` exit code **1** (no match) is not an error; regression
-  tests cover the Batch 4 false-error case.
+- Only **explicitly allowlisted, individually bounded deployment config files**
+  are searched; there is **no recursive traversal** of `/opt`, `/home`,
+  `/etc/systemd/system` or Docker/containerd storage. The list is built from
+  known files at `STAGING_DEPLOY_CONFIG_DIR` (defaults to
+  `/home/admin/xiaohai-deploy`): `revision.env`, `staging.env`,
+  `staging.compose.yml`, `Caddyfile`, `staging-remote-deploy.sh`,
+  `staging-disk-gate.sh`, `staging-image-retention.sh`.
+  These are the deployment files indicated by the current staging Compose and
+  remote deploy scripts. Unknown service definitions or references **are not
+  assumed absent**. Any additional positively identified live service config
+  references must be passed as **exact absolute filenames** in
+  `STAGING_EXTRA_DEPLOY_CONFIG_FILES` after independent review. If file coverage
+  has not been independently confirmed, `STAGING_CONFIG_COVERAGE_CONFIRMED=true`
+  must **not** be set, and the script refuses to plan candidates.
 - In **dry-run**, the shared deployment lock is opened **read-only if it already exists**;
   a missing lock is never created. Results are advisory and must be reverified before
   any separately authorized deletion. In **execute**, the lock is acquired normally.
-  Config scans run through `sudo -n grep` (privileged **read-only** searches; normal
-  grep exit 1 means no match, >=2 fails closed), because unprivileged scans of
-  `/opt/containerd` failed on the real staging host. Neither mode bypasses scan errors.
+  Config scans run through `timeout --signal=TERM --kill-after=1s 5s sudo -n
+  grep -Fq` against the **explicit files only**. The scanner validates each
+  required regular file exists, is not a symlink, resolves to its provided
+  absolute path, is readable through `sudo -n test -r`, and is at most **1 MiB**.
+  At most **16 extra filenames** may be appended to the seven expected files.
+  File contents and even matched filenames are not logged. Normal grep exit **1**
+  means no match; exit **0** means a protected config reference, and exit
+  **2+, 124 (timeout), 137, or permission errors fail closed**.
+  No scan traverses `/opt/containerd` or a container/image store.
 - Execution mode has additional independent
   gates (explicit enable flag, successful-deployment SHA, owner approval reference,
   expected host name, **running API/Worker containers**, and **an exact-ID approved plan file**), plus live healthy
@@ -95,11 +111,16 @@ worker=... worker_id=...` and `SKIP revision=... reason=...`.
 
 The optional post-deploy audit runs only if repository/environment variable
 `STAGING_RETENTION_PLAN_READY=true`, `STAGING_ROLLBACK_REVISIONS` lists exactly
-two verified SHAs separated by whitespace, and `STAGING_EXTRA_PROTECTED_REVISION`
-is explicitly set to the verified *third* historical release SHA. All three must be
-distinct from the new current release. Missing configuration fails **before SSH**;
-do not silently assume an unlisted previous release is disposable. The CI job's
-first step remains the capacity gate; the optional audit never invokes deletion.
+two verified SHAs separated by whitespace, `STAGING_EXTRA_PROTECTED_REVISION`
+is explicitly set to the verified *third* historical release SHA, **and
+`STAGING_CONFIG_COVERAGE_CONFIRMED=true`** is separately operator-attested.
+All historical SHAs must be distinct from the new current release. Missing
+configuration fails **before SSH**; do not silently assume an unlisted previous
+release or an unscanned deployment config is disposable. The default GitHub
+workflow does **not** pass any extra config paths, and must **not** be enabled
+if separate service references are found until they are securely incorporated
+and independently reviewed. The CI job's first step remains the capacity gate;
+the optional audit never invokes deletion.
 **Do not enable the optional automation as part of this code-only follow-up.**
 
 No staging variables, secrets, server files, or volumes have been changed by preparing this PR.
@@ -151,3 +172,29 @@ restart, deployment or config change is authorized by this follow-up PR itself.
 Fred must review the changes and explicitly authorize a later merge (which itself may
 trigger a staging deployment). Activating any `--execute` cleanup requires a further,
 separate and unambiguous approval, independent of code review and dry-run acceptance.
+
+## PR #197 review update — bounded deployment configuration scan
+
+Fred's 2026-11-02 `CHANGES_REQUESTED` review correctly rejected the first
+revision's recursive `sudo grep` over all of `/opt`, `/home` and
+`/etc/systemd/system`: it descended into `/opt/containerd` on the 49 GiB
+staging disk, risking high I/O for **each** old revision.
+
+The replacement enumerates the seven **specific** known staging deployment
+files listed above, each limited to **1 MiB**, plus no more than **16**
+individually approved and existing extra files. Every candidate scan has a
+**5-second wall-clock timeout**, with no directory recursion, no glob expansion,
+and no traversal of Docker/containerd image stores. File symlinks, untrusted
+relative paths, containerd storage paths, missing files, unauthorized access,
+unexpected sizes, and scan errors fail closed.
+
+**Coverage is a separate human-operational gate, not inferred from the
+repository.** Before authorizing any real-host retention audit, an operator must
+inspect active container Compose references and any systemd/service configuration
+paths without disclosing credentials. Confirm that these seven files and any
+explicitly supplied extra service files cover **all** live deployment/rollback
+references. If there are unknown references, stop and do not set
+`STAGING_CONFIG_COVERAGE_CONFIRMED`. The bundled tests only simulate coverage;
+a green check does not claim the host has passed this review.
+
+**No staging changes or deletion are allowed by this PR.**
