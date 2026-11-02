@@ -77,19 +77,14 @@ for (const [broken, reason] of [
 ]) {
   test(`fails closed for ${broken}`, async () => {
     const result = await inspectStagingWeb(fixture({ broken }));
-    assert.ok(
-      result.checks.some((item) => item.status === 'FAIL' && item.reason === reason),
-    );
+    assert.ok(result.checks.some((item) => item.status === 'FAIL' && item.reason === reason));
     assert.ok(result.failed > 0);
   });
 }
 
 test('incorrect CNAME is a failure, not a DNS control-plane success claim', async () => {
   const result = await inspectStagingWeb(fixture({ dnsBad: true }));
-  assert.equal(
-    result.checks.filter((item) => item.reason === 'CNAME_TARGET_MISMATCH').length,
-    2,
-  );
+  assert.equal(result.checks.filter((item) => item.reason === 'CNAME_TARGET_MISMATCH').length, 2);
 });
 
 test('network errors are sanitized and never expose diagnostics or response bodies', async () => {
