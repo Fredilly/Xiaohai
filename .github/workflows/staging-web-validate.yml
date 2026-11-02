@@ -31,6 +31,37 @@ jobs:
           printf 'POSTGRES_DB=test\nPOSTGRES_USER=test\nPOSTGRES_PASSWORD=fixture\nREVISION=%040d\n' 0 > deploy/staging.env
           docker compose --env-file deploy/staging.env \
             -f deploy/staging.compose.yml -f deploy/staging-web.compose.yml config --quiet
+          docker compose --env-file deploy/staging.env \
+            -f deploy/staging.compose.yml -f deploy/staging-web.compose.yml config --format json \
+            > "$RUNNER_TEMP/staging-web-compose.json"
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { readFileSync } from 'node:fs';
+          import { resolve } from 'node:path';
+
+          const config = JSON.parse(
+            readFileSync(process.env.RUNNER_TEMP + '/staging-web-compose.json', 'utf8'),
+          );
+          const services = config.services;
+          assert.deepEqual(
+            Object.keys(services).sort(),
+            ['postgres', 'redis', 'api', 'worker', 'proxy'].sort(),
+            'overlay must not add or remove staging services',
+          );
+          const mounts = services.proxy.volumes;
+          for (const [source, target] of [
+            ['deploy/staging-web.Caddyfile', '/etc/caddy/Caddyfile'],
+            ['deploy/web', '/srv/xiaohai-web'],
+          ]) {
+            const matches = mounts.filter((mount) => mount.target === target);
+            assert.equal(matches.length, 1, 'expected exactly one proxy mount: ' + target);
+            assert.equal(matches[0].source, resolve(source));
+            assert.equal(matches[0].read_only, true);
+          }
+          for (const name of ['api', 'worker', 'postgres', 'redis']) {
+            assert.equal(services[name].ports, undefined, name + ' must not expose ports');
+          }
+          NODE
       - name: Validate candidate Caddy config without deploying
         run: |
           docker run --rm \
