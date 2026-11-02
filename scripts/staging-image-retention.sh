@@ -13,6 +13,14 @@ valid_revision "$current" || fail 'missing/invalid current revision'
 read -r rollback_a rollback_b extra <<< "${STAGING_ROLLBACK_REVISIONS:-}"
 valid_revision "${rollback_a:-}" && valid_revision "${rollback_b:-}" || fail 'two verified rollback revisions required'
 [[ -z "${extra:-}" && "$current" != "$rollback_a" && "$current" != "$rollback_b" && "$rollback_a" != "$rollback_b" ]] || fail 'rollback mapping must have exactly two distinct older revisions'
+# During the 2026-11 staging rollout, the previous deployed release must
+# also remain protected in addition to the two designated rollback releases.
+# Missing identity is ambiguous: fail closed, never assume it may be deleted.
+additional="${STAGING_EXTRA_PROTECTED_REVISION:-}"
+valid_revision "$additional" || fail 'one additional protected historical revision is required'
+[[ "$additional" != "$current" && "$additional" != "$rollback_a" && "$additional" != "$rollback_b" ]] ||
+  fail 'additional protected revision must be distinct'
+protected_revisions=("$current" "$rollback_a" "$rollback_b" "$additional")
 
 if [[ "$mode" == --execute ]]; then
   [[ "${STAGING_RETENTION_EXECUTE_ENABLED:-false}" == true ]] || fail 'execution not authorized; use dry-run'
@@ -22,18 +30,27 @@ if [[ "$mode" == --execute ]]; then
   [[ -n "${STAGING_EXPECTED_HOSTNAME:-}" && "$(hostname)" == "$STAGING_EXPECTED_HOSTNAME" ]] || fail 'staging host identity unavailable'
 fi
 
-# Shared with staging deployment. Never remove images while deployment holds this lock.
+# Shared with staging deployment. Never delete during a deployment.
+# Dry-run must NOT create/write even a lock file: reuse an existing lock
+# via a read-only descriptor or run as advisory if no lock file exists.
 lock="${STAGING_DEPLOY_LOCK:-/tmp/xiaohai-staging-deploy.lock}"
 command -v flock >/dev/null || fail 'flock unavailable'
-exec 9>"$lock"
-flock -n 9 || fail 'deployment/retention operation already running'
+if [[ "$mode" == --execute ]]; then
+  exec 9>"$lock" || fail 'cannot acquire deployment lock'
+  flock -n 9 || fail 'deployment/retention operation already running'
+elif [[ -e "$lock" ]]; then
+  exec 9<"$lock" || fail 'cannot read existing deployment lock'
+  flock -n 9 || fail 'deployment/retention operation already running'
+else
+  echo 'AUDIT dry-run: no existing deploy lock; observation only, no mutation'
+fi
 [[ "$(docker context show)" == default ]] || fail 'unexpected Docker context'
 
 api_repo='ghcr.io/fredilly/xiaohai-api'
 worker_repo='ghcr.io/fredilly/xiaohai-worker'
 declare -A protected_ids=()
 declare -A seen_revision_images=()
-for rev in "$current" "$rollback_a" "$rollback_b"; do
+for rev in "${protected_revisions[@]}"; do
   for repo in "$api_repo" "$worker_repo"; do
     id=$(docker image inspect --format '{{.Id}}' "$repo:$rev") || fail "protected image missing: $repo:$rev"
     [[ "$id" =~ ^sha256:[0-9a-f]{64}$ ]] || fail 'invalid protected image ID'
@@ -111,14 +128,63 @@ check_candidate() {
   REPLY="$id"
 }
 
+# Only explicitly known deployment files may be searched. Never traverse /opt,
+# /home or containerd: root-recursive scans risk substantial I/O on a small host.
+# An operator must verify other live service references independently before
+# setting coverage; no successful audit is implied by this code-only PR.
+init_config_scan() {
+  [[ "${STAGING_CONFIG_COVERAGE_CONFIRMED:-false}" == true ]] ||
+    fail 'deployment configuration coverage not verified; explicit operator attestation required'
+
+  local base="${STAGING_DEPLOY_CONFIG_DIR:-/home/admin/xiaohai-deploy}" file size canonical
+  [[ "$base" == /* && "$base" != *'/../'* && "$base" != *'/./'* && "$base" != *'//'*
+    && "$base" != / && "$base" != /home && "$base" != /opt
+    && "$base" != /opt/containerd && "$base" != /opt/containerd/*
+    && "$base" != /var/lib/containerd && "$base" != /var/lib/containerd/*
+    && "$base" != /var/lib/docker && "$base" != /var/lib/docker/* ]] ||
+    fail 'invalid bounded deployment directory'
+  [[ -d "$base" && ! -L "$base" ]] || fail 'deployment directory missing or symlinked'
+  config_files=()
+  # Derived from staging-remote-deploy.sh and deploy/staging.compose.yml.
+  # All must exist: absence means deployment references are not fully known.
+  for file in revision.env staging.env staging.compose.yml Caddyfile \
+    staging-remote-deploy.sh staging-disk-gate.sh staging-image-retention.sh; do
+    config_files+=("$base/$file")
+  done
+
+  local -a additional_files=()
+  read -r -a additional_files <<< "${STAGING_EXTRA_DEPLOY_CONFIG_FILES:-}"
+  (( ${#additional_files[@]} <= 16 )) || fail 'too many additional configuration paths'
+  for file in "${additional_files[@]}"; do config_files+=("$file"); done
+
+  for file in "${config_files[@]}"; do
+    [[ "$file" == /* && "$file" != *'/../'* && "$file" != *'/./'* && "$file" != *'//'*
+      && "$file" != *'*'* && "$file" != *'?'* && "$file" != *'['*
+      && "$file" != /opt/containerd/* && "$file" != /var/lib/containerd/*
+      && "$file" != /var/lib/docker/* ]] || fail 'unsafe configuration path'
+    [[ -f "$file" && ! -L "$file" ]] || fail 'deployment config file missing or symlinked'
+    canonical=$(realpath -e -- "$file") || fail 'cannot resolve configuration file'
+    [[ "$canonical" == "$file" ]] || fail 'configuration path resolves outside allowlist'
+    size=$(stat -c '%s' -- "$file") || fail 'cannot size configuration file'
+    [[ "$size" =~ ^[0-9]+$ ]] || fail 'invalid configuration file size'
+    (( size <= 1048576 )) || fail 'configuration file exceeds bounded 1MiB scan limit'
+    sudo -n test -r "$file" || fail 'configuration file unreadable with readonly privilege'
+  done
+  (( ${#config_files[@]} <= 23 )) || fail 'configuration allowlist exceeds bounded limit'
+  printf 'AUDIT config_scan=bounded files=%s max_file_bytes=1048576 timeout_seconds=5\n' "${#config_files[@]}"
+}
+
+init_config_scan
+
 check_config() {
-  local rev="$1" matches status
-  if matches=$(grep -RIlF --include='*.env' --include='*.yml' --include='*.yaml' --include='*.sh' \
-    -- "$rev" /opt /home /etc/systemd/system 2>/dev/null); then
+  local rev="$1" status
+  # Eight or fewer known deployment files, plus at most 16 owner-attested
+  # additional paths; no recursion and no contents or filenames are printed.
+  if timeout --signal=TERM --kill-after=1s 5s sudo -n grep -Fq -- "$rev" "${config_files[@]}"; then
     return 1 # A deployment reference: protect.
   else
     status=$?
-    [[ "$status" -eq 1 ]] || fail 'deployment configuration scan failed'
+    [[ "$status" -eq 1 ]] || fail "bounded configuration scan failed (exit=$status)"
   fi
 }
 
@@ -144,7 +210,12 @@ if [[ "$mode" == --execute ]]; then healthy; fi
 count=0
 while IFS= read -r rev; do
   [[ -n "$rev" ]] || continue
-  [[ "$rev" != "$current" && "$rev" != "$rollback_a" && "$rev" != "$rollback_b" ]] || continue
+  # The additional historical release is never eligible, even if unreferenced.
+  if [[ "$rev" == "$current" || "$rev" == "$rollback_a" ||
+        "$rev" == "$rollback_b" || "$rev" == "$additional" ]]; then
+    printf 'PROTECTED_REVISION revision=%s\n' "$rev"
+    continue
+  fi
   api="$api_repo:$rev"
   worker="$worker_repo:$rev"
   # Never remove a half-release or images with references/aliases/unknown IDs.
