@@ -3,7 +3,14 @@ import { spawnSync } from 'node:child_process';
 import test from 'node:test';
 import { inspectStagingWeb, API_HOST, PORTALS } from './staging-web-smoke.mjs';
 
-const html = '<!doctype html><html lang="zh"><body><div id="root"></div></body></html>';
+const modulePaths = {
+  store: '/assets/store-B2x7.js',
+  admin: '/assets/admin-Q8z4.js',
+};
+function page(site, src = modulePaths[site]) {
+  const title = PORTALS.find((item) => item.name === site).title;
+  return `<!doctype html><html lang="zh"><head><title>${title}</title></head><body><div id="root"></div><script type="module" crossorigin src="${src}"></script></body></html>`;
+}
 const headers = {
   'content-type': 'text/html; charset=utf-8',
   'x-robots-tag': 'noindex, nofollow, noarchive',
@@ -38,28 +45,55 @@ function fixture({ dnsBad = false, broken = '', fetchFailure = false } = {}) {
     if (url.pathname === '/assets/__xiaohai_readonly_nonexistent__.js') {
       return new Response('', { status: broken === label + ':asset' ? 200 : 404 });
     }
+    if (url.pathname === modulePaths[label]) {
+      if (broken === label + ':js-404') return new Response('', { status: 404 });
+      if (broken === label + ':js-html') {
+        return new Response(page(label), {
+          status: 200,
+          headers: { 'content-type': 'text/html' },
+        });
+      }
+      return new Response('export {};', {
+        status: 200,
+        headers: { 'content-type': 'text/javascript; charset=utf-8' },
+      });
+    }
     if (url.pathname.startsWith('/__xiaohai_readonly_probe__')) {
-      return new Response(html, { status: broken === label + ':deep' ? 404 : 200, headers });
+      const deepApp = broken === label + ':deep-other-app' ? 'store' : label;
+      const deepSrc = broken === label + ':deep-other-entry' ? '/assets/other-X7.js' : undefined;
+      return new Response(page(deepApp, deepSrc), {
+        status: broken === label + ':deep' ? 404 : 200,
+        headers,
+      });
     }
     assert.equal(url.pathname, '/');
     if (broken === label + ':redirect') return new Response('', { status: 302 });
+    const servedApp = broken === 'both-store' && label === 'admin' ? 'store' : label;
+    const source = broken === label + ':unsafe-js' ? 'https://bad.example/assets/x.js' : undefined;
     if (broken === label + ':headers') {
-      return new Response(html, {
+      return new Response(page(servedApp, source), {
         status: 200,
         headers: { 'content-type': 'text/html' },
       });
     }
     if (broken === label + ':body') return new Response('not html', { status: 200, headers });
-    return new Response(html, { status: 200, headers });
+    return new Response(page(servedApp, source), { status: 200, headers });
   };
   return { resolver, fetcher, visited };
 }
 
-test('healthy Store/HQ probes pass all 14 GET-only checks', async () => {
+test('healthy Store/HQ probes verify 16 GET-only checks and actual entry JS assets', async () => {
   const environment = fixture();
   const result = await inspectStagingWeb(environment);
   assert.equal(result.failed, 0);
-  assert.equal(result.passed, 14);
+  assert.equal(result.passed, 16);
+  for (const portal of PORTALS) {
+    assert.ok(
+      environment.visited.some(
+        (item) => item.hostname === portal.host && item.pathname === modulePaths[portal.name],
+      ),
+    );
+  }
   assert.equal(
     environment.visited.filter((item) => item.pathname === '/api/v1/staff/me').length,
     2,
@@ -74,6 +108,11 @@ for (const [broken, reason] of [
   ['admin:redirect', 'INDEX_NOT_200'],
   ['admin:headers', 'NOINDEX_MISSING'],
   ['store:body', 'INDEX_BODY_NOT_HTML'],
+  ['store:unsafe-js', 'ENTRY_JS_UNSAFE_SRC'],
+  ['admin:js-404', 'ENTRY_JS_NOT_200'],
+  ['store:js-html', 'ENTRY_JS_NOT_JAVASCRIPT'],
+  ['admin:deep-other-entry', 'SPA_ENTRY_MISMATCH'],
+  ['admin:deep-other-app', 'SPA_APP_MISMATCH'],
 ]) {
   test(`fails closed for ${broken}`, async () => {
     const result = await inspectStagingWeb(fixture({ broken }));
@@ -81,6 +120,18 @@ for (const [broken, reason] of [
     assert.ok(result.failed > 0);
   });
 }
+
+test('both hosts serving the Store index fails HQ identity without false green', async () => {
+  const result = await inspectStagingWeb(fixture({ broken: 'both-store' }));
+  assert.equal(result.failed > 0, true);
+  assert.ok(result.checks.some((item) => item.reason === 'APP_IDENTITY_MISMATCH'));
+});
+
+test('missing deployed JS on an otherwise valid index always fails', async () => {
+  const result = await inspectStagingWeb(fixture({ broken: 'store:js-404' }));
+  assert.equal(result.failed > 0, true);
+  assert.ok(result.checks.some((item) => item.reason === 'ENTRY_JS_NOT_200'));
+});
 
 test('incorrect CNAME is a failure, not a DNS control-plane success claim', async () => {
   const result = await inspectStagingWeb(fixture({ dnsBad: true }));

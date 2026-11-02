@@ -22,15 +22,23 @@ Docker commands, writes, retries, paid API calls or payment tests.
 - Both staging DNS CNAME records resolve to `staging-api.pamboo.asia`.
 - Existing API `/health` and `/ready` return 200.
 - Both HTTPS roots return HTML 200 (the default Node fetch validates TLS).
-- Both staging sites support a nested SPA route and return 404 for a nonexistent
-  `/assets/` file rather than serving the HTML index.
+  The actual Vite index title must uniquely identify the Store (`胖竹门店端`)
+  or HQ (`小海童话总部后台`) app, rather than serving the wrong app on both hosts.
+- Extract a real `type="module"` JavaScript entry from each *deployed index*.
+  Only root-relative `/assets/*.js` paths without escaping, queries, redirects
+  or external hosts are accepted; require 200 and a JavaScript content type.
+  A fabricated/missing JS resource cannot pass merely because HTML loads.
+- Both staging sites support a nested SPA route whose title and module entry
+  match the correct index. Missing `/assets/` files must return 404 rather
+  than serving the HTML index.
 - Same-origin `/api/v1/staff/me` without a token returns 401 on both hosts.
 - Both sites emit `noindex`, `nosniff` and `X-Frame-Options: DENY`.
 
 A failing check produces a nonzero exit. The output is limited to check names,
 status and fixed reason codes; **no network error body, credentials, token or
 private application data** are printed. The offline unit tests mock DNS and
-HTTP entirely, and the CI job never sends probes to live staging.
+HTTP entirely, including wrong-portal index, missing actual JS, wrong JS MIME,
+unsafe URLs and mismatched SPA fallback. CI never probes live staging.
 
 ## Remaining human acceptance (NOT automated, NOT TESTED by this probe)
 
