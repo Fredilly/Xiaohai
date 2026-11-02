@@ -10,6 +10,7 @@ staging-store.pamboo.asia {
   header {
     X-Content-Type-Options nosniff
     X-Frame-Options DENY
+    X-Robots-Tag "noindex, nofollow, noarchive"
     Referrer-Policy strict-origin-when-cross-origin
   }
   @api path /api/*
@@ -33,6 +34,7 @@ staging-admin.pamboo.asia {
   header {
     X-Content-Type-Options nosniff
     X-Frame-Options DENY
+    X-Robots-Tag "noindex, nofollow, noarchive"
     Referrer-Policy strict-origin-when-cross-origin
   }
   @api path /api/*
