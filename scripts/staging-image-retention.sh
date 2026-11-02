@@ -138,7 +138,10 @@ init_config_scan() {
 
   local base="${STAGING_DEPLOY_CONFIG_DIR:-/home/admin/xiaohai-deploy}" file size canonical
   [[ "$base" == /* && "$base" != *'/../'* && "$base" != *'/./'* && "$base" != *'//'*
-    && "$base" != / && "$base" != /home && "$base" != /opt ]] ||
+    && "$base" != / && "$base" != /home && "$base" != /opt
+    && "$base" != /opt/containerd && "$base" != /opt/containerd/*
+    && "$base" != /var/lib/containerd && "$base" != /var/lib/containerd/*
+    && "$base" != /var/lib/docker && "$base" != /var/lib/docker/* ]] ||
     fail 'invalid bounded deployment directory'
   [[ -d "$base" && ! -L "$base" ]] || fail 'deployment directory missing or symlinked'
   config_files=()
