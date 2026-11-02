@@ -76,10 +76,7 @@ test('retention remains opt-in dry run, not active deletion', () => {
   assert.match(workflow, /STAGING_RETENTION_PLAN_READY == 'true'/u);
   assert.match(workflow, /STAGING_EXTRA_PROTECTED_REVISION/u);
   assert.match(workflow, /STAGING_EXTRA_PROTECTED_REVISION='\$EXTRA_PROTECTED'/u);
-  assert.match(
-    workflow,
-    /An explicit third historically protected revision is required/u,
-  );
+  assert.match(workflow, /An explicit third historically protected revision is required/u);
   assert.match(workflow, /STAGING_CONFIG_COVERAGE_CONFIRMED/u);
   assert.match(
     workflow,
