@@ -78,7 +78,7 @@ describe('home display content', () => {
     );
   });
 
-  it('uses BOS editorial art when a CMS hero has no media and preserves explicit CMS media', () => {
+  it('uses a matching BOS editorial cover and preserves explicit CMS media', () => {
     const sections: HomeSection[] = [
       {
         id: 'fallback',
@@ -110,7 +110,56 @@ describe('home display content', () => {
     const display = homeDisplaySections(sections);
     expect(display[0]?.mediaUrl).toBe(miniappRemoteAssets.home.parentChildReading);
     expect(display[1]?.mediaUrl).toBe('https://cdn.example.com/cms-hero.jpg');
-    expect(display[2]?.mediaUrl).toBe(miniappRemoteAssets.home.parentChildReading);
+    expect(display[2]?.mediaUrl).toBeNull();
+    expect(display[2]).toBe(sections[2]);
     expect(sections[0]?.mediaUrl).toBeNull();
+  });
+
+  it('does not replace unrelated CMS heroes with a parent-child reading photo', () => {
+    const sections: HomeSection[] = [
+      {
+        id: 'ai-hero',
+        sectionType: 'HERO',
+        title: '把一个想法变成故事',
+        subtitle: '小海 AI · 故事创作',
+        displayOrder: 1,
+        config: { eyebrow: '原创创作' },
+        mediaUrl: '',
+      },
+      {
+        id: 'custom-hero',
+        sectionType: 'HERO',
+        title: '玩具与文创',
+        displayOrder: 2,
+        config: {},
+      },
+      {
+        id: 'subtitle-matching',
+        sectionType: 'HERO',
+        title: '精选推荐',
+        subtitle: '亲子绘本',
+        displayOrder: 3,
+        config: {},
+      },
+      {
+        id: 'editor-provided',
+        sectionType: 'HERO',
+        title: '亲子阅读',
+        displayOrder: 4,
+        config: {},
+        mediaUrl: 'https://cdn.example.com/curated-hero.jpg',
+      },
+    ];
+    const displayed = homeDisplaySections(sections);
+
+    expect(displayed[0]).toBe(sections[0]);
+    expect(displayed[1]).toBe(sections[1]);
+    expect(displayed[2]).toEqual({
+      ...sections[2],
+      mediaUrl: miniappRemoteAssets.home.parentChildReading,
+    });
+    expect(displayed[3]).toBe(sections[3]);
+    expect(displayed[0]?.config).toEqual({ eyebrow: '原创创作' });
+    expect(sections[2]?.mediaUrl).toBeUndefined();
   });
 });
