@@ -39,9 +39,10 @@ describe('home display content', () => {
       },
     ];
 
-    const updated = clearFailedHeroMedia(sections, 0, 'bos-test', miniappRemoteAssets.home.parentChildReading);
+    const failedUrl = miniappRemoteAssets.home.parentChildReading;
+    const updated = clearFailedHeroMedia(sections, 0, 'bos-test', failedUrl);
     expect(updated[0]).toEqual({ ...sections[0], mediaUrl: '' });
-    expect(sections[0]?.mediaUrl).toBe(miniappRemoteAssets.home.parentChildReading);
+    expect(sections[0]?.mediaUrl).toBe(failedUrl);
   });
 
   it('ignores stale image errors after CMS content is replaced', () => {
@@ -56,12 +57,9 @@ describe('home display content', () => {
       },
     ];
 
-    expect(clearFailedHeroMedia(sections, 0, 'bos-test', miniappRemoteAssets.home.parentChildReading)).toBe(
-      sections,
-    );
-    expect(clearFailedHeroMedia(sections, 1, 'current-banner', miniappRemoteAssets.home.parentChildReading)).toBe(
-      sections,
-    );
+    const staleUrl = miniappRemoteAssets.home.parentChildReading;
+    expect(clearFailedHeroMedia(sections, 0, 'bos-test', staleUrl)).toBe(sections);
+    expect(clearFailedHeroMedia(sections, 1, 'current-banner', staleUrl)).toBe(sections);
 
     const newerHero: HomeSection[] = [
       {
@@ -73,9 +71,7 @@ describe('home display content', () => {
         mediaUrl: 'https://cdn.example.com/newer-hero.jpg',
       },
     ];
-    expect(clearFailedHeroMedia(newerHero, 0, 'newer-hero', miniappRemoteAssets.home.parentChildReading)).toBe(
-      newerHero,
-    );
+    expect(clearFailedHeroMedia(newerHero, 0, 'newer-hero', staleUrl)).toBe(newerHero);
   });
 
   it('ignores stale image errors after a HERO is replaced by one with the same URL', () => {
