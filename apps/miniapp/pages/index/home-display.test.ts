@@ -39,7 +39,7 @@ describe('home display content', () => {
       },
     ];
 
-    const updated = clearFailedHeroMedia(sections, 0, miniappRemoteAssets.home.parentChildReading);
+    const updated = clearFailedHeroMedia(sections, 0, 'bos-test', miniappRemoteAssets.home.parentChildReading);
     expect(updated[0]).toEqual({ ...sections[0], mediaUrl: '' });
     expect(sections[0]?.mediaUrl).toBe(miniappRemoteAssets.home.parentChildReading);
   });
@@ -56,10 +56,10 @@ describe('home display content', () => {
       },
     ];
 
-    expect(clearFailedHeroMedia(sections, 0, miniappRemoteAssets.home.parentChildReading)).toBe(
+    expect(clearFailedHeroMedia(sections, 0, 'bos-test', miniappRemoteAssets.home.parentChildReading)).toBe(
       sections,
     );
-    expect(clearFailedHeroMedia(sections, 1, miniappRemoteAssets.home.parentChildReading)).toBe(
+    expect(clearFailedHeroMedia(sections, 1, 'current-banner', miniappRemoteAssets.home.parentChildReading)).toBe(
       sections,
     );
 
@@ -73,9 +73,41 @@ describe('home display content', () => {
         mediaUrl: 'https://cdn.example.com/newer-hero.jpg',
       },
     ];
-    expect(clearFailedHeroMedia(newerHero, 0, miniappRemoteAssets.home.parentChildReading)).toBe(
+    expect(clearFailedHeroMedia(newerHero, 0, 'newer-hero', miniappRemoteAssets.home.parentChildReading)).toBe(
       newerHero,
     );
+  });
+
+  it('ignores stale image errors after a HERO is replaced by one with the same URL', () => {
+    const sharedUrl = miniappRemoteAssets.home.parentChildReading;
+    const sections: HomeSection[] = [
+      {
+        id: 'replacement-hero',
+        sectionType: 'HERO',
+        title: '新活动',
+        displayOrder: 1,
+        config: { eyebrow: '最近上新' },
+        mediaUrl: sharedUrl,
+      },
+      {
+        id: 'unchanged-hero',
+        sectionType: 'HERO',
+        title: '亲子阅读',
+        displayOrder: 2,
+        config: {},
+        mediaUrl: sharedUrl,
+      },
+    ];
+
+    expect(clearFailedHeroMedia(sections, 0, 'old-hero', sharedUrl)).toBe(sections);
+    expect(clearFailedHeroMedia(sections, 1, 'replacement-hero', sharedUrl)).toBe(sections);
+    expect(clearFailedHeroMedia(sections, 0, '', sharedUrl)).toBe(sections);
+    expect(clearFailedHeroMedia(sections, 0, 'replacement-hero', '')).toBe(sections);
+
+    const result = clearFailedHeroMedia(sections, 0, 'replacement-hero', sharedUrl);
+    expect(result[0]).toEqual({ ...sections[0], mediaUrl: '' });
+    expect(result[1]).toBe(sections[1]);
+    expect(sections[0]?.mediaUrl).toBe(sharedUrl);
   });
 
   it('uses a matching BOS editorial cover and preserves explicit CMS media', () => {

@@ -32,17 +32,25 @@ export function homeDisplaySections(sections: HomeSection[]): HomeSection[] {
 }
 
 /**
- * Ignore stale image errors from a previous CMS load or a recycled list row.
+ * Ignore stale image errors from a previous CMS load or a recycled list row,
+ * including when a new HERO reuses the same image URL at the same list position.
  * Replace the entire matching section to preserve its id, type, title and config.
  */
 export function clearFailedHeroMedia(
   sections: HomeSection[],
   index: number,
+  sectionId: string,
   failedUrl: string,
 ): HomeSection[] {
-  if (!Number.isInteger(index) || index < 0 || !failedUrl) return sections;
+  if (!Number.isInteger(index) || index < 0 || !sectionId || !failedUrl) return sections;
   const current = sections[index];
-  if (current?.sectionType !== 'HERO' || current.mediaUrl !== failedUrl) return sections;
+  if (
+    current?.sectionType !== 'HERO' ||
+    current.id !== sectionId ||
+    current.mediaUrl !== failedUrl
+  ) {
+    return sections;
+  }
   return sections.map((section, position) =>
     position === index ? { ...section, mediaUrl: '' } : section,
   );
