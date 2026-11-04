@@ -7,7 +7,7 @@
 }
 .hero-soft {
   position: relative;
-  padding: 36rpx;
+  padding: 30rpx;
   border-radius: 28rpx;
   background: linear-gradient(125deg, #dcebdc, #e8f2e8 58%, #e6f2ed);
   margin-bottom: 30rpx;
@@ -63,7 +63,7 @@
 .service-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 14rpx;
+  gap: 12rpx;
 }
 .service-entry {
   display: flex;
@@ -184,7 +184,7 @@
 }
 .store-map {
   width: 100%;
-  height: 420rpx;
+  height: 400rpx;
   border-radius: 22rpx;
   overflow: hidden;
 }
@@ -199,7 +199,8 @@
   gap: 14rpx;
   padding: 22rpx;
   border-radius: 20rpx;
-  background: #f8faf8;
+  background: #fbfdfb;
+  border: 1rpx solid #edf3ee;
 }
 .list-main {
   flex: 1;
@@ -210,6 +211,9 @@
   justify-content: space-between;
   align-items: center;
   gap: 12rpx;
+}
+.store-card .arrow {
+  font-size: 38rpx;
 }
 .list-title {
   font-size: 27rpx;

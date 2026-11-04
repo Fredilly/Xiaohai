@@ -1,9 +1,14 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { and, desc, eq } from 'drizzle-orm';
+import { and, asc, desc, eq, sql } from 'drizzle-orm';
 import {
   auditLogs,
+  deliveries,
+  deliveryEvents,
+  orderItems,
   orders,
   payments,
+  pickupCodes,
+  storeInventory,
   paymentCallbacks,
   paymentLedger,
   refunds,
@@ -383,11 +388,13 @@ export class PaymentService {
         refund.amountMinor,
         payment.amountMinor,
       );
-      if (order.status === 'REFUNDING')
+      if (order.status === 'REFUNDING') {
+        await this.releaseUnfulfilledReservation(tx, order.id);
         await tx
           .update(orders)
           .set({ status: 'REFUNDED', updatedAt: new Date() })
           .where(eq(orders.id, order.id));
+      }
       await tx
         .update(payments)
         .set({ reviewRequired: false, updatedAt: new Date() })
@@ -397,6 +404,100 @@ export class PaymentService {
         .update(orders)
         .set({ status: refund.originalOrderStatus, updatedAt: new Date() })
         .where(eq(orders.id, order.id));
+    }
+  }
+
+  /**
+   * A verified full refund before pickup/dispatch ends the sale reservation.
+   * Completed pickup/dispatched delivery already deducted physical stock:
+   * never reverse that ledger without an explicit return operation.
+   */
+  private async releaseUnfulfilledReservation(tx: Tx, orderId: string) {
+    const [pickup] = await tx
+      .select()
+      .from(pickupCodes)
+      .where(eq(pickupCodes.orderId, orderId))
+      .limit(1);
+    const [delivery] = await tx
+      .select()
+      .from(deliveries)
+      .where(eq(deliveries.orderId, orderId))
+      .limit(1);
+
+    if (pickup && delivery) throw new PaymentError('REFUND_RESERVATION_CONFLICT');
+    const activePickup = pickup?.status === 'ISSUED' ? pickup : null;
+    const activeDelivery = delivery?.status === 'PENDING' ? delivery : null;
+    const storeId = activePickup?.storeId ?? activeDelivery?.storeId;
+    if (!storeId) return;
+
+    const items = await tx
+      .select({ skuId: orderItems.skuId, quantity: orderItems.quantity })
+      .from(orderItems)
+      .where(eq(orderItems.orderId, orderId))
+      .orderBy(asc(orderItems.skuId));
+    if (!items.length) throw new PaymentError('REFUND_RESERVATION_CONFLICT');
+
+    for (const item of items) {
+      await tx.execute(
+        sql`select 1 from store_inventory where store_id=${storeId} and sku_id=${item.skuId} for update`,
+      );
+      const [balance] = await tx
+        .select()
+        .from(storeInventory)
+        .where(and(eq(storeInventory.storeId, storeId), eq(storeInventory.skuId, item.skuId)))
+        .limit(1);
+      if (!balance || balance.reserved < item.quantity)
+        throw new PaymentError('REFUND_RESERVATION_CONFLICT');
+      const [released] = await tx
+        .update(storeInventory)
+        .set({
+          reserved: balance.reserved - item.quantity,
+          version: balance.version + 1,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(storeInventory.storeId, storeId),
+            eq(storeInventory.skuId, item.skuId),
+            eq(storeInventory.version, balance.version),
+          ),
+        )
+        .returning({ version: storeInventory.version });
+      if (!released) throw new PaymentError('REFUND_RESERVATION_CONFLICT');
+    }
+
+    const now = new Date();
+    if (activePickup) {
+      const [cancelled] = await tx
+        .update(pickupCodes)
+        .set({
+          status: 'CANCELLED',
+          cancelledAt: now,
+          version: activePickup.version + 1,
+          updatedAt: now,
+        })
+        .where(and(eq(pickupCodes.id, activePickup.id), eq(pickupCodes.status, 'ISSUED')))
+        .returning({ id: pickupCodes.id });
+      if (!cancelled) throw new PaymentError('REFUND_RESERVATION_CONFLICT');
+    }
+    if (activeDelivery) {
+      const [cancelled] = await tx
+        .update(deliveries)
+        .set({
+          status: 'CANCELLED',
+          cancelledAt: now,
+          version: activeDelivery.version + 1,
+          updatedAt: now,
+        })
+        .where(and(eq(deliveries.id, activeDelivery.id), eq(deliveries.status, 'PENDING')))
+        .returning({ id: deliveries.id });
+      if (!cancelled) throw new PaymentError('REFUND_RESERVATION_CONFLICT');
+      await tx.insert(deliveryEvents).values({
+        deliveryId: activeDelivery.id,
+        eventType: 'CANCELLED',
+        actorType: 'SYSTEM',
+        idempotencyKey: `delivery-cancelled:${orderId}`,
+      });
     }
   }
 }

@@ -117,31 +117,10 @@ export class FulfillmentService {
       return existing.id;
     }
 
-    const quote = await this.quote(consumerUserId, input);
-    const cart = await this.commerce.getCart(consumerUserId);
-    const skuRows = await this.db
-      .select({ id: skus.id, code: skus.code })
-      .from(skus)
-      .where(
-        inArray(
-          skus.id,
-          cart.items.map((item) => item.skuId),
-        ),
-      );
-    const skuCodes = new Map(skuRows.map((row) => [row.id, row.code]));
-    if (skuCodes.size !== cart.items.length) throw new FulfillmentError('CONFLICT');
-
-    const address =
-      input.method === 'DELIVERY'
-        ? await this.requireAddress(consumerUserId, input.addressId!)
-        : null;
-    const zone =
-      input.method === 'DELIVERY' ? await this.resolveDeliveryZone(input.storeId, address!) : null;
-
     return this.db.transaction(async (tx) => {
-      await tx.execute(
-        sql`select pg_advisory_xact_lock(hashtext(${`${consumerUserId}:${input.clientRequestId}`}))`,
-      );
+      // Serialize every checkout for this consumer, even with different request IDs.
+      // A new request must not reuse a cart snapshot consumed by another checkout.
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${consumerUserId}))`);
       const [again] = await tx
         .select({ id: orders.id, fingerprint: orders.fulfillmentFingerprint })
         .from(orders)
@@ -156,6 +135,31 @@ export class FulfillmentService {
         if (again.fingerprint !== fingerprint) throw new FulfillmentError('IDEMPOTENCY_CONFLICT');
         return again.id;
       }
+
+      // Read the cart and quote only AFTER acquiring the consumer checkout lock.
+      // A duplicate key replays above; a new key sees an empty cart after the first commit.
+      const quote = await this.quote(consumerUserId, input);
+      const cart = await this.commerce.getCart(consumerUserId);
+      const skuRows = await this.db
+        .select({ id: skus.id, code: skus.code })
+        .from(skus)
+        .where(
+          inArray(
+            skus.id,
+            cart.items.map((item) => item.skuId),
+          ),
+        );
+      const skuCodes = new Map(skuRows.map((row) => [row.id, row.code]));
+      if (skuCodes.size !== cart.items.length) throw new FulfillmentError('CONFLICT');
+
+      const address =
+        input.method === 'DELIVERY'
+          ? await this.requireAddress(consumerUserId, input.addressId!)
+          : null;
+      const zone =
+        input.method === 'DELIVERY'
+          ? await this.resolveDeliveryZone(input.storeId, address!)
+          : null;
 
       const [cartRow] = await tx
         .select({ id: carts.id })

@@ -13,6 +13,7 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core';
 import { staffAccounts } from './schema.js';
+import { skus } from './commerce-schema.js';
 
 export const regions = pgTable(
   'regions',
@@ -126,5 +127,27 @@ export const storeStaff = pgTable(
   (table) => [
     primaryKey({ columns: [table.storeId, table.staffAccountId], name: 'store_staff_pk' }),
     index('store_staff_staff_account_id_idx').on(table.staffAccountId),
+  ],
+);
+
+export const storeCatalogMetadata = pgTable(
+  'store_catalog_metadata',
+  {
+    storeId: uuid('store_id')
+      .notNull()
+      .references(() => stores.id, { onDelete: 'restrict' }),
+    skuId: uuid('sku_id')
+      .notNull()
+      .references(() => skus.id, { onDelete: 'restrict' }),
+    shelfLocation: text('shelf_location'),
+    storeNote: text('store_note'),
+    displayInfo: text('display_info'),
+    version: integer('version').notNull().default(0),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.storeId, table.skuId], name: 'store_catalog_metadata_pk' }),
+    index('store_catalog_metadata_sku_idx').on(table.skuId),
   ],
 );

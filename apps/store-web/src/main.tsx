@@ -7,12 +7,14 @@ import { getStaffMe, loginStaff } from './staff-auth';
 import { loadStaffStores } from './stores-api';
 import { visibleStoreModules } from './mock-data';
 import { BookSearchPanel } from './book-search-panel';
+import { StoreCatalogPanel } from './store-catalog-panel';
+import { CatalogCorrectionPanel } from './catalog-correction-panel';
 import { InventoryPanel } from './inventory-panel';
 import { RentalPanel } from './rental-panel';
 import { FulfillmentPanel } from './fulfillment-panel';
 import { OperationsPanel } from './operations-panel';
 import { DashboardPanel } from './dashboard-panel';
-import { ManagerPanel } from './manager-panel';
+import { MeipingReviewPanel } from './meiping-review-panel';
 
 const tokenKey = 'staff_session_token';
 const selectedStoreKey = 'staff_selected_store_id';
@@ -79,7 +81,6 @@ function Shell({
   const [stores, setStores] = useState<StaffStore[]>([]);
   const [storeId, setStoreId] = useState(() => sessionStorage.getItem(selectedStoreKey) ?? '');
   const [storeStatus, setStoreStatus] = useState('正在加载授权门店…');
-  const canManageStore = me.permissions.includes('stores.manage');
 
   useEffect(() => {
     const sync = () => setActive(window.location.hash.replace('#/', '') || 'dashboard');
@@ -185,6 +186,30 @@ function Shell({
           ) : (
             <StoreRequired />
           )
+        ) : current === 'catalog' ? (
+          currentStore ? (
+            <StoreCatalogPanel
+              key={currentStore.id}
+              token={token}
+              storeId={currentStore.id}
+              storeName={currentStore.name}
+            />
+          ) : (
+            <StoreRequired />
+          )
+        ) : current === 'catalog-corrections' ? (
+          currentStore ? (
+            <CatalogCorrectionPanel
+              key={currentStore.id}
+              token={token}
+              storeId={currentStore.id}
+              storeName={currentStore.name}
+              permissions={me.permissions}
+              staffAccountId={me.staff.id}
+            />
+          ) : (
+            <StoreRequired />
+          )
         ) : current === 'inventory' ? (
           currentStore ? (
             <InventoryPanel token={token} storeId={currentStore.id} />
@@ -203,11 +228,14 @@ function Shell({
           ) : (
             <StoreRequired />
           )
-        ) : current === 'manager' ? (
-          currentStore && canManageStore ? (
-            <ManagerPanel token={token} me={me} currentStore={currentStore} stores={stores} />
-          ) : currentStore ? (
-            <PermissionRequired />
+        ) : current === 'meiping' ? (
+          currentStore ? (
+            <MeipingReviewPanel
+              key={currentStore.id}
+              token={token}
+              storeId={currentStore.id}
+              permissions={me.permissions}
+            />
           ) : (
             <StoreRequired />
           )
@@ -232,16 +260,6 @@ function StoreRequired() {
       <span className="tag">Store context required</span>
       <h2>没有可用门店</h2>
       <p>当前账号没有加载到可访问门店，因此不会发起库存、租借或履约操作。</p>
-    </section>
-  );
-}
-
-function PermissionRequired() {
-  return (
-    <section className="panel">
-      <span className="tag">Manager permission required</span>
-      <h2>没有店长视图权限</h2>
-      <p>店长视图只对具有 stores.manage 的 Staff Context 展示；前端不会绕过服务端授权。</p>
     </section>
   );
 }

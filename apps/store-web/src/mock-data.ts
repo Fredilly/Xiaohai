@@ -1,5 +1,15 @@
 export type StoreModule = {
-  key: 'dashboard' | 'books' | 'inventory' | 'rental' | 'orders' | 'operations' | 'manager';
+  key:
+    | 'dashboard'
+    | 'books'
+    | 'catalog'
+    | 'catalog-corrections'
+    | 'inventory'
+    | 'rental'
+    | 'orders'
+    | 'operations'
+    | 'manager'
+    | 'meiping';
   label: string;
   description: string;
   status: string;
@@ -18,6 +28,20 @@ export const storeModules: StoreModule[] = [
     label: '图书查询',
     description: '书名、作者、出版社、ISBN / 条码查询当前门店库存',
     status: 'M13 已接入',
+    requiredPermission: 'stores.read',
+  },
+  {
+    key: 'catalog',
+    label: '本店商品资料',
+    description: '维护本店已建立库存关联的图书和商品资料',
+    status: '日常商品 · 店铺账号可编辑',
+    requiredPermission: 'catalog.edit',
+  },
+  {
+    key: 'catalog-corrections',
+    label: '商品纠错申请',
+    description: '日常商品资料纠错与独立复核（采纳不生效）',
+    status: '日常商品 · 申请与复核',
     requiredPermission: 'stores.read',
   },
   {
@@ -49,16 +73,25 @@ export const storeModules: StoreModule[] = [
     requiredPermission: 'inventory.read',
   },
   {
-    key: 'manager',
-    label: '店长视图',
-    description: '实时运营报表、当前 Staff 权限与门店授权范围',
-    status: 'M19 店长能力',
-    requiredPermission: 'stores.manage',
+    key: 'meiping',
+    label: '迁移资料审核',
+    description: '门店内审核美萍历史迁移草稿、纠错建议和独立复核',
+    status: '一次性历史数据迁移 · 不入库',
   },
 ];
 
 export function visibleStoreModules(permissions: readonly string[]): StoreModule[] {
-  return storeModules.filter(
-    (item) => !item.requiredPermission || permissions.includes(item.requiredPermission),
+  return storeModules.filter((item) =>
+    item.key === 'catalog-corrections'
+      ? permissions.includes('stores.read') &&
+        ((permissions.includes('inventory.read') && permissions.includes('inventory.stocktake')) ||
+          permissions.includes('catalog.correction.review'))
+      : item.key === 'catalog'
+        ? permissions.includes('catalog.edit') && permissions.includes('stores.read')
+        : item.key === 'meiping'
+          ? (permissions.includes('inventory.receive') &&
+              permissions.includes('inventory.stocktake')) ||
+            permissions.includes('meiping.correction.review')
+          : !item.requiredPermission || permissions.includes(item.requiredPermission),
   );
 }

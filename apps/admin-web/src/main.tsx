@@ -18,6 +18,7 @@ import { SystemManager } from './system-manager';
 import { getStaffMe, loginStaff } from './staff-auth';
 import { visibleAdminModules } from './mock-data';
 import { NavIcon } from './nav-icon';
+import { MeipingPreflightManager } from './meiping-preflight-manager';
 
 const tokenKey = 'staff_session_token';
 
@@ -94,7 +95,16 @@ function Shell({
     { label: '概览', keys: ['dashboard'] },
     {
       label: '业务',
-      keys: ['stores', 'catalog', 'inventory', 'orders', 'users', 'rental', 'fulfillment'],
+      keys: [
+        'stores',
+        'catalog',
+        'inventory',
+        'meiping',
+        'orders',
+        'users',
+        'rental',
+        'fulfillment',
+      ],
     },
     { label: '内容', keys: ['content', 'ai', 'cms'] },
     { label: '商业', keys: ['franchise', 'payments', 'commission', 'finance'] },
@@ -151,6 +161,8 @@ function Shell({
           <HqOperationsManager token={token} me={me} mode="stores" />
         ) : current === 'inventory' ? (
           <HqOperationsManager token={token} me={me} mode="inventory" />
+        ) : current === 'meiping' ? (
+          <MeipingPreflightManager token={token} me={me} />
         ) : current === 'orders' ? (
           <HqSupportManager token={token} mode="orders" />
         ) : current === 'users' ? (

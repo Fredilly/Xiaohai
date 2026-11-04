@@ -1,6 +1,11 @@
 <view class="page">
   <view wx:if="{{loading}}" class="state-card">正在加载佣金记录…</view>
-  <view wx:elif="{{accountStatus === 'unauthenticated' || accountStatus === 'error'}}" class="state-card error-state">
+  <view wx:elif="{{accountStatus === 'unauthenticated'}}" class="state-card">
+    <text class="state-title">登录后查看佣金</text>
+    <text class="state-copy">{{error}}</text>
+    <button class="primary-btn" bindtap="goToLogin">去登录</button>
+  </view>
+  <view wx:elif="{{accountStatus === 'error'}}" class="state-card error-state">
     <text>{{error}}</text>
     <button bindtap="load">重试</button>
   </view>

@@ -1,4 +1,6 @@
+import { consumerToken } from '../../services/consumer-session';
 import {
+  CommerceApiError,
   createAddress,
   deleteAddress,
   listAddresses,
@@ -7,24 +9,45 @@ import {
   type AddressInput,
 } from '../../services/commerce';
 Page({
-  data: { addresses: [] as Address[], loading: true, error: false },
+  data: { addresses: [] as Address[], loading: true, error: false, needsLogin: false },
   onShow() {
     void this.load();
   },
   async load() {
+    if (!consumerToken()) {
+      this.setData({ addresses: [], loading: false, error: false, needsLogin: true });
+      return;
+    }
+    this.setData({ loading: true, error: false, needsLogin: false });
     try {
-      this.setData({ addresses: (await listAddresses()).addresses, loading: false, error: false });
-    } catch {
-      this.setData({ loading: false, error: true });
+      this.setData({
+        addresses: (await listAddresses()).addresses,
+        loading: false,
+        error: false,
+        needsLogin: false,
+      });
+    } catch (error) {
+      const needsLogin = error instanceof CommerceApiError && error.status === 401;
+      this.setData({
+        addresses: [],
+        loading: false,
+        error: !needsLogin,
+        needsLogin,
+      });
     }
   },
+  goToLogin() {
+    void wx.switchTab({ url: '/pages/me/me' });
+  },
   async add() {
+    if (!consumerToken()) return;
     const input = await collect();
     if (!input) return;
     await createAddress({ ...input, isDefault: this.data.addresses.length === 0 });
     void this.load();
   },
   async edit(e: WechatMiniprogram.TouchEvent) {
+    if (!consumerToken()) return;
     const current = this.data.addresses.find((a) => a.id === e.currentTarget.dataset.id);
     if (!current) return;
     const input = await collect(current);
@@ -33,10 +56,12 @@ Page({
     void this.load();
   },
   async remove(e: WechatMiniprogram.TouchEvent) {
+    if (!consumerToken()) return;
     await deleteAddress(String(e.currentTarget.dataset.id));
     void this.load();
   },
   async makeDefault(e: WechatMiniprogram.TouchEvent) {
+    if (!consumerToken()) return;
     const current = this.data.addresses.find((a) => a.id === e.currentTarget.dataset.id);
     if (!current) return;
     await updateAddress(current.id, {

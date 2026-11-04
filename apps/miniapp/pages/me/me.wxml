@@ -53,6 +53,7 @@
           wx:for="{{orderActions}}"
           wx:key="title"
           data-key="{{item.key}}"
+          data-view="{{item.view}}"
           bindtap="openFeature"
         >
           <view class="order-icon"><image class="tile-symbol" src="/assets/ui/{{item.icon}}.svg" mode="aspectFit" /></view>
@@ -78,6 +79,7 @@
         >
           <view class="service-icon tone-{{item.tone}}"><image class="tile-symbol" src="/assets/ui/{{item.icon}}.svg" mode="aspectFit" /></view>
           <text class="service-title">{{item.title}}</text>
+          <text wx:if="{{item.key === 'purchased' || item.key === 'member' || item.key === 'settings'}}" class="service-status">即将开放</text>
         </view>
       </view>
     </view>

@@ -1,5 +1,5 @@
 <view class="page">
-  <view class="brand-row"><image class="brand-logo" src="/assets/brand/xiaohai-logo.png" mode="aspectFit" /><view class="brand-copy"><text class="brand-name">小海童话</text><text class="brand-note">陪每一个好奇的故事长大</text></view></view>
+  <view class="brand-row"><image class="brand-logo" src="/assets/brand/xiaohai-logo.png" mode="aspectFit" /><view class="brand-copy"><text class="brand-kicker">XIAOHAI FAIRYTALE</text><text class="brand-name">小海童话</text><text class="brand-note">陪每一个好奇的故事长大</text></view></view>
   <view class="storybook-intro">
     <view class="storybook-intro-copy">
       <text class="storybook-kicker">小海的故事世界 ✦</text>
@@ -30,6 +30,7 @@
         class="hero {{item.mediaUrl ? 'hero-with-media' : 'hero-without-media'}} {{item.action ? 'hero-actionable' : ''}}"
         data-target="{{item.action.target}}"
         bindtap="openAction"
+        aria-label="{{item.title}}"
       >
         <image wx:if="{{item.mediaUrl}}" class="hero-media" src="{{item.mediaUrl}}" mode="aspectFill" data-index="{{index}}" data-src="{{item.mediaUrl}}" binderror="mediaError" />
         <image wx:if="{{!item.mediaUrl}}" class="hero-illustration storybook-hero-art" src="/assets/illustrations/home-reading-fox.svg" mode="aspectFit" aria-hidden="true" />
@@ -41,7 +42,7 @@
       <view wx:elif="{{item.sectionType === 'FEATURE_GRID'}}" class="section feature-section">
         <view class="section-head"><text class="section-title">{{item.title}}</text><text class="section-note">{{item.subtitle}}</text></view>
         <view class="grid">
-          <view class="card {{entry.key === 'shop' ? 'card-featured' : ''}}" wx:for="{{item.config.items}}" wx:for-item="entry" wx:key="key" data-target="{{entry.key}}" bindtap="openAction">
+          <view class="card {{entry.key === 'shop' ? 'card-featured' : ''}}" wx:for="{{item.config.items}}" wx:for-item="entry" wx:key="key" data-target="{{entry.key}}" bindtap="openAction" aria-label="{{entry.title}}">
             <view class="feature-icon"><image src="/assets/ui/{{entry.key === 'shop' ? 'shop' : entry.key === 'story-create' || entry.key === 'ai' ? 'magic' : entry.key === 'picture-books' ? 'book' : entry.key === 'animations' ? 'play' : 'star'}}.svg" /></view>
             <text class="card-title">{{entry.title}}</text>
             <text wx:if="{{entry.subtitle}}" class="card-subtitle">{{entry.subtitle}}</text>

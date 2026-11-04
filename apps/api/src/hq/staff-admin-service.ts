@@ -127,7 +127,13 @@ export class StaffAdminService {
     await this.db.transaction(async (tx) => {
       const [updated] = await tx
         .update(staffAccounts)
-        .set({ enabled, updatedAt: new Date() })
+        .set({
+          enabled,
+          // Rotate the authorization generation on every state transition so a
+          // token issued before disable cannot become valid again after re-enable.
+          sessionVersion: sql`${staffAccounts.sessionVersion} + 1`,
+          updatedAt: new Date(),
+        })
         .where(eq(staffAccounts.id, id))
         .returning({ id: staffAccounts.id });
       if (!updated) throw new StaffAdminError('NOT_FOUND');

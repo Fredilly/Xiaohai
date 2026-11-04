@@ -308,6 +308,16 @@
   text-align: center;
   overflow-wrap: anywhere;
 }
+.service-status {
+  display: block;
+  padding: 3rpx 9rpx;
+  border-radius: 999rpx;
+  background: #f3efe4;
+  color: #877960;
+  font-size: 17rpx;
+  line-height: 1.4;
+  text-align: center;
+}
 .order-item:active,
 .service-item:active,
 .card-heading-link:active,

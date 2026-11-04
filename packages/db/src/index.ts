@@ -47,7 +47,7 @@ export {
   contentEntitlements,
   playbackProgress,
 } from './content-schema.js';
-export { regions, franchisees, stores, storeStaff } from './store-schema.js';
+export { regions, franchisees, stores, storeStaff, storeCatalogMetadata } from './store-schema.js';
 export {
   goodsReceiptItems,
   goodsReceipts,
@@ -78,6 +78,7 @@ export {
   financeReconciliationItems,
 } from './finance-schema.js';
 export { auditLogs } from './audit-schema.js';
+export { catalogCorrectionRequests } from './catalog-correction-schema.js';
 export {
   consumerUsers,
   migrationBatches,
@@ -90,3 +91,13 @@ export {
   staffRoles,
   wechatIdentities,
 } from './schema.js';
+export {
+  meipingReviewSessions,
+  meipingReviewDecisions,
+  meipingReviewDecisionHistory,
+  meipingReviewCorrections,
+  meipingReviewCorrectionHistory,
+  meipingCorrectionReviews,
+  meipingImportBatches,
+  meipingImportResults,
+} from './meiping-review-schema.js';

@@ -414,6 +414,20 @@ suite('M20 Staff administration PostgreSQL integration', () => {
     });
     expect(afterDisable.statusCode).toBe(401);
 
+    const reenabled = await app.inject({
+      method: 'PATCH',
+      url: `/api/v1/staff/admin/accounts/${target.id}/enabled`,
+      headers: bearer(actor.token),
+      payload: { enabled: true },
+    });
+    expect(reenabled.statusCode).toBe(200);
+    const afterReenable = await app.inject({
+      method: 'GET',
+      url: '/api/v1/staff/admin/accounts',
+      headers: bearer(target.token),
+    });
+    expect(afterReenable.statusCode).toBe(401);
+
     await app.close();
   });
 });

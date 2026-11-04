@@ -1,6 +1,11 @@
 <view class="page">
   <text class="page-heading">我的订单</text>
   <view wx:if="{{loading}}" class="state-card">正在加载订单…</view>
+  <view wx:elif="{{needsLogin}}" class="state-card">
+    <text class="state-title">登录后查看订单</text>
+    <text class="state-copy">订单属于个人账户，请先微信登录。</text>
+    <button class="primary-btn" bindtap="goToLogin">去登录</button>
+  </view>
   <view wx:elif="{{error}}" class="state-card"><text class="state-title">订单暂时无法加载</text><button bindtap="load">重试</button></view>
   <view wx:elif="{{orders.length===0}}" class="state-card"><text class="state-title">还没有订单</text></view>
   <view wx:else class="commerce-list"><view class="list-card order-summary" wx:for="{{orders}}" wx:key="id" data-id="{{item.id}}" bindtap="open">

@@ -4,7 +4,10 @@ import {
   addCartItemRequestSchema,
   addressInputSchema,
   adminCatalogQuerySchema,
-  adminProductInputSchema,
+  bookLookupQuerySchema,
+  bookLookupResponseSchema,
+  adminProductCreateInputSchema,
+  adminProductUpdateInputSchema,
   catalogListResponseSchema,
   catalogProductSchema,
   catalogQuerySchema,
@@ -41,6 +44,7 @@ export function registerCommerceRoutes(
     const context = await options.staffAuthorization.authenticate(request.headers.authorization);
     options.staffAuthorization.requirePermission(context, CATALOG_MANAGE_PERMISSION);
     options.staffAuthorization.requireDataScope(context, 'GLOBAL', null);
+    return context;
   };
   app.get('/api/v1/catalog/products', async (request, reply) => {
     const input = catalogQuerySchema.safeParse(request.query);
@@ -207,28 +211,96 @@ export function registerCommerceRoutes(
     if (!input.success) return invalid(reply, request.id);
     try {
       await staff(request);
-      return await options.commerce.listAdminProducts(input.data.q, input.data.status);
+      return await options.commerce.listAdminProducts(
+        input.data.q,
+        input.data.status,
+        input.data.offset,
+        input.data.limit,
+      );
+    } catch (error) {
+      return fail(request, reply, error);
+    }
+  });
+  app.get('/api/v1/staff/catalog/products/:id', async (request, reply) => {
+    const params = z.object({ id: z.uuid() }).safeParse(request.params);
+    if (!params.success) return invalid(reply, request.id);
+    try {
+      await staff(request);
+      const result = await options.commerce.listAdminProducts(
+        undefined,
+        undefined,
+        0,
+        1,
+        params.data.id,
+      );
+      const product = result.products[0];
+      if (!product) throw new CommerceError('NOT_FOUND', 'Product not found');
+      return product;
+    } catch (error) {
+      return fail(request, reply, error);
+    }
+  });
+  app.get('/api/v1/staff/catalog/books/lookup', async (request, reply) => {
+    const input = bookLookupQuerySchema.safeParse(request.query);
+    if (!input.success) return invalid(reply, request.id);
+    try {
+      await staff(request);
+      return bookLookupResponseSchema.parse(await options.commerce.lookupBook(input.data.code));
     } catch (error) {
       return fail(request, reply, error);
     }
   });
   app.post('/api/v1/staff/catalog/products', async (request, reply) => {
-    const input = adminProductInputSchema.safeParse(request.body);
-    if (!input.success) return invalid(reply, request.id);
+    const input = adminProductCreateInputSchema.safeParse(request.body);
+    const key = request.headers['idempotency-key'];
+    if (!input.success || typeof key !== 'string' || !/^[A-Za-z0-9._:-]{8,128}$/.test(key))
+      return invalid(reply, request.id);
     try {
-      await staff(request);
-      return reply.status(201).send(await options.commerce.createAdminProduct(input.data));
+      const actor = await staff(request);
+      return reply
+        .status(201)
+        .send(
+          await options.commerce.createAdminProduct(
+            input.data,
+            actor.staffAccountId,
+            request.id,
+            key,
+          ),
+        );
+    } catch (error) {
+      return fail(request, reply, error);
+    }
+  });
+  app.post('/api/v1/staff/catalog/products/:id/preview', async (request, reply) => {
+    const params = z.object({ id: z.uuid() }).safeParse(request.params);
+    const input = adminProductUpdateInputSchema.safeParse(request.body);
+    if (!params.success || !input.success) return invalid(reply, request.id);
+    try {
+      const actor = await staff(request);
+      return await options.commerce.previewAdminProductUpdate(
+        params.data.id,
+        input.data,
+        actor.staffAccountId,
+      );
     } catch (error) {
       return fail(request, reply, error);
     }
   });
   app.put('/api/v1/staff/catalog/products/:id', async (request, reply) => {
     const params = z.object({ id: z.uuid() }).safeParse(request.params);
-    const input = adminProductInputSchema.safeParse(request.body);
+    const input = adminProductUpdateInputSchema.safeParse(request.body);
     if (!params.success || !input.success) return invalid(reply, request.id);
     try {
-      await staff(request);
-      return await options.commerce.updateAdminProduct(params.data.id, input.data);
+      const actor = await staff(request);
+      return await options.commerce.updateAdminProduct(
+        params.data.id,
+        input.data,
+        actor.staffAccountId,
+        request.id,
+        typeof request.headers['x-catalog-preview-token'] === 'string'
+          ? request.headers['x-catalog-preview-token']
+          : undefined,
+      );
     } catch (error) {
       return fail(request, reply, error);
     }
@@ -242,7 +314,7 @@ function invalid(reply: FastifyReply, requestId: string) {
     }),
   );
 }
-function fail(request: FastifyRequest, reply: FastifyReply, error: unknown) {
+export function fail(request: FastifyRequest, reply: FastifyReply, error: unknown) {
   let status = 500;
   let code:
     | 'CONSUMER_AUTHENTICATION_REQUIRED'
@@ -252,6 +324,7 @@ function fail(request: FastifyRequest, reply: FastifyReply, error: unknown) {
     | 'CONFLICT'
     | 'NOT_PURCHASABLE'
     | 'INVALID_ORDER_STATE'
+    | 'INVALID_INPUT'
     | 'INTERNAL_ERROR' = 'INTERNAL_ERROR';
   if (error instanceof CommerceAuthError) {
     status = 401;
@@ -273,12 +346,18 @@ function fail(request: FastifyRequest, reply: FastifyReply, error: unknown) {
           ? 409
           : code === 'INVALID_ORDER_STATE'
             ? 409
-            : 409;
+            : code === 'INVALID_INPUT'
+              ? 400
+              : 409;
   }
   request.log.warn({ requestId: request.id, errorCode: code }, 'Commerce request failed');
   return reply.status(status).send(
     commerceErrorResponseSchema.parse({
-      error: { code, message: publicMessage(code), requestId: request.id },
+      error: {
+        code,
+        message: publicMessage(code),
+        requestId: request.id,
+      },
     }),
   );
 }
@@ -298,6 +377,8 @@ function publicMessage(code: string) {
       return 'SKU is not purchasable';
     case 'INVALID_ORDER_STATE':
       return 'Order state does not allow this action';
+    case 'INVALID_INPUT':
+      return 'Invalid catalog update';
     default:
       return 'Internal server error';
   }

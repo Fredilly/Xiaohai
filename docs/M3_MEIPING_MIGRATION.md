@@ -6,11 +6,11 @@ M3 只建立“图书主数据 + 当前库存”的安全迁移基础设施：mi
 
 M3 only establishes safe migration infrastructure for book master data plus current stock: migration batches, staging, canonical input, deterministic normalization/validation/dedupe, dry-run, exception preservation, idempotency constraints, and a reconciliation boundary. It does not perform production cutover or build commerce, orders, payments, rental, or the production inventory domain.
 
-## 为什么没有真实美萍 parser / Why there is no real Meiping parser
+## 真实美萍 parser 的边界 / Boundary of the Meiping parser
 
-目前没有取得真实美萍导出样本，因此不能安全假定 CSV/Excel 格式、列顺序、编码、表头或文件结构。本阶段故意不提供声称支持真实美萍导出的 parser。后续 adapter 必须在拿到真实样本并人工确认后，把源格式转换到 canonical input boundary。
+当前提供的 adapter 只支持经过核对的只读 `.xls/.xlsx` 预检查路径，保留源行和原始列数据；它不会执行正式商品、SKU 或库存写入。任何正式迁移仍必须在真实源文件确认、staging、人工审核和 reconciliation 完成后另行实现。
 
-No real Meiping export sample is available, so CSV/Excel format, column order, encoding, headers, and file structure cannot be safely assumed. This milestone intentionally does not ship a parser claiming to support real Meiping exports. A future adapter must be added only after a real sample is obtained and reviewed, converting the source format into the canonical input boundary.
+The current adapter is limited to the reviewed read-only `.xls/.xlsx` preflight path. It preserves source rows and raw columns but never writes products, SKUs, or inventory. Any formal migration still requires reviewed source data, staging, human approval, and reconciliation before a separate import writer is introduced.
 
 ## 已确认的 7 个字段 / Seven confirmed fields
 
@@ -36,11 +36,17 @@ Book code and internal code remain separate concepts. Book code is not automatic
 
 字符串只执行确定性处理：转字符串（仅 string/number）、Unicode NFKC、trim、连续空白折叠。空字符串变为 null。不会猜测作者、出版社、ISBN 或编号映射。
 
-价格使用严格十进制字符串解析为整数分（minor units），最多两位小数，不使用浮点计算；负数、格式错误、超出安全整数范围均报错。库存必须是安全整数，负库存明确报错。title、price、inventory 缺失是 error；作者、出版社缺失以及两个编号都缺失进入 warning/review。
+价格使用严格十进制字符串解析为整数分（minor units），最多两位小数，不使用浮点计算；负数、格式错误、超出安全整数范围均报错。库存必须是安全整数，负库存明确报错。title、price、inventory 缺失是阻断问题；作者、出版社缺失是 `metadataWarnings`，不会单独阻止建档候选。关键标识、编号冲突和不同商品共用条码进入 `blockingIssues`；零价格进入 `saleBlocked`，可以暂存资料候选但不得正常销售。
 
 Strings receive deterministic processing only: string conversion for string/number values, Unicode NFKC, trim, and whitespace collapse. Empty strings become null. Author, publisher, ISBN, and identifier mappings are never guessed.
 
-Prices are parsed from strict decimal strings into integer minor units without floating-point arithmetic; negatives, malformed values, and unsafe ranges are errors. Inventory must be a safe integer and negative inventory is an explicit error. Missing title, price, or inventory is an error; missing author/publisher or both identifiers routes the row to warning/review.
+Prices are parsed from strict decimal strings into integer minor units without floating-point arithmetic; negatives, malformed values, and unsafe ranges are errors. Inventory must be a safe integer and negative inventory is an explicit error. Missing title, price, or inventory is a blocking issue; missing author/publisher is a `metadataWarnings` entry and does not alone block a create candidate. Missing key identifiers, identifier conflicts, and conflicting barcodes are `blockingIssues`. Zero price is `saleBlocked`: the row may remain a data candidate but cannot be sold normally.
+
+## Excel preflight classification
+
+只读 Excel 预检查保留源行号、原始商品编号、条码、ISBN 和完整 `rawColumns`。每条商品记录只计数一次，但可以同时拥有多类问题：`metadataWarnings`（资料待完善）、`blockingIssues`（阻断自动匹配或建档）和 `saleBlocked`（禁止正常销售）。旧库存仍按每条商品暂定 1 本，审批状态固定为 `PENDING_ADMIN_REVIEW`，预检查不会创建商品、SKU 或库存流水。
+
+The read-only Excel preflight preserves the source row number, original product identifiers, barcode, ISBN, and complete `rawColumns`. Each source product is counted once even when it has multiple issue categories. Legacy stock remains an assumption of one unit per source product with `PENDING_ADMIN_REVIEW`; preflight creates no product, SKU, or inventory transaction.
 
 ## Dedupe / Conflict
 

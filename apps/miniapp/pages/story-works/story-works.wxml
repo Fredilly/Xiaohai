@@ -8,6 +8,12 @@
     <text class="state-title">正在加载作品</text>
   </view>
 
+  <view wx:elif="{{needsLogin}}" class="state-card">
+    <text class="state-title">登录后查看 AI 作品</text>
+    <text class="state-copy">你的故事和绘本保存在个人账户中，请先登录。</text>
+    <button class="primary-btn" bindtap="goToLogin">去登录</button>
+  </view>
+
   <view wx:elif="{{error}}" class="state-card">
     <text class="state-title">加载失败</text>
     <text class="state-copy">请确认已经登录，并检查网络后重试。</text>

@@ -1,5 +1,15 @@
 # PR #134 — Me page acceptance report
 
+## 2026-11-04 latest-main integration note
+
+- **Branch update baseline:** latest `main@ecaea1f231469903e3eaa9dedad437f37d0d78c5`, retaining this PR's three reader-passport UI files and historical visual artifacts. To avoid rewriting published PR history, the branch is synchronized by a normal two-parent integration commit rather than a destructive force-rebase.
+- **Reviewer corrections:** order tiles retain `data-view="{{item.view}}"` for PR #139 interoperability; `purchased`, `member` and `settings` tiles again show **即将开放** because they lead to placeholders. A WXML regression test checks order click/view, View All, login and placeholder labels.
+- **Separation:** PR #139 remains a separate Draft with Fred's code approval; its actual `orderActions[].view`/filter handler implementation is **not** copied into this PR. PR #140 remains integration-test-only. The completed 2026-11-04 #140 staging UAT covered real order/login/session and consumer-data isolation, but **does not** prove avatar-picker, expired-session or final-head PR #134 UI acceptance; these must be separately validated.
+- Historical 2026-10-18 screenshots below are retained as **historical** evidence, not new screenshots of the 2026-11-04 integrated branch. Latest-head CI and manual final integrated UI acceptance must be evaluated independently. Do not claim untested functions as PASS.
+
+---
+
+
 - Source commit under test: `875c60539402b7ec1fdb9ce549e013776796b9b8`
 - Test date: 2026-10-18 (Asia/Shanghai); a second isolated-session attempt was made after the prior report.
 - Static checks were run from this isolated worktree. No production API, database write, login, payment, AI, or user-data operation was used.

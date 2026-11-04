@@ -308,8 +308,10 @@ export class StoreNetworkService {
   }
 
   async updateStore(context: StaffAuthorizationContext, id: string, raw: UpdateStoreRequest) {
-    const current = await this.requireStaffStoreRow(id);
-    if (!canAccessStore(context, current)) {
+    await this.requireStaffStoreRow(id);
+    // Store accounts may edit catalog data inside their scope, but changing
+    // store identity and operating configuration is HQ-only.
+    if (!hasGlobal(context)) {
       throw new StoreNetworkError('SCOPE_MISMATCH');
     }
 

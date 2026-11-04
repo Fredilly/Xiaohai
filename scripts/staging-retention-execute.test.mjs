@@ -1,0 +1,183 @@
+import assert from 'node:assert/strict';
+import { chmod, mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { spawn, spawnSync } from 'node:child_process';
+import { hostname, tmpdir } from 'node:os';
+import { join } from 'node:path';
+import test from 'node:test';
+
+const script = new URL('./staging-image-retention.sh', import.meta.url).pathname;
+const current = 'e38a1796b7f6eb08a7b10932567c5b781eed606c';
+const rollbackA = 'f8e1fe86bbb904a4e7871901442a5b3dac7890e0';
+const rollbackB = 'd79ca0ff400f52f05a140235565b9c981163ead5';
+const extraProtected = 'b'.repeat(40);
+const old = 'c'.repeat(40);
+const id = (n) => `sha256:${n.repeat(64)}`;
+const api = (r) => `ghcr.io/fredilly/xiaohai-api:${r}`;
+const worker = (r) => `ghcr.io/fredilly/xiaohai-worker:${r}`;
+
+async function fixture({ ready = true, failRemove = null, workerRunning = true } = {}) {
+  const dir = await mkdtemp(join(tmpdir(), 'xiaohai-exec-fixture-'));
+  const deployDir = join(dir, 'xiaohai-deploy');
+  await mkdir(deployDir);
+  for (const file of [
+    'revision.env',
+    'staging.env',
+    'staging.compose.yml',
+    'Caddyfile',
+    'staging-remote-deploy.sh',
+    'staging-disk-gate.sh',
+    'staging-image-retention.sh',
+  ]) {
+    await writeFile(join(deployDir, file), '# fixture deployment config\\n');
+  }
+  const statePath = join(dir, 'state.json');
+  const images = Object.fromEntries([
+    [api(current), id('1')],
+    [worker(current), id('2')],
+    [api(rollbackA), id('3')],
+    [worker(rollbackA), id('4')],
+    [api(rollbackB), id('5')],
+    [worker(rollbackB), id('6')],
+    [api(extraProtected), id('d')],
+    [worker(extraProtected), id('e')],
+    ['postgres:17-alpine', id('7')],
+    ['redis:7.4-alpine', id('8')],
+    ['caddy:2-alpine', id('9')],
+    [api(old), id('a')],
+    [worker(old), id('b')],
+  ]);
+  await writeFile(statePath, JSON.stringify({ images, removed: [], failRemove, workerRunning }));
+  const docker = join(dir, 'docker');
+  await writeFile(
+    docker,
+    `#!/usr/bin/env node
+const fs = require('node:fs');
+const a = process.argv.slice(2);
+const p = process.env.MOCK_STATE;
+const state = JSON.parse(fs.readFileSync(p, 'utf8'));
+const out = (value) => process.stdout.write(String(value) + '\\n');
+if (a[0] === 'context' && a[1] === 'show') out('default');
+else if (a[0] === 'image' && a[1] === 'ls') Object.keys(state.images).forEach(out);
+else if (a[0] === 'image' && a[1] === 'inspect') {
+  const ref = a[a.length - 1];
+  if (!state.images[ref]) process.exit(1);
+  if (a.includes('{{.Id}}')) out(state.images[ref]);
+  else if (a.some(x => x.includes('RepoTags'))) out(ref);
+  else process.exit(2);
+} else if (a[0] === 'ps' && a[1] === '-aq') { out('running-api'); out('running-worker'); }
+else if (a[0] === 'inspect') {
+  const ref = a[a.length - 1];
+  if (a.includes('{{.State.Health.Status}}')) out('healthy');
+  else if (a.includes('{{.State.Running}}')) out(ref.includes('worker') && !state.workerRunning ? 'false' : 'true');
+  else if (a.includes('{{.Config.Image}}')) out(ref.includes('api') ? process.env.MOCK_CURRENT_API : process.env.MOCK_CURRENT_WORKER);
+  else if (a.includes('{{.Image}}')) out(ref.includes('api') ? state.images[process.env.MOCK_CURRENT_API] : state.images[process.env.MOCK_CURRENT_WORKER]);
+  else process.exit(2);
+} else if (a[0] === 'volume' && a[1] === 'inspect') out('[]');
+else if (a[0] === 'exec' && a.includes('persistence')) {
+  out('rdb_last_bgsave_status:ok\\r'); out('aof_last_write_status:ok\\r');
+} else if (a[0] === 'image' && a[1] === 'rm') {
+  const ref = a[a.length - 1];
+  if (ref === state.failRemove) process.exit(8);
+  if (!state.images[ref]) process.exit(1);
+  delete state.images[ref];
+  state.removed.push(ref);
+  fs.writeFileSync(p, JSON.stringify(state));
+  out('Deleted: ' + ref);
+} else process.exit(2);
+`,
+  );
+  await chmod(docker, 0o755);
+  const grep = join(dir, 'grep');
+  await writeFile(grep, '#!/bin/sh\n[ "$1" = "-RIlF" ] && exit 1\nexec /usr/bin/grep "$@"\n');
+  await chmod(grep, 0o755);
+  const sudo = join(dir, 'sudo');
+  await writeFile(sudo, '#!/bin/sh\n[ "$1" = "-n" ] && shift\nexec "$@"\n');
+  await chmod(sudo, 0o755);
+  const curl = join(dir, 'curl');
+  await writeFile(curl, `#!/bin/sh\nprintf '%s' '${ready ? '200' : '503'}'\n`);
+  await chmod(curl, 0o755);
+  const df = join(dir, 'df');
+  await writeFile(
+    df,
+    `#!/usr/bin/env node
+const fs = require('node:fs');
+const state = JSON.parse(fs.readFileSync(process.env.MOCK_STATE));
+const removed = state.removed.length;
+console.log('Filesystem 1024-blocks Used Available Capacity Mounted on');
+console.log('/dev/vda3 51200000 100000  ' + (5000000 + removed * 600000) + ' ' + (80 - removed) + '% /');
+`,
+  );
+  await chmod(df, 0o755);
+  const plan = join(dir, 'approved-plan.txt');
+  await writeFile(plan, `${old} ${id('a')} ${id('b')}\n`);
+  const lock = join(dir, 'host.lock');
+  const env = {
+    ...process.env,
+    PATH: `${dir}:${process.env.PATH}`,
+    MOCK_STATE: statePath,
+    MOCK_CURRENT_API: api(current),
+    MOCK_CURRENT_WORKER: worker(current),
+    STAGING_CURRENT_REVISION: current,
+    STAGING_ROLLBACK_REVISIONS: `${rollbackA} ${rollbackB}`,
+    STAGING_EXTRA_PROTECTED_REVISION: extraProtected,
+    STAGING_DEPLOY_LOCK: lock,
+    STAGING_DEPLOY_CONFIG_DIR: deployDir,
+    STAGING_CONFIG_COVERAGE_CONFIRMED: 'true',
+    STAGING_RETENTION_EXECUTE_ENABLED: 'true',
+    STAGING_DEPLOY_SUCCEEDED_REVISION: current,
+    STAGING_RETENTION_APPROVED_PLAN: plan,
+    STAGING_RETENTION_APPROVAL_ID: 'fixture-owner-approval',
+    STAGING_EXPECTED_HOSTNAME: hostname(),
+  };
+  return {
+    lock,
+    run: () => spawnSync('bash', [script, '--execute'], { env, encoding: 'utf8' }),
+    state: async () => JSON.parse(await readFile(statePath, 'utf8')),
+  };
+}
+
+test('approved exact-ID execution checks services and stops after one pair', async () => {
+  const fx = await fixture();
+  const result = fx.run();
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /AUDIT deleted_revision=/);
+  assert.deepEqual((await fx.state()).removed, [api(old), worker(old)]);
+});
+
+test('failed readiness blocks any removal', async () => {
+  const fx = await fixture({ ready: false });
+  const result = fx.run();
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /API readiness non-200/);
+  assert.deepEqual((await fx.state()).removed, []);
+});
+
+test('Docker failure stops without forced retry after partial removal', async () => {
+  const fx = await fixture({ failRemove: worker(old) });
+  const result = fx.run();
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /Docker refused deletion/);
+  assert.deepEqual((await fx.state()).removed, [api(old)]);
+});
+
+test('concurrent deployment lock stops retention without image changes', async () => {
+  const fx = await fixture();
+  const holder = spawn('flock', ['-x', fx.lock, 'sleep', '3'], { stdio: 'ignore' });
+  try {
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    const result = fx.run();
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /already running/);
+    assert.deepEqual((await fx.state()).removed, []);
+  } finally {
+    holder.kill();
+  }
+});
+
+test('stopped current Worker blocks removal even if API readiness passes', async () => {
+  const fx = await fixture({ workerRunning: false });
+  const result = fx.run();
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /worker container is not running/);
+  assert.deepEqual((await fx.state()).removed, []);
+});

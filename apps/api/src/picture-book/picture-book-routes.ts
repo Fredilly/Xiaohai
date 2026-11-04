@@ -56,6 +56,7 @@ export function registerPictureBookRoutes(
   });
 
   app.get('/api/v1/ai/picture-books', async (request, reply) => {
+    reply.header('Cache-Control', 'private, no-store');
     try {
       return pictureBookListSchema.parse(
         await options.pictureBook.listPictureBooks(consumer(request)),
@@ -66,6 +67,7 @@ export function registerPictureBookRoutes(
   });
 
   app.get('/api/v1/ai/picture-books/:id', async (request, reply) => {
+    reply.header('Cache-Control', 'private, no-store');
     const params = z.object({ id: z.uuid() }).safeParse(request.params);
     if (!params.success) return invalid(reply, request.id);
 
@@ -147,6 +149,7 @@ export function registerPictureBookRoutes(
   app.get(
     '/api/v1/ai/picture-books/:bookId/characters/:characterId/reference-images',
     async (request, reply) => {
+      reply.header('Cache-Control', 'private, no-store');
       const params = z
         .object({ bookId: z.uuid(), characterId: z.uuid() })
         .safeParse(request.params);
@@ -271,6 +274,7 @@ export function registerPictureBookRoutes(
   app.get(
     '/api/v1/ai/picture-books/:bookId/pages/:pageId/illustrations',
     async (request, reply) => {
+      reply.header('Cache-Control', 'private, no-store');
       const params = z.object({ bookId: z.uuid(), pageId: z.uuid() }).safeParse(request.params);
       if (!params.success) return invalid(reply, request.id);
       try {
