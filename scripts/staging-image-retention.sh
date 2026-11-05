@@ -20,7 +20,24 @@ additional="${STAGING_EXTRA_PROTECTED_REVISION:-}"
 valid_revision "$additional" || fail 'one additional protected historical revision is required'
 [[ "$additional" != "$current" && "$additional" != "$rollback_a" && "$additional" != "$rollback_b" ]] ||
   fail 'additional protected revision must be distinct'
-protected_revisions=("$current" "$rollback_a" "$rollback_b" "$additional")
+# Owner-required Nov 5 provisional HOLD: protect all five API+Worker release pairs.
+# This is a versioned, explicit safety allowlist. No image deletion authorization
+# follows from listing a revision here, and Actions remains dry-run-only.
+recent_hold_revisions=(
+  "03f5ee0f3d364597739162ca8661ebc993523ead"
+  "12091f5d8586809ebb5d43308582797d00b3ba79"
+  "662ca971de6cae265d810b7e37e74eb1ce836abc"
+  "ecaea1f231469903e3eaa9dedad437f37d0d78c5"
+  "ecc03badca74669d85f5c7b69915b81967d39825"
+)
+protected_revisions=()
+declare -A protected_revision_set=()
+for rev in "$current" "$rollback_a" "$rollback_b" "$additional" "${recent_hold_revisions[@]}"; do
+  valid_revision "$rev" || fail 'invalid protected HOLD revision'
+  [[ -z "${protected_revision_set[$rev]:-}" ]] || continue
+  protected_revision_set["$rev"]=1
+  protected_revisions+=("$rev")
+done
 
 if [[ "$mode" == --execute ]]; then
   [[ "${STAGING_RETENTION_EXECUTE_ENABLED:-false}" == true ]] || fail 'execution not authorized; use dry-run'
@@ -210,9 +227,8 @@ if [[ "$mode" == --execute ]]; then healthy; fi
 count=0
 while IFS= read -r rev; do
   [[ -n "$rev" ]] || continue
-  # The additional historical release is never eligible, even if unreferenced.
-  if [[ "$rev" == "$current" || "$rev" == "$rollback_a" ||
-        "$rev" == "$rollback_b" || "$rev" == "$additional" ]]; then
+  # No named protected/HOLD release may ever become a candidate, even if idle.
+  if [[ -n "${protected_revision_set[$rev]:-}" ]]; then
     printf 'PROTECTED_REVISION revision=%s\n' "$rev"
     continue
   fi

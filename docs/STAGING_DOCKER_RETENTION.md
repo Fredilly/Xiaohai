@@ -205,3 +205,17 @@ a green check does not claim the host has passed this review.
 - **Obsolete deployment coalescing:** the staging workflow compares the triggering CI SHA with remote `origin/main` before each image build and once more before SSH, skipping stale queued runs. Remote fetch failure aborts safely; any change after final read is a remaining bounded race.
 - **Preflight forecast:** `staging-disk-gate.sh pre` budgets `STAGING_EXPECTED_IMAGE_PAIR_KIB=1572864` (1.5 GiB) based on observed 1.25–1.33 GiB growth for the previous image pair. It blocks if projected post-unpack usage reaches 85% or free headroom falls below 4 GiB. Re-evaluate this estimate with CI image sizes and host-specific measured pull/unpack growth. Existing >=70% disk/inode warnings and post-deploy gate remain.
 - **No rollout in this PR:** does not touch staging server, enable retention `--execute`, remove images, alter PostgreSQL/Redis/Caddy/volumes or run migrations. The current host was 87% full, above preflight threshold. Fred must approve a separate capacity recovery and then a normal staging rollout.
+
+## 2026-11-05 owner-required explicit five-release HOLD (Issue #195)
+
+Fred explicitly required **five more historical deployment revisions** to remain protected before any real image removal, separate from the current, two rollback and one extra protection entries. This is a hard-coded, code-reviewed safety list in `staging-image-retention.sh`, and **both API and Worker images** for each exact revision must exist or the audit/execute fails closed:
+
+- `03f5ee0f3d364597739162ca8661ebc993523ead`
+- `12091f5d8586809ebb5d43308582797d00b3ba79`
+- `662ca971de6cae265d810b7e37e74eb1ce836abc`
+- `ecaea1f231469903e3eaa9dedad437f37d0d78c5`
+- `ecc03badca74669d85f5c7b69915b81967d39825`
+
+The script deduplicates this list against current/rollback/extra revisions as deployments evolve, and treats all five as `PROTECTED_REVISION`, **never** as `AUDIT` candidates even if the images have no container references. Tests cover each hold pair, missing held images and execute-mode refusal. Only the 17 older API/Worker release pairs remain candidate-only; even those are NOT approved for deletion without an exact owner-signed plan, fresh backup/host/config/service checks, maximum two pairs per authorized batch, and post-batch checks.
+
+No automatic retention deletion is enabled. **Do not** copy this code to staging, merge PR #202, SSH deploy or run `--execute` without separate owner authorization. PR CI and host rollout are different approval gates.
