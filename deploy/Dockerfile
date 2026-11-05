@@ -17,6 +17,7 @@ RUN set -eu; \
     mkdir -p /runtime/dist; \
     cp -a "apps/$SERVICE/dist/." /runtime/dist/; \
     for pkg in config contracts db domain validation; do \
+      [ -d "packages/$pkg/dist" ] || continue; \
       target="/runtime/node_modules/@xiaohai/$pkg"; \
       if [ -L "$target" ]; then rm "$target"; fi; \
       mkdir -p "$target/dist"; \
