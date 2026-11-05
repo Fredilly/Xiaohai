@@ -13,6 +13,7 @@ async function runGate({
   available = 10485760,
   mode = 'pre',
   minimum,
+  growth,
 } = {}) {
   const dir = await mkdtemp(join(tmpdir(), 'xiaohai-disk-gate-'));
   const df = join(dir, 'df');
@@ -27,6 +28,7 @@ async function runGate({
       ...process.env,
       PATH: `${dir}:${process.env.PATH}`,
       ...(minimum ? { STAGING_MIN_FREE_KIB: minimum } : {}),
+      ...(growth !== undefined ? { STAGING_EXPECTED_IMAGE_PAIR_KIB: String(growth) } : {}),
     },
   });
 }
@@ -55,4 +57,20 @@ test('insufficient image-pull headroom blocks pre, but post only reports it', as
 test('invalid df data and unsafe minimum fail closed', async () => {
   assert.equal((await runGate({ usage: 101 })).status, 1);
   assert.equal((await runGate({ minimum: '-1' })).status, 2);
+});
+
+test('projected image growth blocks a nominal 84% pre-deploy crossing 85%', async () => {
+  const pre = await runGate({ usage: 84, available: 8132712 });
+  assert.equal(pre.status, 1);
+  assert.match(pre.stderr, /projected disk usage >=85%/);
+  assert.match(pre.stdout, /STAGING_DISK_FORECAST/);
+  const post = await runGate({ usage: 84, available: 8132712, mode: 'post' });
+  assert.equal(post.status, 0, post.stderr);
+});
+
+test('projected free headroom and zero growth fail closed', async () => {
+  const low = await runGate({ usage: 77, available: 5242880 });
+  assert.equal(low.status, 1);
+  assert.match(low.stderr, /projected free space/);
+  assert.equal((await runGate({ growth: 0 })).status, 2);
 });
