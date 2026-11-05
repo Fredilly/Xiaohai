@@ -39,9 +39,10 @@ describe('home display content', () => {
       },
     ];
 
-    const updated = clearFailedHeroMedia(sections, 0, miniappRemoteAssets.home.parentChildReading);
+    const failedUrl = miniappRemoteAssets.home.parentChildReading;
+    const updated = clearFailedHeroMedia(sections, 0, 'bos-test', failedUrl);
     expect(updated[0]).toEqual({ ...sections[0], mediaUrl: '' });
-    expect(sections[0]?.mediaUrl).toBe(miniappRemoteAssets.home.parentChildReading);
+    expect(sections[0]?.mediaUrl).toBe(failedUrl);
   });
 
   it('ignores stale image errors after CMS content is replaced', () => {
@@ -56,12 +57,9 @@ describe('home display content', () => {
       },
     ];
 
-    expect(clearFailedHeroMedia(sections, 0, miniappRemoteAssets.home.parentChildReading)).toBe(
-      sections,
-    );
-    expect(clearFailedHeroMedia(sections, 1, miniappRemoteAssets.home.parentChildReading)).toBe(
-      sections,
-    );
+    const staleUrl = miniappRemoteAssets.home.parentChildReading;
+    expect(clearFailedHeroMedia(sections, 0, 'bos-test', staleUrl)).toBe(sections);
+    expect(clearFailedHeroMedia(sections, 1, 'current-banner', staleUrl)).toBe(sections);
 
     const newerHero: HomeSection[] = [
       {
@@ -73,12 +71,42 @@ describe('home display content', () => {
         mediaUrl: 'https://cdn.example.com/newer-hero.jpg',
       },
     ];
-    expect(clearFailedHeroMedia(newerHero, 0, miniappRemoteAssets.home.parentChildReading)).toBe(
-      newerHero,
-    );
+    expect(clearFailedHeroMedia(newerHero, 0, 'newer-hero', staleUrl)).toBe(newerHero);
   });
 
-  it('uses BOS editorial art when a CMS hero has no media and preserves explicit CMS media', () => {
+  it('ignores stale image errors after a HERO is replaced by one with the same URL', () => {
+    const sharedUrl = miniappRemoteAssets.home.parentChildReading;
+    const sections: HomeSection[] = [
+      {
+        id: 'replacement-hero',
+        sectionType: 'HERO',
+        title: '新活动',
+        displayOrder: 1,
+        config: { eyebrow: '最近上新' },
+        mediaUrl: sharedUrl,
+      },
+      {
+        id: 'unchanged-hero',
+        sectionType: 'HERO',
+        title: '亲子阅读',
+        displayOrder: 2,
+        config: {},
+        mediaUrl: sharedUrl,
+      },
+    ];
+
+    expect(clearFailedHeroMedia(sections, 0, 'old-hero', sharedUrl)).toBe(sections);
+    expect(clearFailedHeroMedia(sections, 1, 'replacement-hero', sharedUrl)).toBe(sections);
+    expect(clearFailedHeroMedia(sections, 0, '', sharedUrl)).toBe(sections);
+    expect(clearFailedHeroMedia(sections, 0, 'replacement-hero', '')).toBe(sections);
+
+    const result = clearFailedHeroMedia(sections, 0, 'replacement-hero', sharedUrl);
+    expect(result[0]).toEqual({ ...sections[0], mediaUrl: '' });
+    expect(result[1]).toBe(sections[1]);
+    expect(sections[0]?.mediaUrl).toBe(sharedUrl);
+  });
+
+  it('uses a matching BOS editorial cover and preserves explicit CMS media', () => {
     const sections: HomeSection[] = [
       {
         id: 'fallback',
@@ -110,7 +138,56 @@ describe('home display content', () => {
     const display = homeDisplaySections(sections);
     expect(display[0]?.mediaUrl).toBe(miniappRemoteAssets.home.parentChildReading);
     expect(display[1]?.mediaUrl).toBe('https://cdn.example.com/cms-hero.jpg');
-    expect(display[2]?.mediaUrl).toBe(miniappRemoteAssets.home.parentChildReading);
+    expect(display[2]?.mediaUrl).toBeNull();
+    expect(display[2]).toBe(sections[2]);
     expect(sections[0]?.mediaUrl).toBeNull();
+  });
+
+  it('does not replace unrelated CMS heroes with a parent-child reading photo', () => {
+    const sections: HomeSection[] = [
+      {
+        id: 'ai-hero',
+        sectionType: 'HERO',
+        title: '把一个想法变成故事',
+        subtitle: '小海 AI · 故事创作',
+        displayOrder: 1,
+        config: { eyebrow: '原创创作' },
+        mediaUrl: '',
+      },
+      {
+        id: 'custom-hero',
+        sectionType: 'HERO',
+        title: '玩具与文创',
+        displayOrder: 2,
+        config: {},
+      },
+      {
+        id: 'subtitle-matching',
+        sectionType: 'HERO',
+        title: '精选推荐',
+        subtitle: '亲子绘本',
+        displayOrder: 3,
+        config: {},
+      },
+      {
+        id: 'editor-provided',
+        sectionType: 'HERO',
+        title: '亲子阅读',
+        displayOrder: 4,
+        config: {},
+        mediaUrl: 'https://cdn.example.com/curated-hero.jpg',
+      },
+    ];
+    const displayed = homeDisplaySections(sections);
+
+    expect(displayed[0]).toBe(sections[0]);
+    expect(displayed[1]).toBe(sections[1]);
+    expect(displayed[2]).toEqual({
+      ...sections[2],
+      mediaUrl: miniappRemoteAssets.home.parentChildReading,
+    });
+    expect(displayed[3]).toBe(sections[3]);
+    expect(displayed[0]?.config).toEqual({ eyebrow: '原创创作' });
+    expect(sections[2]?.mediaUrl).toBeUndefined();
   });
 });
