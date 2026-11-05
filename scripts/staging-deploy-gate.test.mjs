@@ -91,5 +91,8 @@ test('outdated main CI is skipped before image build and again before staging SS
   assert.match(workflow, /Recheck latest main before staging SSH/u);
   assert.match(workflow, /if: steps\.latest\.outputs\.current == 'true'/u);
   assert.match(workflow, /bash scripts\/staging-check-main\.sh/u);
-  assert.match(workflow, /steps\.latest\.outputs\.current == 'true' && vars\.STAGING_RETENTION_PLAN_READY/u);
+  assert.match(
+    workflow,
+    /steps\.latest\.outputs\.current == 'true' && vars\.STAGING_RETENTION_PLAN_READY/u,
+  );
 });

@@ -17,10 +17,12 @@ RUN set -eu; \
     mkdir -p /runtime/dist; \
     cp -a "apps/$SERVICE/dist/." /runtime/dist/; \
     for pkg in config contracts db domain validation; do \
-      if [ -d "/runtime/node_modules/@xiaohai/$pkg" ]; then \
-        mkdir -p "/runtime/node_modules/@xiaohai/$pkg/dist"; \
-        cp -a "packages/$pkg/dist/." "/runtime/node_modules/@xiaohai/$pkg/dist/"; \
-      fi; \
+      target="/runtime/node_modules/@xiaohai/$pkg"; \
+      if [ -L "$target" ]; then rm "$target"; fi; \
+      mkdir -p "$target/dist"; \
+      cp "packages/$pkg/package.json" "$target/package.json"; \
+      cp -a "packages/$pkg/dist/." "$target/dist/"; \
+      test ! -L "$target"; \
     done; \
     test -f "/runtime/dist/$([ "$SERVICE" = api ] && echo server || echo index).js"; \
     test -f /runtime/node_modules/@xiaohai/db/dist/src/index.js; \

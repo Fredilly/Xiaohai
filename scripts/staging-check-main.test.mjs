@@ -13,12 +13,21 @@ async function simulate({ expected = current, latest = current, failure = false 
   const dir = await mkdtemp(join(tmpdir(), 'xiaohai-main-check-'));
   const outputPath = join(dir, 'output');
   const mockGit = join(dir, 'git');
-  await writeFile(mockGit, '#!/bin/sh\n[ "$1" = "ls-remote" ] || exit 2\n[ "$MOCK_FAILURE" != 1 ] || exit 3\nprintf "%s\\trefs/heads/main\\n" "$MOCK_LATEST"\n');
+  await writeFile(
+    mockGit,
+    '#!/bin/sh\n[ "$1" = "ls-remote" ] || exit 2\n[ "$MOCK_FAILURE" != 1 ] || exit 3\nprintf "%s\\trefs/heads/main\\n" "$MOCK_LATEST"\n',
+  );
   await chmod(mockGit, 0o755);
   const result = spawnSync('bash', [script], {
     encoding: 'utf8',
-    env: { ...process.env, PATH: `${dir}:${process.env.PATH}`, STAGING_CI_SHA: expected,
-      GITHUB_OUTPUT: outputPath, MOCK_LATEST: latest, MOCK_FAILURE: failure ? '1' : '0' },
+    env: {
+      ...process.env,
+      PATH: `${dir}:${process.env.PATH}`,
+      STAGING_CI_SHA: expected,
+      GITHUB_OUTPUT: outputPath,
+      MOCK_LATEST: latest,
+      MOCK_FAILURE: failure ? '1' : '0',
+    },
   });
   return { result, output: await readFile(outputPath, 'utf8').catch(() => '') };
 }
