@@ -11,7 +11,7 @@ concurrency:
   group: deploy-staging
   cancel-in-progress: false
 jobs:
-  build:
+  eligibility:
     if: >-
       ${{ github.event_name == 'workflow_run' &&
           github.event.workflow_run.conclusion == 'success' &&
@@ -19,6 +19,21 @@ jobs:
           github.event.workflow_run.head_branch == 'main' &&
           github.event.workflow_run.head_repository.full_name == github.repository &&
           vars.STAGING_READY == 'true' }}
+    runs-on: ubuntu-latest
+    outputs:
+      current: ${{ steps.latest.outputs.current }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+      - name: Confirm CI commit is still latest main
+        id: latest
+        env:
+          STAGING_CI_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: bash scripts/staging-check-main.sh
+  build:
+    needs: eligibility
+    if: needs.eligibility.outputs.current == 'true'
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -41,14 +56,22 @@ jobs:
           build-args: SERVICE=${{ matrix.service }}
           tags: ghcr.io/fredilly/xiaohai-${{ matrix.service }}:${{ github.event.workflow_run.head_sha }}
   deploy:
-    needs: build
+    needs: [eligibility, build]
+    if: needs.eligibility.outputs.current == 'true'
     runs-on: ubuntu-latest
     environment: staging
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
+      # Recheck after builds/queueing before making any staging connection.
+      - name: Recheck latest main before staging SSH
+        id: latest
+        env:
+          STAGING_CI_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: bash scripts/staging-check-main.sh
       - name: Install SSH key
+        if: steps.latest.outputs.current == 'true'
         env:
           SSH_KEY: ${{ secrets.STAGING_SSH_PRIVATE_KEY }}
           SSH_HOST: ${{ secrets.STAGING_SSH_HOST }}
@@ -65,6 +88,7 @@ jobs:
       # a separate DBA-approved migration or seed operation (Issue #169).
       # No image removal is wired here; maintenance scripts default to dry-run.
       - name: Deploy exact CI-verified revision with disk/inode capacity gate
+        if: steps.latest.outputs.current == 'true'
         env:
           HOST: ${{ secrets.STAGING_SSH_HOST }}
           USER: ${{ secrets.STAGING_SSH_USER }}
@@ -82,7 +106,7 @@ jobs:
           curl --fail --retry 8 --retry-delay 5 --retry-connrefused "https://staging-api.pamboo.asia/ready"
           ssh "$USER@$HOST" 'cd ~/xiaohai-deploy && bash staging-disk-gate.sh post'
       - name: Dry-run retention audit (explicitly enabled; no deletes)
-        if: vars.STAGING_RETENTION_PLAN_READY == 'true'
+        if: steps.latest.outputs.current == 'true' && vars.STAGING_RETENTION_PLAN_READY == 'true'
         env:
           HOST: ${{ secrets.STAGING_SSH_HOST }}
           USER: ${{ secrets.STAGING_SSH_USER }}
