@@ -12,18 +12,23 @@ const rollbackB = 'd79ca0ff400f52f05a140235565b9c981163ead5';
 const extraProtected = 'b'.repeat(40);
 const old = 'c'.repeat(40);
 const recentHolds = [
-  '03f5ee0f3d364597739162ca8661ebc993523ead'
-  '12091f5d8586809ebb5d43308582797d00b3ba79'
-  '662ca971de6cae265d810b7e37e74eb1ce836abc'
-  'ecaea1f231469903e3eaa9dedad437f37d0d78c5'
-  'ecc03badca74669d85f5c7b69915b81967d39825'
+  '03f5ee0f3d364597739162ca8661ebc993523ead',
+  '12091f5d8586809ebb5d43308582797d00b3ba79',
+  '662ca971de6cae265d810b7e37e74eb1ce836abc',
+  'ecaea1f231469903e3eaa9dedad437f37d0d78c5',
+  'ecc03badca74669d85f5c7b69915b81967d39825',
 ];
 const heldId = (n) => `sha256:${n.toString(16).padStart(64, '0')}`;
 const id = (n) => `sha256:${n.repeat(64)}`;
 const api = (r) => `ghcr.io/fredilly/xiaohai-api:${r}`;
 const worker = (r) => `ghcr.io/fredilly/xiaohai-worker:${r}`;
 
-async function fixture({ ready = true, failRemove = null, workerRunning = true, missingHold = null } = {}) {
+async function fixture({
+  ready = true,
+  failRemove = null,
+  workerRunning = true,
+  missingHold = null,
+} = {}) {
   const dir = await mkdtemp(join(tmpdir(), 'xiaohai-exec-fixture-'));
   const deployDir = join(dir, 'xiaohai-deploy');
   await mkdir(deployDir);
