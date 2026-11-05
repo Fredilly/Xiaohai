@@ -14,7 +14,8 @@ RUN pnpm --filter "@xiaohai/$SERVICE" --prod deploy --legacy /runtime
 # Deploy packlists can exclude dist via the repository .gitignore. Recopy ONLY
 # compiled workspace files; never copy development dependencies to runtime.
 RUN set -eu; \
-    cp -a "apps/$SERVICE/dist" /runtime/dist; \
+    mkdir -p /runtime/dist; \
+    cp -a "apps/$SERVICE/dist/." /runtime/dist/; \
     for pkg in config contracts db domain validation; do \
       if [ -d "/runtime/node_modules/@xiaohai/$pkg" ]; then \
         mkdir -p "/runtime/node_modules/@xiaohai/$pkg/dist"; \
