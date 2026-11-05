@@ -44,5 +44,7 @@ jobs:
             docker run --rm --entrypoint sh "xiaohai-$service:check" -c "cd apps/$service && node --input-type=module -e \"await import('@xiaohai/config'); await import('@xiaohai/db'); await import('@xiaohai/contracts')\""
             docker image inspect --format "runtime_image=$service size_bytes={{.Size}}" "xiaohai-$service:check"
           done
+          # API alone declares @xiaohai/domain; prove its production import resolves.
+          docker run --rm --entrypoint sh xiaohai-api:check -c "cd apps/api && node --input-type=module -e \"await import('@xiaohai/domain')\""
           docker run --rm --entrypoint sh xiaohai-api:check -c 'test ! -d /app/benchmarks && test ! -d /app/apps/worker/dist'
           docker run --rm --entrypoint sh xiaohai-worker:check -c 'test ! -d /app/benchmarks && test ! -d /app/apps/api/dist'
