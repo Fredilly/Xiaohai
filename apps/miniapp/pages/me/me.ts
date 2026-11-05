@@ -42,8 +42,7 @@ Page({
   },
   onShow() {
     try {
-      const app = getApp<IAppOption>();
-      const consumerUserId = storedConsumerId() || app.globalData?.consumerUserId || '';
+      const consumerUserId = storedConsumerId();
       const avatarUrl = String(wx.getStorageSync(AVATAR_STORAGE_KEY) || '');
       this.setData({
         consumerUserId,
