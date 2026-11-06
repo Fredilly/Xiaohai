@@ -55,11 +55,11 @@ export function changedPaths(base, head, cwd = process.cwd()) {
     throw new Error('baseline is unavailable or not an ancestor of CI HEAD');
   }
   // --no-renames preserves both sides of backend-to-frontend moves.
-  const output = execFileSync(
-    'git',
-    ['diff', '--no-renames', '--name-only', '-z', base, head],
-    { cwd, encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 },
-  );
+  const output = execFileSync('git', ['diff', '--no-renames', '--name-only', '-z', base, head], {
+    cwd,
+    encoding: 'utf8',
+    maxBuffer: 8 * 1024 * 1024,
+  });
   return output.split('\0').filter(Boolean);
 }
 
@@ -77,8 +77,12 @@ function main() {
   const apiDigest = process.env.STAGING_BACKEND_API_DIGEST ?? '';
   const workerDigest = process.env.STAGING_BACKEND_WORKER_DIGEST ?? '';
   const result = evaluate({ base, head, apiDigest, workerDigest });
-  const label = result.changed ? 'BACKEND_CHANGED -> BUILD_AND_DEPLOY' : 'FRONTEND_ONLY -> BACKEND_SKIP';
-  const status = result.changed ? 'STAGING_DEPLOY_TRIGGERED' : 'STAGING_DEPLOY_SKIPPED: frontend-only';
+  const label = result.changed
+    ? 'BACKEND_CHANGED -> BUILD_AND_DEPLOY'
+    : 'FRONTEND_ONLY -> BACKEND_SKIP';
+  const status = result.changed
+    ? 'STAGING_DEPLOY_TRIGGERED'
+    : 'STAGING_DEPLOY_SKIPPED: frontend-only';
   console.log(
     `${label} ci_sha=${head} last_success_sha=${base} last_api_digest=${apiDigest} last_worker_digest=${workerDigest} changed_files=${result.paths.length}`,
   );
