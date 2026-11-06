@@ -126,7 +126,12 @@ def oci_descriptor_digests(obj):
     return refs
 
 
-def parse_content_tree(digest, visited, max_nodes=800):
+def parse_content_tree(digest, visited, max_nodes=800, missing=None):
+    # A multi-platform index may refer to content not downloaded locally.
+    # Record that absence explicitly; never infer that its descendants are
+    # unshared or that the missing blob could be freed.
+    if missing is None:
+        missing = set()
     if digest in visited:
         return
     if len(visited) >= max_nodes:
@@ -135,7 +140,11 @@ def parse_content_tree(digest, visited, max_nodes=800):
     path = ROOT / digest.split(":")[1]
     # Use logical length for the document read cap, not allocated st_blocks:
     # a sparse content blob could have very few allocated blocks.
-    content_stat(digest)
+    try:
+        content_stat(digest)
+    except FileNotFoundError:
+        missing.add(digest)
+        return
     if path.stat().st_size > 1048576:
         # Large compressed layer blobs are data, not OCI manifest documents.
         return
@@ -146,7 +155,7 @@ def parse_content_tree(digest, visited, max_nodes=800):
         return
 
     for ref in oci_descriptor_digests(obj):
-        parse_content_tree(ref, visited, max_nodes)
+        parse_content_tree(ref, visited, max_nodes, missing)
 
 
 def main():
@@ -275,16 +284,32 @@ def main():
             root_by_tag[parts[0]]=parts[2]
     # The only safe attribution is a complete graph including every ctr image.
     graph_by_root={}
+    missing_by_root={}
     for tag,digest in root_by_tag.items():
         if digest not in graph_by_root:
             visited=set()
-            parse_content_tree(digest,visited)
+            missing=set()
+            parse_content_tree(digest,visited,missing=missing)
             graph_by_root[digest]=visited
-    if any(
-        f"ghcr.io/fredilly/xiaohai-{role}:{rev}" not in root_by_tag
+            missing_by_root[digest]=missing
+
+    # Missing OCI blobs have zero currently allocated local bytes, but a
+    # missing manifest might reference an already-present/shared blob.
+    # Consequently *any* incomplete image graph invalidates "exclusive"
+    # attribution rather than letting us overclaim physical reclaim.
+    missing_total=set().union(*missing_by_root.values()) if missing_by_root else set()
+    print("oci_roots=",len(graph_by_root),"missing_local_descriptors=",len(missing_total))
+    missing_tags=[
+        f"ghcr.io/fredilly/xiaohai-{role}:{rev}"
         for role,rev in EXPECTED
-    ):
-        print("content_attribution=INCOMPLETE (ctr tag metadata missing); exclusive content cannot be claimed")
+        if f"ghcr.io/fredilly/xiaohai-{role}:{rev}" not in root_by_tag
+    ]
+    if missing_total or missing_tags:
+        print("content_attribution=INCOMPLETE (missing local blob or candidate ctr tag)")
+        print("two_pair_exclusive_content_bytes=INCOMPLETE")
+        print("two_pair_modeled_MAX_reclaim_bytes=INCOMPLETE")
+        print("guaranteed_reclaim_bytes=0 (no deletion, leases and GC not verified)")
+        print("READ_ONLY=true deleted=0")
         return
 
     other_digests=set()
