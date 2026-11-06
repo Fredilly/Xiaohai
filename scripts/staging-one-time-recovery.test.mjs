@@ -37,6 +37,7 @@ async function fixture({
   workerRunning = true,
   missingHold = null,
   candidateMismatch = false,
+  candidateMismatchB = false,
 } = {}) {
   const dir = await mkdtemp(join(tmpdir(), 'xiaohai-exec-fixture-'));
   const deployDir = join(dir, 'xiaohai-deploy');
@@ -68,7 +69,7 @@ async function fixture({
     [api(old), candidateMismatch ? id('a') : recoveryIds[api(old)]],
     [worker(old), recoveryIds[worker(old)]],
     [api(oldB), recoveryIds[api(oldB)]],
-    [worker(oldB), recoveryIds[worker(oldB)]],
+    [worker(oldB), candidateMismatchB ? id('c') : recoveryIds[worker(oldB)]],
     [api(extraOld), id('a')],
     [worker(extraOld), id('b')],
     ...recentHolds.flatMap((rev, i) => [
@@ -246,7 +247,15 @@ test('wrong exact API image ID rejects recovery without deleting anything', asyn
   const fx = await fixture({ candidateMismatch: true });
   const r = fx.run();
   assert.equal(r.status, 1);
-  assert.match(r.stderr, /recovery candidate exact image ID mismatch/);
+  assert.match(r.stderr, /recovery API image ID differs from owner allowlist/);
+  assert.deepEqual((await fx.state()).removed, []);
+});
+
+test('second recovery pair with wrong exact ID blocks first pair before any removal', async () => {
+  const fx = await fixture({ candidateMismatchB: true });
+  const r = fx.run();
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /recovery Worker image ID differs from owner allowlist/);
   assert.deepEqual((await fx.state()).removed, []);
 });
 
