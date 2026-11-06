@@ -4,7 +4,7 @@
 set -euo pipefail
 
 mode="${1:---dry-run}"
-[[ "$mode" == --dry-run || "$mode" == --execute || "$mode" == --recovery-execute ]] || { echo 'STOP invalid retention mode' >&2; exit 2; }
+[[ "$mode" == --dry-run || "$mode" == --execute || "$mode" == --recovery-execute || "$mode" == --steady-state-execute ]] || { echo 'STOP invalid retention mode' >&2; exit 2; }
 # --recovery-execute is a separate, manually invoked one-time exception for the
 # Nov 6 failed-post-disk-gate incident. Never wire it into CI or scheduled jobs.
 # It NEVER asserts that the failed historical workflow succeeded.
@@ -46,6 +46,10 @@ for rev in "$current" "$rollback_a" "$rollback_b" "$additional" "${recent_hold_r
   protected_revisions+=("$rev")
 done
 
+# Normal --execute and --steady-state-execute require a genuine verified success.
+# --steady-state-execute differs only in not stopping when usage drops below
+# the emergency threshold: it keeps the daily obsolete-image count bounded.
+# It is NOT wired into Actions and retains the explicit exact-ID owner plan.
 # The normal --execute route retains its original verified-success requirement.
 # Recovery is NOT an alternate way of providing STAGING_DEPLOY_SUCCEEDED_REVISION.
 if [[ "$deleting" == true ]]; then
@@ -315,7 +319,7 @@ while IFS= read -r rev; do
   [[ "$deleting" == true ]] || continue
 
   capacity
-  if (( FREE_KIB >= 15728640 || USED_PCT <= 70 )); then
+  if [[ "$mode" != --steady-state-execute ]] && (( FREE_KIB >= 15728640 || USED_PCT <= 70 )); then
     echo 'STOP target reached; no more deletions'
     break
   fi
