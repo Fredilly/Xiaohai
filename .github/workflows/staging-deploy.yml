@@ -6,12 +6,14 @@ on:
     branches: [main]
 permissions:
   contents: read
-  packages: write
 concurrency:
   group: deploy-staging
   cancel-in-progress: false
 jobs:
   eligibility:
+    permissions:
+      contents: read
+      deployments: read
     if: >-
       ${{ github.event_name == 'workflow_run' &&
           github.event.workflow_run.conclusion == 'success' &&
@@ -22,18 +24,84 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       current: ${{ steps.latest.outputs.current }}
+      backend_changed: ${{ steps.detect.outputs.backend_changed }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
       - name: Confirm CI commit is still latest main
         id: latest
         env:
           STAGING_CI_SHA: ${{ github.event.workflow_run.head_sha }}
         run: bash scripts/staging-check-main.sh
+      - name: Resolve last genuinely successful backend deployment
+        id: baseline
+        if: steps.latest.outputs.current == 'true'
+        uses: actions/github-script@v7
+        env:
+          BOOTSTRAP_SHA: ${{ vars.STAGING_VERIFIED_BASELINE_SHA }}
+          BOOTSTRAP_API_DIGEST: ${{ vars.STAGING_VERIFIED_BASELINE_API_DIGEST }}
+          BOOTSTRAP_WORKER_DIGEST: ${{ vars.STAGING_VERIFIED_BASELINE_WORKER_DIGEST }}
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const shaPattern = /^[0-9a-f]{40}$/;
+            const digestPattern = /^sha256:[0-9a-f]{64}$/;
+            // Deployment markers are created ONLY after every deploy/post-health gate passes.
+            const { data: records } = await github.rest.repos.listDeployments({
+              owner, repo, environment: 'staging-backend-success', per_page: 100
+            });
+            let selected;
+            for (const entry of records) {
+              const { data: statuses } = await github.rest.repos.listDeploymentStatuses({
+                owner, repo, deployment_id: entry.id, per_page: 1
+              });
+              if (statuses[0]?.state !== 'success') continue;
+              const data = typeof entry.payload === 'string'
+                ? JSON.parse(entry.payload) : entry.payload;
+              selected = {
+                sha: entry.sha,
+                api: data?.api_digest,
+                worker: data?.worker_digest,
+                source: `deployment:${entry.id}`
+              };
+              break;
+            }
+            if (!selected && records.length === 0) {
+              selected = {
+                sha: process.env.BOOTSTRAP_SHA,
+                api: process.env.BOOTSTRAP_API_DIGEST,
+                worker: process.env.BOOTSTRAP_WORKER_DIGEST,
+                source: 'one-time-owner-verified-bootstrap'
+              };
+            }
+            if (!selected || !shaPattern.test(selected.sha) ||
+                !digestPattern.test(selected.api) || !digestPattern.test(selected.worker)) {
+              throw new Error(
+                'No verified successful backend deployment baseline and digests. ' +
+                'Require one-time owner-verified baseline variables; do not build or deploy.'
+              );
+            }
+            core.info(`STAGING_BACKEND_BASELINE source=${selected.source} sha=${selected.sha} api=${selected.api} worker=${selected.worker}`);
+            core.setOutput('sha', selected.sha);
+            core.setOutput('api_digest', selected.api);
+            core.setOutput('worker_digest', selected.worker);
+      - name: Detect backend-impacting changes since last success
+        id: detect
+        if: steps.latest.outputs.current == 'true'
+        env:
+          STAGING_CI_SHA: ${{ github.event.workflow_run.head_sha }}
+          STAGING_BACKEND_BASE_SHA: ${{ steps.baseline.outputs.sha }}
+          STAGING_BACKEND_API_DIGEST: ${{ steps.baseline.outputs.api_digest }}
+          STAGING_BACKEND_WORKER_DIGEST: ${{ steps.baseline.outputs.worker_digest }}
+        run: node scripts/staging-backend-gate.mjs
   build:
     needs: eligibility
-    if: needs.eligibility.outputs.current == 'true'
+    if: needs.eligibility.outputs.current == 'true' && needs.eligibility.outputs.backend_changed == 'true'
+    permissions:
+      contents: read
+      packages: write
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -49,17 +117,37 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - uses: docker/build-push-action@v6
+        id: image
         with:
           context: .
           file: deploy/Dockerfile
           push: true
           build-args: SERVICE=${{ matrix.service }}
           tags: ghcr.io/fredilly/xiaohai-${{ matrix.service }}:${{ github.event.workflow_run.head_sha }}
+      - name: Validate pushed image digest
+        env:
+          IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+          IMAGE_SERVICE: ${{ matrix.service }}
+        run: |
+          set -euo pipefail
+          [[ "$IMAGE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo '::error::Invalid pushed digest'; exit 1; }
+          mkdir -p "$RUNNER_TEMP/backend-digests"
+          printf '%s\n' "$IMAGE_DIGEST" > "$RUNNER_TEMP/backend-digests/$IMAGE_SERVICE.digest"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: staging-backend-digest-${{ matrix.service }}
+          path: ${{ runner.temp }}/backend-digests/${{ matrix.service }}.digest
+          if-no-files-found: error
   deploy:
     needs: [eligibility, build]
-    if: needs.eligibility.outputs.current == 'true'
+    if: needs.eligibility.outputs.current == 'true' && needs.eligibility.outputs.backend_changed == 'true'
+    permissions:
+      contents: read
+      packages: read
     runs-on: ubuntu-latest
     environment: staging
+    outputs:
+      deployed: ${{ steps.deploy-images.outputs.deployed }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -88,6 +176,7 @@ jobs:
       # a separate DBA-approved migration or seed operation (Issue #169).
       # No image removal is wired here; maintenance scripts default to dry-run.
       - name: Deploy exact CI-verified revision with disk/inode capacity gate
+        id: deploy-images
         if: steps.latest.outputs.current == 'true'
         env:
           HOST: ${{ secrets.STAGING_SSH_HOST }}
@@ -105,6 +194,7 @@ jobs:
           curl --fail --retry 8 --retry-delay 5 --retry-connrefused "https://staging-api.pamboo.asia/health"
           curl --fail --retry 8 --retry-delay 5 --retry-connrefused "https://staging-api.pamboo.asia/ready"
           ssh "$USER@$HOST" 'cd ~/xiaohai-deploy && bash staging-disk-gate.sh post'
+          echo 'deployed=true' >> "$GITHUB_OUTPUT"
       - name: Dry-run retention audit (explicitly enabled; no deletes)
         if: steps.latest.outputs.current == 'true' && vars.STAGING_RETENTION_PLAN_READY == 'true'
         env:
@@ -139,9 +229,12 @@ jobs:
   # read-only exact-ID approval proposal, NEVER calls image rm or --execute.
   retention-plan:
     needs: [eligibility, deploy]
+    permissions:
+      contents: read
     if: >-
       ${{ needs.eligibility.outputs.current == 'true' &&
           needs.deploy.result == 'success' &&
+          needs.deploy.outputs.deployed == 'true' &&
           vars.STAGING_RETENTION_PLAN_GENERATION_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     environment: staging
@@ -185,3 +278,63 @@ jobs:
           path: ${{ runner.temp }}/staging-retention-proposal.txt
           retention-days: 14
           if-no-files-found: error
+
+  # The successful backend baseline advances only after completed health,
+  # post-disk and optional audit gates. No staging mutation or image deletion.
+  record-backend-success:
+    needs: [eligibility, deploy, retention-plan]
+    if: >-
+      ${{ always() &&
+          needs.eligibility.outputs.backend_changed == 'true' &&
+          needs.deploy.result == 'success' &&
+          needs.deploy.outputs.deployed == 'true' &&
+          (needs.retention-plan.result == 'success' || needs.retention-plan.result == 'skipped') }}
+    permissions:
+      actions: read
+      contents: read
+      deployments: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: staging-backend-digest-*
+          merge-multiple: true
+          path: ${{ runner.temp }}/backend-digests
+      - name: Record verified successful staging backend release
+        uses: actions/github-script@v7
+        env:
+          STAGING_CI_SHA: ${{ github.event.workflow_run.head_sha }}
+          STAGING_CI_RUN_ID: ${{ github.event.workflow_run.id }}
+          STAGING_DIGEST_DIR: ${{ runner.temp }}/backend-digests
+        with:
+          script: |
+            const fs = require('node:fs');
+            const path = require('node:path');
+            const sha = process.env.STAGING_CI_SHA;
+            const digestPattern = /^sha256:[0-9a-f]{64}$/;
+            if (!/^[0-9a-f]{40}$/.test(sha)) throw new Error('Invalid backend CI SHA');
+            const digest = (service) => fs.readFileSync(
+              path.join(process.env.STAGING_DIGEST_DIR, `${service}.digest`), 'utf8'
+            ).trim();
+            const api = digest('api');
+            const worker = digest('worker');
+            if (!digestPattern.test(api) || !digestPattern.test(worker)) {
+              throw new Error('Refuse to mark success without both pushed image digests');
+            }
+            const { owner, repo } = context.repo;
+            const deployment = await github.rest.repos.createDeployment({
+              owner, repo, ref: sha, environment: 'staging-backend-success',
+              auto_merge: false, required_contexts: [],
+              transient_environment: false, production_environment: false,
+              description: 'Verified post-health and post-disk backend staging deployment',
+              payload: {
+                api_digest: api, worker_digest: worker,
+                ci_run_id: Number(process.env.STAGING_CI_RUN_ID)
+              }
+            });
+            await github.rest.repos.createDeploymentStatus({
+              owner, repo, deployment_id: deployment.data.id, state: 'success',
+              description: 'Backend deployment verified; new compare baseline',
+              log_url: `https://github.com/${owner}/${repo}/actions/runs/${context.runId}`
+            });
+            core.info(`STAGING_BACKEND_SUCCESS sha=${sha} api=${api} worker=${worker}`);
