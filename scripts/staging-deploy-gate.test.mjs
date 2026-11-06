@@ -22,7 +22,7 @@ test('staging deploy is triggered only by completed CI runs on main', () => {
 });
 
 test('staging deploy rejects manual, PR and unsuccessful CI events', () => {
-  const guard = workflow.match(/^  eligibility:\n    if: >-\n([\s\S]*?)^    runs-on:/m)?.[1];
+  const guard = workflow.match(/^  eligibility:\n[\s\S]*?    if: >-\n([\s\S]*?)^    runs-on:/m)?.[1];
   assert.ok(guard, 'build job must have a mandatory execution guard');
   for (const condition of [
     "github.event_name == 'workflow_run'",
