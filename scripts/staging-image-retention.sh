@@ -422,7 +422,7 @@ while IFS= read -r rev; do
   fi
   printf 'AUDIT reclaimed_revision=%s deletion_completed=true before_kib=%s after_kib=%s reclaimed_kib=%s disk_used_pct=%s inode_before_pct=%s inode_after_pct=%s\n' \
     "$rev" "$before" "$FREE_KIB" "$((FREE_KIB - before))" "$USED_PCT" "$before_inodes" "$INODE_PCT"
-  if (( count >= 2 ));
+  if (( count >= 2 )); then
     echo 'STOP batch maximum 2 revision pairs reached'
     break
   fi
