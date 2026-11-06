@@ -290,6 +290,22 @@ healthy() {
 
 if [[ "$deleting" == true ]]; then healthy; fi
 
+# A recovery batch is all-or-nothing at preflight: validate BOTH exact pairs
+# before the first removal. If the second pair drifted, do not delete the first.
+if [[ "$recovery" == true ]]; then
+  for rev in "$recovery_a" "$recovery_b"; do
+    refresh_refs
+    ref="$api_repo:$rev"
+    check_candidate "$ref" || fail "recovery API candidate unavailable or referenced: $rev"
+    [[ "$REPLY" == "${recovery_api_ids[$rev]}" ]] || fail 'recovery API image ID differs from owner allowlist'
+    ref="$worker_repo:$rev"
+    check_candidate "$ref" || fail "recovery Worker candidate unavailable or referenced: $rev"
+    [[ "$REPLY" == "${recovery_worker_ids[$rev]}" ]] || fail 'recovery Worker image ID differs from owner allowlist'
+    check_config "$rev" || fail "recovery deployment config still references old release: $rev"
+  done
+  echo 'AUDIT recovery_preflight=all_four_exact_images_passed'
+fi
+
 count=0
 while IFS= read -r rev; do
   [[ -n "$rev" ]] || continue
