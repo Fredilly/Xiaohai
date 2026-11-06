@@ -213,7 +213,7 @@ test('inode emergency threshold blocks removal before first image', async () => 
   assert.deepEqual((await fx.state()).removed, []);
 });
 
-test('ordinary deletion stops when capacity is already safe but steady-state can retire approved old pair', async () => {
+test('normal mode stops at safe capacity; steady-state may clean', async () => {
   const emergency = await fixture({ lowDisk: true });
   const result = emergency.run();
   assert.equal(result.status, 0, result.stderr);
