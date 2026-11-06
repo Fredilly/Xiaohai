@@ -96,6 +96,7 @@ test('renaming backend file to frontend cannot hide its deletion', () => {
   const f = fixture();
   try {
     const base = f.commit('apps/api/src/old.ts');
+    mkdirSync(join(f.dir, 'apps/miniapp'), { recursive: true });
     f.git('mv', 'apps/api/src/old.ts', 'apps/miniapp/old.ts');
     f.git('commit', '-qm', 'move');
     const paths = changedPaths(base, f.git('rev-parse', 'HEAD'), f.dir);
