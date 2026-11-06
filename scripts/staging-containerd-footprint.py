@@ -78,6 +78,54 @@ def content_stat(digest):
     return stat.st_blocks * 512
 
 
+def oci_descriptor_digests(obj):
+    """Return referenced blobs ONLY for real OCI/Docker schema-v2 documents.
+
+    Image *configuration* JSON has a 'config' object with Env/Cmd/etc, but
+    that object is NOT a manifest config descriptor. Previously treating it
+    as one caused 'OCI descriptor has invalid digest' on healthy images.
+    """
+    if not isinstance(obj, dict) or obj.get("schemaVersion") != 2:
+        return []
+
+    descriptors = []
+    if "manifests" in obj:
+        manifests = obj["manifests"]
+        if not isinstance(manifests, list):
+            raise RuntimeError("invalid OCI index manifests")
+        descriptors.extend(manifests)
+    elif "config" in obj or "layers" in obj:
+        config = obj.get("config")
+        layers = obj.get("layers")
+        if not isinstance(config, dict) or not isinstance(layers, list):
+            raise RuntimeError("invalid OCI image manifest")
+        descriptors.append(config)
+        descriptors.extend(layers)
+    elif "blobs" in obj:
+        blobs = obj["blobs"]
+        if not isinstance(blobs, list):
+            raise RuntimeError("invalid OCI artifact blob list")
+        descriptors.extend(blobs)
+    else:
+        # Unknown schema-v2 JSON is not evidence of a manifest graph.
+        return []
+
+    subject = obj.get("subject")
+    if subject is not None:
+        descriptors.append(subject)
+
+    refs = []
+    for desc in descriptors:
+        if not isinstance(desc, dict):
+            raise RuntimeError("non-object OCI descriptor")
+        ref = desc.get("digest")
+        if not isinstance(ref, str) or not DIGEST.fullmatch(ref):
+            # Do not skip malformed real descriptors: attribution is unsafe.
+            raise RuntimeError("OCI manifest descriptor has missing/unsupported digest")
+        refs.append(ref)
+    return refs
+
+
 def parse_content_tree(digest, visited, max_nodes=800):
     if digest in visited:
         return
@@ -96,21 +144,8 @@ def parse_content_tree(digest, visited, max_nodes=800):
         obj = json.loads(raw)
     except (ValueError, UnicodeError):
         return
-    if not isinstance(obj, dict):
-        return
-    next_refs = []
-    for desc in obj.get("manifests", []):
-        if isinstance(desc, dict):
-            next_refs.append(desc.get("digest"))
-    config = obj.get("config")
-    if isinstance(config, dict):
-        next_refs.append(config.get("digest"))
-    for desc in obj.get("layers", []):
-        if isinstance(desc, dict):
-            next_refs.append(desc.get("digest"))
-    for ref in next_refs:
-        if not isinstance(ref, str) or not DIGEST.fullmatch(ref):
-            raise RuntimeError("OCI descriptor has invalid digest")
+
+    for ref in oci_descriptor_digests(obj):
         parse_content_tree(ref, visited, max_nodes)
 
 
