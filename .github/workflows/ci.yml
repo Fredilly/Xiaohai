@@ -95,7 +95,7 @@ jobs:
       - name: Workspace, Mini Program and secret checks
         run: pnpm check:workspace && pnpm check:miniapp && pnpm check:secrets
       - name: Staging CI-only deployment regression
-        run: node --test scripts/staging-deploy-gate.test.mjs scripts/staging-check-main.test.mjs scripts/staging-remote-deploy.test.mjs
+        run: node --test scripts/staging-deploy-gate.test.mjs scripts/staging-check-main.test.mjs scripts/staging-backend-gate.test.mjs scripts/staging-remote-deploy.test.mjs
       - name: Staging disk and retention safety tests (offline)
         run: node --test scripts/staging-disk-gate.test.mjs scripts/staging-image-retention.test.mjs scripts/staging-retention-execute.test.mjs scripts/staging-one-time-recovery.test.mjs scripts/staging-retention-model.test.mjs
       - name: Read-only containerd footprint metadata parser (offline)
