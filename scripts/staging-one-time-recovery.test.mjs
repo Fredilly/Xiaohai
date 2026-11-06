@@ -38,6 +38,8 @@ async function fixture({
   missingHold = null,
   candidateMismatch = false,
   candidateMismatchB = false,
+  selfSourceUnexpectedRef = false,
+  otherConfigReference = false,
 } = {}) {
   const dir = await mkdtemp(join(tmpdir(), 'xiaohai-exec-fixture-'));
   const deployDir = join(dir, 'xiaohai-deploy');
@@ -51,7 +53,16 @@ async function fixture({
     'staging-disk-gate.sh',
     'staging-image-retention.sh',
   ]) {
-    await writeFile(join(deployDir, file), '# fixture deployment config\\n');
+    let contents = '# fixture deployment config\\n';
+    if (file === 'staging-image-retention.sh') {
+      contents =
+        `known_recovery_a=${old}\nknown_recovery_b=${oldB}\n` +
+        (selfSourceUnexpectedRef ? `echo "${old}"\n` : '');
+    }
+    if (file === 'staging.compose.yml' && otherConfigReference) {
+      contents += `# still deploying ${old}\n`;
+    }
+    await writeFile(join(deployDir, file), contents);
   }
   const statePath = join(dir, 'state.json');
   const images = Object.fromEntries([
@@ -268,6 +279,28 @@ test('unhealthy API, stopped Worker and missing protected HOLD all block recover
     const fx = await fixture(opts);
     const r = fx.run();
     assert.equal(r.status, 1, r.stderr);
+    assert.deepEqual((await fx.state()).removed, []);
+  }
+});
+
+test('exact pinned self-source declarations are not deployed references', async () => {
+  const fx = await fixture();
+  const r = fx.run();
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual((await fx.state()).removed, [
+    api(old),
+    worker(old),
+    api(oldB),
+    worker(oldB),
+  ]);
+});
+
+test('real source or Compose config references still block every removal', async () => {
+  for (const opts of [{ selfSourceUnexpectedRef: true }, { otherConfigReference: true }]) {
+    const fx = await fixture(opts);
+    const result = fx.run();
+    assert.equal(result.status, 1, result.stderr);
+    assert.match(result.stderr, /recovery deployment config still references old release/);
     assert.deepEqual((await fx.state()).removed, []);
   }
 });
