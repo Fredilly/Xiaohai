@@ -109,7 +109,10 @@ test('post-success retention generates an opt-in exact-ID proposal and cannot de
   assert.match(plan, /STAGING_CONFIG_COVERAGE_CONFIRMED=true/u);
   assert.match(plan, /STAGING_ROLLBACK_REVISIONS='\$ROLLBACKS'/u);
   assert.match(plan, /STAGING_EXTRA_PROTECTED_REVISION='\$EXTRA_PROTECTED'/u);
-  assert.doesNotMatch(plan, /staging-image-retention\.sh --(?:execute|recovery-execute|steady-state-execute)/u);
+  assert.doesNotMatch(
+    plan,
+    /staging-image-retention\.sh --(?:execute|recovery-execute|steady-state-execute)/u,
+  );
   assert.doesNotMatch(plan, /docker\s+(?:image\s+)?(?:rm|prune)/u);
   assert.doesNotMatch(plan, /STAGING_RETENTION_EXECUTE_ENABLED=true/u);
 });
