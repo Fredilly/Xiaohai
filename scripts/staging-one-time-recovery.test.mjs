@@ -55,9 +55,10 @@ async function fixture({
   ]) {
     let contents = '# fixture deployment config\\n';
     if (file === 'staging-image-retention.sh') {
-      contents =
-        `known_recovery_a=${old}\nknown_recovery_b=${oldB}\n` +
-        (selfSourceUnexpectedRef ? `echo "${old}"\n` : '');
+      contents = `known_recovery_a=${old}\nknown_recovery_b=${oldB}\n`;
+      if (selfSourceUnexpectedRef) {
+        contents += `echo "${old}"\n`;
+      }
     }
     if (file === 'staging.compose.yml' && otherConfigReference) {
       contents += `# still deploying ${old}\n`;
@@ -284,11 +285,8 @@ test('unhealthy API, stopped Worker and missing protected HOLD all block recover
 });
 
 test('real source or Compose config references still block every removal', async () => {
-  for (const opts of [
-    { selfSourceUnexpectedRef: true },
-    { otherConfigReference: true },
-  ]) {
-    const fx = await fixture(opts);
+  for (const key of ['selfSourceUnexpectedRef', 'otherConfigReference']) {
+    const fx = await fixture({ [key]: true });
     const result = fx.run();
     assert.equal(result.status, 1, result.stderr);
     assert.match(result.stderr, /recovery deployment config still references old release/);
