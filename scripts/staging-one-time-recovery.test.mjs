@@ -13,7 +13,6 @@ const extraProtected = 'b'.repeat(40);
 const old = '1138ce2734533ae64e37eaccb2a833d9fa847515';
 const oldB = '14d59d3cd209a400f397fdff1880b4f02ab26d54';
 const extraOld = 'c'.repeat(40);
-
 const recentHolds = [
   '03f5ee0f3d364597739162ca8661ebc993523ead',
   '12091f5d8586809ebb5d43308582797d00b3ba79',
@@ -141,12 +140,17 @@ console.log('/dev/vda3 51200000 100000  ' + (5000000 + removed * 600000) + ' ' +
   );
   await chmod(df, 0o755);
   const plan = join(dir, 'approved-plan.txt');
-  await writeFile(plan, `${old} ${recoveryIds[api(old)]} ${recoveryIds[worker(old)]}\n${oldB} ${recoveryIds[api(oldB)]} ${recoveryIds[worker(oldB)]}\n`);
+  await writeFile(
+    plan,
+    `${old} ${recoveryIds[api(old)]} ${recoveryIds[worker(old)]}\n${oldB} ${recoveryIds[api(oldB)]} ${recoveryIds[worker(oldB)]}\n`,
+  );
   const evidence = join(dir, 'owner-evidence.txt');
-  await writeFile(evidence,
+  await writeFile(
+    evidence,
     'snapshot=s-j6ccgk5wyg44gmzqgf5v status=Success\n' +
-    'workflow_run=41982285823 conclusion=failure reason=post_disk_gate\n' +
-    'owner_approval=fixture-owner-approval\n');
+      'workflow_run=41982285823 conclusion=failure reason=post_disk_gate\n' +
+      'owner_approval=fixture-owner-approval\n',
+  );
   const lock = join(dir, 'host.lock');
   const env = {
     ...process.env,
@@ -172,14 +176,16 @@ console.log('/dev/vda3 51200000 100000  ' + (5000000 + removed * 600000) + ' ' +
   };
   return {
     lock,
-    run: (mode = '--recovery-execute', overrides = {}) => spawnSync('bash', [script, mode],
-      { env: { ...env, ...overrides }, encoding: 'utf8' }),
+    run: (mode = '--recovery-execute', overrides = {}) =>
+      spawnSync('bash', [script, mode], {
+        env: { ...env, ...overrides },
+        encoding: 'utf8',
+      }),
     state: async () => JSON.parse(await readFile(statePath, 'utf8')),
     evidence,
     plan,
   };
 }
-
 
 test('one-time recovery keeps historic workflow failed and deletes only two exact approved pairs', async () => {
   const fx = await fixture();
@@ -245,8 +251,11 @@ test('wrong exact API image ID rejects recovery without deleting anything', asyn
 });
 
 test('unhealthy API, stopped Worker and missing protected HOLD all block recovery', async () => {
-  for (const opts of [{ ready: false }, { workerRunning: false },
-    { missingHold: api(recentHolds[0]) }]) {
+  for (const opts of [
+    { ready: false },
+    { workerRunning: false },
+    { missingHold: api(recentHolds[0]) },
+  ]) {
     const fx = await fixture(opts);
     const r = fx.run();
     assert.equal(r.status, 1, r.stderr);
@@ -263,7 +272,9 @@ test('recovery refuses lock contention', async () => {
     assert.equal(result.status, 1);
     assert.match(result.stderr, /already running/);
     assert.deepEqual((await fx.state()).removed, []);
-  } finally { holder.kill(); }
+  } finally {
+    holder.kill();
+  }
 });
 
 test('steady-state mode requires genuinely successful latest deployment', async () => {
