@@ -3,6 +3,8 @@
 // No contact with staging, Docker or GHCR. Unrecognized paths fail closed.
 import { execFileSync, spawnSync } from 'node:child_process';
 import { appendFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 const SHA = /^[0-9a-f]{40}$/u;
 const DIGEST = /^sha256:[0-9a-f]{64}$/u;
@@ -76,7 +78,7 @@ function main() {
   const workerDigest = process.env.STAGING_BACKEND_WORKER_DIGEST ?? '';
   const result = evaluate({ base, head, apiDigest, workerDigest });
   const label = result.changed ? 'BACKEND_CHANGED -> BUILD_AND_DEPLOY' : 'FRONTEND_ONLY -> BACKEND_SKIP';
-  const status = result.changed ? 'STAGING_DEPLOY_TRIGGERED' : 'STAGING_BACKEND_SKIPPED: frontend-only';
+  const status = result.changed ? 'STAGING_DEPLOY_TRIGGERED' : 'STAGING_DEPLOY_SKIPPED: frontend-only';
   console.log(
     `${label} ci_sha=${head} last_success_sha=${base} last_api_digest=${apiDigest} last_worker_digest=${workerDigest} changed_files=${result.paths.length}`,
   );
@@ -87,7 +89,7 @@ function main() {
   appendFileSync(process.env.GITHUB_OUTPUT, `baseline_sha=${base}\n`);
 }
 
-if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href) {
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   try {
     main();
   } catch (error) {
