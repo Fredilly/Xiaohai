@@ -85,8 +85,10 @@ def parse_content_tree(digest, visited, max_nodes=800):
         raise RuntimeError("bounded OCI graph exceeds 800 blobs")
     visited.add(digest)
     path = ROOT / digest.split(":")[1]
-    size = content_stat(digest)
-    if size > 1048576:
+    # Use logical length for the document read cap, not allocated st_blocks:
+    # a sparse content blob could have very few allocated blocks.
+    content_stat(digest)
+    if path.stat().st_size > 1048576:
         # Large compressed layer blobs are data, not OCI manifest documents.
         return
     raw = path.read_bytes()
