@@ -74,7 +74,8 @@ def content_stat(digest):
     stat = path.lstat()
     if not path.is_file() or path.is_symlink():
         raise RuntimeError("content blob is absent, nonregular, or linked")
-    return stat.st_size
+    # st_blocks tracks allocated disk blocks; st_size is logical blob length.
+    return stat.st_blocks * 512
 
 
 def parse_content_tree(digest, visited, max_nodes=800):
@@ -214,6 +215,9 @@ def main():
     print("two_pair_exclusive_snapshot_bytes=",sum(snap_sizes[x] for x in combined_snap))
     missing = [k for k in usage_owners if k not in snapshots]
     print("image_chainids_missing_from_snapshot_metadata=",len(missing))
+    candidate_missing = [k for k in missing if usage_owners[k] & candidate]
+    if candidate_missing:
+        raise RuntimeError("candidate chainIDs not accounted for in snapshot metadata")
 
     # Content blob physical bytes: root metadata file stats, not recursive du.
     blobs = {}
@@ -224,7 +228,7 @@ def main():
         blobs[digest] = content_stat(digest)
         if len(blobs)>10000:
             raise RuntimeError("unexpectedly large content store inventory")
-    print("physical_content_blobs=",len(blobs),"physical_content_blob_bytes=",sum(blobs.values()))
+    print("physical_content_blobs=",len(blobs),"allocated_content_blob_bytes=",sum(blobs.values()))
 
     images_table = run(["sudo","-n","ctr","-n","moby","images","ls"], 30)
     root_by_tag = {}
@@ -275,6 +279,7 @@ def main():
     exclusive_content_bytes=sum(blobs[k] for k in combined_content)
     print("two_pair_exclusive_content_bytes=",exclusive_content_bytes)
     print("two_pair_modeled_MAX_reclaim_bytes=",exclusive_snapshot_bytes+exclusive_content_bytes)
+    print("CAUTION: model excludes external leases, garbage-collector timing, and filesystem metadata; deletion must NOT be inferred safe")
     print("guaranteed_reclaim_bytes=0 (GC/leases/active refs may prevent immediate release)")
     print("never infer bytes from docker system df negative reclaimable or apparent image sizes")
     print("READ_ONLY=true deleted=0")
