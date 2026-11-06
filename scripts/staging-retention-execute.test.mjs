@@ -277,7 +277,9 @@ test('plan-only does not propose a protected HOLD release', async () => {
   const result = fx.run('--plan');
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /PROTECTED_REVISION revision=/);
-  for (const rev of recentHolds) assert.doesNotMatch(result.stdout, new RegExp(`PLAN revision=${rev}`));
+  for (const rev of recentHolds) {
+    assert.doesNotMatch(result.stdout, new RegExp(`PLAN revision=${rev}`));
+  }
   assert.deepEqual((await fx.state()).removed, []);
 });
 
