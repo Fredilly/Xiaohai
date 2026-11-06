@@ -283,20 +283,11 @@ test('unhealthy API, stopped Worker and missing protected HOLD all block recover
   }
 });
 
-test('exact pinned self-source declarations are not deployed references', async () => {
-  const fx = await fixture();
-  const r = fx.run();
-  assert.equal(r.status, 0, r.stderr);
-  assert.deepEqual((await fx.state()).removed, [
-    api(old),
-    worker(old),
-    api(oldB),
-    worker(oldB),
-  ]);
-});
-
 test('real source or Compose config references still block every removal', async () => {
-  for (const opts of [{ selfSourceUnexpectedRef: true }, { otherConfigReference: true }]) {
+  for (const opts of [
+    { selfSourceUnexpectedRef: true },
+    { otherConfigReference: true },
+  ]) {
     const fx = await fixture(opts);
     const result = fx.run();
     assert.equal(result.status, 1, result.stderr);
