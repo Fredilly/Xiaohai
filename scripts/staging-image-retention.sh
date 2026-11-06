@@ -267,10 +267,15 @@ check_config() {
 }
 
 capacity() {
-  local data
+  local data inode_data
   data=$(df -Pk /) || fail 'cannot read available disk'
+  inode_data=$(df -Pi /) || fail 'cannot read inode capacity'
   read -r FREE_KIB USED_PCT < <(printf '%s\n' "$data" | awk 'NR==2 {gsub(/%/, "", $5); print $4,$5}')
-  [[ "$FREE_KIB" =~ ^[0-9]+$ && "$USED_PCT" =~ ^[0-9]+$ ]] || fail 'invalid df output'
+  INODE_PCT=$(printf '%s\n' "$inode_data" | awk 'NR==2 {gsub(/%/, "", $5); print $5}')
+  [[ "$FREE_KIB" =~ ^[0-9]+$ && "$USED_PCT" =~ ^[0-9]+$ && "$INODE_PCT" =~ ^[0-9]+$ ]] ||
+    fail 'invalid disk/inode df output'
+  (( USED_PCT <= 100 && INODE_PCT <= 100 )) || fail 'invalid disk/inode percentage'
+  (( INODE_PCT < 85 )) || fail 'inode usage at or above emergency threshold'
 }
 
 healthy() {
@@ -279,11 +284,11 @@ healthy() {
   redis=$(docker exec xiaohai-staging-redis-1 redis-cli INFO persistence | tr -d '\r') || fail 'Redis persistence read failed'
   printf '%s\n' "$redis" | grep -qx 'rdb_last_bgsave_status:ok' || fail 'Redis RDB unhealthy'
   printf '%s\n' "$redis" | grep -qx 'aof_last_write_status:ok' || fail 'Redis AOF unhealthy'
-  if [[ "$recovery" == true ]]; then
-    status=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 https://staging-api.pamboo.asia/health) ||
-      fail 'API health probe unavailable'
-    [[ "$status" == 200 ]] || fail 'API health non-200'
-  fi
+  # Health and readiness must pass for EVERY deletion mode, not only
+  # the incident recovery exception.
+  status=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 https://staging-api.pamboo.asia/health) ||
+    fail 'API health probe unavailable'
+  [[ "$status" == 200 ]] || fail 'API health non-200'
   status=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 https://staging-api.pamboo.asia/ready) || fail 'API readiness probe unavailable'
   [[ "$status" == 200 ]] || fail 'API readiness non-200'
 }
@@ -340,6 +345,7 @@ while IFS= read -r rev; do
     break
   fi
   before="$FREE_KIB"
+  before_inodes="$INODE_PCT"
   approved=$(grep -Fx -- "$rev $api_id $worker_id" "$STAGING_RETENTION_APPROVED_PLAN") || fail 'approved plan does not match current exact image IDs'
   [[ "$approved" == "$rev $api_id $worker_id" ]] || fail 'ambiguous approved plan'
   healthy
@@ -356,7 +362,8 @@ while IFS= read -r rev; do
   capacity
   (( FREE_KIB > before )) || fail 'no net filesystem space reclaimed'
   healthy
-  printf 'AUDIT deleted_revision=%s before_kib=%s after_kib=%s used_pct=%s\n' "$rev" "$before" "$FREE_KIB" "$USED_PCT"
+  printf 'AUDIT deleted_revision=%s before_kib=%s after_kib=%s reclaimed_kib=%s disk_used_pct=%s inode_before_pct=%s inode_after_pct=%s\n' \
+    "$rev" "$before" "$FREE_KIB" "$((FREE_KIB - before))" "$USED_PCT" "$before_inodes" "$INODE_PCT"
   count=$((count + 1))
   if (( count >= 2 )); then
     echo 'STOP batch maximum 2 revision pairs reached'
