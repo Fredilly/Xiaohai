@@ -148,6 +148,10 @@ if (process.argv.includes('-Pi')) {
 `,
   );
   await chmod(df, 0o755);
+  // Avoid sleeping 50 real seconds in the slow-GC regression fixture.
+  const sleep = join(dir, 'sleep');
+  await writeFile(sleep, '#!/bin/sh\nexit 0\n');
+  await chmod(sleep, 0o755);
   const plan = join(dir, 'approved-plan.txt');
   await writeFile(plan, `${old} ${id('a')} ${id('b')}\n`);
   const lock = join(dir, 'host.lock');
@@ -171,7 +175,11 @@ if (process.argv.includes('-Pi')) {
   };
   return {
     lock,
-    run: (mode = '--execute') => spawnSync('bash', [script, mode], { env, encoding: 'utf8' }),
+    run: (mode = '--execute', overrides = {}) =>
+      spawnSync('bash', [script, mode], {
+        env: { ...env, ...overrides },
+        encoding: 'utf8',
+      }),
     state: async () => JSON.parse(await readFile(statePath, 'utf8')),
   };
 }
@@ -180,7 +188,7 @@ test('approved exact-ID execution checks services and stops after one pair', asy
   const fx = await fixture();
   const result = fx.run();
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /AUDIT deleted_revision=/);
+  assert.match(result.stdout, /AUDIT deletion_completed=true/);
   assert.deepEqual((await fx.state()).removed, [api(old), worker(old)]);
   for (const rev of recentHolds) {
     assert.match(result.stdout, new RegExp(`PROTECTED_REVISION revision=${rev}`));
@@ -236,12 +244,50 @@ test('bounded GC observation tolerates delayed df updates, without manual prune'
   assert.deepEqual((await fx.state()).removed, [api(old), worker(old)]);
 });
 
-test('GC observation cannot invent recovered space when df never changes', async () => {
+test('zero reclaimed space records deletion as complete but stops pending GC', async () => {
   const fx = await fixture({ noReclaim: true });
   const result = fx.run();
-  assert.equal(result.status, 1);
-  assert.match(result.stderr, /no net filesystem space reclaimed after bounded GC observation/);
+  assert.equal(result.status, 3);
+  assert.match(result.stdout, /AUDIT deletion_completed=true/);
+  assert.match(result.stdout, /RECLAIM_PENDING deletion_completed=true/);
+  assert.doesNotMatch(result.stdout, /RETENTION COMPLETE/);
   assert.deepEqual((await fx.state()).removed, [api(old), worker(old)]);
+});
+
+test('plan-only produces exact-ID manifest without deletion or execution approvals', async () => {
+  const fx = await fixture();
+  const result = fx.run('--plan', {
+    STAGING_RETENTION_EXECUTE_ENABLED: 'false',
+    STAGING_RETENTION_APPROVED_PLAN: '/missing',
+    STAGING_RETENTION_APPROVAL_ID: '',
+    STAGING_DEPLOY_SUCCEEDED_REVISION: '',
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(
+    result.stdout,
+    new RegExp(`PLAN revision=${old} api_id=${id('a')} worker_id=${id('b')}`),
+  );
+  assert.match(result.stdout, /approval_status=NOT_GRANTED/);
+  assert.match(result.stdout, /deleted_pairs=0/);
+  assert.deepEqual((await fx.state()).removed, []);
+});
+
+test('plan-only does not propose a protected HOLD release', async () => {
+  const fx = await fixture();
+  const result = fx.run('--plan');
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /PROTECTED_REVISION revision=/);
+  for (const rev of recentHolds) assert.doesNotMatch(result.stdout, new RegExp(`PLAN revision=${rev}`));
+  assert.deepEqual((await fx.state()).removed, []);
+});
+
+test('plan-only refuses missing protected release or unhealthy application', async () => {
+  for (const options of [{ missingHold: api(recentHolds[0]) }, { health: false }]) {
+    const fx = await fixture(options);
+    const result = fx.run('--plan');
+    assert.equal(result.status, 1);
+    assert.deepEqual((await fx.state()).removed, []);
+  }
 });
 
 test('Docker failure stops without forced retry after partial removal', async () => {
