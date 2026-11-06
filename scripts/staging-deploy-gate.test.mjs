@@ -96,3 +96,27 @@ test('outdated main CI is skipped before image build and again before staging SS
     /steps\.latest\.outputs\.current == 'true' && vars\.STAGING_RETENTION_PLAN_READY/u,
   );
 });
+
+test('post-success retention generates an opt-in exact-ID proposal and cannot delete', () => {
+  const plan = workflow.match(/^  retention-plan:\n([\s\S]*)$/mu)?.[1];
+  assert.ok(plan, 'explicit post-success retention-plan job required');
+  assert.match(plan, /needs: \[eligibility, deploy\]/u);
+  assert.match(plan, /needs\.deploy\.result == 'success'/u);
+  assert.match(plan, /vars\.STAGING_RETENTION_PLAN_GENERATION_ENABLED == 'true'/u);
+  assert.match(plan, /Recheck latest main before optional plan-only SSH/u);
+  assert.match(plan, /staging-image-retention\.sh --plan/u);
+  assert.match(plan, /actions\/upload-artifact@v4/u);
+  assert.match(plan, /STAGING_CONFIG_COVERAGE_CONFIRMED=true/u);
+  assert.match(plan, /STAGING_ROLLBACK_REVISIONS='\$ROLLBACKS'/u);
+  assert.match(plan, /STAGING_EXTRA_PROTECTED_REVISION='\$EXTRA_PROTECTED'/u);
+  assert.doesNotMatch(plan, /staging-image-retention\.sh --(?:execute|recovery-execute|steady-state-execute)/u);
+  assert.doesNotMatch(plan, /docker\s+(?:image\s+)?(?:rm|prune)/u);
+  assert.doesNotMatch(plan, /STAGING_RETENTION_EXECUTE_ENABLED=true/u);
+});
+
+test('plan-only gate cannot run on a failed deployment or a stale CI revision', () => {
+  assert.match(workflow, /needs\.deploy\.result == 'success'/u);
+  assert.match(workflow, /needs\.eligibility\.outputs\.current == 'true'/u);
+  assert.match(workflow, /bash scripts\/staging-check-main\.sh/u);
+  assert.doesNotMatch(workflow, /workflow_dispatch/u);
+});
