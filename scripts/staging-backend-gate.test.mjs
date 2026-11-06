@@ -36,7 +36,13 @@ test('four Nov 5 miniapp UI-only merges never build API or Worker images', () =>
     ];
     let head;
     for (const path of changes) head = f.commit(path);
-    const result = evaluate({ base: f.base, head, apiDigest: digest, workerDigest: digest, cwd: f.dir });
+    const result = evaluate({
+      base: f.base,
+      head,
+      apiDigest: digest,
+      workerDigest: digest,
+      cwd: f.dir,
+    });
     assert.equal(result.changed, false);
     assert.equal(result.paths.length, 4);
     assert.deepEqual(result.backend, []);
@@ -70,7 +76,8 @@ test('backend, runtime shared packages, locks and deployment config all trigger'
 test('mixed changes deploy, while frontend, docs, tests alone skip', () => {
   assert.equal(classifyPaths(['apps/miniapp/app.wxss', 'apps/api/src/server.ts']).changed, true);
   assert.equal(
-    classifyPaths(['apps/store-web/src/App.tsx', 'docs/README.md', 'scripts/demo.test.mjs']).changed,
+    classifyPaths(['apps/store-web/src/App.tsx', 'docs/README.md', 'scripts/demo.test.mjs'])
+      .changed,
     false,
   );
 });
@@ -82,8 +89,7 @@ test('failed or skipped backend release followed by UI-only merge remains pendin
     const head = f.commit('apps/miniapp/pages/home/home.wxml');
     assert.equal(classifyPaths(changedPaths(pending, head, f.dir)).changed, false);
     assert.equal(
-      evaluate({ base: f.base, head, apiDigest: digest, workerDigest: digest, cwd: f.dir })
-        .changed,
+      evaluate({ base: f.base, head, apiDigest: digest, workerDigest: digest, cwd: f.dir }).changed,
       true,
       'the unchanged successful baseline must still see the pending worker change',
     );
@@ -113,7 +119,8 @@ test('unknown files, invalid digest, missing refs and errors fail closed', () =>
   const f = fixture();
   try {
     assert.throws(
-      () => evaluate({ base: f.base, head: f.base, apiDigest: '', workerDigest: digest, cwd: f.dir }),
+      () =>
+        evaluate({ base: f.base, head: f.base, apiDigest: '', workerDigest: digest, cwd: f.dir }),
       /digests/u,
     );
     assert.throws(() => changedPaths('invalid', f.base, f.dir), /invalid baseline/u);
