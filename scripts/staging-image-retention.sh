@@ -4,14 +4,16 @@
 set -euo pipefail
 
 mode="${1:---dry-run}"
-[[ "$mode" == --dry-run || "$mode" == --execute || "$mode" == --recovery-execute || "$mode" == --steady-state-execute ]] || { echo 'STOP invalid retention mode' >&2; exit 2; }
+[[ "$mode" == --dry-run || "$mode" == --plan || "$mode" == --execute || "$mode" == --recovery-execute || "$mode" == --steady-state-execute ]] || { echo 'STOP invalid retention mode' >&2; exit 2; }
 # --recovery-execute is a separate, manually invoked one-time exception for the
 # Nov 6 failed-post-disk-gate incident. Never wire it into CI or scheduled jobs.
 # It NEVER asserts that the failed historical workflow succeeded.
 deleting=false
 recovery=false
-if [[ "$mode" != --dry-run ]]; then deleting=true; fi
+planning=false
+if [[ "$mode" == --execute || "$mode" == --recovery-execute || "$mode" == --steady-state-execute ]]; then deleting=true; fi
 if [[ "$mode" == --recovery-execute ]]; then recovery=true; fi
+if [[ "$mode" == --plan ]]; then planning=true; fi
 fail() { printf 'STOP retention: %s\n' "$*" >&2; exit 1; }
 valid_revision() { [[ "$1" =~ ^[0-9a-f]{40}$ ]]; }
 
@@ -149,7 +151,7 @@ done
 # Preserve every unknown/untagged image; the referenced image ID must remain protected.
 protected_ids['sha256:eee6c6e1b0894fa4fe0075eb054af9fd1cf39a35321c2d4110626cfe506411fb']=1
 
-if [[ "$deleting" == true ]]; then
+if [[ "$deleting" == true || "$planning" == true ]]; then
   for volume in xiaohai-staging_postgres_data xiaohai-staging_redis_data xiaohai-staging_caddy_data xiaohai-staging_caddy_config; do
     docker volume inspect "$volume" >/dev/null || fail "protected volume unavailable: $volume"
   done
@@ -316,7 +318,10 @@ healthy() {
   [[ "$status" == 200 ]] || fail 'API readiness non-200'
 }
 
-if [[ "$deleting" == true ]]; then healthy; fi
+if [[ "$deleting" == true || "$planning" == true ]]; then
+  healthy
+  capacity
+fi
 
 # A recovery batch is all-or-nothing at preflight: validate BOTH exact pairs
 # before the first removal. If the second pair drifted, do not delete the first.
@@ -360,6 +365,16 @@ while IFS= read -r rev; do
   fi
   printf 'AUDIT mode=%s revision=%s api=%s api_id=%s worker=%s worker_id=%s\n' \
     "$mode" "$rev" "$api" "$api_id" "$worker" "$worker_id"
+  if [[ "$planning" == true ]]; then
+    [[ "$api_id" != "$worker_id" ]] || fail 'same API and Worker image ID invalid'
+    printf 'PLAN revision=%s api_id=%s worker_id=%s\n' "$rev" "$api_id" "$worker_id"
+    count=$((count + 1))
+    if (( count >= 2 )); then
+      echo 'PLAN maximum_two_pairs=true'
+      break
+    fi
+    continue
+  fi
   [[ "$deleting" == true ]] || continue
 
   capacity
@@ -413,4 +428,8 @@ while IFS= read -r rev; do
   fi
 done < <(printf '%s\n' "${!revisions[@]}" | sort)
 
-echo "RETENTION COMPLETE mode=$mode deleted_pairs=$count"
+if [[ "$planning" == true ]]; then
+  echo "PLAN COMPLETE mode=$mode proposed_pairs=$count deleted_pairs=0 approval_status=NOT_GRANTED"
+else
+  echo "RETENTION COMPLETE mode=$mode deleted_pairs=$count"
+fi
