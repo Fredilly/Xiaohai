@@ -25,6 +25,9 @@ const worker = (r) => `ghcr.io/fredilly/xiaohai-worker:${r}`;
 
 async function fixture({
   ready = true,
+  health = true,
+  inodeHigh = false,
+  lowDisk = false,
   failRemove = null,
   workerRunning = true,
   missingHold = null,
@@ -112,7 +115,15 @@ else if (a[0] === 'exec' && a.includes('persistence')) {
   await writeFile(sudo, '#!/bin/sh\n[ "$1" = "-n" ] && shift\nexec "$@"\n');
   await chmod(sudo, 0o755);
   const curl = join(dir, 'curl');
-  await writeFile(curl, `#!/bin/sh\nprintf '%s' '${ready ? '200' : '503'}'\n`);
+  await writeFile(
+    curl,
+    `#!/bin/sh
+case "$*" in
+  *"/health"*) printf '%s' '${health ? '200' : '503'}' ;;
+  *) printf '%s' '${ready ? '200' : '503'}' ;;
+esac
+`,
+  );
   await chmod(curl, 0o755);
   const df = join(dir, 'df');
   await writeFile(
@@ -122,7 +133,12 @@ const fs = require('node:fs');
 const state = JSON.parse(fs.readFileSync(process.env.MOCK_STATE));
 const removed = state.removed.length;
 console.log('Filesystem 1024-blocks Used Available Capacity Mounted on');
-console.log('/dev/vda3 51200000 100000  ' + (5000000 + removed * 600000) + ' ' + (80 - removed) + '% /');
+if (process.argv.includes('-Pi')) {
+  console.log('/dev/vda3 51200000 100000  5000000 ${inodeHigh ? 86 : 70}% /');
+} else {
+  console.log('/dev/vda3 51200000 100000  ' + (5000000 + removed * 600000) +
+    ' ' + (${lowDisk ? 69 : 80} - removed) + '% /');
+}
 `,
   );
   await chmod(df, 0o755);
@@ -149,7 +165,7 @@ console.log('/dev/vda3 51200000 100000  ' + (5000000 + removed * 600000) + ' ' +
   };
   return {
     lock,
-    run: () => spawnSync('bash', [script, '--execute'], { env, encoding: 'utf8' }),
+    run: (mode = '--execute') => spawnSync('bash', [script, mode], { env, encoding: 'utf8' }),
     state: async () => JSON.parse(await readFile(statePath, 'utf8')),
   };
 }
@@ -173,6 +189,37 @@ test('failed readiness blocks any removal', async () => {
   assert.equal(result.status, 1);
   assert.match(result.stderr, /API readiness non-200/);
   assert.deepEqual((await fx.state()).removed, []);
+});
+
+test('failed /health blocks removal even if /ready returns 200', async () => {
+  const fx = await fixture({ health: false, ready: true });
+  const result = fx.run();
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /API health non-200/);
+  assert.deepEqual((await fx.state()).removed, []);
+});
+
+test('inode emergency threshold blocks removal before first image', async () => {
+  const fx = await fixture({ inodeHigh: true });
+  const result = fx.run();
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /inode usage at or above emergency threshold/);
+  assert.deepEqual((await fx.state()).removed, []);
+});
+
+test('ordinary deletion stops when capacity is already safe but steady-state can retire approved old pair', async () => {
+  const emergency = await fixture({ lowDisk: true });
+  const result = emergency.run();
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /STOP target reached/);
+  assert.deepEqual((await emergency.state()).removed, []);
+
+  const steady = await fixture({ lowDisk: true });
+  const completed = steady.run('--steady-state-execute');
+  assert.equal(completed.status, 0, completed.stderr);
+  assert.match(completed.stdout, /reclaimed_kib=1200000/);
+  assert.match(completed.stdout, /inode_before_pct=70 inode_after_pct=70/);
+  assert.deepEqual((await steady.state()).removed, [api(old), worker(old)]);
 });
 
 test('Docker failure stops without forced retry after partial removal', async () => {
