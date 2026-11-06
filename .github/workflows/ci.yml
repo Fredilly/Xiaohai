@@ -92,6 +92,19 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: TEMP #203 capture exact Prettier output (test-only)
+        if: github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+          files=(scripts/staging-backend-gate.mjs scripts/staging-backend-gate.test.mjs scripts/staging-deploy-gate.test.mjs)
+          pnpm exec prettier --write "${files[@]}"
+          for file in "${files[@]}"; do
+            echo "FORMATTED_BEGIN $file"
+            base64 -w0 "$file"
+            echo
+            echo "FORMATTED_END $file"
+          done
+          exit 1
       - name: Workspace, Mini Program and secret checks
         run: pnpm check:workspace && pnpm check:miniapp && pnpm check:secrets
       - name: Staging CI-only deployment regression
