@@ -359,8 +359,15 @@ while IFS= read -r rev; do
     [[ "$REPLY" == "$expected" ]] || fail "image ID changed: $ref"
     docker image rm "$ref" || fail "Docker refused deletion: $ref"
   done
-  capacity
-  (( FREE_KIB > before )) || fail 'no net filesystem space reclaimed'
+  # containerd owns garbage collection. Do not invoke ctr GC, prune or
+  # manipulate layer directories. Observe df a few times instead of treating
+  # asynchronous GC latency as immediate proof that no space can be reclaimed.
+  for gc_observation in 1 2 3 4; do
+    capacity
+    if (( FREE_KIB > before )); then break; fi
+    if (( gc_observation < 4 )); then sleep 1; fi
+  done
+  (( FREE_KIB > before )) || fail 'no net filesystem space reclaimed after bounded GC observation'
   healthy
   printf 'AUDIT deleted_revision=%s before_kib=%s after_kib=%s reclaimed_kib=%s disk_used_pct=%s inode_before_pct=%s inode_after_pct=%s\n' \
     "$rev" "$before" "$FREE_KIB" "$((FREE_KIB - before))" "$USED_PCT" "$before_inodes" "$INODE_PCT"
