@@ -65,6 +65,42 @@ class FootprintMetadataTests(unittest.TestCase):
                 module.ROOT = previous
             self.assertEqual(visited, {digest})
 
+    def test_absent_oci_descriptor_is_recorded_without_claiming_reclaim(self):
+        with tempfile.TemporaryDirectory() as root:
+            existing = "sha256:" + "a" * 64
+            absent = "sha256:" + "b" * 64
+            manifest = {
+                "schemaVersion": 2,
+                "config": {"digest": absent},
+                "layers": [],
+            }
+            (pathlib.Path(root) / existing.split(":")[1]).write_bytes(
+                json.dumps(manifest).encode()
+            )
+            previous = module.ROOT
+            try:
+                module.ROOT = pathlib.Path(root)
+                visited = set()
+                missing = set()
+                module.parse_content_tree(existing, visited, missing=missing)
+            finally:
+                module.ROOT = previous
+            self.assertEqual(missing, {absent})
+            self.assertEqual(visited, {existing, absent})
+
+    def test_missing_blob_not_mistaken_for_cleared_graph(self):
+        with tempfile.TemporaryDirectory() as root:
+            missing_digest = "sha256:" + "c" * 64
+            previous = module.ROOT
+            try:
+                module.ROOT = pathlib.Path(root)
+                visited = set()
+                missing = set()
+                module.parse_content_tree(missing_digest, visited, missing=missing)
+            finally:
+                module.ROOT = previous
+            self.assertEqual(missing, {missing_digest})
+
     def test_real_manifest_and_index_resolve_exact_descriptors(self):
         config = "sha256:" + "a" * 64
         layer = "sha256:" + "b" * 64
