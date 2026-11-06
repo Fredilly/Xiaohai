@@ -382,20 +382,32 @@ while IFS= read -r rev; do
     [[ "$REPLY" == "$expected" ]] || fail "image ID changed: $ref"
     docker image rm "$ref" || fail "Docker refused deletion: $ref"
   done
-  # containerd owns garbage collection. Do not invoke ctr GC, prune or
-  # manipulate layer directories. Observe df a few times instead of treating
-  # asynchronous GC latency as immediate proof that no space can be reclaimed.
-  for gc_observation in 1 2 3 4; do
-    capacity
-    if (( FREE_KIB > before )); then break; fi
-    if (( gc_observation < 4 )); then sleep 1; fi
-  done
-  (( FREE_KIB > before )) || fail 'no net filesystem space reclaimed after bounded GC observation'
-  healthy
-  printf 'AUDIT deleted_revision=%s before_kib=%s after_kib=%s reclaimed_kib=%s disk_used_pct=%s inode_before_pct=%s inode_after_pct=%s\n' \
-    "$rev" "$before" "$FREE_KIB" "$((FREE_KIB - before))" "$USED_PCT" "$before_inodes" "$INODE_PCT"
+  # The Docker image removals are COMPLETE, regardless of when containerd
+  # asynchronously collects orphaned snapshots/content blobs. Never attribute
+  # pending GC to deletion failure, or continue removing further pairs while
+  # the actual disk benefit is unknown. No prune or direct snapshot deletion.
   count=$((count + 1))
-  if (( count >= 2 )); then
+  printf 'AUDIT deletion_completed=true revision=%s api_id=%s worker_id=%s deleted_pairs=%s\n' \
+    "$rev" "$api_id" "$worker_id" "$count"
+  healthy
+  # Give the normal containerd GC time without forcing it. Max 50 seconds,
+  # checking disk/inode and service health again on each poll.
+  reclaimed=false
+  for gc_observation in 1 2 3 4 5 6; do
+    capacity
+    healthy
+    if (( FREE_KIB > before )); then reclaimed=true; break; fi
+    if (( gc_observation < 6 )); then sleep 10; fi
+  done
+  if [[ "$reclaimed" != true ]]; then
+    printf 'RECLAIM_PENDING deletion_completed=true revision=%s deleted_pairs=%s before_kib=%s after_kib=%s\n' \
+      "$rev" "$count" "$before" "$FREE_KIB"
+    echo 'STOP no more image removals; later read-only df/health reconciliation required'
+    exit 3
+  fi
+  printf 'AUDIT reclaimed_revision=%s deletion_completed=true before_kib=%s after_kib=%s reclaimed_kib=%s disk_used_pct=%s inode_before_pct=%s inode_after_pct=%s\n' \
+    "$rev" "$before" "$FREE_KIB" "$((FREE_KIB - before))" "$USED_PCT" "$before_inodes" "$INODE_PCT"
+  if (( count >= 2 ));
     echo 'STOP batch maximum 2 revision pairs reached'
     break
   fi
