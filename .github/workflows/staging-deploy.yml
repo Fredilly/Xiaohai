@@ -11,7 +11,7 @@ concurrency:
   group: deploy-staging
   cancel-in-progress: false
 jobs:
-  build:
+  eligibility:
     if: >-
       ${{ github.event_name == 'workflow_run' &&
           github.event.workflow_run.conclusion == 'success' &&
@@ -19,6 +19,21 @@ jobs:
           github.event.workflow_run.head_branch == 'main' &&
           github.event.workflow_run.head_repository.full_name == github.repository &&
           vars.STAGING_READY == 'true' }}
+    runs-on: ubuntu-latest
+    outputs:
+      current: ${{ steps.latest.outputs.current }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+      - name: Confirm CI commit is still latest main
+        id: latest
+        env:
+          STAGING_CI_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: bash scripts/staging-check-main.sh
+  build:
+    needs: eligibility
+    if: needs.eligibility.outputs.current == 'true'
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -41,14 +56,22 @@ jobs:
           build-args: SERVICE=${{ matrix.service }}
           tags: ghcr.io/fredilly/xiaohai-${{ matrix.service }}:${{ github.event.workflow_run.head_sha }}
   deploy:
-    needs: build
+    needs: [eligibility, build]
+    if: needs.eligibility.outputs.current == 'true'
     runs-on: ubuntu-latest
     environment: staging
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
+      # Recheck after builds/queueing before making any staging connection.
+      - name: Recheck latest main before staging SSH
+        id: latest
+        env:
+          STAGING_CI_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: bash scripts/staging-check-main.sh
       - name: Install SSH key
+        if: steps.latest.outputs.current == 'true'
         env:
           SSH_KEY: ${{ secrets.STAGING_SSH_PRIVATE_KEY }}
           SSH_HOST: ${{ secrets.STAGING_SSH_HOST }}
@@ -65,6 +88,7 @@ jobs:
       # a separate DBA-approved migration or seed operation (Issue #169).
       # No image removal is wired here; maintenance scripts default to dry-run.
       - name: Deploy exact CI-verified revision with disk/inode capacity gate
+        if: steps.latest.outputs.current == 'true'
         env:
           HOST: ${{ secrets.STAGING_SSH_HOST }}
           USER: ${{ secrets.STAGING_SSH_USER }}
@@ -82,7 +106,7 @@ jobs:
           curl --fail --retry 8 --retry-delay 5 --retry-connrefused "https://staging-api.pamboo.asia/ready"
           ssh "$USER@$HOST" 'cd ~/xiaohai-deploy && bash staging-disk-gate.sh post'
       - name: Dry-run retention audit (explicitly enabled; no deletes)
-        if: vars.STAGING_RETENTION_PLAN_READY == 'true'
+        if: steps.latest.outputs.current == 'true' && vars.STAGING_RETENTION_PLAN_READY == 'true'
         env:
           HOST: ${{ secrets.STAGING_SSH_HOST }}
           USER: ${{ secrets.STAGING_SSH_USER }}
@@ -109,3 +133,55 @@ jobs:
             exit 1
           fi
           ssh "$USER@$HOST" "cd ~/xiaohai-deploy && STAGING_CONFIG_COVERAGE_CONFIRMED=true STAGING_CURRENT_REVISION='$REVISION' STAGING_ROLLBACK_REVISIONS='$ROLLBACKS' STAGING_EXTRA_PROTECTED_REVISION='$EXTRA_PROTECTED' bash staging-image-retention.sh --dry-run"
+
+  # This job runs ONLY after a genuinely successful full staging deploy.
+  # The separately approved opt-in variable is default OFF; it produces a
+  # read-only exact-ID approval proposal, NEVER calls image rm or --execute.
+  retention-plan:
+    needs: [eligibility, deploy]
+    if: >-
+      ${{ needs.eligibility.outputs.current == 'true' &&
+          needs.deploy.result == 'success' &&
+          vars.STAGING_RETENTION_PLAN_GENERATION_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+      - name: Recheck latest main before optional plan-only SSH
+        id: latest
+        env:
+          STAGING_CI_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: bash scripts/staging-check-main.sh
+      - name: Generate exact-ID retention proposal (read-only, no deletion)
+        if: steps.latest.outputs.current == 'true'
+        env:
+          HOST: ${{ secrets.STAGING_SSH_HOST }}
+          USER: ${{ secrets.STAGING_SSH_USER }}
+          SSH_KEY: ${{ secrets.STAGING_SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.STAGING_SSH_KNOWN_HOSTS }}
+          REVISION: ${{ github.event.workflow_run.head_sha }}
+          ROLLBACKS: ${{ vars.STAGING_ROLLBACK_REVISIONS }}
+          EXTRA_PROTECTED: ${{ vars.STAGING_EXTRA_PROTECTED_REVISION }}
+          CONFIG_COVERAGE: ${{ vars.STAGING_CONFIG_COVERAGE_CONFIRMED }}
+        run: |
+          set -euo pipefail
+          [[ "$REVISION" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          [[ "$ROLLBACKS" =~ ^[0-9a-f]{40}[[:space:]][0-9a-f]{40}$ ]] || exit 1
+          [[ "$EXTRA_PROTECTED" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          [[ "$CONFIG_COVERAGE" == true ]] || exit 1
+          test -n "$USER"
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          ssh "$USER@$HOST" "cd ~/xiaohai-deploy && STAGING_CONFIG_COVERAGE_CONFIRMED=true STAGING_CURRENT_REVISION='$REVISION' STAGING_ROLLBACK_REVISIONS='$ROLLBACKS' STAGING_EXTRA_PROTECTED_REVISION='$EXTRA_PROTECTED' bash staging-image-retention.sh --plan" | tee "$RUNNER_TEMP/staging-retention-proposal.txt"
+      - name: Publish proposed exact IDs for independent owner approval
+        if: steps.latest.outputs.current == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: staging-retention-proposal-${{ github.event.workflow_run.head_sha }}
+          path: ${{ runner.temp }}/staging-retention-proposal.txt
+          retention-days: 14
+          if-no-files-found: error

@@ -12,6 +12,14 @@ const rollbackA = 'f8e1fe86bbb904a4e7871901442a5b3dac7890e0';
 const rollbackB = 'd79ca0ff400f52f05a140235565b9c981163ead5';
 const extraProtected = 'b'.repeat(40);
 const old = 'c'.repeat(40);
+const recentHolds = [
+  '03f5ee0f3d364597739162ca8661ebc993523ead',
+  '12091f5d8586809ebb5d43308582797d00b3ba79',
+  '662ca971de6cae265d810b7e37e74eb1ce836abc',
+  'ecaea1f231469903e3eaa9dedad437f37d0d78c5',
+  'ecc03badca74669d85f5c7b69915b81967d39825',
+];
+const heldId = (n) => `sha256:${n.toString(16).padStart(64, '0')}`;
 const id = (hex) => `sha256:${hex.repeat(64)}`;
 const api = (tag) => `ghcr.io/fredilly/xiaohai-api:${tag}`;
 const worker = (tag) => `ghcr.io/fredilly/xiaohai-worker:${tag}`;
@@ -31,6 +39,10 @@ function baseImages() {
     ['caddy:2-alpine', id('9')],
     [api(old), id('a')],
     [worker(old), id('b')],
+    ...recentHolds.flatMap((rev, i) => [
+      [api(rev), heldId(i + 1)],
+      [worker(rev), heldId(i + 17)],
+    ]),
   ]);
 }
 
@@ -240,4 +252,30 @@ test('different rollback tags resolving to the same image ID fail closed', async
   assert.equal(r.status, 1);
   assert.match(r.stderr, /share image ID/);
   assert.doesNotMatch(r.stdout, /AUDIT mode=--dry-run/);
+});
+
+test('all five owner-HOLD API/Worker pairs are protected, never dry-run candidates', async () => {
+  const r = await runRetention();
+  assert.equal(r.status, 0, r.stderr);
+  for (const rev of recentHolds) {
+    assert.match(r.stdout, new RegExp(`PROTECTED_REVISION revision=${rev}`));
+    assert.doesNotMatch(r.stdout, new RegExp(`AUDIT mode=--dry-run revision=${rev}`));
+    assert.doesNotMatch(r.stdout, new RegExp(`SKIP revision=${rev}`));
+  }
+  assert.match(r.stdout, new RegExp(`AUDIT mode=--dry-run revision=${old}`));
+  assert.equal(r.lockCreated, false);
+});
+
+test('missing any owner-HOLD API or Worker image fails closed before candidate audit', async () => {
+  for (const rev of recentHolds) {
+    for (const image of [api(rev), worker(rev)]) {
+      const images = { ...baseImages() };
+      delete images[image];
+      const r = await runRetention({ images });
+      assert.equal(r.status, 1, `${image}: ${r.stderr}`);
+      assert.match(r.stderr, /protected image missing/);
+      assert.doesNotMatch(r.stdout, /AUDIT mode=--dry-run/);
+      assert.equal(r.lockCreated, false);
+    }
+  }
 });
