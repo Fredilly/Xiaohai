@@ -30,6 +30,10 @@ valid_revision "$additional" || fail 'one additional protected historical revisi
 # Owner-required Nov 5 provisional HOLD: protect all five API+Worker release pairs.
 # This is a versioned, explicit safety allowlist. No image deletion authorization
 # follows from listing a revision here, and Actions remains dry-run-only.
+# Fixed incident candidate identities are security policy declarations, not
+# references to a deployed release. Check them separately from deployment files.
+known_recovery_a=1138ce2734533ae64e37eaccb2a833d9fa847515
+known_recovery_b=14d59d3cd209a400f397fdff1880b4f02ab26d54
 recent_hold_revisions=(
   "03f5ee0f3d364597739162ca8661ebc993523ead"
   "12091f5d8586809ebb5d43308582797d00b3ba79"
@@ -82,8 +86,8 @@ if [[ "$deleting" == true ]]; then
       fail 'owner approval not bound to recovery evidence'
     # Only the two owner-conditionally-listed release pairs are eligible.
     # No additional historical, dangling, infra or unknown image is in scope.
-    recovery_a=1138ce2734533ae64e37eaccb2a833d9fa847515
-    recovery_b=14d59d3cd209a400f397fdff1880b4f02ab26d54
+    recovery_a="$known_recovery_a"
+    recovery_b="$known_recovery_b"
     declare -A recovery_api_ids=(
       ["$recovery_a"]=sha256:426eca170257042c73941d6920e0828304daa34020f86e3858f375b42b17ea2d
       ["$recovery_b"]=sha256:7fcd05927e19fe566301516fdce1d3ab2297c8ef88b27454c16299d2e321fb96
@@ -223,6 +227,7 @@ init_config_scan() {
     fail 'invalid bounded deployment directory'
   [[ -d "$base" && ! -L "$base" ]] || fail 'deployment directory missing or symlinked'
   config_files=()
+  retention_source_file="$base/staging-image-retention.sh"
   # Derived from staging-remote-deploy.sh and deploy/staging.compose.yml.
   # All must exist: absence means deployment references are not fully known.
   for file in revision.env staging.env staging.compose.yml Caddyfile \
@@ -255,15 +260,33 @@ init_config_scan() {
 init_config_scan
 
 check_config() {
-  local rev="$1" status
-  # Eight or fewer known deployment files, plus at most 16 owner-attested
-  # additional paths; no recursion and no contents or filenames are printed.
-  if timeout --signal=TERM --kill-after=1s 5s sudo -n grep -Fq -- "$rev" "${config_files[@]}"; then
-    return 1 # A deployment reference: protect.
-  else
-    status=$?
-    [[ "$status" -eq 1 ]] || fail "bounded configuration scan failed (exit=$status)"
-  fi
+  local rev="$1" status file matches line
+  # The source script itself embeds two pinned incident SHAs in its audited
+  # allowlist. Those two exact assignment lines are NOT live deployment refs.
+  # Any other occurrence in that source (or ANY occurrence in other known
+  # deployment config paths) remains an unconditional exclusion. Never skip
+  # a whole config file or silently ignore a failed/timeout scan.
+  for file in "${config_files[@]}"; do
+    if [[ "$file" == "$retention_source_file" ]]; then
+      status=0
+      matches=$(timeout --signal=TERM --kill-after=1s 5s sudo -n grep -F -- "$rev" "$file") || status=$?
+      if [[ "$status" -eq 0 ]]; then
+        while IFS= read -r line; do
+          [[ "$line" == "known_recovery_a=$rev" || "$line" == "known_recovery_b=$rev" ]] ||
+            return 1
+        done <<< "$matches"
+      elif [[ "$status" -ne 1 ]]; then
+        fail "bounded configuration scan failed (exit=$status)"
+      fi
+    else
+      if timeout --signal=TERM --kill-after=1s 5s sudo -n grep -Fq -- "$rev" "$file"; then
+        return 1 # Another config still references this old version: protect.
+      else
+        status=$?
+        [[ "$status" -eq 1 ]] || fail "bounded configuration scan failed (exit=$status)"
+      fi
+    fi
+  done
 }
 
 capacity() {
