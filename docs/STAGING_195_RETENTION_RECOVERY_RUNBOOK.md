@@ -58,3 +58,22 @@ A deterministic **90-day offline model** includes shared base layers, initial 26
 `scripts/staging-retention-model.test.mjs`: 90 daily successful deployments, bounded layer-aware footprint, stopped-container protection and invalid shared-size/revision negative cases.
 
 `scripts/staging_containerd_footprint_test.py`: containerd chainID, snapshot-parent and byte-size parsing negative/positive cases.
+
+## E. Default-OFF daily post-success plan generation (code-only; no auto-delete)
+
+The `staging-deploy.yml` workflow now includes the optional **`retention-plan`** job. It requires ALL of:
+
+- GitHub Actions `STAGING_RETENTION_PLAN_GENERATION_ENABLED == 'true'` (default false / unset);
+- eligibility of the true latest `main` SHA, and `needs.deploy.result == 'success'` after actual CI→build→staging app deploy, HTTP readiness and post-deploy disk gate;
+- a second latest-main check before SSH, owner-maintained `STAGING_ROLLBACK_REVISIONS` (two distinct approved recovery revisions), `STAGING_EXTRA_PROTECTED_REVISION`, `STAGING_CONFIG_COVERAGE_CONFIRMED`, plus the five fixed provisional HOLDs;
+- exact Docker image ID/alias and stopped-container reference checks, current running API/Worker image IDs, PostgreSQL/Redis, /health+/ready, named volumes, bounded config references and inode safety checks.
+
+When opted into **planning only**, it remotely invokes `staging-image-retention.sh --plan` and uploads a short-lived GitHub artifact containing at most **two** `PLAN revision=... api_id=... worker_id=...` rows with accompanying audit output. This mode does not set any `STAGING_DEPLOY_SUCCEEDED_REVISION`, does not create a host plan file or execute any `docker image rm`, does not require or grant an owner approval, and cannot trigger deletion even if `STAGING_RETENTION_EXECUTE_ENABLED` was set elsewhere. The owner can review exact IDs, compare with all referenced tags, then separately sign an exact-ID manifest and explicitly authorize a future narrow execution. Approval must bind **the precise manifest** and separately meet the retention script's existing safeguards.
+
+**Crucial limitation:** enabling automatic **plan generation** alone will not stop daily disk growth; no deletion is enabled in this PR. The future auto-execution policy, dynamic rollback rotation and owner-reviewed approval/expiry mechanism must be approved as a distinct operational rollout before claiming recurring live cleanup. Do not enable `STAGING_RETENTION_PLAN_GENERATION_ENABLED` or any runtime execute flag without Fred's explicit permission.
+
+### Slow containerd GC reconciliation
+
+`--execute` and `--steady-state-execute` now log `AUDIT deletion_completed=true` once both exact Docker image tag removals return successfully. No direct containerd snapshot or filesystem commands are run. After each pair the script polls `df`, inode usage and service health up to **six** observations, approximately **50 seconds** total. If actual free disk space increases, it logs `AUDIT reclaimed_revision=...` with observed KiB; if not, it prints **`RECLAIM_PENDING deletion_completed=true`**, stops all further image removals and exits distinct status **3**. Exit 3 is **not** an image-delete failure and **not** proof GC will eventually reclaim space: a later separately authorized **read-only** `df`/health reconciliation is required. Re-running the script automatically while reclaim is pending would be unsafe.
+
+Neither an automatic cleanup enablement, a scheduled Docker prune, nor an unreviewed SHA-allowlist expiration is included in this PR. Continue preserving all nine protected release pairs and both Alibaba recovery snapshots.
