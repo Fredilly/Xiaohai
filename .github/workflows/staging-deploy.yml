@@ -35,6 +35,20 @@ jobs:
         env:
           STAGING_CI_SHA: ${{ github.event.workflow_run.head_sha }}
         run: bash scripts/staging-check-main.sh
+      - name: Audit merge SHA and associated PRs
+        if: steps.latest.outputs.current == 'true'
+        uses: actions/github-script@v7
+        env:
+          STAGING_CI_SHA: ${{ github.event.workflow_run.head_sha }}
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const sha = process.env.STAGING_CI_SHA;
+            const { data: prs } = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+              owner, repo, commit_sha: sha, per_page: 100
+            });
+            const refs = prs.map((pr) => `#${pr.number}`).join(',') || 'none';
+            core.info(`STAGING_MERGE_AUDIT sha=${sha} prs=${refs}`);
       - name: Resolve last genuinely successful backend deployment
         id: baseline
         if: steps.latest.outputs.current == 'true'
