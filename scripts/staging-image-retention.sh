@@ -66,7 +66,7 @@ if [[ "$deleting" == true ]]; then
       fail 'exact failed workflow run must be acknowledged'
     [[ "${STAGING_RECOVERY_RUNTIME_ACCEPTED:-false}" == true ]] ||
       fail 'separate owner runtime acceptance required'
-    [[ "${STAGING_DEPLOY_SUCCEEDED_REVISION:-}" != "$current" ]] ||
+    [[ -z "${STAGING_DEPLOY_SUCCEEDED_REVISION:-}" ]] ||
       fail 'recovery must not claim failed workflow was successful'
     # Evidence is an independently owner-verified, narrow input file. This
     # file is an attestation, not a cloud API proof or logical restore test.
