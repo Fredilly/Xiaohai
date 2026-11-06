@@ -28,6 +28,8 @@ async function fixture({
   health = true,
   inodeHigh = false,
   lowDisk = false,
+  gcDelayed = false,
+  noReclaim = false,
   failRemove = null,
   workerRunning = true,
   missingHold = null,
@@ -136,8 +138,12 @@ console.log('Filesystem 1024-blocks Used Available Capacity Mounted on');
 if (process.argv.includes('-Pi')) {
   console.log('/dev/vda3 51200000 100000  5000000 ${inodeHigh ? 86 : 70}% /');
 } else {
-  console.log('/dev/vda3 51200000 100000  ' + (5000000 + removed * 600000) +
-    ' ' + (${lowDisk ? 69 : 80} - removed) + '% /');
+  const reads = (state.diskReads || 0) + 1;
+  state.diskReads = reads;
+  fs.writeFileSync(process.env.MOCK_STATE, JSON.stringify(state));
+  const observedRemoved = ${noReclaim ? '0' : '(!' + gcDelayed + ' || reads > 3 ? removed : 0)'};
+  console.log('/dev/vda3 51200000 100000  ' + (5000000 + observedRemoved * 600000) +
+    ' ' + (${lowDisk ? 69 : 80} - observedRemoved) + '% /');
 }
 `,
   );
@@ -220,6 +226,22 @@ test('ordinary deletion stops when capacity is already safe but steady-state can
   assert.match(completed.stdout, /reclaimed_kib=1200000/);
   assert.match(completed.stdout, /inode_before_pct=70 inode_after_pct=70/);
   assert.deepEqual((await steady.state()).removed, [api(old), worker(old)]);
+});
+
+test('bounded GC observation tolerates delayed df updates, without manual prune', async () => {
+  const fx = await fixture({ gcDelayed: true });
+  const result = fx.run();
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /reclaimed_kib=1200000/);
+  assert.deepEqual((await fx.state()).removed, [api(old), worker(old)]);
+});
+
+test('GC observation cannot invent recovered space when df never changes', async () => {
+  const fx = await fixture({ noReclaim: true });
+  const result = fx.run();
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /no net filesystem space reclaimed after bounded GC observation/);
+  assert.deepEqual((await fx.state()).removed, [api(old), worker(old)]);
 });
 
 test('Docker failure stops without forced retry after partial removal', async () => {
