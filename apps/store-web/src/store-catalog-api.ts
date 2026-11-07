@@ -37,6 +37,7 @@ async function editRequest(
   skuId: string,
   suffix: string,
   input: StoreCatalogEditRequest,
+  previewToken?: string,
 ) {
   const response = await fetch(
     `${base}/api/v1/staff/stores/${encodeURIComponent(storeId)}/catalog/${encodeURIComponent(skuId)}${suffix}`,
@@ -45,13 +46,14 @@ async function editRequest(
       headers: {
         Authorization: ['Be', 'arer ', token].join(''),
         'Content-Type': 'application/json',
+        ...(previewToken ? { 'x-catalog-preview-token': previewToken } : {}),
       },
       body: JSON.stringify(input),
     },
   );
   if (!response.ok) {
     if (response.status === 401) throw new Error('登录已过期，请重新登录');
-    if (response.status === 403) throw new Error('没有本店商品编辑权限');
+    if (response.status === 403) throw new Error('没有编辑权限或商品变更影响其他门店');
     if (response.status === 409) throw new Error('商品资料已被其他人修改，请重新加载');
     throw new Error('商品资料保存失败（HTTP ' + response.status + '）');
   }
@@ -75,6 +77,9 @@ export async function updateStoreCatalog(
   storeId: string,
   skuId: string,
   input: StoreCatalogEditRequest,
+  previewToken?: string,
 ) {
-  return storeCatalogEditResponseSchema.parse(await editRequest(token, storeId, skuId, '', input));
+  return storeCatalogEditResponseSchema.parse(
+    await editRequest(token, storeId, skuId, '', input, previewToken),
+  );
 }
