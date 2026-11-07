@@ -98,9 +98,9 @@ suite('scoped draft photo upload transaction (disposable PostgreSQL only)', () =
       .returning({ id: skus.id });
     await db.insert(storeInventory).values({ storeId: first, skuId: sku!.id, onHand: 0 });
     let remoteUploads = 0;
-    const putImage = vi.fn(async (image: { objectKey: string }) => {
+    const putImage = vi.fn((image: { objectKey: string }) => {
       remoteUploads++;
-      return `https://merchant-test.cd.bcebos.com/${image.objectKey}`;
+      return Promise.resolve(`https://merchant-test.cd.bcebos.com/${image.objectKey}`);
     });
     const service = new ProductImageUploadService(db, { putImage });
     const request = {
