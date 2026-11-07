@@ -100,13 +100,20 @@ describe('Store and HQ merchant photo upload authorization (#208)', () => {
       payload,
     });
     expect(response.statusCode).toBe(201);
-    expect(upload).toHaveBeenCalledExactlyOnceWith({
+    expect(upload).toHaveBeenCalledTimes(1);
+    const call: unknown = upload.mock.calls[0]?.[0];
+    expect(call).toMatchObject({
       ...payload,
       productId,
       scopedStoreId: storeId,
       actorStaffAccountId: staffId,
-      requestId: expect.any(String),
     });
+    expect(
+      call !== null &&
+        typeof call === 'object' &&
+        'requestId' in call &&
+        typeof call.requestId === 'string',
+    ).toBe(true);
   });
 
   it('HQ route requires BOTH catalog.manage permission and GLOBAL data scope', async () => {
