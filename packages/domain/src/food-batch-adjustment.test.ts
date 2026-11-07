@@ -1,10 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import {
-  previewFoodBatchAdjustment,
-  type FoodBatchAdjustmentInput,
-} from './food-batch-adjustment.js';
+import { previewFoodBatchAdjustment } from './food-batch-adjustment.js';
+import type { FoodBatchAdjustmentInput } from './food-batch-adjustment.js';
 
-const initial: FoodBatchAdjustmentInput = {
+const sample: FoodBatchAdjustmentInput = {
   businessDate: '2026-11-07',
   aggregate: {
     storeId: 'store-1',
@@ -37,83 +35,75 @@ const initial: FoodBatchAdjustmentInput = {
 };
 
 function plan(changes: Partial<FoodBatchAdjustmentInput> = {}) {
-  return previewFoodBatchAdjustment({ ...initial, ...changes });
+  return previewFoodBatchAdjustment({ ...sample, ...changes });
 }
 
+function fail(changes: Partial<FoodBatchAdjustmentInput>, code: string) {
+  expect(() => plan(changes)).toThrow(code);
+}
+
+const lot = sample.batches[0]!;
 const shortage = 'INSUFFICIENT_UNALLOCATED_FOOD_STOCK';
 const unsafeLot = 'FOOD_BATCH_REQUIRES_SEPARATE_DISPOSITION';
-const currentLot = initial.batches[0]!;
 
-describe('food lot movement proposal (#208; no persistence)', () => {
-  it('returns a dry-run receipt without mutating input', () => {
-    expect(plan()).toMatchObject({
-      mode: 'DRY_RUN_ONLY',
-      persisted: false,
-      checkoutEnabled: false,
-      expectedInventoryVersion: 3,
-      quantityDelta: 3,
-      beforeBatchOnHand: 10,
-      afterBatchOnHand: 13,
-      beforeAggregateOnHand: 10,
-      afterAggregateOnHand: 13,
-      afterSellable: 10,
-    });
-    expect(initial.aggregate.onHand).toBe(10);
-    expect(currentLot.onHand).toBe(10);
+describe('food lot movement preflight (#208)', () => {
+  it('proposes receipt without persistent writes or checkout', () => {
+    const result = plan();
+    expect(result.mode).toBe('DRY_RUN_ONLY');
+    expect(result.persisted).toBe(false);
+    expect(result.checkoutEnabled).toBe(false);
+    expect(result.expectedInventoryVersion).toBe(3);
+    expect(result.quantityDelta).toBe(3);
+    expect(result.beforeBatchOnHand).toBe(10);
+    expect(result.afterBatchOnHand).toBe(13);
+    expect(result.beforeAggregateOnHand).toBe(10);
+    expect(result.afterAggregateOnHand).toBe(13);
+    expect(result.afterSellable).toBe(10);
+    expect(sample.aggregate.onHand).toBe(10);
+    expect(lot.onHand).toBe(10);
   });
 
   it('protects reserved and blocked stock from damage', () => {
-    const damage = (quantity: number) =>
-      plan({ operation: { kind: 'DAMAGE', quantity } });
-    expect(damage(7).quantityDelta).toBe(-7);
-    expect(() => damage(8)).toThrow(shortage);
-    expect(
-      plan({ operation: { kind: 'STOCKTAKE_LOSS', countedOnHand: 5 } })
-        .afterBatchOnHand,
-    ).toBe(5);
+    const loss = { kind: 'DAMAGE' as const, quantity: 7 };
+    expect(plan({ operation: loss }).quantityDelta).toBe(-7);
+    fail({ operation: { ...loss, quantity: 8 } }, shortage);
+    const count = { kind: 'STOCKTAKE_LOSS' as const, countedOnHand: 5 };
+    expect(plan({ operation: count }).afterBatchOnHand).toBe(5);
   });
 
   it('rejects stocktake gains and no-op counts', () => {
     for (const countedOnHand of [10, 11, -1, 1.1]) {
-      const operation = { kind: 'STOCKTAKE_LOSS', countedOnHand } as const;
-      expect(() => plan({ operation })).toThrow('INVALID_STOCKTAKE_LOSS');
+      const operation = { kind: 'STOCKTAKE_LOSS' as const, countedOnHand };
+      fail({ operation }, 'INVALID_STOCKTAKE_LOSS');
     }
   });
 
-  it('rejects mismatched, cross-store and missing batches', () => {
-    const aggregate = { ...initial.aggregate, onHand: 11 };
-    expect(() => plan({ aggregate })).toThrow('UNRECONCILED_FOOD_STOCK');
-    expect(() => plan({ batches: [{ ...currentLot, storeId: 'other' }] })).toThrow(
-      'CROSS_STORE_FOOD_BATCH',
-    );
-    expect(() => plan({ batches: [] })).toThrow('UNRECONCILED_FOOD_STOCK');
+  it('rejects mismatched, foreign and missing batches', () => {
+    const aggregate = { ...sample.aggregate, onHand: 11 };
+    fail({ aggregate }, 'UNRECONCILED_FOOD_STOCK');
+    fail({ batches: [{ ...lot, storeId: 'other' }] }, 'CROSS_STORE_FOOD_BATCH');
+    fail({ batches: [] }, 'UNRECONCILED_FOOD_STOCK');
   });
 
   it('rejects expired, held and recalled lots', () => {
-    expect(() => plan({ businessDate: '2026-12-01' })).toThrow(unsafeLot);
+    fail({ businessDate: '2026-12-01' }, unsafeLot);
     for (const state of ['HELD', 'RECALLED'] as const) {
-      expect(() => plan({ batches: [{ ...currentLot, state }] })).toThrow(
-        unsafeLot,
-      );
+      fail({ batches: [{ ...lot, state }] }, unsafeLot);
     }
   });
 
   it('validates expected version, evidence and quantity', () => {
-    expect(() => plan({ inventoryVersion: -1 })).toThrow(
-      'INVALID_INVENTORY_VERSION',
-    );
-    expect(() => plan({ reason: '' })).toThrow('INVALID_ADJUSTMENT_EVIDENCE');
-    const receipt = (quantity: number) =>
-      plan({ operation: { kind: 'EXISTING_LOT_RECEIPT', quantity } });
-    expect(() => receipt(0)).toThrow('INVALID_ADJUSTMENT_QUANTITY');
-    expect(() => receipt(1_000_000_000)).toThrow(shortage);
+    fail({ inventoryVersion: -1 }, 'INVALID_INVENTORY_VERSION');
+    fail({ reason: '' }, 'INVALID_ADJUSTMENT_EVIDENCE');
+    const receipt = { kind: 'EXISTING_LOT_RECEIPT' as const, quantity: 0 };
+    fail({ operation: receipt }, 'INVALID_ADJUSTMENT_QUANTITY');
+    fail({ operation: { ...receipt, quantity: 1_000_000_000 } }, shortage);
   });
 
-  it('does not enable checkout for DRAFT product stock', () => {
-    const aggregate = { ...initial.aggregate, productStatus: 'DRAFT' as const };
-    expect(plan({ aggregate })).toMatchObject({
-      checkoutEnabled: false,
-      afterSellable: 0,
-    });
+  it('does not enable checkout for DRAFT products', () => {
+    const aggregate = { ...sample.aggregate, productStatus: 'DRAFT' as const };
+    const result = plan({ aggregate });
+    expect(result.checkoutEnabled).toBe(false);
+    expect(result.afterSellable).toBe(0);
   });
 });
