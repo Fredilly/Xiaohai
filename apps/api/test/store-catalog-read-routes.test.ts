@@ -216,7 +216,12 @@ describe('authorized direct catalog editing', () => {
     const headers = { authorization: ['Be', 'arer ', 'fake-staff-session'].join('') };
     const url = `/api/v1/staff/stores/${own}/catalog/${own}`;
 
-    const local = await app.inject({ method: 'POST', url: url + '/preview', headers, payload: body });
+    const local = await app.inject({
+      method: 'POST',
+      url: url + '/preview',
+      headers,
+      payload: body,
+    });
     expect(local.statusCode).toBe(200);
     expect(preview).toHaveBeenCalledWith(own, own, body, context.staffAccountId, 'STORE_ONLY');
 
