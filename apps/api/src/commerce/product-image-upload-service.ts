@@ -100,9 +100,7 @@ export class ProductImageUploadService {
     // The exact same bytes always resolve to the same immutable object key.
     // A browser retry cannot overwrite a different image at the prior key.
     const hash = createHash('sha256').update(body).digest('hex');
-    const ext = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' }[
-      input.mimeType
-    ];
+    const ext = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' }[input.mimeType];
     const objectKey = `products/${input.productId}/images/${hash}.${ext}`;
 
     // Reject unscoped/active/stale product requests BEFORE any BOS PUT.
@@ -114,7 +112,12 @@ export class ProductImageUploadService {
       // Cloud upload errors are deliberately redacted from logs and responses.
       throw new ProductImageError('MEDIA_UNAVAILABLE');
     }
-    const candidate = new URL(imageUrl);
+    let candidate: URL;
+    try {
+      candidate = new URL(imageUrl);
+    } catch {
+      throw new ProductImageError('MEDIA_UNAVAILABLE');
+    }
     if (
       candidate.protocol !== 'https:' ||
       !candidate.hostname.endsWith('.bcebos.com') ||
