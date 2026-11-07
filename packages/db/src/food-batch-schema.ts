@@ -114,7 +114,7 @@ export const foodBatchTransactions = pgTable(
     check(
       'food_batch_transactions_type_check',
       sql.raw(
-        '"food_batch_transactions"."transaction_type" in (\'EXISTING_LOT_RECEIPT\',\'DAMAGE\',\'STOCKTAKE_LOSS\')',
+        "\"food_batch_transactions\".\"transaction_type\" in ('EXISTING_LOT_RECEIPT','DAMAGE','STOCKTAKE_LOSS')",
       ),
     ),
     check(
