@@ -15,6 +15,7 @@ export default defineConfig({
     './src/animation-schema.ts',
     './src/store-schema.ts',
     './src/inventory-schema.ts',
+    './src/food-batch-schema.ts',
     './src/rental-schema.ts',
     './src/fulfillment-schema.ts',
     './src/franchise-schema.ts',
