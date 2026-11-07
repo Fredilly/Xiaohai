@@ -126,7 +126,7 @@ export function evaluatePackagedFoodStock(input: {
   // in the store's local calendar. Keep allocation strategy undecided.
   const assessed = batches.map((batch) => {
     const expired = batch.expiresOn < businessDate;
-    const disposition = expired
+    const disposition: PackagedFoodStockResult['batches'][number]['disposition'] = expired
       ? 'EXPIRED'
       : batch.state === 'AVAILABLE'
         ? 'AVAILABLE'
