@@ -24,14 +24,19 @@ export function presentCatalogProduct(product: Product): DisplayProduct {
       ? `${product.skus.length} 种规格`
       : (product.skus[0]?.name ?? '商品详情');
 
-  const lowestPrice = product.skus.reduce<number | null>(
+  // A disabled SKU must not set an enticing "starting from" price.
+  // Physical store stock is a separate server-side checkout decision.
+  const purchasableSkus = product.skus.filter((sku) => sku.availableForSale);
+  const lowestPrice = purchasableSkus.reduce<number | null>(
     (min, sku) => (min === null ? sku.priceMinor : Math.min(min, sku.priceMinor)),
     null,
   );
   const displayPriceText =
     lowestPrice === null
-      ? '暂无报价'
-      : `¥${(lowestPrice / 100).toFixed(2)}${product.skus.length > 1 ? ' 起' : ''}`;
+      ? product.skus.length === 0
+        ? '暂无报价'
+        : '暂不可购买'
+      : `¥${(lowestPrice / 100).toFixed(2)}${purchasableSkus.length > 1 ? ' 起' : ''}`;
 
   return { ...product, isBook, displayCoverUrl, displaySubtitle, displayPriceText };
 }
