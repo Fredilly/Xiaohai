@@ -4,8 +4,10 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { ConsumerAuthError } from '../auth/errors.js';
 import type { StaffAuthorizationService } from '../auth/staff-authorization.js';
 import { StoreNetworkError, type StoreNetworkService } from '../stores/store-service.js';
-import { ProductImageError, type ProductImageUploadService } from './product-image-upload-service.js';
-
+import {
+  ProductImageError,
+  type ProductImageUploadService,
+} from './product-image-upload-service.js';
 
 const storeParams = z.object({ storeId: z.uuid(), productId: z.uuid() });
 const productParams = z.object({ productId: z.uuid() });
