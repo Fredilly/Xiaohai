@@ -24,10 +24,7 @@ afterEach(async () => {
   await Promise.all(apps.splice(0).map((app) => app.close()));
 });
 
-function makeApp(
-  permissions: string[] = ['stores.read', 'catalog.edit'],
-  global = false,
-) {
+function makeApp(permissions: string[] = ['stores.read', 'catalog.edit'], global = false) {
   const app = Fastify({ logger: false });
   apps.push(app);
   const upload = vi.fn().mockResolvedValue({
