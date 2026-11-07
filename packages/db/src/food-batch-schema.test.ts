@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { getTableConfig } from 'drizzle-orm/pg-core';
 import { foodBatches, foodBatchTransactions } from './food-batch-schema.js';
+import { inventoryTransactions } from './inventory-schema.js';
 
 const migration = readFileSync(
   new URL('../migrations/0041_food_batch_ledger_foundation.sql', import.meta.url),
@@ -30,6 +31,10 @@ describe('food batch additive migration structure (#208)', () => {
     expect(table.name).toBe('food_batch_transactions');
     expect(table.foreignKeys.length).toBe(3);
     expect(table.indexes.length).toBe(3);
+    const aggregate = getTableConfig(inventoryTransactions);
+    expect(aggregate.indexes.map((entry) => entry.config.name)).toContain(
+      'inventory_transactions_store_sku_id_unique',
+    );
     const column = (name: string) => table.columns.find((entry) => entry.name === name);
     expect(column('aggregate_transaction_id')?.notNull).toBe(true);
     expect(column('created_by_staff_account_id')?.notNull).toBe(true);
@@ -41,6 +46,11 @@ describe('food batch additive migration structure (#208)', () => {
     expect(migration).toContain('FOOD_BATCH_LEDGER_APPEND_ONLY');
     expect(migration).toContain('food_batch_transactions_idempotency_unique');
     expect(migration).toContain('food_batches_inventory_fk');
+    expect(migration).toContain('food_batch_transactions_aggregate_scope_fk');
+    expect(migration).toContain('inventory_transactions_store_sku_id_unique');
+    expect(migration).not.toContain(
+      'food_batch_transactions_aggregate_transaction_id_inventory_transactions_id_fk',
+    );
     expect(migration).not.toContain('INSERT INTO');
     expect(migration).not.toContain('UPDATE "store_inventory"');
     expect(migration).not.toContain('TRUNCATE');

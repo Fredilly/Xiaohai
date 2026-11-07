@@ -90,9 +90,7 @@ export const foodBatchTransactions = pgTable(
     reservedAfter: integer('reserved_after').notNull(),
     blockedBefore: integer('blocked_before').notNull(),
     blockedAfter: integer('blocked_after').notNull(),
-    aggregateTransactionId: uuid('aggregate_transaction_id')
-      .notNull()
-      .references(() => inventoryTransactions.id, { onDelete: 'restrict' }),
+    aggregateTransactionId: uuid('aggregate_transaction_id').notNull(),
     referenceType: text('reference_type').notNull(),
     referenceId: uuid('reference_id').notNull(),
     idempotencyKey: text('idempotency_key').notNull(),
@@ -107,6 +105,15 @@ export const foodBatchTransactions = pgTable(
       name: 'food_batch_transactions_batch_scope_fk',
       columns: [t.storeId, t.skuId, t.batchId],
       foreignColumns: [foodBatches.storeId, foodBatches.skuId, foodBatches.id],
+    }).onDelete('restrict'),
+    foreignKey({
+      name: 'food_batch_transactions_aggregate_scope_fk',
+      columns: [t.storeId, t.skuId, t.aggregateTransactionId],
+      foreignColumns: [
+        inventoryTransactions.storeId,
+        inventoryTransactions.skuId,
+        inventoryTransactions.id,
+      ],
     }).onDelete('restrict'),
     uniqueIndex('food_batch_transactions_idempotency_unique').on(t.idempotencyKey),
     uniqueIndex('food_batch_transactions_aggregate_unique').on(t.aggregateTransactionId),

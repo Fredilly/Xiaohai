@@ -34,6 +34,11 @@ CREATE UNIQUE INDEX "food_batches_lot_expiry_unique" ON "food_batches" ("store_i
 --> statement-breakpoint
 CREATE INDEX "food_batches_store_sku_expiry_idx" ON "food_batches" ("store_id","sku_id","expires_on");
 --> statement-breakpoint
+-- Existing aggregate history is never rewritten. The extra unique target is needed
+-- for the same-Store/SKU aggregate-event foreign key below.
+CREATE UNIQUE INDEX "inventory_transactions_store_sku_id_unique"
+  ON "inventory_transactions" ("store_id","sku_id","id");
+--> statement-breakpoint
 CREATE TABLE "food_batch_transactions" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
   "store_id" uuid NOT NULL,
@@ -78,9 +83,9 @@ ALTER TABLE "food_batch_transactions" ADD CONSTRAINT "food_batch_transactions_ba
   FOREIGN KEY ("store_id","sku_id","batch_id")
   REFERENCES "public"."food_batches"("store_id","sku_id","id") ON DELETE restrict;
 --> statement-breakpoint
-ALTER TABLE "food_batch_transactions" ADD CONSTRAINT "food_batch_transactions_aggregate_transaction_id_inventory_transactions_id_fk"
-  FOREIGN KEY ("aggregate_transaction_id")
-  REFERENCES "public"."inventory_transactions"("id") ON DELETE restrict;
+ALTER TABLE "food_batch_transactions" ADD CONSTRAINT "food_batch_transactions_aggregate_scope_fk"
+  FOREIGN KEY ("store_id","sku_id","aggregate_transaction_id")
+  REFERENCES "public"."inventory_transactions"("store_id","sku_id","id") ON DELETE restrict;
 --> statement-breakpoint
 ALTER TABLE "food_batch_transactions" ADD CONSTRAINT "food_batch_transactions_created_by_staff_account_id_staff_accounts_id_fk"
   FOREIGN KEY ("created_by_staff_account_id")
