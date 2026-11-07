@@ -11,24 +11,7 @@ import type { StoreCatalogReadService } from './store-catalog-read-service.js';
 import { CatalogEditError, type CatalogEditService } from './catalog-edit-service.js';
 
 export const CATALOG_EDIT_PERMISSION = 'catalog.edit';
-const sharedFieldKeys = [
-  'productName',
-  'bookTitle',
-  'author',
-  'publisher',
-  'isbn',
-  'priceMinor',
-] as const;
-function hasSharedFields(input: Record<string, unknown>) {
-  return sharedFieldKeys.some((field) => input[field] !== undefined);
-}
-function sharedForbidden(reply: FastifyReply, request: FastifyRequest) {
-  return reply.status(403).send({
-    error: { code: 'STAFF_FORBIDDEN', message: 'HQ approval required', requestId: request.id },
-  });
-}
-
-/** Does not grant catalog.manage; global product mutation remains HQ-only. */
+/** Store edits are scoped by StoreNetworkService and the editor's full impact graph. */
 export function registerStoreCatalogReadRoutes(
   app: FastifyInstance,
   options: {
@@ -79,12 +62,12 @@ export function registerStoreCatalogEditRoutes(
       options.staffAuthorization.requirePermission(actor, 'stores.read');
       options.staffAuthorization.requirePermission(actor, CATALOG_EDIT_PERMISSION);
       await options.stores.getStaffStore(params.data.id, actor);
-      if (hasSharedFields(body.data)) return sharedForbidden(reply, request);
       return await options.catalog.preview(
         params.data.id,
         params.data.skuId,
         body.data,
         actor.staffAccountId,
+        'STORE_ONLY',
       );
     } catch (error) {
       return editFail(request, reply, error);
@@ -104,13 +87,16 @@ export function registerStoreCatalogEditRoutes(
       options.staffAuthorization.requirePermission(actor, 'stores.read');
       options.staffAuthorization.requirePermission(actor, CATALOG_EDIT_PERMISSION);
       await options.stores.getStaffStore(params.data.id, actor);
-      if (hasSharedFields(body.data)) return sharedForbidden(reply, request);
       return await options.catalog.update(
         params.data.id,
         params.data.skuId,
         actor.staffAccountId,
         request.id,
         body.data,
+        'STORE_ONLY',
+        typeof request.headers['x-catalog-preview-token'] === 'string'
+          ? request.headers['x-catalog-preview-token']
+          : undefined,
       );
     } catch (error) {
       return editFail(request, reply, error);
