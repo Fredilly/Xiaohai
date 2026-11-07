@@ -24,6 +24,7 @@ import {
 import { loadHqStores } from './hq-operations-api';
 import { isValidIsbn, normalizeIsbn } from '@xiaohai/contracts/commerce';
 import { createBookLookupGate } from './book-lookup-gate';
+import { HqProductImageUploader } from './merchant-image-uploader';
 type Product = Awaited<ReturnType<typeof listAdminProducts>>['products'][number];
 export function parseYuanToMinor(value: string): number | null {
   if (!/^(?:0|[1-9]\d*)(?:\.\d{1,2})?$/.test(value)) return null;
@@ -55,18 +56,20 @@ export function CatalogManager({ token }: { token: string }) {
   const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
+  const [photoProduct, setPhotoProduct] = useState<Product | null>(null);
   const [creating, setCreating] = useState(false);
   useEffect(() => {
-    if (!creating && !editing) return;
+    if (!creating && !editing && !photoProduct) return;
     function handleEscape(event: KeyboardEvent) {
       if (event.key === 'Escape') {
         setCreating(false);
         setEditing(null);
+        setPhotoProduct(null);
       }
     }
     window.addEventListener('keydown', handleEscape);
     return () => window.removeEventListener('keydown', handleEscape);
-  }, [creating, editing]);
+  }, [creating, editing, photoProduct]);
 
   async function load() {
     setState('loading');
@@ -150,6 +153,9 @@ export function CatalogManager({ token }: { token: string }) {
                   </td>
                   <td>
                     <button onClick={() => setEditing(p)}>编辑</button>
+                    {p.status === 'DRAFT' && (
+                      <button onClick={() => setPhotoProduct(p)}>上传图片</button>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -233,6 +239,25 @@ export function CatalogManager({ token }: { token: string }) {
                 setEditing(null);
                 await load();
               }}
+            />
+          </div>
+        </div>
+      )}
+      {photoProduct && (
+        <div className="catalog-editor-overlay" role="presentation">
+          <div
+            className="catalog-editor-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-label={`总部上传商品图片：${photoProduct.name}`}
+          >
+            <HqProductImageUploader
+              key={photoProduct.id}
+              token={token}
+              productId={photoProduct.id}
+              productVersion={photoProduct.productVersion}
+              onUploaded={() => void load()}
+              onCancel={() => setPhotoProduct(null)}
             />
           </div>
         </div>
