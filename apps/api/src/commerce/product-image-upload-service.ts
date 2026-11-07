@@ -15,6 +15,11 @@ type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
 type Connection = Db | Tx;
 
 export type MerchantImageType = 'image/jpeg' | 'image/png' | 'image/webp';
+const extensionByMime: Record<MerchantImageType, string> = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+};
 type Upload = {
   productId: string;
   expectedProductVersion: number;
@@ -100,7 +105,7 @@ export class ProductImageUploadService {
     // The exact same bytes always resolve to the same immutable object key.
     // A browser retry cannot overwrite a different image at the prior key.
     const hash = createHash('sha256').update(body).digest('hex');
-    const ext = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' }[input.mimeType];
+    const ext = extensionByMime[input.mimeType];
     const objectKey = `products/${input.productId}/images/${hash}.${ext}`;
 
     // Reject unscoped/active/stale product requests BEFORE any BOS PUT.
