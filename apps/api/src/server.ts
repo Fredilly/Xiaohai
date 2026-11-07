@@ -23,6 +23,7 @@ import {
   registerStoreCatalogReadRoutes,
 } from './commerce/store-catalog-read-routes.js';
 import { CatalogEditService } from './commerce/catalog-edit-service.js';
+import { registerStoreCatalogCreateRoutes } from './commerce/store-catalog-create-routes.js';
 import { CatalogCorrectionService } from './commerce/catalog-correction-service.js';
 import { registerCatalogCorrectionRoutes } from './commerce/catalog-correction-routes.js';
 import { loadWeChatPayProvider } from './payments/wechat-pay.js';
@@ -138,6 +139,11 @@ registerStoreCatalogEditRoutes(app, {
   staffAuthorization,
   stores,
   catalog: new CatalogEditService(db, config.STAFF_SESSION_SECRET),
+});
+registerStoreCatalogCreateRoutes(app, {
+  staffAuthorization,
+  stores,
+  commerce,
 });
 registerHqCatalogEditRoutes(app, {
   staffAuthorization,
