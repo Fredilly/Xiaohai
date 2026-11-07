@@ -17,7 +17,7 @@
     "secret:set": "node scripts/set-local-secret.mjs",
     "seed:local-staff": "pnpm --filter @xiaohai/api seed:local-staff",
     "format": "prettier --write .",
-    "format:check": "prettier --check .",
+    "format:check": "prettier packages/contracts/src/food.test.ts packages/domain/src/food-stock.test.ts && prettier --check .",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
