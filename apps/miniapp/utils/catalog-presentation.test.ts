@@ -81,9 +81,18 @@ describe('mixed goods and book catalog presentation (#208)', () => {
       }),
     );
     expect(view.displaySubtitle).toBe('2 种规格');
-    expect(view.displayPriceText).toBe('¥12.50 起');
+    expect(view.displayPriceText).toBe('¥28.90');
     expect(view.skus[0]?.priceMinor).toBe(2890);
     // Listing a price is not a guarantee that any SKU has physical store stock.
+  });
+
+  it('does not advertise a price as purchasable when every SKU is disabled', () => {
+    const view = presentCatalogProduct(
+      fixture({
+        skus: [{ id: 'off', code: 'OFF', name: '盒装', priceMinor: 1200, availableForSale: false }],
+      }),
+    );
+    expect(view.displayPriceText).toBe('暂不可购买');
   });
 
   it('renders a safe empty-price state for malformed or incomplete catalog snapshots', () => {
