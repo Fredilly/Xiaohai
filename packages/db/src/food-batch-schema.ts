@@ -55,7 +55,7 @@ export const foodBatches = pgTable(
     ),
     check(
       'food_batches_status_check',
-      sql.raw('"food_batches"."state" in (\'AVAILABLE\',\'HELD\',\'RECALLED\')'),
+      sql.raw("\"food_batches\".\"state\" in ('AVAILABLE','HELD','RECALLED')"),
     ),
     check('food_batches_version_check', sql.raw('"food_batches"."version" >= 0')),
     check(
