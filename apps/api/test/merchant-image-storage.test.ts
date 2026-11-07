@@ -38,6 +38,12 @@ describe('merchant product BOS upload adapter (#208)', () => {
     ).toBeNull();
   });
 
+  it('confirms the installed BOS SDK exposes the runtime upload method without contacting BOS', () => {
+    // The installed package's declaration omits putObject; this explicitly
+    // verifies the actual SDK method exists before production wiring.
+    expect(createMerchantImageStorage(config)).not.toBeNull();
+  });
+
   it('sends only image bytes, MIME and size to private IAM write capability', async () => {
     const putObject = vi.fn().mockResolvedValue({});
     const storage: MerchantImageStorage | null = createMerchantImageStorage(config, {
