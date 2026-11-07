@@ -38,9 +38,12 @@ function setup(perms = context.permissions) {
   );
   const preview = vi.fn(() =>
     Promise.resolve({
-      sharedFields: ['bookTitle'],
-      affectedStoreCount: 2,
-      affectedStoreIds: [own, foreign],
+      impact: {
+        sharedFields: ['bookTitle'],
+        affectedStoreCount: 2,
+        affectedStoreIds: [own, foreign],
+      },
+      previewToken: 'signed-test-token',
     }),
   );
   const update = vi.fn(() =>
