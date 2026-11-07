@@ -1,14 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
-import {
-  createDatabase,
-  products,
-  regions,
-  skus,
-  storeInventory,
-  stores,
-} from '@xiaohai/db';
+import { createDatabase, products, regions, skus, storeInventory, stores } from '@xiaohai/db';
 import { FoodBatchPreviewService } from '../src/inventory/food-batch-preview-service.js';
 import { assertMeipingApplyDisposableDatabase } from './meiping-apply-database-guard.js';
 
