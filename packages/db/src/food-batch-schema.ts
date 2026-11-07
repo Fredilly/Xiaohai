@@ -45,12 +45,7 @@ export const foodBatches = pgTable(
       foreignColumns: [storeInventory.storeId, storeInventory.skuId],
     }).onDelete('restrict'),
     uniqueIndex('food_batches_store_sku_id_unique').on(t.storeId, t.skuId, t.id),
-    uniqueIndex('food_batches_lot_expiry_unique').on(
-      t.storeId,
-      t.skuId,
-      t.lotCode,
-      t.expiresOn,
-    ),
+    uniqueIndex('food_batches_lot_expiry_unique').on(t.storeId, t.skuId, t.lotCode, t.expiresOn),
     index('food_batches_store_sku_expiry_idx').on(t.storeId, t.skuId, t.expiresOn),
     check(
       'food_batches_quantities_check',
@@ -115,11 +110,7 @@ export const foodBatchTransactions = pgTable(
     }).onDelete('restrict'),
     uniqueIndex('food_batch_transactions_idempotency_unique').on(t.idempotencyKey),
     uniqueIndex('food_batch_transactions_aggregate_unique').on(t.aggregateTransactionId),
-    index('food_batch_transactions_store_sku_created_idx').on(
-      t.storeId,
-      t.skuId,
-      t.createdAt,
-    ),
+    index('food_batch_transactions_store_sku_created_idx').on(t.storeId, t.skuId, t.createdAt),
     check(
       'food_batch_transactions_type_check',
       sql.raw(
