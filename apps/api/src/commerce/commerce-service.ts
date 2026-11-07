@@ -719,8 +719,9 @@ export class CommerceService {
     // A browser retry must carry the same key even when Fastify assigns a new request ID.
     // Store only hashes in the immutable audit row; no new schema or secret is required.
     const actionKey = linkedStoreId ? 'catalog.store_create' : 'catalog.hq_create';
+    const storeKeyNamespace = linkedStoreId ? `${linkedStoreId}:` : '';
     const keyHash = createHash('sha256')
-      .update(`${actorStaffAccountId}:${actionKey}:${linkedStoreId ? linkedStoreId + ':' : ''}${idempotencyKey}`)
+      .update(`${actorStaffAccountId}:${actionKey}:${storeKeyNamespace}${idempotencyKey}`)
       .digest('hex');
     const payloadHash = createHash('sha256').update(JSON.stringify(input)).digest('hex');
     let createdId: string;
