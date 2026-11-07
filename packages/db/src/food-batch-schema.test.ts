@@ -30,12 +30,9 @@ describe('food batch additive migration structure (#208)', () => {
     expect(table.name).toBe('food_batch_transactions');
     expect(table.foreignKeys.length).toBe(3);
     expect(table.indexes.length).toBe(3);
-    expect(table.columns.find((column) => column.name === 'aggregate_transaction_id')?.notNull).toBe(
-      true,
-    );
-    expect(table.columns.find((column) => column.name === 'created_by_staff_account_id')?.notNull).toBe(
-      true,
-    );
+    const column = (name: string) => table.columns.find((entry) => entry.name === name);
+    expect(column('aggregate_transaction_id')?.notNull).toBe(true);
+    expect(column('created_by_staff_account_id')?.notNull).toBe(true);
   });
 
   it('enforces append-only ledger semantics in SQL without a data backfill', () => {
