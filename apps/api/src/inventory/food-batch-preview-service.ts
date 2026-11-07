@@ -1,10 +1,5 @@
 import { and, eq } from 'drizzle-orm';
-import {
-  products,
-  skus,
-  storeInventory,
-  type createDatabase,
-} from '@xiaohai/db';
+import { products, skus, storeInventory, type createDatabase } from '@xiaohai/db';
 import {
   packagedFoodPreviewResponseSchema,
   type PackagedFoodPreviewRequest,
