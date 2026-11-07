@@ -1,8 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  packagedFoodBatchSchema,
-  packagedFoodDraftMetadataSchema,
-} from './food.js';
+import { packagedFoodBatchSchema, packagedFoodDraftMetadataSchema } from './food.js';
 
 const productId = '11111111-1111-4111-8111-111111111111';
 const storeId = '22222222-2222-4222-8222-222222222222';
@@ -50,9 +47,9 @@ describe('packaged food metadata and batch contract (#208)', () => {
       expiresOn: '2026-12-01',
     });
     expect(packagedFoodBatchSchema.safeParse({ ...batch, expiresOn: null }).success).toBe(false);
-    expect(
-      packagedFoodBatchSchema.safeParse({ ...batch, expiresOn: '2026-02-30' }).success,
-    ).toBe(false);
+    expect(packagedFoodBatchSchema.safeParse({ ...batch, expiresOn: '2026-02-30' }).success).toBe(
+      false,
+    );
     expect(packagedFoodBatchSchema.safeParse({ ...batch, blocked: 18 }).success).toBe(false);
     expect(
       packagedFoodBatchSchema.safeParse({ ...batch, manufacturedOn: '2027-01-01' }).success,
