@@ -1,17 +1,12 @@
 import { z } from 'zod';
+import { merchantProductImageUploadSchema } from '@xiaohai/contracts/commerce';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { ConsumerAuthError } from '../auth/errors.js';
 import type { StaffAuthorizationService } from '../auth/staff-authorization.js';
 import { StoreNetworkError, type StoreNetworkService } from '../stores/store-service.js';
 import { ProductImageError, type ProductImageUploadService } from './product-image-upload-service.js';
 
-const uploadBodySchema = z
-  .object({
-    expectedProductVersion: z.number().int().nonnegative(),
-    mimeType: z.enum(['image/jpeg', 'image/png', 'image/webp']),
-    base64: z.string().min(1).max(2_796_208),
-  })
-  .strict();
+
 const storeParams = z.object({ storeId: z.uuid(), productId: z.uuid() });
 const productParams = z.object({ productId: z.uuid() });
 
@@ -31,7 +26,7 @@ export function registerProductImageUploadRoutes(
     { bodyLimit: 3 * 1024 * 1024 },
     async (request, reply) => {
       const params = storeParams.safeParse(request.params);
-      const input = uploadBodySchema.safeParse(request.body);
+      const input = merchantProductImageUploadSchema.safeParse(request.body);
       if (!params.success || !input.success) return invalid(request, reply);
       try {
         const actor = await options.staffAuthorization.authenticate(request.headers.authorization);
@@ -58,7 +53,7 @@ export function registerProductImageUploadRoutes(
     { bodyLimit: 3 * 1024 * 1024 },
     async (request, reply) => {
       const params = productParams.safeParse(request.params);
-      const input = uploadBodySchema.safeParse(request.body);
+      const input = merchantProductImageUploadSchema.safeParse(request.body);
       if (!params.success || !input.success) return invalid(request, reply);
       try {
         const actor = await options.staffAuthorization.authenticate(request.headers.authorization);
