@@ -1,4 +1,3 @@
-import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { createDatabase } from '@xiaohai/db';
 import { afterAll, describe, expect, it } from 'vitest';
@@ -14,15 +13,6 @@ suite('food batch migration 0041: real disposable PostgreSQL constraints (#208)'
   afterAll(async () => database?.pool.end());
 
   it('rejects cross-store/SKU aggregate references and invalid ledger mutations', async () => {
-    if (process.env.GITHUB_ACTIONS === 'true') {
-      console.log('FOOD_BATCH_FORMAT_OUTPUT_START');
-      console.log(
-        execFileSync('pnpm', ['exec', 'prettier', 'test/food-batch-schema.integration.test.ts'], {
-          encoding: 'utf8',
-        }),
-      );
-      console.log('FOOD_BATCH_FORMAT_OUTPUT_END');
-    }
     const client = await database!.pool.connect();
     const ids = {
       actor: randomUUID(),
@@ -52,16 +42,18 @@ suite('food batch migration 0041: real disposable PostgreSQL constraints (#208)'
         0, 0, 0, 0, $9, 'FOOD_BATCH_TEST', $10, $11, 'disposable-only', $12
       )
     `;
-    const event = (overrides: {
-      storeId?: string;
-      skuId?: string;
-      batchId?: string;
-      aggregateId?: string;
-      key?: string;
-      before?: number;
-      after?: number;
-      delta?: number;
-    } = {}) => [
+    const event = (
+      overrides: {
+        storeId?: string;
+        skuId?: string;
+        batchId?: string;
+        aggregateId?: string;
+        key?: string;
+        before?: number;
+        after?: number;
+        delta?: number;
+      } = {},
+    ) => [
       randomUUID(),
       overrides.storeId ?? ids.storeA,
       overrides.skuId ?? ids.skuX,
@@ -202,16 +194,8 @@ suite('food batch migration 0041: real disposable PostgreSQL constraints (#208)'
         event({ aggregateId: ids.aggA2, key: `food-good-${marker}` }),
         '23505',
       );
-      await rejectsSql(
-        eventSql,
-        event({ aggregateId: ids.aggA2, before: -1, after: 1 }),
-        '23514',
-      );
-      await rejectsSql(
-        eventSql,
-        event({ aggregateId: ids.aggA2, delta: -2, after: 1 }),
-        '23514',
-      );
+      await rejectsSql(eventSql, event({ aggregateId: ids.aggA2, before: -1, after: 1 }), '23514');
+      await rejectsSql(eventSql, event({ aggregateId: ids.aggA2, delta: -2, after: 1 }), '23514');
       await rejectsSql(
         `INSERT INTO food_batches
            (store_id, sku_id, lot_code, manufactured_on, expires_on,
@@ -234,11 +218,7 @@ suite('food batch migration 0041: real disposable PostgreSQL constraints (#208)'
         [good[0], 'tampered'],
         '55000',
       );
-      await rejectsSql(
-        'DELETE FROM food_batch_transactions WHERE id = $1',
-        [good[0]],
-        '55000',
-      );
+      await rejectsSql('DELETE FROM food_batch_transactions WHERE id = $1', [good[0]], '55000');
       const count = await client.query<{ n: number }>(
         'SELECT count(*)::integer AS n FROM food_batch_transactions WHERE id = $1',
         [good[0]],
