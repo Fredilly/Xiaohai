@@ -37,9 +37,7 @@ describe('merchant photo file validation', () => {
       ['!!!not-base64', 'image/png'],
       ['a'.repeat(2_796_210), 'image/png'],
     ] as const) {
-      expect(() => decodeMerchantImage(content, mime)).toThrowError(
-        expect.objectContaining({ code: 'INVALID_IMAGE' }),
-      );
+      expect(() => decodeMerchantImage(content, mime)).toThrowError('INVALID_IMAGE');
     }
   });
 });
