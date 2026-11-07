@@ -330,12 +330,7 @@ function StoreCatalogDraftCreateForm({
       <p>可先录入真实商品资料，但默认不会公开上架或产生任何库存数量。</p>
       <label>
         商品名称
-        <input
-          required
-          maxLength={160}
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-        />
+        <input required maxLength={160} value={name} onChange={(e) => setName(e.target.value)} />
       </label>
       <label>
         商品规格 / SKU 名称
@@ -348,11 +343,7 @@ function StoreCatalogDraftCreateForm({
       </label>
       <label>
         SKU 编码（可留空自动生成）
-        <input
-          maxLength={80}
-          value={skuCode}
-          onChange={(e) => setSkuCode(e.target.value)}
-        />
+        <input maxLength={80} value={skuCode} onChange={(e) => setSkuCode(e.target.value)} />
       </label>
       <label>
         售价（元）
