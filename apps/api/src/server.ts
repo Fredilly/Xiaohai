@@ -47,6 +47,8 @@ import { StoreNetworkService } from './stores/store-service.js';
 import { registerStoreRoutes } from './stores/store-routes.js';
 import { InventorySearchService } from './inventory/inventory-service.js';
 import { registerInventoryRoutes } from './inventory/inventory-routes.js';
+import { FoodBatchPreviewService } from './inventory/food-batch-preview-service.js';
+import { registerFoodBatchPreviewRoutes } from './inventory/food-batch-preview-routes.js';
 import { InventoryOperationsService } from './inventory/inventory-operations-service.js';
 import { registerInventoryOperationsRoutes } from './inventory/inventory-operations-routes.js';
 import { registerMeipingXlsRoutes } from './migration/meiping-xls-routes.js';
@@ -158,6 +160,11 @@ registerPaymentRoutes(app, {
 registerContentRoutes(app, { content, consumerSessions: sessions, staffAuthorization });
 registerStoreRoutes(app, { stores, staffAuthorization });
 registerInventoryRoutes(app, { inventory: new InventorySearchService(db) });
+registerFoodBatchPreviewRoutes(app, {
+  staffAuthorization,
+  stores,
+  food: new FoodBatchPreviewService(db),
+});
 registerInventoryOperationsRoutes(app, { operations: inventory, staffAuthorization });
 registerMeipingXlsRoutes(app, { staffAuthorization, stores, inventory, db });
 registerMeipingReviewRoutes(app, {
