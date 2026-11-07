@@ -85,10 +85,14 @@ suite('food batch migration 0041: real disposable PostgreSQL constraints (#208)'
       // this suite. Fail if 0041 or its real PostgreSQL FK/trigger is absent.
       const [schema] = (
         await client.query<{ batches: string | null; events: string | null }>(
-          "SELECT to_regclass('public.food_batches')::text AS batches, to_regclass('public.food_batch_transactions')::text AS events",
+          `SELECT to_regclass('public.food_batches')::text AS batches,
+                  to_regclass('public.food_batch_transactions')::text AS events`,
         )
       ).rows;
-      expect(schema).toEqual({ batches: 'food_batches', events: 'food_batch_transactions' });
+      expect(schema).toEqual({
+        batches: 'food_batches',
+        events: 'food_batch_transactions',
+      });
       const [checks] = (
         await client.query<{ scoped_fk: number; append_only: number }>(`
           SELECT
@@ -105,7 +109,8 @@ suite('food batch migration 0041: real disposable PostgreSQL constraints (#208)'
         [ids.actor, `food-test-${marker}`, 'disposable-only'],
       );
       await client.query(
-        'INSERT INTO regions (id, code, name, country_code, country_name) VALUES ($1, $2, $3, $4, $5)',
+        `INSERT INTO regions (id, code, name, country_code, country_name)
+         VALUES ($1, $2, $3, $4, $5)`,
         [ids.region, `FOOD-${marker}`, 'Disposable region', 'CN', 'China'],
       );
       for (const [id, suffix] of [
@@ -180,15 +185,23 @@ suite('food batch migration 0041: real disposable PostgreSQL constraints (#208)'
       // Both mismatches used to pass the old id-only foreign key.
       await rejectsSql(eventSql, event({ aggregateId: ids.aggOtherStore }), '23503');
       await rejectsSql(eventSql, event({ aggregateId: ids.aggOtherSku }), '23503');
-      await rejectsSql(eventSql, event({ batchId: ids.lotB }), '23503');
+      await rejectsSql(eventSql, event({ batchId: ids.lotB, aggregateId: ids.aggA2 }), '23503');
 
       await rejectsSql(
         eventSql,
         event({ aggregateId: ids.aggA2, key: `food-good-${marker}` }),
         '23505',
       );
-      await rejectsSql(eventSql, event({ aggregateId: ids.aggA2, before: -1, after: 1 }), '23514');
-      await rejectsSql(eventSql, event({ aggregateId: ids.aggA2, delta: -2, after: 1 }), '23514');
+      await rejectsSql(
+        eventSql,
+        event({ aggregateId: ids.aggA2, before: -1, after: 1 }),
+        '23514',
+      );
+      await rejectsSql(
+        eventSql,
+        event({ aggregateId: ids.aggA2, delta: -2, after: 1 }),
+        '23514',
+      );
       await rejectsSql(
         `INSERT INTO food_batches
            (store_id, sku_id, lot_code, manufactured_on, expires_on,
@@ -211,7 +224,11 @@ suite('food batch migration 0041: real disposable PostgreSQL constraints (#208)'
         [good[0], 'tampered'],
         '55000',
       );
-      await rejectsSql('DELETE FROM food_batch_transactions WHERE id = $1', [good[0]], '55000');
+      await rejectsSql(
+        'DELETE FROM food_batch_transactions WHERE id = $1',
+        [good[0]],
+        '55000',
+      );
       const count = await client.query<{ n: number }>(
         'SELECT count(*)::integer AS n FROM food_batch_transactions WHERE id = $1',
         [good[0]],
