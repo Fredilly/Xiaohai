@@ -1,4 +1,7 @@
 import {
+  adminProductCreateInputSchema,
+  adminProductSchema,
+  type AdminProductCreateInput,
   storeCatalogEditPreviewResponseSchema,
   storeCatalogEditResponseSchema,
   storeCatalogResponseSchema,
@@ -82,4 +85,36 @@ export async function updateStoreCatalog(
   return storeCatalogEditResponseSchema.parse(
     await editRequest(token, storeId, skuId, '', input, previewToken),
   );
+}
+
+/** New Store merchandise stays DRAFT and starts with zero physical stock. */
+export async function createStoreDraftProduct(
+  token: string,
+  storeId: string,
+  input: AdminProductCreateInput,
+  idempotencyKey: string,
+) {
+  const payload = adminProductCreateInputSchema.parse(input);
+  if (payload.status !== 'DRAFT' || payload.sku.availableForSale) {
+    throw new Error('只能创建未上架、不可售的商品草稿');
+  }
+  const response = await fetch(
+    `${base}/api/v1/staff/stores/${encodeURIComponent(storeId)}/catalog/products`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: ['Be', 'arer ', token].join(''),
+        'Content-Type': 'application/json',
+        'Idempotency-Key': idempotencyKey,
+      },
+      body: JSON.stringify(payload),
+    },
+  );
+  if (!response.ok) {
+    if (response.status === 401) throw new Error('登录已过期，请重新登录');
+    if (response.status === 403) throw new Error('没有本店商品创建权限');
+    if (response.status === 409) throw new Error('商品或条码已存在，或当前请求与上次录入不一致');
+    throw new Error('创建商品草稿失败（HTTP ' + response.status + '）');
+  }
+  return adminProductSchema.parse(await response.json());
 }

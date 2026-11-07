@@ -19,6 +19,8 @@ describe('Store catalog direct-edit module', () => {
     expect(html).toContain('店铺账号可编辑');
     expect(html).toContain('库存数量仍须通过库存盘点或调整流程变更');
     expect(html).toContain('可编辑本店关联商品的名称、售价及本店陈列信息');
+    expect(html).toContain('新增非图书商品草稿');
+    expect(html).toContain('新商品默认未上架、不可售、库存为 0');
     expect(html).toContain('若商品资料还影响其他门店');
     expect(html).toContain('操作');
     expect(html).not.toContain('后续将单独开发');

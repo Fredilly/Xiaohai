@@ -1,6 +1,15 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import type { StoreCatalogEditRequest, StoreCatalogItem } from '@xiaohai/contracts/commerce';
-import { listStoreCatalog, previewStoreCatalogEdit, updateStoreCatalog } from './store-catalog-api';
+import type {
+  AdminProductCreateInput,
+  StoreCatalogEditRequest,
+  StoreCatalogItem,
+} from '@xiaohai/contracts/commerce';
+import {
+  createStoreDraftProduct,
+  listStoreCatalog,
+  previewStoreCatalogEdit,
+  updateStoreCatalog,
+} from './store-catalog-api';
 
 const limit = 30;
 
@@ -29,6 +38,7 @@ export function StoreCatalogPanel({
   const [more, setMore] = useState(false);
   const [status, setStatus] = useState('正在读取门店商品资料…');
   const [editing, setEditing] = useState<StoreCatalogItem | null>(null);
+  const [creating, setCreating] = useState(false);
   const [reloadNonce, setReloadNonce] = useState(0);
 
   useEffect(() => {
@@ -83,6 +93,12 @@ export function StoreCatalogPanel({
         可编辑本店关联商品的名称、售价及本店陈列信息。若商品资料还影响其他门店，
         系统会拒绝直接修改，避免未经确认覆盖其他门店的共享数据。
       </p>
+      <div className="meiping-store-actions">
+        <button type="button" onClick={() => setCreating(true)}>
+          新增非图书商品草稿
+        </button>
+        <small>新商品默认未上架、不可售、库存为 0，须经过后续正式上架流程。</small>
+      </div>
       <form className="book-search-form" onSubmit={search}>
         <input
           aria-label="搜索本店商品资料"
@@ -170,6 +186,35 @@ export function StoreCatalogPanel({
         </button>
       </div>
       <p role="status">{status}</p>
+      {creating && (
+        <div className="catalog-editor-overlay" role="presentation">
+          <div
+            className="catalog-editor-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-label="新增非图书商品草稿"
+          >
+            <button
+              className="catalog-editor-close"
+              type="button"
+              aria-label="关闭新增商品"
+              onClick={() => setCreating(false)}
+            >
+              ×
+            </button>
+            <StoreCatalogDraftCreateForm
+              token={token}
+              storeId={storeId}
+              onCancel={() => setCreating(false)}
+              onSaved={() => {
+                setCreating(false);
+                setOffset(0);
+                setReloadNonce((value) => value + 1);
+              }}
+            />
+          </div>
+        </div>
+      )}
       {editing && (
         <div
           className="catalog-editor-overlay"
@@ -207,6 +252,128 @@ export function StoreCatalogPanel({
         </div>
       )}
     </section>
+  );
+}
+
+function StoreCatalogDraftCreateForm({
+  token,
+  storeId,
+  onCancel,
+  onSaved,
+}: {
+  token: string;
+  storeId: string;
+  onCancel: () => void;
+  onSaved: () => void;
+}) {
+  const [idempotencyKey] = useState(() => crypto.randomUUID());
+  const [name, setName] = useState('');
+  const [skuName, setSkuName] = useState('标准');
+  const [skuCode, setSkuCode] = useState('');
+  const [priceYuan, setPriceYuan] = useState('');
+  const [description, setDescription] = useState('');
+  const [coverUrl, setCoverUrl] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [status, setStatus] = useState('仅创建未上架草稿，不自动录入真实库存。');
+
+  async function save(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (saving) return;
+    const priceMinor = parseStorePriceToMinor(priceYuan);
+    if (!name.trim() || !skuName.trim() || priceMinor === null) {
+      setStatus('请填写商品名称、规格及有效的价格（最多两位小数）。');
+      return;
+    }
+    const cover = coverUrl.trim();
+    if (cover) {
+      try {
+        const url = new URL(cover);
+        if (url.protocol !== 'https:' || url.username || url.password) {
+          setStatus('商品图片须使用公开可访问的 HTTPS 地址。');
+          return;
+        }
+      } catch {
+        setStatus('商品图片须使用有效的 HTTPS 地址。');
+        return;
+      }
+    }
+    const input: AdminProductCreateInput = {
+      name: name.trim(),
+      description: description.trim() || null,
+      coverUrl: cover || null,
+      status: 'DRAFT',
+      book: null,
+      sku: {
+        ...(skuCode.trim() ? { code: skuCode.trim() } : {}),
+        name: skuName.trim(),
+        priceMinor,
+        status: 'ACTIVE',
+        availableForSale: false,
+      },
+    };
+    setSaving(true);
+    setStatus('正在创建本店草稿并核对门店关联…');
+    try {
+      await createStoreDraftProduct(token, storeId, input, idempotencyKey);
+      onSaved();
+    } catch (error) {
+      // Keep the same request key so a network retry cannot duplicate a draft.
+      setStatus(error instanceof Error ? error.message : '创建失败');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <form className="catalog-correction-form" onSubmit={(event) => void save(event)}>
+      <h3>新增非图书商品</h3>
+      <p>可先录入真实商品资料，但默认不会公开上架或产生任何库存数量。</p>
+      <label>
+        商品名称
+        <input required maxLength={160} value={name} onChange={(e) => setName(e.target.value)} />
+      </label>
+      <label>
+        商品规格 / SKU 名称
+        <input
+          required
+          maxLength={120}
+          value={skuName}
+          onChange={(e) => setSkuName(e.target.value)}
+        />
+      </label>
+      <label>
+        SKU 编码（可留空自动生成）
+        <input maxLength={80} value={skuCode} onChange={(e) => setSkuCode(e.target.value)} />
+      </label>
+      <label>
+        售价（元）
+        <input
+          required
+          inputMode="decimal"
+          value={priceYuan}
+          onChange={(e) => setPriceYuan(e.target.value)}
+        />
+      </label>
+      <label>
+        商品简介
+        <textarea value={description} onChange={(e) => setDescription(e.target.value)} />
+      </label>
+      <label>
+        商品封面 HTTPS URL（上传功能另行接入）
+        <input type="url" value={coverUrl} onChange={(e) => setCoverUrl(e.target.value)} />
+      </label>
+      <p className="dashboard-status" role="status">
+        {status}
+      </p>
+      <div className="meiping-store-actions">
+        <button type="submit" disabled={saving}>
+          {saving ? '保存草稿中…' : '保存草稿'}
+        </button>
+        <button type="button" onClick={onCancel} disabled={saving}>
+          取消
+        </button>
+      </div>
+    </form>
   );
 }
 
