@@ -58,12 +58,24 @@ export function createMerchantImageStorage(
     return null;
   }
 
-  const client: BosPutClient =
+  // The vendor SDK exposes putObject at runtime, but its published
+  // TypeScript definition does not declare it. Validate the actual client
+  // method rather than forcing a type assertion or attempting a write.
+  const clientCandidate: unknown =
     clientOverride ??
     new baiduSdk.BosClient({
       endpoint,
       credentials: { ak, sk },
     });
+  if (
+    !clientCandidate ||
+    typeof clientCandidate !== 'object' ||
+    !('putObject' in clientCandidate) ||
+    typeof clientCandidate.putObject !== 'function'
+  ) {
+    return null;
+  }
+  const client: BosPutClient = clientCandidate as BosPutClient;
 
   return {
     async putImage({ objectKey, body, mimeType }) {
