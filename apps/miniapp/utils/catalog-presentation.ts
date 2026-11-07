@@ -15,9 +15,12 @@ export type DisplayProduct = Product & {
  */
 export function presentCatalogProduct(product: Product): DisplayProduct {
   const isBook = Boolean(product.title || product.author || product.isbn || product.publisher);
-  const displayCoverUrl = isBook
-    ? resolveEditorialBookCover(product.title ?? product.name, product.coverUrl)
-    : (product.coverUrl?.trim() ?? '');
+  // Prefer real merchant media over title-based fallback art. No separate
+  // coverUrl is required when the product already has approved gallery media.
+  const displayCoverUrl =
+    product.coverUrl?.trim() ||
+    product.mediaUrls?.[0] ||
+    (isBook ? resolveEditorialBookCover(product.title ?? product.name, null) : '');
 
   const displaySubtitle = isBook
     ? (product.author ?? product.publisher ?? '图书商品')
