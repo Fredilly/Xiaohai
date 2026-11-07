@@ -26,25 +26,31 @@ function fixture() {
   let nowMs = Date.parse('2026-01-01T00:00:00.000Z');
   const sessions = new ConsumerSessionService(secret, 60, () => new Date(nowMs));
   const provider: WeChatAuthProvider = {
-    codeToSession: vi.fn((code: string) => Promise.resolve({
-      openid: code === 'test-code-b' ? 'isolated-openid-b' : 'isolated-openid-a',
-    })),
+    codeToSession: vi.fn((code: string) =>
+      Promise.resolve({
+        openid: code === 'test-code-b' ? 'isolated-openid-b' : 'isolated-openid-a',
+      }),
+    ),
   };
   const repository: ConsumerIdentityRepository = {
-    findOrCreateWechatIdentity: vi.fn(({ openid }) => Promise.resolve({
-      consumerUserId: openid === 'isolated-openid-b' ? consumerB : consumerA,
-      wechatIdentityId:
-        openid === 'isolated-openid-b'
-          ? '018f0f7f-17e7-7d50-8a4a-1cf31eb8106c'
-          : '018f0f7f-17e7-7d50-8a4a-1cf31eb8106b',
-    })),
+    findOrCreateWechatIdentity: vi.fn(({ openid }) =>
+      Promise.resolve({
+        consumerUserId: openid === 'isolated-openid-b' ? consumerB : consumerA,
+        wechatIdentityId:
+          openid === 'isolated-openid-b'
+            ? '018f0f7f-17e7-7d50-8a4a-1cf31eb8106c'
+            : '018f0f7f-17e7-7d50-8a4a-1cf31eb8106b',
+      }),
+    ),
   };
   const consumerAuth = new ConsumerAuthService('isolated-app', provider, repository, sessions);
-  const getCart = vi.fn((id: string) => Promise.resolve({
-    items: [],
-    subtotalMinor: 0,
-    consumerUserId: id,
-  }));
+  const getCart = vi.fn((id: string) =>
+    Promise.resolve({
+      items: [],
+      subtotalMinor: 0,
+      consumerUserId: id,
+    }),
+  );
   const app = buildApp({ consumerAuth, logger: false });
   apps.push(app);
   registerCommerceRoutes(app, {
