@@ -4,6 +4,7 @@ import { resolveEditorialBookCover } from './real-visuals';
 export type DisplayProduct = Product & {
   isBook: boolean;
   displayCoverUrl: string;
+  galleryUrls: string[];
   displaySubtitle: string;
   displayPriceText: string;
 };
@@ -38,5 +39,6 @@ export function presentCatalogProduct(product: Product): DisplayProduct {
         : '暂不可购买'
       : `¥${(lowestPrice / 100).toFixed(2)}${purchasableSkus.length > 1 ? ' 起' : ''}`;
 
-  return { ...product, isBook, displayCoverUrl, displaySubtitle, displayPriceText };
+  const galleryUrls = [...new Set([displayCoverUrl, ...(product.mediaUrls ?? [])].filter(Boolean))];
+  return { ...product, isBook, displayCoverUrl, galleryUrls, displaySubtitle, displayPriceText };
 }
