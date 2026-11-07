@@ -48,8 +48,34 @@ Page({
     }
   },
   coverError() {
-    if (!this.data.product) return;
-    this.setData({ 'product.displayCoverUrl': '' });
+    const product = this.data.product;
+    if (!product) return;
+    const next = product.galleryUrls.filter((url) => url !== product.displayCoverUrl);
+    this.setData({
+      'product.displayCoverUrl': next[0] ?? '',
+      'product.galleryUrls': next,
+    });
+  },
+  galleryError(event: WechatMiniprogram.TouchEvent) {
+    const product = this.data.product;
+    if (!product) return;
+    const failedUrl = String(event.currentTarget.dataset.src ?? '');
+    if (!failedUrl || !product.galleryUrls.includes(failedUrl)) return;
+    const next = product.galleryUrls.filter((url) => url !== failedUrl);
+    this.setData({
+      'product.galleryUrls': next,
+      ...(failedUrl === product.displayCoverUrl
+        ? { 'product.displayCoverUrl': next[0] ?? '' }
+        : {}),
+    });
+  },
+  previewGallery(event: WechatMiniprogram.TouchEvent) {
+    const product = this.data.product;
+    const index = Number(event.currentTarget.dataset.index);
+    if (!product || !Number.isInteger(index)) return;
+    const current = product.galleryUrls[index];
+    if (!current) return;
+    void wx.previewImage({ current, urls: product.galleryUrls });
   },
   openCart() {
     void wx.navigateTo({ url: '/pages/cart/cart' });
