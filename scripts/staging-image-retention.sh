@@ -4,15 +4,17 @@
 set -euo pipefail
 
 mode="${1:---dry-run}"
-[[ "$mode" == --dry-run || "$mode" == --plan || "$mode" == --execute || "$mode" == --recovery-execute || "$mode" == --steady-state-execute ]] || { echo 'STOP invalid retention mode' >&2; exit 2; }
+[[ "$mode" == --dry-run || "$mode" == --plan || "$mode" == --execute || "$mode" == --recovery-execute || "$mode" == --batch2-recovery-execute || "$mode" == --steady-state-execute ]] || { echo 'STOP invalid retention mode' >&2; exit 2; }
 # --recovery-execute is a separate, manually invoked one-time exception for the
 # Nov 6 failed-post-disk-gate incident. Never wire it into CI or scheduled jobs.
 # It NEVER asserts that the failed historical workflow succeeded.
 deleting=false
 recovery=false
+batch2=false
 planning=false
-if [[ "$mode" == --execute || "$mode" == --recovery-execute || "$mode" == --steady-state-execute ]]; then deleting=true; fi
-if [[ "$mode" == --recovery-execute ]]; then recovery=true; fi
+if [[ "$mode" == --execute || "$mode" == --recovery-execute || "$mode" == --batch2-recovery-execute || "$mode" == --steady-state-execute ]]; then deleting=true; fi
+if [[ "$mode" == --recovery-execute || "$mode" == --batch2-recovery-execute ]]; then recovery=true; fi
+if [[ "$mode" == --batch2-recovery-execute ]]; then batch2=true; fi
 if [[ "$mode" == --plan ]]; then planning=true; fi
 fail() { printf 'STOP retention: %s\n' "$*" >&2; exit 1; }
 valid_revision() { [[ "$1" =~ ^[0-9a-f]{40}$ ]]; }
@@ -36,6 +38,10 @@ valid_revision "$additional" || fail 'one additional protected historical revisi
 # references to a deployed release. Check them separately from deployment files.
 known_recovery_a=1138ce2734533ae64e37eaccb2a833d9fa847515
 known_recovery_b=14d59d3cd209a400f397fdff1880b4f02ab26d54
+# Code-only proposal for #195 batch 2. Separate, non-reusable owner approval
+# and a reviewed new script installation are required before any live use.
+batch2_recovery_a=15bc9dadc32b30f55cbc5cbcb2cc410c1564433e
+batch2_recovery_b=3f0e3d0ad16352393cdeaa12e8f8482c9c9fcfeb
 recent_hold_revisions=(
   "03f5ee0f3d364597739162ca8661ebc993523ead"
   "12091f5d8586809ebb5d43308582797d00b3ba79"
@@ -66,6 +72,14 @@ if [[ "$deleting" == true ]]; then
   [[ -n "${STAGING_EXPECTED_HOSTNAME:-}" && "$(hostname)" == "$STAGING_EXPECTED_HOSTNAME" ]] || fail 'staging host identity unavailable'
   if [[ "$recovery" == true ]]; then
     [[ "${STAGING_RECOVERY_EXECUTE_ENABLED:-false}" == true ]] || fail 'one-time recovery execution not enabled'
+    if [[ "$batch2" == true ]]; then
+      [[ "${STAGING_BATCH2_EXECUTE_ENABLED:-false}" == true ]] ||
+        fail 'batch 2 requires separate owner execution enablement'
+      [[ "$STAGING_RETENTION_APPROVAL_ID" =~ ^XIAOHAI-195-PHASEC-[A-Za-z0-9-]+$ ]] ||
+        fail 'batch 2 requires new Phase C owner approval ID; old Phase B approval is invalid'
+      [[ "$STAGING_RETENTION_APPROVAL_ID" != XIAOHAI-195-PHASEB-20261106-EXACT4 ]] ||
+        fail 'batch 2 cannot reuse Phase B approval'
+    fi
     [[ "$current" == e4c1117e99e1d739b002f99be3b97be7ede89121 ]] ||
       fail 'recovery applies only to the pinned failed-gate revision'
     [[ "${STAGING_RECOVERY_FAILED_RUN_ID:-}" == 41982285823 ]] ||
@@ -88,22 +102,39 @@ if [[ "$deleting" == true ]]; then
       fail 'owner approval not bound to recovery evidence'
     # Only the two owner-conditionally-listed release pairs are eligible.
     # No additional historical, dangling, infra or unknown image is in scope.
-    recovery_a="$known_recovery_a"
-    recovery_b="$known_recovery_b"
-    declare -A recovery_api_ids=(
-      ["$recovery_a"]=sha256:426eca170257042c73941d6920e0828304daa34020f86e3858f375b42b17ea2d
-      ["$recovery_b"]=sha256:7fcd05927e19fe566301516fdce1d3ab2297c8ef88b27454c16299d2e321fb96
-    )
-    declare -A recovery_worker_ids=(
-      ["$recovery_a"]=sha256:80f9bebe35e74e43da0cf49ca03f5abef8229ec179e600c0bbc1767ca9c00001
-      ["$recovery_b"]=sha256:9d2b3678ad02365397724f7ea1a57fac77e6654e45e57c3c0031314fb728fe7f
-    )
+    if [[ "$batch2" == true ]]; then
+      recovery_a="$batch2_recovery_a"
+      recovery_b="$batch2_recovery_b"
+      # These image IDs are intentionally pinned, not accepted from an
+      # operator-supplied manifest without independent on-host reinspection.
+      declare -A recovery_api_ids=(
+        ["$recovery_a"]=sha256:25dec94a82dfa4cee25cd5110fd857cc3785423cf0cba46c55711bda9e89bcac
+        ["$recovery_b"]=sha256:3f6fa4334bc9dba8650a1ad68e3ee6c6f823429a6cadff8bef6f315987f75c76
+      )
+      declare -A recovery_worker_ids=(
+        ["$recovery_a"]=sha256:6dfd97eec6928f3f26608dd0091a6f97d4be9b653057af0b619d6400cfffffb3
+        ["$recovery_b"]=sha256:c3092df879a8cc7a06980188527d17b425616f66e9d0aed4ad2551b9850c6c75
+      )
+      grep -Fxq -- "batch=2 candidate_a=$recovery_a candidate_b=$recovery_b" "$evidence" ||
+        fail 'batch 2 exact revisions not attested by owner'
+    else
+      recovery_a="$known_recovery_a"
+      recovery_b="$known_recovery_b"
+      declare -A recovery_api_ids=(
+        ["$recovery_a"]=sha256:426eca170257042c73941d6920e0828304daa34020f86e3858f375b42b17ea2d
+        ["$recovery_b"]=sha256:7fcd05927e19fe566301516fdce1d3ab2297c8ef88b27454c16299d2e321fb96
+      )
+      declare -A recovery_worker_ids=(
+        ["$recovery_a"]=sha256:80f9bebe35e74e43da0cf49ca03f5abef8229ec179e600c0bbc1767ca9c00001
+        ["$recovery_b"]=sha256:9d2b3678ad02365397724f7ea1a57fac77e6654e45e57c3c0031314fb728fe7f
+      )
+    fi
     expected_plan=$(printf '%s\n' \
       "$recovery_a ${recovery_api_ids[$recovery_a]} ${recovery_worker_ids[$recovery_a]}" \
       "$recovery_b ${recovery_api_ids[$recovery_b]} ${recovery_worker_ids[$recovery_b]}")
     [[ "$(LC_ALL=C sort -- "$STAGING_RETENTION_APPROVED_PLAN")" == "$(printf '%s\n' "$expected_plan" | LC_ALL=C sort)" ]] ||
       fail 'recovery plan must contain exactly two owner-approved revision/image-ID triples'
-    printf 'AUDIT one_time_recovery=true historic_workflow_conclusion=failure run_id=41982285823\n'
+    printf 'AUDIT one_time_recovery=true batch2=%s historic_workflow_conclusion=failure run_id=41982285823\n' "$batch2"
   else
     [[ "${STAGING_DEPLOY_SUCCEEDED_REVISION:-}" == "$current" ]] ||
       fail 'verified successful deployment revision is required'
@@ -274,7 +305,8 @@ check_config() {
       matches=$(timeout --signal=TERM --kill-after=1s 5s sudo -n grep -F -- "$rev" "$file") || status=$?
       if [[ "$status" -eq 0 ]]; then
         while IFS= read -r line; do
-          [[ "$line" == "known_recovery_a=$rev" || "$line" == "known_recovery_b=$rev" ]] ||
+          [[ "$line" == "known_recovery_a=$rev" || "$line" == "known_recovery_b=$rev" ||
+             "$line" == "batch2_recovery_a=$rev" || "$line" == "batch2_recovery_b=$rev" ]] ||
             return 1
         done <<< "$matches"
       elif [[ "$status" -ne 1 ]]; then
