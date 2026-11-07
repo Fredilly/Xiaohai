@@ -139,9 +139,9 @@ suite('scoped draft photo upload transaction (disposable PostgreSQL only)', () =
       expect(remoteUploads).toBe(2);
 
       await db.insert(storeInventory).values({ storeId: second, skuId: sku!.id, onHand: 0 });
-      await expect(
-        service.upload({ ...request, expectedProductVersion: 1 }),
-      ).rejects.toMatchObject({ code: 'SHARED_FORBIDDEN' });
+      await expect(service.upload({ ...request, expectedProductVersion: 1 })).rejects.toMatchObject(
+        { code: 'SHARED_FORBIDDEN' },
+      );
       expect(remoteUploads).toBe(2);
       const audit = await db
         .select()
