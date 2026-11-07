@@ -108,7 +108,7 @@ describe('mixed goods and book catalog presentation (#208)', () => {
     const view = presentCatalogProduct(
       fixture({ mediaUrls: ['https://cdn.example.com/products/detail1.jpg'] }),
     );
-    expect(view.displayCoverUrl).toBe('');
+    expect(view.displayCoverUrl).toBe('https://cdn.example.com/products/detail1.jpg');
     expect(view.galleryUrls).toEqual(['https://cdn.example.com/products/detail1.jpg']);
   });
 
