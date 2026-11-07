@@ -74,7 +74,7 @@ export function createMerchantImageStorage(
         'Content-Type': mimeType,
         'Content-Length': body.byteLength,
       });
-      return `${origin}/${objectKey}`;
+      return `${new URL(origin).origin}/${objectKey}`;
     },
   };
 }
