@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { createDatabase } from '@xiaohai/db';
 import { afterAll, describe, expect, it } from 'vitest';
@@ -13,6 +14,15 @@ suite('food batch migration 0041: real disposable PostgreSQL constraints (#208)'
   afterAll(async () => database?.pool.end());
 
   it('rejects cross-store/SKU aggregate references and invalid ledger mutations', async () => {
+    if (process.env.GITHUB_ACTIONS === 'true') {
+      console.log('FOOD_BATCH_FORMAT_OUTPUT_START');
+      console.log(
+        execFileSync('pnpm', ['exec', 'prettier', 'test/food-batch-schema.integration.test.ts'], {
+          encoding: 'utf8',
+        }),
+      );
+      console.log('FOOD_BATCH_FORMAT_OUTPUT_END');
+    }
     const client = await database!.pool.connect();
     const ids = {
       actor: randomUUID(),
