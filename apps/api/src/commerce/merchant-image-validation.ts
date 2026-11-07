@@ -7,11 +7,7 @@ export const extensionByMime: Record<MerchantImageType, string> = {
 };
 
 export type ProductImageErrorCode =
-  | 'NOT_FOUND'
-  | 'CONFLICT'
-  | 'INVALID_IMAGE'
-  | 'SHARED_FORBIDDEN'
-  | 'MEDIA_UNAVAILABLE';
+  'NOT_FOUND' | 'CONFLICT' | 'INVALID_IMAGE' | 'SHARED_FORBIDDEN' | 'MEDIA_UNAVAILABLE';
 
 export class ProductImageError extends Error {
   constructor(readonly code: ProductImageErrorCode) {
