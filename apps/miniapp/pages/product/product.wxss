@@ -60,3 +60,20 @@
   font-size: 24rpx;
   border-radius: 18rpx;
 }
+
+.product-gallery-strip {
+  width: 100%;
+  margin: 0 0 24rpx;
+  white-space: nowrap;
+}
+.product-gallery-list {
+  display: flex;
+  gap: 12rpx;
+}
+.product-gallery-thumb {
+  flex: none;
+  width: 112rpx;
+  height: 112rpx;
+  border-radius: 12rpx;
+  background: #f0f2f5;
+}
