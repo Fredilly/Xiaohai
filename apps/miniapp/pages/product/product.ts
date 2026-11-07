@@ -1,8 +1,6 @@
-import { addCartItem, getProduct, type Product } from '../../services/commerce';
+import { addCartItem, getProduct } from '../../services/commerce';
 import { detailAccessMessage } from '../../utils/detail-read-error';
-import { resolveEditorialBookCover } from '../../utils/real-visuals';
-
-type DisplayProduct = Product & { displayCoverUrl: string };
+import { presentCatalogProduct, type DisplayProduct } from '../../utils/catalog-presentation';
 
 Page({
   data: {
@@ -24,13 +22,7 @@ Page({
     try {
       const product = await getProduct(id);
       this.setData({
-        product: {
-          ...product,
-          displayCoverUrl: resolveEditorialBookCover(
-            product.title ?? product.name,
-            product.coverUrl,
-          ),
-        },
+        product: presentCatalogProduct(product),
         loading: false,
         error: false,
       });
