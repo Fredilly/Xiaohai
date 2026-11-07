@@ -23,6 +23,9 @@ import {
   registerStoreCatalogReadRoutes,
 } from './commerce/store-catalog-read-routes.js';
 import { CatalogEditService } from './commerce/catalog-edit-service.js';
+import { ProductImageUploadService } from './commerce/product-image-upload-service.js';
+import { registerProductImageUploadRoutes } from './commerce/product-image-upload-routes.js';
+import { createMerchantImageStorage } from './commerce/merchant-image-storage.js';
 import { CatalogCorrectionService } from './commerce/catalog-correction-service.js';
 import { registerCatalogCorrectionRoutes } from './commerce/catalog-correction-routes.js';
 import { loadWeChatPayProvider } from './payments/wechat-pay.js';
@@ -144,6 +147,11 @@ registerHqCatalogEditRoutes(app, {
   stores: new StoreNetworkService(db),
   catalog: new StoreCatalogReadService(db),
   editor: new CatalogEditService(db, config.STAFF_SESSION_SECRET),
+});
+registerProductImageUploadRoutes(app, {
+  staffAuthorization,
+  stores,
+  images: new ProductImageUploadService(db, createMerchantImageStorage(process.env)),
 });
 registerCatalogCorrectionRoutes(app, {
   staffAuthorization,

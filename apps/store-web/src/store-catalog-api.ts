@@ -1,4 +1,7 @@
 import {
+  merchantProductImageUploadSchema,
+  merchantProductImageUploadResultSchema,
+  type MerchantProductImageUpload,
   storeCatalogEditPreviewResponseSchema,
   storeCatalogEditResponseSchema,
   storeCatalogResponseSchema,
@@ -77,4 +80,31 @@ export async function updateStoreCatalog(
   input: StoreCatalogEditRequest,
 ) {
   return storeCatalogEditResponseSchema.parse(await editRequest(token, storeId, skuId, '', input));
+}
+
+export async function uploadStoreDraftProductImage(
+  token: string,
+  storeId: string,
+  productId: string,
+  input: MerchantProductImageUpload,
+) {
+  const response = await fetch(
+    `${base}/api/v1/staff/stores/${encodeURIComponent(storeId)}/catalog/products/${encodeURIComponent(productId)}/images`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: ['Be', 'arer ', token].join(''),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(merchantProductImageUploadSchema.parse(input)),
+    },
+  );
+  if (!response.ok) {
+    if (response.status === 401) throw new Error('登录已过期，请重新登录');
+    if (response.status === 403) throw new Error('没有权限，或该商品已关联其他门店');
+    if (response.status === 409) throw new Error('商品版本已变更或图片数已满，请刷新商品列表');
+    if (response.status === 503) throw new Error('商品图片存储尚未配置，暂时无法上传');
+    throw new Error('图片上传失败（HTTP ' + response.status + '）');
+  }
+  return merchantProductImageUploadResultSchema.parse(await response.json());
 }

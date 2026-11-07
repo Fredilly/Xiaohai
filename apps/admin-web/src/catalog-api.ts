@@ -1,4 +1,7 @@
 import {
+  merchantProductImageUploadSchema,
+  merchantProductImageUploadResultSchema,
+  type MerchantProductImageUpload,
   adminProductCreateInputSchema,
   bookLookupResponseSchema,
   adminProductUpdateInputSchema,
@@ -171,5 +174,20 @@ export async function updateHqStoreCatalog(
     'PATCH',
     storeCatalogEditRequestSchema.parse(input),
     previewToken,
+  );
+}
+
+export async function uploadHqDraftProductImage(
+  token: string,
+  productId: string,
+  input: MerchantProductImageUpload,
+) {
+  return merchantProductImageUploadResultSchema.parse(
+    await call(
+      `/api/v1/staff/catalog/products/${encodeURIComponent(productId)}/images`,
+      token,
+      'POST',
+      merchantProductImageUploadSchema.parse(input),
+    ),
   );
 }

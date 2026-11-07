@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import type { StoreCatalogEditRequest, StoreCatalogItem } from '@xiaohai/contracts/commerce';
 import { listStoreCatalog, updateStoreCatalog } from './store-catalog-api';
+import { StoreProductImageUploader } from './merchant-image-uploader';
 
 const limit = 30;
 
@@ -20,6 +21,7 @@ export function StoreCatalogPanel({
   const [more, setMore] = useState(false);
   const [status, setStatus] = useState('正在读取门店商品资料…');
   const [editing, setEditing] = useState<StoreCatalogItem | null>(null);
+  const [photoItem, setPhotoItem] = useState<StoreCatalogItem | null>(null);
   const [reloadNonce, setReloadNonce] = useState(0);
 
   useEffect(() => {
@@ -138,6 +140,11 @@ export function StoreCatalogPanel({
                   <button type="button" onClick={() => setEditing(item)}>
                     编辑商品资料
                   </button>
+                  {item.productStatus === 'DRAFT' && (
+                    <button type="button" onClick={() => setPhotoItem(item)}>
+                      上传图片
+                    </button>
+                  )}
                 </td>
               </tr>
             ))}
@@ -161,6 +168,26 @@ export function StoreCatalogPanel({
         </button>
       </div>
       <p role="status">{status}</p>
+      {photoItem && (
+        <div className="catalog-editor-overlay" role="presentation">
+          <div
+            className="catalog-editor-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-label={`上传商品图片：${photoItem.productName}`}
+          >
+            <StoreProductImageUploader
+              key={photoItem.productId}
+              token={token}
+              storeId={storeId}
+              productId={photoItem.productId}
+              productVersion={photoItem.productVersion}
+              onUploaded={() => setReloadNonce((value) => value + 1)}
+              onCancel={() => setPhotoItem(null)}
+            />
+          </div>
+        </div>
+      )}
       {editing && (
         <div
           className="catalog-editor-overlay"

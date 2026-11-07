@@ -204,6 +204,23 @@ export const adminProductUpdateInputSchema = adminProductFieldsSchema.extend({
 export const adminProductUpdateSchema = adminProductUpdateInputSchema;
 /** @deprecated Use the explicit create/update schemas at API boundaries. */
 export const adminProductInputSchema = adminProductCreateInputSchema;
+/** Store and HQ photo uploads share a strict, draft-only contract. */
+export const merchantProductImageUploadSchema = z
+  .object({
+    expectedProductVersion: z.number().int().nonnegative(),
+    mimeType: z.enum(['image/jpeg', 'image/png', 'image/webp']),
+    base64: z.string().min(1).max(2_796_208),
+  })
+  .strict();
+export const merchantProductImageUploadResultSchema = z.object({
+  imageId: z.uuid(),
+  url: z.url(),
+  coverUrl: z.url().nullable(),
+  productVersion: z.number().int().nonnegative(),
+  duplicate: z.boolean(),
+});
+export type MerchantProductImageUpload = z.infer<typeof merchantProductImageUploadSchema>;
+
 export const adminProductSchema = adminProductCreateInputSchema.extend({
   id: z.uuid(),
   skuId: z.uuid(),
