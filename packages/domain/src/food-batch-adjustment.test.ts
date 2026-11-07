@@ -36,12 +36,17 @@ const initial: FoodBatchAdjustmentInput = {
   reason: 'Verified goods receipt',
 };
 
-const withInput = (changes: Partial<FoodBatchAdjustmentInput>) => ({ ...initial, ...changes });
+function plan(changes: Partial<FoodBatchAdjustmentInput> = {}) {
+  return previewFoodBatchAdjustment({ ...initial, ...changes });
+}
+
+const shortage = 'INSUFFICIENT_UNALLOCATED_FOOD_STOCK';
+const unsafeLot = 'FOOD_BATCH_REQUIRES_SEPARATE_DISPOSITION';
+const currentLot = initial.batches[0]!;
 
 describe('food lot movement proposal (#208; no persistence)', () => {
-  it('returns a dry-run receipt without mutating source records', () => {
-    const plan = previewFoodBatchAdjustment(initial);
-    expect(plan).toMatchObject({
+  it('returns a dry-run receipt without mutating input', () => {
+    expect(plan()).toMatchObject({
       mode: 'DRY_RUN_ONLY',
       persisted: false,
       checkoutEnabled: false,
@@ -54,88 +59,61 @@ describe('food lot movement proposal (#208; no persistence)', () => {
       afterSellable: 10,
     });
     expect(initial.aggregate.onHand).toBe(10);
-    expect(initial.batches[0]?.onHand).toBe(10);
+    expect(currentLot.onHand).toBe(10);
   });
 
-  it('allows loss only from unallocated stock', () => {
+  it('protects reserved and blocked stock from damage', () => {
+    const damage = (quantity: number) =>
+      plan({ operation: { kind: 'DAMAGE', quantity } });
+    expect(damage(7).quantityDelta).toBe(-7);
+    expect(() => damage(8)).toThrow(shortage);
     expect(
-      previewFoodBatchAdjustment(
-        withInput({ operation: { kind: 'DAMAGE', quantity: 7 } }),
-      ).quantityDelta,
-    ).toBe(-7);
-    expect(() =>
-      previewFoodBatchAdjustment(withInput({ operation: { kind: 'DAMAGE', quantity: 8 } })),
-    ).toThrow('INSUFFICIENT_UNALLOCATED_FOOD_STOCK');
-    expect(
-      previewFoodBatchAdjustment(
-        withInput({ operation: { kind: 'STOCKTAKE_LOSS', countedOnHand: 5 } }),
-      ).afterBatchOnHand,
+      plan({ operation: { kind: 'STOCKTAKE_LOSS', countedOnHand: 5 } })
+        .afterBatchOnHand,
     ).toBe(5);
   });
 
-  it('rejects unexplained stocktake gains or no-op counts', () => {
+  it('rejects stocktake gains and no-op counts', () => {
     for (const countedOnHand of [10, 11, -1, 1.1]) {
-      expect(() =>
-        previewFoodBatchAdjustment(
-          withInput({ operation: { kind: 'STOCKTAKE_LOSS', countedOnHand } }),
-        ),
-      ).toThrow('INVALID_STOCKTAKE_LOSS');
+      const operation = { kind: 'STOCKTAKE_LOSS', countedOnHand } as const;
+      expect(() => plan({ operation })).toThrow('INVALID_STOCKTAKE_LOSS');
     }
   });
 
-  it('fails closed on mismatched totals, foreign stores and missing lots', () => {
-    expect(() =>
-      previewFoodBatchAdjustment(
-        withInput({ aggregate: { ...initial.aggregate, onHand: 11 } }),
-      ),
-    ).toThrow('UNRECONCILED_FOOD_STOCK');
-    expect(() =>
-      previewFoodBatchAdjustment(
-        withInput({ batches: [{ ...initial.batches[0]!, storeId: 'store-2' }] }),
-      ),
-    ).toThrow('CROSS_STORE_FOOD_BATCH');
-    expect(() => previewFoodBatchAdjustment(withInput({ batches: [] }))).toThrow(
-      'UNRECONCILED_FOOD_STOCK',
+  it('rejects mismatched, cross-store and missing batches', () => {
+    const aggregate = { ...initial.aggregate, onHand: 11 };
+    expect(() => plan({ aggregate })).toThrow('UNRECONCILED_FOOD_STOCK');
+    expect(() => plan({ batches: [{ ...currentLot, storeId: 'other' }] })).toThrow(
+      'CROSS_STORE_FOOD_BATCH',
     );
+    expect(() => plan({ batches: [] })).toThrow('UNRECONCILED_FOOD_STOCK');
   });
 
-  it('requires a separate workflow for expired, held and recalled lots', () => {
-    expect(() =>
-      previewFoodBatchAdjustment(withInput({ businessDate: '2026-12-01' })),
-    ).toThrow('FOOD_BATCH_REQUIRES_SEPARATE_DISPOSITION');
+  it('rejects expired, held and recalled lots', () => {
+    expect(() => plan({ businessDate: '2026-12-01' })).toThrow(unsafeLot);
     for (const state of ['HELD', 'RECALLED'] as const) {
-      expect(() =>
-        previewFoodBatchAdjustment(
-          withInput({ batches: [{ ...initial.batches[0]!, state }] }),
-        ),
-      ).toThrow('FOOD_BATCH_REQUIRES_SEPARATE_DISPOSITION');
+      expect(() => plan({ batches: [{ ...currentLot, state }] })).toThrow(
+        unsafeLot,
+      );
     }
   });
 
-  it('rejects invalid expected versions, evidence and quantities', () => {
-    expect(() =>
-      previewFoodBatchAdjustment(withInput({ inventoryVersion: -1 })),
-    ).toThrow('INVALID_INVENTORY_VERSION');
-    expect(() => previewFoodBatchAdjustment(withInput({ reason: '' }))).toThrow(
-      'INVALID_ADJUSTMENT_EVIDENCE',
+  it('validates expected version, evidence and quantity', () => {
+    expect(() => plan({ inventoryVersion: -1 })).toThrow(
+      'INVALID_INVENTORY_VERSION',
     );
-    expect(() =>
-      previewFoodBatchAdjustment(
-        withInput({ operation: { kind: 'EXISTING_LOT_RECEIPT', quantity: 0 } }),
-      ),
-    ).toThrow('INVALID_ADJUSTMENT_QUANTITY');
-    expect(() =>
-      previewFoodBatchAdjustment(
-        withInput({ operation: { kind: 'EXISTING_LOT_RECEIPT', quantity: 1_000_000_000 } }),
-      ),
-    ).toThrow('INSUFFICIENT_UNALLOCATED_FOOD_STOCK');
+    expect(() => plan({ reason: '' })).toThrow('INVALID_ADJUSTMENT_EVIDENCE');
+    const receipt = (quantity: number) =>
+      plan({ operation: { kind: 'EXISTING_LOT_RECEIPT', quantity } });
+    expect(() => receipt(0)).toThrow('INVALID_ADJUSTMENT_QUANTITY');
+    expect(() => receipt(1_000_000_000)).toThrow(shortage);
   });
 
-  it('never implies checkout availability for DRAFT product stock', () => {
-    const plan = previewFoodBatchAdjustment(
-      withInput({ aggregate: { ...initial.aggregate, productStatus: 'DRAFT' } }),
-    );
-    expect(plan.checkoutEnabled).toBe(false);
-    expect(plan.afterSellable).toBe(0);
+  it('does not enable checkout for DRAFT product stock', () => {
+    const aggregate = { ...initial.aggregate, productStatus: 'DRAFT' as const };
+    expect(plan({ aggregate })).toMatchObject({
+      checkoutEnabled: false,
+      afterSellable: 0,
+    });
   });
 });
