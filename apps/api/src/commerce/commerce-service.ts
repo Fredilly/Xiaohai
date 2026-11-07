@@ -691,18 +691,36 @@ export class CommerceService {
     }
   }
 
+  async createStoreDraftProduct(
+    input: AdminProductInput,
+    actorStaffAccountId: string,
+    requestId: string,
+    storeId: string,
+    idempotencyKey: string,
+  ) {
+    // Store-created goods remain invisible and unpurchasable until a separate
+    // explicit publish flow is reviewed. This does not grant global catalog
+    // access: store scope must be authorized by the calling route.
+    if (input.status !== 'DRAFT' || input.sku.availableForSale) {
+      throw new CommerceError('INVALID_INPUT', 'Store creation requires an unsellable draft');
+    }
+    return this.createAdminProduct(input, actorStaffAccountId, requestId, idempotencyKey, storeId);
+  }
+
   async createAdminProduct(
     input: AdminProductInput,
     actorStaffAccountId: string,
     requestId: string,
     idempotencyKey = requestId,
+    linkedStoreId?: string,
   ) {
     // Return a persisted read after commit; never query through a second
     // pooled connection while the INSERT transaction is still open.
     // A browser retry must carry the same key even when Fastify assigns a new request ID.
     // Store only hashes in the immutable audit row; no new schema or secret is required.
+    const actionKey = linkedStoreId ? 'catalog.store_create' : 'catalog.hq_create';
     const keyHash = createHash('sha256')
-      .update(`${actorStaffAccountId}:catalog.hq_create:${idempotencyKey}`)
+      .update(`${actorStaffAccountId}:${actionKey}:${linkedStoreId ? linkedStoreId + ':' : ''}${idempotencyKey}`)
       .digest('hex');
     const payloadHash = createHash('sha256').update(JSON.stringify(input)).digest('hex');
     let createdId: string;
@@ -718,7 +736,7 @@ export class CommerceService {
           .where(
             and(
               eq(auditLogs.actorStaffAccountId, actorStaffAccountId),
-              eq(auditLogs.actionKey, 'catalog.hq_create'),
+              eq(auditLogs.actionKey, actionKey),
               sql`${auditLogs.metadata}->>'idempotencyKeyHash' = ${keyHash}`,
             ),
           )
@@ -772,20 +790,36 @@ export class CommerceService {
             status: input.status,
           })
           .returning({ id: products.id });
-        await tx.insert(skus).values({
-          productId: product!.id,
-          ...input.sku,
-          code: input.sku.code ?? `XH-SKU-${randomUUID()}`,
-        });
+        const [sku] = await tx
+          .insert(skus)
+          .values({
+            productId: product!.id,
+            ...input.sku,
+            code: input.sku.code ?? `XH-SKU-${randomUUID()}`,
+          })
+          .returning({ id: skus.id });
+        if (linkedStoreId) {
+          // An initial ZERO-quantity association gives the creating Store
+          // scoped read access without inventing stock or ledger entries.
+          // The association and draft creation commit (or roll back) together.
+          await tx.insert(storeInventory).values({
+            storeId: linkedStoreId,
+            skuId: sku!.id,
+            onHand: 0,
+            reserved: 0,
+            rentalReserved: 0,
+          });
+        }
         await tx.insert(auditLogs).values({
           actorStaffAccountId,
-          actionKey: 'catalog.hq_create',
+          actionKey,
           resourceType: 'PRODUCT',
           resourceId: product!.id,
           requestId,
           metadata: {
             changedFields: input.book ? ['product', 'book', 'edition', 'sku'] : ['product', 'sku'],
             skuCount: 1,
+            ...(linkedStoreId ? { linkedStoreId, initialOnHand: 0 } : {}),
             idempotencyKeyHash: keyHash,
             payloadHash,
           },
