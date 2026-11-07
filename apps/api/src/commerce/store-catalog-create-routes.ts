@@ -71,8 +71,7 @@ function fail(request: FastifyRequest, reply: FastifyReply, error: unknown) {
     code = status === 403 ? 'STAFF_FORBIDDEN' : error.code;
   } else if (error instanceof CommerceError) {
     code = error.code;
-    status =
-      error.code === 'NOT_FOUND' ? 404 : error.code === 'INVALID_INPUT' ? 400 : 409;
+    status = error.code === 'NOT_FOUND' ? 404 : error.code === 'INVALID_INPUT' ? 400 : 409;
   }
   request.log.warn({ requestId: request.id, errorCode: code }, 'Store catalog create failed');
   return reply.status(status).send({
