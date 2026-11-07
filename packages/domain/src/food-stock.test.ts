@@ -76,8 +76,7 @@ describe('packaged food batch safety projection (#208)', () => {
     expect(result.batches.find((batch) => batch.id === 'new-lot')?.disposition).toBe('HELD');
     held[0]!.state = 'RECALLED';
     expect(
-      evaluatePackagedFoodStock({ businessDate: '2026-11-07', aggregate, batches: held })
-        .sellable,
+      evaluatePackagedFoodStock({ businessDate: '2026-11-07', aggregate, batches: held }).sellable,
     ).toBe(0);
   });
 
@@ -125,9 +124,9 @@ describe('packaged food batch safety projection (#208)', () => {
     expect(() =>
       evaluatePackagedFoodStock({ ...base, batches: [batches[0]!, batches[0]!] }),
     ).toThrow('DUPLICATE_FOOD_BATCH');
-    expect(() =>
-      evaluatePackagedFoodStock({ ...base, businessDate: '2026-02-30' }),
-    ).toThrow('INVALID_BUSINESS_DATE');
+    expect(() => evaluatePackagedFoodStock({ ...base, businessDate: '2026-02-30' })).toThrow(
+      'INVALID_BUSINESS_DATE',
+    );
     expect(() =>
       evaluatePackagedFoodStock({ ...base, batches: [{ ...batches[0]!, blocked: 5 }] }),
     ).toThrow('INVALID_STOCK_QUANTITY');
