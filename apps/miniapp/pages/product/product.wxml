@@ -5,7 +5,15 @@
     <button wx:if="{{id && !accessMessage}}" class="primary-btn" bindtap="retry">重新加载</button>
   </view>
   <block wx:elif="{{product}}">
-    <view class="product-cover-wrap"><image wx:if="{{product.displayCoverUrl}}" class="product-cover" src="{{product.displayCoverUrl}}" mode="aspectFit" binderror="coverError" /><view wx:else class="product-cover-empty">暂无封面</view></view>
+    <view class="product-cover-wrap">
+      <image wx:if="{{product.displayCoverUrl}}" class="product-cover" src="{{product.displayCoverUrl}}" mode="aspectFit" binderror="coverError" data-index="0" bindtap="previewGallery" />
+      <view wx:else class="product-cover-empty">暂无封面</view>
+    </view>
+    <scroll-view wx:if="{{product.galleryUrls.length > 1}}" scroll-x="true" class="product-gallery-strip">
+      <view class="product-gallery-list">
+        <image wx:for="{{product.galleryUrls}}" wx:key="*this" class="product-gallery-thumb" src="{{item}}" mode="aspectFill" data-index="{{index}}" data-src="{{item}}" bindtap="previewGallery" binderror="galleryError" />
+      </view>
+    </scroll-view>
     <text class="page-heading">{{product.title || product.name}}</text>
     <text wx:if="{{product.author}}" class="product-meta">{{product.author}}</text>
     <text wx:if="{{product.isBook && product.isbn}}" class="product-meta">ISBN {{product.isbn}}</text>

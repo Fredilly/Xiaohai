@@ -4,6 +4,7 @@ import { resolveEditorialBookCover } from './real-visuals';
 export type DisplayProduct = Product & {
   isBook: boolean;
   displayCoverUrl: string;
+  galleryUrls: string[];
   displaySubtitle: string;
   displayPriceText: string;
 };
@@ -14,9 +15,12 @@ export type DisplayProduct = Product & {
  */
 export function presentCatalogProduct(product: Product): DisplayProduct {
   const isBook = Boolean(product.title || product.author || product.isbn || product.publisher);
-  const displayCoverUrl = isBook
-    ? resolveEditorialBookCover(product.title ?? product.name, product.coverUrl)
-    : (product.coverUrl?.trim() ?? '');
+  // Prefer real merchant media over title-based fallback art. No separate
+  // coverUrl is required when the product already has approved gallery media.
+  const displayCoverUrl =
+    product.coverUrl?.trim() ||
+    product.mediaUrls?.[0] ||
+    (isBook ? resolveEditorialBookCover(product.title ?? product.name, null) : '');
 
   const displaySubtitle = isBook
     ? (product.author ?? product.publisher ?? '图书商品')
@@ -38,5 +42,6 @@ export function presentCatalogProduct(product: Product): DisplayProduct {
         : '暂不可购买'
       : `¥${(lowestPrice / 100).toFixed(2)}${purchasableSkus.length > 1 ? ' 起' : ''}`;
 
-  return { ...product, isBook, displayCoverUrl, displaySubtitle, displayPriceText };
+  const galleryUrls = [...new Set([displayCoverUrl, ...(product.mediaUrls ?? [])].filter(Boolean))];
+  return { ...product, isBook, displayCoverUrl, galleryUrls, displaySubtitle, displayPriceText };
 }

@@ -86,6 +86,32 @@ describe('mixed goods and book catalog presentation (#208)', () => {
     // Listing a price is not a guarantee that any SKU has physical store stock.
   });
 
+  it('constructs a unique gallery with the actual product cover first', () => {
+    const view = presentCatalogProduct(
+      fixture({
+        coverUrl: 'https://cdn.example.com/products/main.jpg',
+        mediaUrls: [
+          'https://cdn.example.com/products/main.jpg',
+          'https://cdn.example.com/products/detail1.jpg',
+          'https://cdn.example.com/products/detail2.jpg',
+        ],
+      }),
+    );
+    expect(view.galleryUrls).toEqual([
+      'https://cdn.example.com/products/main.jpg',
+      'https://cdn.example.com/products/detail1.jpg',
+      'https://cdn.example.com/products/detail2.jpg',
+    ]);
+  });
+
+  it('preserves gallery images when a product has no main cover', () => {
+    const view = presentCatalogProduct(
+      fixture({ mediaUrls: ['https://cdn.example.com/products/detail1.jpg'] }),
+    );
+    expect(view.displayCoverUrl).toBe('https://cdn.example.com/products/detail1.jpg');
+    expect(view.galleryUrls).toEqual(['https://cdn.example.com/products/detail1.jpg']);
+  });
+
   it('does not advertise a price as purchasable when every SKU is disabled', () => {
     const view = presentCatalogProduct(
       fixture({

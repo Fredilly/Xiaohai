@@ -18,6 +18,7 @@ import {
   orders,
   pickupCodes,
   products,
+  productMedia,
   skus,
   storeInventory,
   userAddresses,
@@ -29,6 +30,7 @@ import {
   signLegacyPreview,
   verifyLegacyPreview,
 } from './hq-catalog-impact.js';
+import { publicProductGalleryUrls } from './product-public-media.js';
 
 type Db = ReturnType<typeof createDatabase>['db'];
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
@@ -97,7 +99,18 @@ export class CommerceService {
     const result = await this.listCatalog();
     const product = result.products.find((item) => item.id === id);
     if (!product) throw new CommerceError('NOT_FOUND', 'Product not found');
-    return product;
+    // Public product_media records are ordered merchant artwork, not
+    // user-generated private BOS media. Never expose signed query strings.
+    const images = await this.db
+      .select({ url: productMedia.url })
+      .from(productMedia)
+      .where(eq(productMedia.productId, id))
+      .orderBy(asc(productMedia.displayOrder), asc(productMedia.id))
+      .limit(40);
+    return {
+      ...product,
+      mediaUrls: publicProductGalleryUrls(images.map((image) => image.url)),
+    };
   }
 
   private async getCartId(consumerUserId: string) {

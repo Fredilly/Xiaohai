@@ -54,6 +54,8 @@ export const catalogProductSchema = z.object({
   name: z.string(),
   description: z.string().nullable(),
   coverUrl: z.string().nullable(),
+  /** Optional for catalog list; populated on single-product detail reads. */
+  mediaUrls: z.array(z.url()).max(8).optional(),
   title: z.string().nullable(),
   author: z.string().nullable(),
   isbn: z.string().nullable(),
