@@ -1,9 +1,6 @@
 import { z } from 'zod';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import {
-  adminProductCreateInputSchema,
-  adminProductSchema,
-} from '@xiaohai/contracts/commerce';
+import { adminProductCreateInputSchema, adminProductSchema } from '@xiaohai/contracts/commerce';
 import { ConsumerAuthError } from '../auth/errors.js';
 import type { StaffAuthorizationService } from '../auth/staff-authorization.js';
 import { StoreNetworkError, type StoreNetworkService } from '../stores/store-service.js';
@@ -74,7 +71,8 @@ function fail(request: FastifyRequest, reply: FastifyReply, error: unknown) {
     code = status === 403 ? 'STAFF_FORBIDDEN' : error.code;
   } else if (error instanceof CommerceError) {
     code = error.code;
-    status = error.code === 'NOT_FOUND' ? 404 : error.code === 'INVALID_INPUT' ? 400 : 409;
+    status =
+      error.code === 'NOT_FOUND' ? 404 : error.code === 'INVALID_INPUT' ? 400 : 409;
   }
   request.log.warn({ requestId: request.id, errorCode: code }, 'Store catalog create failed');
   return reply.status(status).send({
