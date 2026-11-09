@@ -79,5 +79,17 @@ A module is Done only with applicable UI + API + DB + Admin/Store UI + Auth/RBAC
 
 Do not delete unknown files, overwrite others' work, commit secrets, or change schema without migrations. Important architecture decisions require an ADR. Production release requires human approval.
 
+## 两人协作的审核边界 / Two-person review boundary
+
+遵循 `docs/COLLABORATION.md` 的双人团队审核规则：普通 PR 由非作者的真人审核，
+CI 与 AI 检查不能充当第二位真人。涉及删除、迁移、共享 Staging 或生产变更时，
+必须区分代码审核与明确的操作授权，并在执行前完成受保护数据、恢复路径、
+权限、引用、健康和锁的失败即停止检查。
+
+**已有特定限制不自动取消。** 对于 #195 / #205，只有负责人在 #195
+明确修订原来要求的第二位独立审核条件，或真正增加符合条件的独立审核人，
+才能解除该项阻塞。本文档的修改、GitHub 代码审核通过及聊天中的决定均
+不替代现有条件。不得因此安装脚本、执行镜像删除或启用自动回收。
+
 ## 阶段报告 / Stage report
 `Completed / Files Changed / Database Changes / Tests / Security & Permissions / Known Issues / Decisions Needed / Next Step`
