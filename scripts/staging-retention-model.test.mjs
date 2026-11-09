@@ -75,7 +75,9 @@ test('steady-state retention contract fails closed for missing proof or authoriz
     'verifiedBaselineAndGhcrDigests',
     'verifiedCurrentAndTwoRollbackPairs',
     'verifiedExtraAndFiveHolds',
-    'independentSnapshotAndRestoreAccess',
+    'verifiedSnapshotCompletionAndDiskMatch',
+    'verifiedUsableRestoreAuthorizationAndPath',
+    'documentedPostgresRecoveryLimitations',
     'approvedExactCandidateIds',
     'completeReferencesAndAliasCoverage',
     'fiveServicesAndFourVolumesHealthy',
@@ -109,5 +111,47 @@ test('steady-state retention contract rejects assertions that are not literal tr
     const verdict = assessSteadyStateRetention(input);
     assert.equal(verdict.stage, 'BLOCKED');
     assert.equal(verdict.dockerDeletionAuthorized, false);
+  }
+});
+
+test('completed disk snapshots or primary account assertion never substitute for usable restore evidence', () => {
+  const completedSnapshotsOnly = assessSteadyStateRetention({
+    verifiedSnapshotCompletionAndDiskMatch: true,
+    // Historical single-field attestation must not satisfy the new split gates.
+    independentSnapshotAndRestoreAccess: true,
+    primaryAlibabaAccount: true,
+  });
+  assert.ok(completedSnapshotsOnly.missing.includes('verifiedUsableRestoreAuthorizationAndPath'));
+  assert.ok(completedSnapshotsOnly.missing.includes('documentedPostgresRecoveryLimitations'));
+  assert.equal(completedSnapshotsOnly.dockerDeletionAuthorized, false);
+
+  const all = Object.fromEntries(
+    [
+      'verifiedSuccessfulBackendDeployment',
+      'verifiedBaselineAndGhcrDigests',
+      'verifiedCurrentAndTwoRollbackPairs',
+      'verifiedExtraAndFiveHolds',
+      'verifiedSnapshotCompletionAndDiskMatch',
+      'verifiedUsableRestoreAuthorizationAndPath',
+      'documentedPostgresRecoveryLimitations',
+      'approvedExactCandidateIds',
+      'completeReferencesAndAliasCoverage',
+      'fiveServicesAndFourVolumesHealthy',
+      'correctHostAndExclusiveLock',
+      'independentHumanReview',
+      'ownerApprovedRetentionPolicy',
+      'separateOperationalAuthorization',
+      'noContainerdReclaimPending',
+    ].map((gate) => [gate, true]),
+  );
+  for (const gate of [
+    'verifiedSnapshotCompletionAndDiskMatch',
+    'verifiedUsableRestoreAuthorizationAndPath',
+    'documentedPostgresRecoveryLimitations',
+  ]) {
+    const candidate = assessSteadyStateRetention({ ...all, [gate]: false });
+    assert.equal(candidate.stage, 'BLOCKED', gate);
+    assert.deepEqual(candidate.missing, [gate]);
+    assert.equal(candidate.dockerDeletionAuthorized, false);
   }
 });
