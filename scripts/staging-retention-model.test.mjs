@@ -99,7 +99,10 @@ test('steady-state retention contract fails closed for missing proof or authoriz
     assert.equal(blocked.dockerDeletionAuthorized, false);
   }
   const readyForSeparateReview = assessSteadyStateRetention(all);
-  assert.equal(readyForSeparateReview.stage, 'REVIEW_COMPLETE_EXECUTION_STILL_SEPARATE');
+  assert.equal(
+    readyForSeparateReview.stage,
+    'REVIEW_COMPLETE_EXECUTION_STILL_SEPARATE',
+  );
   assert.deepEqual(readyForSeparateReview.missing, []);
   assert.equal(readyForSeparateReview.dockerDeletionAuthorized, false);
 });
