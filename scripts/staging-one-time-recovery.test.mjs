@@ -73,7 +73,10 @@ async function fixture({
   ]) {
     let contents = '# fixture deployment config\\n';
     if (file === 'staging-image-retention.sh') {
-      contents = `known_recovery_a=${old}\nknown_recovery_b=${oldB}\nbatch2_recovery_a=${batch2A}\nbatch2_recovery_b=${batch2B}\nphase_d_recovery_a=${phaseDA}\nphase_d_recovery_b=${phaseDB}\n`;
+      contents =
+        `known_recovery_a=${old}\nknown_recovery_b=${oldB}\n` +
+        `batch2_recovery_a=${batch2A}\nbatch2_recovery_b=${batch2B}\n` +
+        `phase_d_recovery_a=${phaseDA}\nphase_d_recovery_b=${phaseDB}\n`;
       if (selfSourceUnexpectedRef) {
         contents += `echo "${old}"\n`;
       }
@@ -253,12 +256,14 @@ console.log('/dev/vda3 51200000 100000  ' + (5000000 + removed * 600000) + ' ' +
     preparePhaseD: async () => {
       await writeFile(
         plan,
-        `${phaseDA} ${recoveryIds[api(phaseDA)]} ${recoveryIds[worker(phaseDA)]}\n${phaseDB} ${recoveryIds[api(phaseDB)]} ${recoveryIds[worker(phaseDB)]}\n`,
+        `${phaseDA} ${recoveryIds[api(phaseDA)]} ${recoveryIds[worker(phaseDA)]}\n` +
+          `${phaseDB} ${recoveryIds[api(phaseDB)]} ${recoveryIds[worker(phaseDB)]}\n`,
       );
       await writeFile(
         evidence,
         'snapshot=s-j6ccgk5wyg44gmzqgf5v status=Success\n' +
-          'fresh_snapshot=s-j6cazgfr54fw87udingl status=accomplished progress=100% source_disk=d-j6c6f95ns1nggo7h11io\n' +
+          'fresh_snapshot=s-j6cazgfr54fw87udingl status=accomplished progress=100% ' +
+          'source_disk=d-j6c6f95ns1nggo7h11io\n' +
           'workflow_run=41982285823 conclusion=failure reason=post_disk_gate\n' +
           `owner_approval=${phaseDOwner}\n` +
           `batch=3 candidate_a=${phaseDA} candidate_b=${phaseDB}\n`,
@@ -484,25 +489,33 @@ test('ordinary --recovery-execute rejects batch 2 manifest, even with original r
   assert.deepEqual((await fx.state()).removed, []);
 });
 
-test('Phase D exact-two path deletes only the four pinned images when every gate passes', async () => {
-  const fx = await fixture();
-  await fx.preparePhaseD();
-  const result = fx.runPhaseD();
-  assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /phase_d=true historic_workflow_conclusion=failure/);
-  assert.match(result.stdout, /recovery_preflight=all_four_exact_images_passed/);
-  assert.match(result.stdout, /deleted_pairs=2/);
-  const removed = (await fx.state()).removed;
-  assert.deepEqual(removed, [api(phaseDA), worker(phaseDA), api(phaseDB), worker(phaseDB)]);
-  assert.ok(!removed.includes(api(old)));
-  assert.ok(!removed.includes(worker(oldB)));
-  assert.ok(!removed.includes(api(extraOld)));
-  assert.ok(!removed.includes(worker(extraOld)));
-  for (const rev of recentHolds) {
-    assert.ok(!removed.includes(api(rev)));
-    assert.ok(!removed.includes(worker(rev)));
-  }
-});
+test(
+  'Phase D exact-two path deletes only the four pinned images when every gate passes',
+  async () => {
+    const fx = await fixture();
+    await fx.preparePhaseD();
+    const result = fx.runPhaseD();
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /phase_d=true historic_workflow_conclusion=failure/);
+    assert.match(result.stdout, /recovery_preflight=all_four_exact_images_passed/);
+    assert.match(result.stdout, /deleted_pairs=2/);
+    const removed = (await fx.state()).removed;
+    assert.deepEqual(removed, [
+      api(phaseDA),
+      worker(phaseDA),
+      api(phaseDB),
+      worker(phaseDB),
+    ]);
+    assert.ok(!removed.includes(api(old)));
+    assert.ok(!removed.includes(worker(oldB)));
+    assert.ok(!removed.includes(api(extraOld)));
+    assert.ok(!removed.includes(worker(extraOld)));
+    for (const rev of recentHolds) {
+      assert.ok(!removed.includes(api(rev)));
+      assert.ok(!removed.includes(worker(rev)));
+    }
+  },
+);
 
 test('Phase D immutable image IDs fail closed before first deletion', async () => {
   for (const ref of [api(phaseDA), worker(phaseDA), api(phaseDB), worker(phaseDB)]) {
@@ -539,7 +552,9 @@ test('Phase D rejects missing enablement and wrong or consumed approvals', async
   }
 });
 
-test('Phase D requires the fresh same-host snapshot evidence and exact manifest attestation', async () => {
+test(
+  'Phase D requires the fresh same-host snapshot evidence and exact manifest attestation',
+  async () => {
   {
     const fx = await fixture();
     await fx.preparePhaseD();
@@ -568,7 +583,8 @@ test('Phase D requires the fresh same-host snapshot evidence and exact manifest 
     await writeFile(
       fx.evidence,
       'snapshot=s-j6ccgk5wyg44gmzqgf5v status=Success\n' +
-        'fresh_snapshot=s-j6cazgfr54fw87udingl status=accomplished progress=100% source_disk=d-j6c6f95ns1nggo7h11io\n' +
+        'fresh_snapshot=s-j6cazgfr54fw87udingl status=accomplished progress=100% ' +
+        'source_disk=d-j6c6f95ns1nggo7h11io\n' +
         'workflow_run=41982285823 conclusion=failure reason=post_disk_gate\n' +
         `owner_approval=${phaseDOwner}\n` +
         `batch=3 candidate_a=${phaseDB} candidate_b=${phaseDA}\n`,
@@ -578,9 +594,12 @@ test('Phase D requires the fresh same-host snapshot evidence and exact manifest 
     assert.match(result.stderr, /Phase D exact revisions not attested by owner/);
     assert.deepEqual((await fx.state()).removed, []);
   }
-});
+  },
+);
 
-test('Phase D exact self declarations are allowed but real config references remain blocking', async () => {
+test(
+  'Phase D exact self declarations are allowed but real config references remain blocking',
+  async () => {
   const good = await fixture();
   await good.preparePhaseD();
   const pass = good.runPhaseD();
@@ -590,9 +609,10 @@ test('Phase D exact self declarations are allowed but real config references rem
   await blocked.preparePhaseD();
   const result = blocked.runPhaseD();
   assert.equal(result.status, 1, result.stderr);
-  assert.match(result.stderr, /recovery deployment config still references old release/);
-  assert.deepEqual((await blocked.state()).removed, []);
-});
+    assert.match(result.stderr, /recovery deployment config still references old release/);
+    assert.deepEqual((await blocked.state()).removed, []);
+  },
+);
 
 test('Phase D blocks unhealthy services and missing protected HOLD images', async () => {
   for (const opts of [
