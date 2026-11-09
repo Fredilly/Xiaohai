@@ -81,9 +81,8 @@ export const STEADY_STATE_REVIEW_GATES = Object.freeze([
 ]);
 
 export function assessSteadyStateRetention(evidence) {
-  const observations = evidence && typeof evidence === 'object' && !Array.isArray(evidence)
-    ? evidence
-    : {};
+  const observations =
+    evidence && typeof evidence === 'object' && !Array.isArray(evidence) ? evidence : {};
   const missing = STEADY_STATE_REVIEW_GATES.filter((gate) => observations[gate] !== true);
   return {
     stage: missing.length ? 'BLOCKED' : 'REVIEW_COMPLETE_EXECUTION_STILL_SEPARATE',
