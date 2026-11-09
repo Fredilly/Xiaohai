@@ -332,7 +332,8 @@ check_config() {
       if [[ "$status" -eq 0 ]]; then
         while IFS= read -r line; do
           [[ "$line" == "known_recovery_a=$rev" || "$line" == "known_recovery_b=$rev" ||
-             "$line" == "batch2_recovery_a=$rev" || "$line" == "batch2_recovery_b=$rev" ]] ||
+             "$line" == "batch2_recovery_a=$rev" || "$line" == "batch2_recovery_b=$rev" ||
+             "$line" == "phase_d_recovery_a=$rev" || "$line" == "phase_d_recovery_b=$rev" ]] ||
             return 1
         done <<< "$matches"
       elif [[ "$status" -ne 1 ]]; then
