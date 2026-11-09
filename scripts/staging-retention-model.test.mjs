@@ -4,6 +4,7 @@ import {
   oneSuccessfulDailyDeploy,
   protectedRevisions,
   simulatedFootprint,
+  assessSteadyStateRetention,
 } from './staging-retention-model.mjs';
 
 const OLD_SIZE = 500_000_000;
@@ -66,4 +67,48 @@ test('negative: stale deployment, excessive batch, inconsistent shared layer siz
     /inconsistent/,
   );
   assert.equal(protectedRevisions(s.releases, s.holds).size, 9);
+});
+
+
+test('steady-state retention contract fails closed for missing proof or authorization', () => {
+  const required = [
+    'verifiedSuccessfulBackendDeployment',
+    'verifiedBaselineAndGhcrDigests',
+    'verifiedCurrentAndTwoRollbackPairs',
+    'verifiedExtraAndFiveHolds',
+    'independentSnapshotAndRestoreAccess',
+    'approvedExactCandidateIds',
+    'completeReferencesAndAliasCoverage',
+    'fiveServicesAndFourVolumesHealthy',
+    'correctHostAndExclusiveLock',
+    'independentHumanReview',
+    'ownerApprovedRetentionPolicy',
+    'separateOperationalAuthorization',
+    'noContainerdReclaimPending',
+  ];
+  const empty = assessSteadyStateRetention({});
+  assert.equal(empty.stage, 'BLOCKED');
+  assert.deepEqual(empty.missing, required);
+  assert.equal(empty.dockerDeletionAuthorized, false);
+
+  const all = Object.fromEntries(required.map((gate) => [gate, true]));
+  for (const gate of required) {
+    const blocked = assessSteadyStateRetention({ ...all, [gate]: false });
+    assert.equal(blocked.stage, 'BLOCKED', gate);
+    assert.deepEqual(blocked.missing, [gate]);
+    assert.equal(blocked.dockerDeletionAuthorized, false);
+  }
+  const readyForSeparateReview = assessSteadyStateRetention(all);
+  assert.equal(readyForSeparateReview.stage, 'REVIEW_COMPLETE_EXECUTION_STILL_SEPARATE');
+  assert.deepEqual(readyForSeparateReview.missing, []);
+  assert.equal(readyForSeparateReview.dockerDeletionAuthorized, false);
+});
+
+test('steady-state retention contract rejects assertions that are not literal true', () => {
+  const inputs = [null, undefined, [], 'true', 1, { independentHumanReview: 'true' }];
+  for (const input of inputs) {
+    const verdict = assessSteadyStateRetention(input);
+    assert.equal(verdict.stage, 'BLOCKED');
+    assert.equal(verdict.dockerDeletionAuthorized, false);
+  }
 });
