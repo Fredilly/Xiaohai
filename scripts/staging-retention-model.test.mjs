@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import test from 'node:test';
 import {
   oneSuccessfulDailyDeploy,
@@ -6,6 +7,15 @@ import {
   simulatedFootprint,
   assessSteadyStateRetention,
 } from './staging-retention-model.mjs';
+
+
+if (process.env.GITHUB_ACTIONS === 'true') {
+  for (const file of ['scripts/staging-retention-model.mjs', 'scripts/staging-retention-model.test.mjs']) {
+    console.log('RETENTION_PRETTIER_BEGIN ' + file);
+    console.log(execFileSync('pnpm', ['exec', 'prettier', file], { encoding: 'utf8' }));
+    console.log('RETENTION_PRETTIER_END ' + file);
+  }
+}
 
 const OLD_SIZE = 500_000_000;
 function initial() {
