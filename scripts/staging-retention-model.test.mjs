@@ -7,7 +7,6 @@ import {
   assessSteadyStateRetention,
 } from './staging-retention-model.mjs';
 
-
 const OLD_SIZE = 500_000_000;
 function initial() {
   const releases = Array.from({ length: 26 }, (_, day) => ({
