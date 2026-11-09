@@ -283,14 +283,35 @@ test('missing any owner-HOLD API or Worker image fails closed before candidate a
 test('Phase D recovery mode is separately gated and pins only the approved next two pairs', () => {
   const source = readFileSync(script, 'utf8');
   assert.match(source, /--phase-d-recovery-execute/);
-  assert.match(source, /phase_d_recovery_a=4a29bc44d34b7f609b223987735507abff68641d/);
-  assert.match(source, /phase_d_recovery_b=4b53315bed756bf5888aa96683454a4add5c7b80/);
-  assert.match(source, /sha256:4d2ff2b68cfa70b817188e336f0e7ee5141b8779e46f52d9d3c925b2fec9060c/);
-  assert.match(source, /sha256:7d5d3c5fd943d7c2d539a2f55468b530da480c1988739bd373d09b23389955e2/);
-  assert.match(source, /sha256:5050682df3ebf4f557ce13196b155e6f6da28c539711a994e014828f39685452/);
-  assert.match(source, /sha256:cd2d14433275772b3d4dc34efe6935e21558139fe3ab2fae30333188038cacc3/);
+  assert.match(
+    source,
+    /phase_d_recovery_a=4a29bc44d34b7f609b223987735507abff68641d/,
+  );
+  assert.match(
+    source,
+    /phase_d_recovery_b=4b53315bed756bf5888aa96683454a4add5c7b80/,
+  );
+  assert.match(
+    source,
+    /sha256:4d2ff2b68cfa70b817188e336f0e7ee5141b8779e46f52d9d3c925b2fec9060c/,
+  );
+  assert.match(
+    source,
+    /sha256:7d5d3c5fd943d7c2d539a2f55468b530da480c1988739bd373d09b23389955e2/,
+  );
+  assert.match(
+    source,
+    /sha256:5050682df3ebf4f557ce13196b155e6f6da28c539711a994e014828f39685452/,
+  );
+  assert.match(
+    source,
+    /sha256:cd2d14433275772b3d4dc34efe6935e21558139fe3ab2fae30333188038cacc3/,
+  );
   assert.match(source, /STAGING_PHASED_EXECUTE_ENABLED/);
   assert.match(source, /\^XIAOHAI-195-PHASED-/);
-  assert.match(source, /fresh_snapshot=s-j6cazgfr54fw87udingl status=accomplished progress=100% source_disk=d-j6c6f95ns1nggo7h11io/);
+  assert.match(
+    source,
+    /fresh_snapshot=s-j6cazgfr54fw87udingl status=accomplished progress=100% source_disk=d-j6c6f95ns1nggo7h11io/,
+  );
   assert.match(source, /batch=3 candidate_a=\$recovery_a candidate_b=\$recovery_b/);
 });
