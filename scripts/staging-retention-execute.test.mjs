@@ -347,38 +347,46 @@ test('steady-state executor workflow is manual, default-deny and owner-scoped', 
   assert.doesNotMatch(source, /schedule:/);
 });
 
-test('steady-state executor binds exact successful deployment and reviewed proposal artifact', async () => {
-  const source = await readFile(executorWorkflow, 'utf8');
-  assert.match(source, /Deploy staging \(after CI\)/);
-  assert.match(source, /staging-backend-success/);
-  assert.match(source, /staging-retention-proposal-\$\{\{ inputs\.revision \}\}/);
-  assert.match(source, /Reviewed proposal SHA-256 mismatch/);
-  assert.match(source, /NORMALIZED_PLAN_SHA256/);
-  assert.match(source, /uploaded normalized plan hash mismatch/);
-  assert.match(source, /Proposal must contain one or two exact candidate pairs/);
-  assert.match(source, /Current revision must never be a retention candidate/);
-});
+test(
+  'steady-state executor binds exact successful deployment and reviewed proposal artifact',
+  async () => {
+    const source = await readFile(executorWorkflow, 'utf8');
+    assert.match(source, /Deploy staging \(after CI\)/);
+    assert.match(source, /staging-backend-success/);
+    assert.match(source, /staging-retention-proposal-\$\{\{ inputs\.revision \}\}/);
+    assert.match(source, /Reviewed proposal SHA-256 mismatch/);
+    assert.match(source, /NORMALIZED_PLAN_SHA256/);
+    assert.match(source, /uploaded normalized plan hash mismatch/);
+    assert.match(source, /Proposal must contain one or two exact candidate pairs/);
+    assert.match(source, /Current revision must never be a retention candidate/);
+  },
+);
 
-test('steady-state executor consumes approval before one bounded invocation and has no retry path', async () => {
-  const source = await readFile(executorWorkflow, 'utf8');
-  assert.match(source, /approval ID already consumed/);
-  assert.match(source, /\.retention-authorizations/);
-  assert.match(source, /--steady-state-execute/);
-  assert.match(source, /RETENTION_EXECUTOR_NO_RETRY=true/);
-  assert.match(source, /STAGING_RETENTION_APPROVED_PLAN="\$REMOTE_PLAN"/);
-  assert.match(source, /STAGING_DEPLOY_SUCCEEDED_REVISION="\$REVISION"/);
-  assert.match(source, /STAGING_RETENTION_EXECUTE_ENABLED=true/);
-  assert.doesNotMatch(source, /docker image rm/);
-  assert.doesNotMatch(source, /docker (?:system|image) prune/);
-});
+test(
+  'steady-state executor consumes approval before one bounded invocation and has no retry path',
+  async () => {
+    const source = await readFile(executorWorkflow, 'utf8');
+    assert.match(source, /approval ID already consumed/);
+    assert.match(source, /\.retention-authorizations/);
+    assert.match(source, /--steady-state-execute/);
+    assert.match(source, /RETENTION_EXECUTOR_NO_RETRY=true/);
+    assert.match(source, /STAGING_RETENTION_APPROVED_PLAN="\$REMOTE_PLAN"/);
+    assert.match(source, /STAGING_DEPLOY_SUCCEEDED_REVISION="\$REVISION"/);
+    assert.match(source, /STAGING_RETENTION_EXECUTE_ENABLED=true/);
+    assert.doesNotMatch(source, /docker image rm/);
+    assert.doesNotMatch(source, /docker (?:system|image) prune/);
+  },
+);
 
-test('steady-state executor preserves host identity, reviewed script and post-run health gates', async () => {
-  const source = await readFile(executorWorkflow, 'utf8');
-  assert.match(source, /host script hash differs from exact deployed revision/);
-  assert.match(source, /EXPECTED_HOSTNAME/);
-  assert.match(source, /docker inspect --format "\{\{\.State\.Health\.Status\}\}"/);
-  assert.match(source, /staging-api\.pamboo\.asia\/health/);
-  assert.match(source, /staging-api\.pamboo\.asia\/ready/);
-  assert.match(source, /df -hT \/|df -hi \//);
-});
-
+test(
+  'steady-state executor preserves host identity, reviewed script and post-run health gates',
+  async () => {
+    const source = await readFile(executorWorkflow, 'utf8');
+    assert.match(source, /host script hash differs from exact deployed revision/);
+    assert.match(source, /EXPECTED_HOSTNAME/);
+    assert.match(source, /docker inspect --format "\{\{\.State\.Health\.Status\}\}"/);
+    assert.match(source, /staging-api\.pamboo\.asia\/health/);
+    assert.match(source, /staging-api\.pamboo\.asia\/ready/);
+    assert.match(source, /df -hT \/|df -hi \//);
+  },
+);
