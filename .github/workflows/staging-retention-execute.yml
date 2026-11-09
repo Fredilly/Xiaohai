@@ -51,6 +51,7 @@ jobs:
           REVISION: ${{ inputs.revision }}
           SOURCE_RUN_ID: ${{ inputs.source_run_id }}
           PLAN_SHA256: ${{ inputs.plan_sha256 }}
+          NORMALIZED_PLAN_SHA256: ${{ env.NORMALIZED_PLAN_SHA256 }}
           APPROVAL_ID: ${{ inputs.approval_id }}
           POLICY_ID: ${{ inputs.policy_id }}
           APPROVED_POLICY_ID: ${{ vars.STAGING_RETENTION_POLICY_ID }}
@@ -202,7 +203,9 @@ jobs:
             exit 1
           }
           chmod 0600 "$approved"
+          normalized_sha="$(sha256sum "$approved" | awk '{print $1}')"
           echo "NORMALIZED_CANDIDATE_PAIRS=${#lines[@]}"
+          echo "NORMALIZED_PLAN_SHA256=$normalized_sha" >> "$GITHUB_ENV"
 
       - name: Install SSH key
         env:
@@ -239,7 +242,7 @@ jobs:
 
           scp "$local_plan" "$USER@$HOST:$remote_plan"
 
-          ssh "$USER@$HOST"             "REVISION='$REVISION' ROLLBACKS='$ROLLBACKS' EXTRA_PROTECTED='$EXTRA_PROTECTED' CONFIG_COVERAGE='$CONFIG_COVERAGE' EXPECTED_HOSTNAME='$EXPECTED_HOSTNAME' EXPECTED_SCRIPT_BLOB='$expected_script_blob' APPROVAL_ID='$APPROVAL_ID' POLICY_ID='$POLICY_ID' PLAN_SHA256='$PLAN_SHA256' SOURCE_RUN_ID='$SOURCE_RUN_ID' DISPATCH_ACTOR='$DISPATCH_ACTOR' REMOTE_PLAN='$remote_plan' bash -s" <<'REMOTE'
+          ssh "$USER@$HOST"             "REVISION='$REVISION' ROLLBACKS='$ROLLBACKS' EXTRA_PROTECTED='$EXTRA_PROTECTED' CONFIG_COVERAGE='$CONFIG_COVERAGE' EXPECTED_HOSTNAME='$EXPECTED_HOSTNAME' EXPECTED_SCRIPT_BLOB='$expected_script_blob' APPROVAL_ID='$APPROVAL_ID' POLICY_ID='$POLICY_ID' PLAN_SHA256='$PLAN_SHA256' EXPECTED_NORMALIZED_PLAN_SHA256='$NORMALIZED_PLAN_SHA256' SOURCE_RUN_ID='$SOURCE_RUN_ID' DISPATCH_ACTOR='$DISPATCH_ACTOR' REMOTE_PLAN='$remote_plan' bash -s" <<'REMOTE'
           set -euo pipefail
           script="$HOME/xiaohai-deploy/staging-image-retention.sh"
           receipt_dir="$HOME/xiaohai-deploy/.retention-authorizations"
@@ -266,7 +269,11 @@ jobs:
             echo 'STOP retention executor: exact plan unavailable' >&2
             exit 1
           }
-          [[ "$(sha256sum "$REMOTE_PLAN" | awk '{print $1}')" != "$PLAN_SHA256" ]] || true
+          remote_plan_sha="$(sha256sum "$REMOTE_PLAN" | awk '{print $1}')"
+          [[ "$remote_plan_sha" == "$EXPECTED_NORMALIZED_PLAN_SHA256" ]] || {
+            echo 'STOP retention executor: uploaded normalized plan hash mismatch' >&2
+            exit 1
+          }
 
           mkdir -p "$receipt_dir"
           chmod 0700 "$receipt_dir"
