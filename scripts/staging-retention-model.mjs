@@ -58,7 +58,6 @@ export function oneSuccessfulDailyDeploy(state, day, { maxPairs = 2 } = {}) {
   };
 }
 
-
 /**
  * Code-only review contract for a future recurring retention executor.
  * This DOES NOT grant Docker deletion, install scripts, verify cloud evidence,
