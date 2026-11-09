@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
 import test from 'node:test';
 import {
   oneSuccessfulDailyDeploy,
@@ -8,14 +7,6 @@ import {
   assessSteadyStateRetention,
 } from './staging-retention-model.mjs';
 
-
-if (process.env.GITHUB_ACTIONS === 'true') {
-  for (const file of ['scripts/staging-retention-model.mjs', 'scripts/staging-retention-model.test.mjs']) {
-    console.log('RETENTION_PRETTIER_BEGIN ' + file);
-    console.log(execFileSync('pnpm', ['exec', 'prettier', file], { encoding: 'utf8' }));
-    console.log('RETENTION_PRETTIER_END ' + file);
-  }
-}
 
 const OLD_SIZE = 500_000_000;
 function initial() {
@@ -79,7 +70,6 @@ test('negative: stale deployment, excessive batch, inconsistent shared layer siz
   assert.equal(protectedRevisions(s.releases, s.holds).size, 9);
 });
 
-
 test('steady-state retention contract fails closed for missing proof or authorization', () => {
   const required = [
     'verifiedSuccessfulBackendDeployment',
@@ -109,10 +99,7 @@ test('steady-state retention contract fails closed for missing proof or authoriz
     assert.equal(blocked.dockerDeletionAuthorized, false);
   }
   const readyForSeparateReview = assessSteadyStateRetention(all);
-  assert.equal(
-    readyForSeparateReview.stage,
-    'REVIEW_COMPLETE_EXECUTION_STILL_SEPARATE',
-  );
+  assert.equal(readyForSeparateReview.stage, 'REVIEW_COMPLETE_EXECUTION_STILL_SEPARATE');
   assert.deepEqual(readyForSeparateReview.missing, []);
   assert.equal(readyForSeparateReview.dockerDeletionAuthorized, false);
 });
