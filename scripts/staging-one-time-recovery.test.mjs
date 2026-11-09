@@ -15,6 +15,9 @@ const oldB = '14d59d3cd209a400f397fdff1880b4f02ab26d54';
 const batch2A = '15bc9dadc32b30f55cbc5cbcb2cc410c1564433e';
 const batch2B = '3f0e3d0ad16352393cdeaa12e8f8482c9c9fcfeb';
 const batch2Owner = 'XIAOHAI-195-PHASEC-FIXTURE-ONLY';
+const phaseDA = '4a29bc44d34b7f609b223987735507abff68641d';
+const phaseDB = '4b53315bed756bf5888aa96683454a4add5c7b80';
+const phaseDOwner = 'XIAOHAI-195-PHASED-FIXTURE-ONLY';
 const extraOld = 'c'.repeat(40);
 const recentHolds = [
   '03f5ee0f3d364597739162ca8661ebc993523ead',
@@ -36,6 +39,10 @@ const recoveryIds = {
   [worker(batch2A)]: 'sha256:6dfd97eec6928f3f26608dd0091a6f97d4be9b653057af0b619d6400cfffffb3',
   [api(batch2B)]: 'sha256:3f6fa4334bc9dba8650a1ad68e3ee6c6f823429a6cadff8bef6f315987f75c76',
   [worker(batch2B)]: 'sha256:c3092df879a8cc7a06980188527d17b425616f66e9d0aed4ad2551b9850c6c75',
+  [api(phaseDA)]: 'sha256:4d2ff2b68cfa70b817188e336f0e7ee5141b8779e46f52d9d3c925b2fec9060c',
+  [worker(phaseDA)]: 'sha256:7d5d3c5fd943d7c2d539a2f55468b530da480c1988739bd373d09b23389955e2',
+  [api(phaseDB)]: 'sha256:5050682df3ebf4f557ce13196b155e6f6da28c539711a994e014828f39685452',
+  [worker(phaseDB)]: 'sha256:cd2d14433275772b3d4dc34efe6935e21558139fe3ab2fae30333188038cacc3',
 };
 
 async function fixture({
@@ -46,7 +53,9 @@ async function fixture({
   candidateMismatch = false,
   candidateMismatchB = false,
   candidateMismatchBatch2B = false,
+  phaseDMismatchRef = null,
   candidateReferencedBatch2 = false,
+  candidateReferencedPhaseD = false,
   selfSourceUnexpectedRef = false,
   otherConfigReference = false,
 } = {}) {
@@ -64,7 +73,10 @@ async function fixture({
   ]) {
     let contents = '# fixture deployment config\\n';
     if (file === 'staging-image-retention.sh') {
-      contents = `known_recovery_a=${old}\nknown_recovery_b=${oldB}\nbatch2_recovery_a=${batch2A}\nbatch2_recovery_b=${batch2B}\n`;
+      contents =
+        `known_recovery_a=${old}\nknown_recovery_b=${oldB}\n` +
+        `batch2_recovery_a=${batch2A}\nbatch2_recovery_b=${batch2B}\n` +
+        `phase_d_recovery_a=${phaseDA}\nphase_d_recovery_b=${phaseDB}\n`;
       if (selfSourceUnexpectedRef) {
         contents += `echo "${old}"\n`;
       }
@@ -74,6 +86,9 @@ async function fixture({
     }
     if (file === 'staging.compose.yml' && candidateReferencedBatch2) {
       contents += `# still deploying ${batch2A}\n`;
+    }
+    if (file === 'staging.compose.yml' && candidateReferencedPhaseD) {
+      contents += `# still deploying ${phaseDA}\n`;
     }
     await writeFile(join(deployDir, file), contents);
   }
@@ -98,6 +113,16 @@ async function fixture({
     [worker(batch2A), recoveryIds[worker(batch2A)]],
     [api(batch2B), recoveryIds[api(batch2B)]],
     [worker(batch2B), candidateMismatchBatch2B ? id('c') : recoveryIds[worker(batch2B)]],
+    [api(phaseDA), phaseDMismatchRef === api(phaseDA) ? id('f') : recoveryIds[api(phaseDA)]],
+    [
+      worker(phaseDA),
+      phaseDMismatchRef === worker(phaseDA) ? id('f') : recoveryIds[worker(phaseDA)],
+    ],
+    [api(phaseDB), phaseDMismatchRef === api(phaseDB) ? id('f') : recoveryIds[api(phaseDB)]],
+    [
+      worker(phaseDB),
+      phaseDMismatchRef === worker(phaseDB) ? id('f') : recoveryIds[worker(phaseDB)],
+    ],
     [api(extraOld), id('a')],
     [worker(extraOld), id('b')],
     ...recentHolds.flatMap((rev, i) => [
@@ -224,6 +249,32 @@ console.log('/dev/vda3 51200000 100000  ' + (5000000 + removed * 600000) + ' ' +
           ...env,
           STAGING_BATCH2_EXECUTE_ENABLED: 'true',
           STAGING_RETENTION_APPROVAL_ID: batch2Owner,
+          ...overrides,
+        },
+        encoding: 'utf8',
+      }),
+    preparePhaseD: async () => {
+      await writeFile(
+        plan,
+        `${phaseDA} ${recoveryIds[api(phaseDA)]} ${recoveryIds[worker(phaseDA)]}\n` +
+          `${phaseDB} ${recoveryIds[api(phaseDB)]} ${recoveryIds[worker(phaseDB)]}\n`,
+      );
+      await writeFile(
+        evidence,
+        'snapshot=s-j6ccgk5wyg44gmzqgf5v status=Success\n' +
+          'fresh_snapshot=s-j6cazgfr54fw87udingl status=accomplished progress=100% ' +
+          'source_disk=d-j6c6f95ns1nggo7h11io\n' +
+          'workflow_run=41982285823 conclusion=failure reason=post_disk_gate\n' +
+          `owner_approval=${phaseDOwner}\n` +
+          `batch=3 candidate_a=${phaseDA} candidate_b=${phaseDB}\n`,
+      );
+    },
+    runPhaseD: (overrides = {}) =>
+      spawnSync('bash', [script, '--phase-d-recovery-execute'], {
+        env: {
+          ...env,
+          STAGING_PHASED_EXECUTE_ENABLED: 'true',
+          STAGING_RETENTION_APPROVAL_ID: phaseDOwner,
           ...overrides,
         },
         encoding: 'utf8',
@@ -436,4 +487,153 @@ test('ordinary --recovery-execute rejects batch 2 manifest, even with original r
   const result = fx.run('--recovery-execute');
   assert.equal(result.status, 1, result.stderr);
   assert.deepEqual((await fx.state()).removed, []);
+});
+
+test('Phase D exact-two path deletes only the four pinned images when every gate passes', async () => {
+  const fx = await fixture();
+  await fx.preparePhaseD();
+  const result = fx.runPhaseD();
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /phase_d=true historic_workflow_conclusion=failure/);
+  assert.match(result.stdout, /recovery_preflight=all_four_exact_images_passed/);
+  assert.match(result.stdout, /deleted_pairs=2/);
+  const removed = (await fx.state()).removed;
+  assert.deepEqual(removed, [api(phaseDA), worker(phaseDA), api(phaseDB), worker(phaseDB)]);
+  assert.ok(!removed.includes(api(old)));
+  assert.ok(!removed.includes(worker(oldB)));
+  assert.ok(!removed.includes(api(extraOld)));
+  assert.ok(!removed.includes(worker(extraOld)));
+  for (const rev of recentHolds) {
+    assert.ok(!removed.includes(api(rev)));
+    assert.ok(!removed.includes(worker(rev)));
+  }
+});
+
+test('Phase D immutable image IDs fail closed before first deletion', async () => {
+  for (const ref of [api(phaseDA), worker(phaseDA), api(phaseDB), worker(phaseDB)]) {
+    const fx = await fixture({ phaseDMismatchRef: ref });
+    await fx.preparePhaseD();
+    const result = fx.runPhaseD();
+    assert.equal(result.status, 1, result.stderr);
+    assert.match(result.stderr, /recovery (API|Worker) image ID differs from owner allowlist/);
+    assert.deepEqual((await fx.state()).removed, []);
+  }
+});
+
+test('Phase D second-pair drift blocks deletion of the first pair', async () => {
+  const fx = await fixture({ phaseDMismatchRef: worker(phaseDB) });
+  await fx.preparePhaseD();
+  const result = fx.runPhaseD();
+  assert.equal(result.status, 1, result.stderr);
+  assert.match(result.stderr, /recovery Worker image ID differs from owner allowlist/);
+  assert.deepEqual((await fx.state()).removed, []);
+});
+
+test('Phase D rejects missing enablement and wrong or consumed approvals', async () => {
+  for (const overrides of [
+    { STAGING_PHASED_EXECUTE_ENABLED: 'false' },
+    { STAGING_RETENTION_APPROVAL_ID: batch2Owner },
+    { STAGING_RETENTION_APPROVAL_ID: 'XIAOHAI-195-PHASEB-20261106-EXACT4' },
+    { STAGING_RETENTION_APPROVAL_ID: 'fixture-owner-approval' },
+  ]) {
+    const fx = await fixture();
+    await fx.preparePhaseD();
+    const result = fx.runPhaseD(overrides);
+    assert.equal(result.status, 1, result.stderr);
+    assert.deepEqual((await fx.state()).removed, []);
+  }
+});
+
+test('Phase D requires the fresh same-host snapshot evidence and exact manifest attestation', async () => {
+  {
+    const fx = await fixture();
+    await fx.preparePhaseD();
+    const result = fx.runPhaseD({ STAGING_RECOVERY_EVIDENCE_FILE: '/nonexistent' });
+    assert.equal(result.status, 1, result.stderr);
+    assert.deepEqual((await fx.state()).removed, []);
+  }
+  {
+    const fx = await fixture();
+    await fx.preparePhaseD();
+    await writeFile(
+      fx.evidence,
+      'snapshot=s-j6ccgk5wyg44gmzqgf5v status=Success\n' +
+        'workflow_run=41982285823 conclusion=failure reason=post_disk_gate\n' +
+        `owner_approval=${phaseDOwner}\n` +
+        `batch=3 candidate_a=${phaseDA} candidate_b=${phaseDB}\n`,
+    );
+    const result = fx.runPhaseD();
+    assert.equal(result.status, 1, result.stderr);
+    assert.match(result.stderr, /Phase D fresh snapshot evidence missing/);
+    assert.deepEqual((await fx.state()).removed, []);
+  }
+  {
+    const fx = await fixture();
+    await fx.preparePhaseD();
+    await writeFile(
+      fx.evidence,
+      'snapshot=s-j6ccgk5wyg44gmzqgf5v status=Success\n' +
+        'fresh_snapshot=s-j6cazgfr54fw87udingl status=accomplished progress=100% ' +
+        'source_disk=d-j6c6f95ns1nggo7h11io\n' +
+        'workflow_run=41982285823 conclusion=failure reason=post_disk_gate\n' +
+        `owner_approval=${phaseDOwner}\n` +
+        `batch=3 candidate_a=${phaseDB} candidate_b=${phaseDA}\n`,
+    );
+    const result = fx.runPhaseD();
+    assert.equal(result.status, 1, result.stderr);
+    assert.match(result.stderr, /Phase D exact revisions not attested by owner/);
+    assert.deepEqual((await fx.state()).removed, []);
+  }
+});
+
+test('Phase D exact self declarations are allowed but real config references remain blocking', async () => {
+  const good = await fixture();
+  await good.preparePhaseD();
+  const pass = good.runPhaseD();
+  assert.equal(pass.status, 0, pass.stderr);
+
+  const blocked = await fixture({ candidateReferencedPhaseD: true });
+  await blocked.preparePhaseD();
+  const result = blocked.runPhaseD();
+  assert.equal(result.status, 1, result.stderr);
+  assert.match(result.stderr, /recovery deployment config still references old release/);
+  assert.deepEqual((await blocked.state()).removed, []);
+});
+
+test('Phase D blocks unhealthy services and missing protected HOLD images', async () => {
+  for (const opts of [
+    { ready: false },
+    { workerRunning: false },
+    { missingHold: api(recentHolds[0]) },
+    { missingHold: worker(recentHolds[4]) },
+  ]) {
+    const fx = await fixture(opts);
+    await fx.preparePhaseD();
+    const result = fx.runPhaseD();
+    assert.equal(result.status, 1, result.stderr);
+    assert.deepEqual((await fx.state()).removed, []);
+  }
+});
+
+test('Phase D Docker refusal is not retried and cannot continue to other images', async () => {
+  const fx = await fixture({ failRemove: worker(phaseDA) });
+  await fx.preparePhaseD();
+  const result = fx.runPhaseD();
+  assert.equal(result.status, 1, result.stderr);
+  assert.match(result.stderr, /Docker refused deletion/);
+  assert.deepEqual((await fx.state()).removed, [api(phaseDA)]);
+});
+
+test('Phase D additions do not change the consumed Phase C batch behavior', async () => {
+  const fx = await fixture();
+  await fx.prepareBatch2();
+  const result = fx.runBatch2();
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /batch2=true historic_workflow_conclusion=failure/);
+  assert.deepEqual((await fx.state()).removed, [
+    api(batch2A),
+    worker(batch2A),
+    api(batch2B),
+    worker(batch2B),
+  ]);
 });

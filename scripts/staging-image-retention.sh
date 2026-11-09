@@ -4,17 +4,19 @@
 set -euo pipefail
 
 mode="${1:---dry-run}"
-[[ "$mode" == --dry-run || "$mode" == --plan || "$mode" == --execute || "$mode" == --recovery-execute || "$mode" == --batch2-recovery-execute || "$mode" == --steady-state-execute ]] || { echo 'STOP invalid retention mode' >&2; exit 2; }
+[[ "$mode" == --dry-run || "$mode" == --plan || "$mode" == --execute || "$mode" == --recovery-execute || "$mode" == --batch2-recovery-execute || "$mode" == --phase-d-recovery-execute || "$mode" == --steady-state-execute ]] || { echo 'STOP invalid retention mode' >&2; exit 2; }
 # --recovery-execute is a separate, manually invoked one-time exception for the
 # Nov 6 failed-post-disk-gate incident. Never wire it into CI or scheduled jobs.
 # It NEVER asserts that the failed historical workflow succeeded.
 deleting=false
 recovery=false
 batch2=false
+phase_d=false
 planning=false
-if [[ "$mode" == --execute || "$mode" == --recovery-execute || "$mode" == --batch2-recovery-execute || "$mode" == --steady-state-execute ]]; then deleting=true; fi
-if [[ "$mode" == --recovery-execute || "$mode" == --batch2-recovery-execute ]]; then recovery=true; fi
+if [[ "$mode" == --execute || "$mode" == --recovery-execute || "$mode" == --batch2-recovery-execute || "$mode" == --phase-d-recovery-execute || "$mode" == --steady-state-execute ]]; then deleting=true; fi
+if [[ "$mode" == --recovery-execute || "$mode" == --batch2-recovery-execute || "$mode" == --phase-d-recovery-execute ]]; then recovery=true; fi
 if [[ "$mode" == --batch2-recovery-execute ]]; then batch2=true; fi
+if [[ "$mode" == --phase-d-recovery-execute ]]; then phase_d=true; fi
 if [[ "$mode" == --plan ]]; then planning=true; fi
 fail() { printf 'STOP retention: %s\n' "$*" >&2; exit 1; }
 valid_revision() { [[ "$1" =~ ^[0-9a-f]{40}$ ]]; }
@@ -42,6 +44,8 @@ known_recovery_b=14d59d3cd209a400f397fdff1880b4f02ab26d54
 # and a reviewed new script installation are required before any live use.
 batch2_recovery_a=15bc9dadc32b30f55cbc5cbcb2cc410c1564433e
 batch2_recovery_b=3f0e3d0ad16352393cdeaa12e8f8482c9c9fcfeb
+phase_d_recovery_a=4a29bc44d34b7f609b223987735507abff68641d
+phase_d_recovery_b=4b53315bed756bf5888aa96683454a4add5c7b80
 recent_hold_revisions=(
   "03f5ee0f3d364597739162ca8661ebc993523ead"
   "12091f5d8586809ebb5d43308582797d00b3ba79"
@@ -79,6 +83,11 @@ if [[ "$deleting" == true ]]; then
         fail 'batch 2 requires new Phase C owner approval ID; old Phase B approval is invalid'
       [[ "$STAGING_RETENTION_APPROVAL_ID" != XIAOHAI-195-PHASEB-20261106-EXACT4 ]] ||
         fail 'batch 2 cannot reuse Phase B approval'
+    elif [[ "$phase_d" == true ]]; then
+      [[ "${STAGING_PHASED_EXECUTE_ENABLED:-false}" == true ]] ||
+        fail 'Phase D requires separate owner execution enablement'
+      [[ "$STAGING_RETENTION_APPROVAL_ID" =~ ^XIAOHAI-195-PHASED-[A-Za-z0-9-]+$ ]] ||
+        fail 'Phase D requires distinct Phase D owner approval ID'
     fi
     [[ "$current" == e4c1117e99e1d739b002f99be3b97be7ede89121 ]] ||
       fail 'recovery applies only to the pinned failed-gate revision'
@@ -105,8 +114,6 @@ if [[ "$deleting" == true ]]; then
     if [[ "$batch2" == true ]]; then
       recovery_a="$batch2_recovery_a"
       recovery_b="$batch2_recovery_b"
-      # These image IDs are intentionally pinned, not accepted from an
-      # operator-supplied manifest without independent on-host reinspection.
       declare -A recovery_api_ids=(
         ["$recovery_a"]=sha256:25dec94a82dfa4cee25cd5110fd857cc3785423cf0cba46c55711bda9e89bcac
         ["$recovery_b"]=sha256:3f6fa4334bc9dba8650a1ad68e3ee6c6f823429a6cadff8bef6f315987f75c76
@@ -117,6 +124,21 @@ if [[ "$deleting" == true ]]; then
       )
       grep -Fxq -- "batch=2 candidate_a=$recovery_a candidate_b=$recovery_b" "$evidence" ||
         fail 'batch 2 exact revisions not attested by owner'
+    elif [[ "$phase_d" == true ]]; then
+      recovery_a="$phase_d_recovery_a"
+      recovery_b="$phase_d_recovery_b"
+      declare -A recovery_api_ids=(
+        ["$recovery_a"]=sha256:4d2ff2b68cfa70b817188e336f0e7ee5141b8779e46f52d9d3c925b2fec9060c
+        ["$recovery_b"]=sha256:5050682df3ebf4f557ce13196b155e6f6da28c539711a994e014828f39685452
+      )
+      declare -A recovery_worker_ids=(
+        ["$recovery_a"]=sha256:7d5d3c5fd943d7c2d539a2f55468b530da480c1988739bd373d09b23389955e2
+        ["$recovery_b"]=sha256:cd2d14433275772b3d4dc34efe6935e21558139fe3ab2fae30333188038cacc3
+      )
+      grep -Fxq -- 'fresh_snapshot=s-j6cazgfr54fw87udingl status=accomplished progress=100% source_disk=d-j6c6f95ns1nggo7h11io' "$evidence" ||
+        fail 'Phase D fresh snapshot evidence missing'
+      grep -Fxq -- "batch=3 candidate_a=$recovery_a candidate_b=$recovery_b" "$evidence" ||
+        fail 'Phase D exact revisions not attested by owner'
     else
       recovery_a="$known_recovery_a"
       recovery_b="$known_recovery_b"
@@ -134,7 +156,11 @@ if [[ "$deleting" == true ]]; then
       "$recovery_b ${recovery_api_ids[$recovery_b]} ${recovery_worker_ids[$recovery_b]}")
     [[ "$(LC_ALL=C sort -- "$STAGING_RETENTION_APPROVED_PLAN")" == "$(printf '%s\n' "$expected_plan" | LC_ALL=C sort)" ]] ||
       fail 'recovery plan must contain exactly two owner-approved revision/image-ID triples'
-    printf 'AUDIT one_time_recovery=true batch2=%s historic_workflow_conclusion=failure run_id=41982285823\n' "$batch2"
+    if [[ "$phase_d" == true ]]; then
+      printf 'AUDIT one_time_recovery=true phase_d=true historic_workflow_conclusion=failure run_id=41982285823\n'
+    else
+      printf 'AUDIT one_time_recovery=true batch2=%s historic_workflow_conclusion=failure run_id=41982285823\n' "$batch2"
+    fi
   else
     [[ "${STAGING_DEPLOY_SUCCEEDED_REVISION:-}" == "$current" ]] ||
       fail 'verified successful deployment revision is required'
@@ -306,7 +332,8 @@ check_config() {
       if [[ "$status" -eq 0 ]]; then
         while IFS= read -r line; do
           [[ "$line" == "known_recovery_a=$rev" || "$line" == "known_recovery_b=$rev" ||
-             "$line" == "batch2_recovery_a=$rev" || "$line" == "batch2_recovery_b=$rev" ]] ||
+             "$line" == "batch2_recovery_a=$rev" || "$line" == "batch2_recovery_b=$rev" ||
+             "$line" == "phase_d_recovery_a=$rev" || "$line" == "phase_d_recovery_b=$rev" ]] ||
             return 1
         done <<< "$matches"
       elif [[ "$status" -ne 1 ]]; then
