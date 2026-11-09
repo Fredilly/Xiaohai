@@ -555,60 +555,60 @@ test('Phase D rejects missing enablement and wrong or consumed approvals', async
 test(
   'Phase D requires the fresh same-host snapshot evidence and exact manifest attestation',
   async () => {
-  {
-    const fx = await fixture();
-    await fx.preparePhaseD();
-    const result = fx.runPhaseD({ STAGING_RECOVERY_EVIDENCE_FILE: '/nonexistent' });
-    assert.equal(result.status, 1, result.stderr);
-    assert.deepEqual((await fx.state()).removed, []);
-  }
-  {
-    const fx = await fixture();
-    await fx.preparePhaseD();
-    await writeFile(
-      fx.evidence,
-      'snapshot=s-j6ccgk5wyg44gmzqgf5v status=Success\n' +
-        'workflow_run=41982285823 conclusion=failure reason=post_disk_gate\n' +
-        `owner_approval=${phaseDOwner}\n` +
-        `batch=3 candidate_a=${phaseDA} candidate_b=${phaseDB}\n`,
-    );
-    const result = fx.runPhaseD();
-    assert.equal(result.status, 1, result.stderr);
-    assert.match(result.stderr, /Phase D fresh snapshot evidence missing/);
-    assert.deepEqual((await fx.state()).removed, []);
-  }
-  {
-    const fx = await fixture();
-    await fx.preparePhaseD();
-    await writeFile(
-      fx.evidence,
-      'snapshot=s-j6ccgk5wyg44gmzqgf5v status=Success\n' +
-        'fresh_snapshot=s-j6cazgfr54fw87udingl status=accomplished progress=100% ' +
-        'source_disk=d-j6c6f95ns1nggo7h11io\n' +
-        'workflow_run=41982285823 conclusion=failure reason=post_disk_gate\n' +
-        `owner_approval=${phaseDOwner}\n` +
-        `batch=3 candidate_a=${phaseDB} candidate_b=${phaseDA}\n`,
-    );
-    const result = fx.runPhaseD();
-    assert.equal(result.status, 1, result.stderr);
-    assert.match(result.stderr, /Phase D exact revisions not attested by owner/);
-    assert.deepEqual((await fx.state()).removed, []);
-  }
+    {
+      const fx = await fixture();
+      await fx.preparePhaseD();
+      const result = fx.runPhaseD({ STAGING_RECOVERY_EVIDENCE_FILE: '/nonexistent' });
+      assert.equal(result.status, 1, result.stderr);
+      assert.deepEqual((await fx.state()).removed, []);
+    }
+    {
+      const fx = await fixture();
+      await fx.preparePhaseD();
+      await writeFile(
+        fx.evidence,
+        'snapshot=s-j6ccgk5wyg44gmzqgf5v status=Success\n' +
+          'workflow_run=41982285823 conclusion=failure reason=post_disk_gate\n' +
+          `owner_approval=${phaseDOwner}\n` +
+          `batch=3 candidate_a=${phaseDA} candidate_b=${phaseDB}\n`,
+      );
+      const result = fx.runPhaseD();
+      assert.equal(result.status, 1, result.stderr);
+      assert.match(result.stderr, /Phase D fresh snapshot evidence missing/);
+      assert.deepEqual((await fx.state()).removed, []);
+    }
+    {
+      const fx = await fixture();
+      await fx.preparePhaseD();
+      await writeFile(
+        fx.evidence,
+        'snapshot=s-j6ccgk5wyg44gmzqgf5v status=Success\n' +
+          'fresh_snapshot=s-j6cazgfr54fw87udingl status=accomplished progress=100% ' +
+          'source_disk=d-j6c6f95ns1nggo7h11io\n' +
+          'workflow_run=41982285823 conclusion=failure reason=post_disk_gate\n' +
+          `owner_approval=${phaseDOwner}\n` +
+          `batch=3 candidate_a=${phaseDB} candidate_b=${phaseDA}\n`,
+      );
+      const result = fx.runPhaseD();
+      assert.equal(result.status, 1, result.stderr);
+      assert.match(result.stderr, /Phase D exact revisions not attested by owner/);
+      assert.deepEqual((await fx.state()).removed, []);
+    }
   },
 );
 
 test(
   'Phase D exact self declarations are allowed but real config references remain blocking',
   async () => {
-  const good = await fixture();
-  await good.preparePhaseD();
-  const pass = good.runPhaseD();
-  assert.equal(pass.status, 0, pass.stderr);
+    const good = await fixture();
+    await good.preparePhaseD();
+    const pass = good.runPhaseD();
+    assert.equal(pass.status, 0, pass.stderr);
 
-  const blocked = await fixture({ candidateReferencedPhaseD: true });
-  await blocked.preparePhaseD();
-  const result = blocked.runPhaseD();
-  assert.equal(result.status, 1, result.stderr);
+    const blocked = await fixture({ candidateReferencedPhaseD: true });
+    await blocked.preparePhaseD();
+    const result = blocked.runPhaseD();
+    assert.equal(result.status, 1, result.stderr);
     assert.match(result.stderr, /recovery deployment config still references old release/);
     assert.deepEqual((await blocked.state()).removed, []);
   },
