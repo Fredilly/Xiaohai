@@ -1,19 +1,26 @@
 import { addCartItem, getProduct, type Product } from '../../services/commerce';
+import { detailAccessMessage } from '../../utils/detail-read-error';
 import { resolveEditorialBookCover } from '../../utils/real-visuals';
 
 type DisplayProduct = Product & { displayCoverUrl: string };
 
 Page({
   data: {
+    id: '',
     product: null as DisplayProduct | null,
     loading: true,
     error: false,
+    accessMessage: '',
     message: '',
   },
   onLoad(q: Record<string, string | undefined>) {
-    if (q.id) void this.load(q.id);
+    const id = q.id ?? '';
+    this.setData({ id });
+    if (id) void this.load(id);
+    else this.setData({ loading: false, error: true });
   },
   async load(id: string) {
+    this.setData({ loading: true, error: false, accessMessage: '', message: '' });
     try {
       const product = await getProduct(id);
       this.setData({
@@ -25,10 +32,20 @@ Page({
           ),
         },
         loading: false,
+        error: false,
       });
-    } catch {
-      this.setData({ loading: false, error: true });
+    } catch (error) {
+      this.setData({
+        loading: false,
+        error: true,
+        accessMessage: detailAccessMessage(error),
+        product: null,
+      });
     }
+  },
+  retry() {
+    if (this.data.id && !this.data.loading && !this.data.accessMessage)
+      void this.load(this.data.id);
   },
   async add(e: WechatMiniprogram.TouchEvent) {
     try {

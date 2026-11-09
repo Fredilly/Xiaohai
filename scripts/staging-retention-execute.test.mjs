@@ -11,11 +11,29 @@ const rollbackA = 'f8e1fe86bbb904a4e7871901442a5b3dac7890e0';
 const rollbackB = 'd79ca0ff400f52f05a140235565b9c981163ead5';
 const extraProtected = 'b'.repeat(40);
 const old = 'c'.repeat(40);
+const recentHolds = [
+  '03f5ee0f3d364597739162ca8661ebc993523ead',
+  '12091f5d8586809ebb5d43308582797d00b3ba79',
+  '662ca971de6cae265d810b7e37e74eb1ce836abc',
+  'ecaea1f231469903e3eaa9dedad437f37d0d78c5',
+  'ecc03badca74669d85f5c7b69915b81967d39825',
+];
+const heldId = (n) => `sha256:${n.toString(16).padStart(64, '0')}`;
 const id = (n) => `sha256:${n.repeat(64)}`;
 const api = (r) => `ghcr.io/fredilly/xiaohai-api:${r}`;
 const worker = (r) => `ghcr.io/fredilly/xiaohai-worker:${r}`;
 
-async function fixture({ ready = true, failRemove = null, workerRunning = true } = {}) {
+async function fixture({
+  ready = true,
+  health = true,
+  inodeHigh = false,
+  lowDisk = false,
+  gcDelayed = false,
+  noReclaim = false,
+  failRemove = null,
+  workerRunning = true,
+  missingHold = null,
+} = {}) {
   const dir = await mkdtemp(join(tmpdir(), 'xiaohai-exec-fixture-'));
   const deployDir = join(dir, 'xiaohai-deploy');
   await mkdir(deployDir);
@@ -45,7 +63,12 @@ async function fixture({ ready = true, failRemove = null, workerRunning = true }
     ['caddy:2-alpine', id('9')],
     [api(old), id('a')],
     [worker(old), id('b')],
+    ...recentHolds.flatMap((rev, i) => [
+      [api(rev), heldId(i + 1)],
+      [worker(rev), heldId(i + 17)],
+    ]),
   ]);
+  if (missingHold) delete images[missingHold];
   await writeFile(statePath, JSON.stringify({ images, removed: [], failRemove, workerRunning }));
   const docker = join(dir, 'docker');
   await writeFile(
@@ -94,7 +117,15 @@ else if (a[0] === 'exec' && a.includes('persistence')) {
   await writeFile(sudo, '#!/bin/sh\n[ "$1" = "-n" ] && shift\nexec "$@"\n');
   await chmod(sudo, 0o755);
   const curl = join(dir, 'curl');
-  await writeFile(curl, `#!/bin/sh\nprintf '%s' '${ready ? '200' : '503'}'\n`);
+  await writeFile(
+    curl,
+    `#!/bin/sh
+case "$*" in
+  *"/health"*) printf '%s' '${health ? '200' : '503'}' ;;
+  *) printf '%s' '${ready ? '200' : '503'}' ;;
+esac
+`,
+  );
   await chmod(curl, 0o755);
   const df = join(dir, 'df');
   await writeFile(
@@ -104,10 +135,23 @@ const fs = require('node:fs');
 const state = JSON.parse(fs.readFileSync(process.env.MOCK_STATE));
 const removed = state.removed.length;
 console.log('Filesystem 1024-blocks Used Available Capacity Mounted on');
-console.log('/dev/vda3 51200000 100000  ' + (5000000 + removed * 600000) + ' ' + (80 - removed) + '% /');
+if (process.argv.includes('-Pi')) {
+  console.log('/dev/vda3 51200000 100000  5000000 ${inodeHigh ? 86 : 70}% /');
+} else {
+  const reads = (state.diskReads || 0) + 1;
+  state.diskReads = reads;
+  fs.writeFileSync(process.env.MOCK_STATE, JSON.stringify(state));
+  const observedRemoved = ${noReclaim ? '0' : '(!' + gcDelayed + ' || reads > 3 ? removed : 0)'};
+  console.log('/dev/vda3 51200000 100000  ' + (5000000 + observedRemoved * 600000) +
+    ' ' + (${lowDisk ? 69 : 80} - observedRemoved) + '% /');
+}
 `,
   );
   await chmod(df, 0o755);
+  // Avoid sleeping 50 real seconds in the slow-GC regression fixture.
+  const sleep = join(dir, 'sleep');
+  await writeFile(sleep, '#!/bin/sh\nexit 0\n');
+  await chmod(sleep, 0o755);
   const plan = join(dir, 'approved-plan.txt');
   await writeFile(plan, `${old} ${id('a')} ${id('b')}\n`);
   const lock = join(dir, 'host.lock');
@@ -131,7 +175,11 @@ console.log('/dev/vda3 51200000 100000  ' + (5000000 + removed * 600000) + ' ' +
   };
   return {
     lock,
-    run: () => spawnSync('bash', [script, '--execute'], { env, encoding: 'utf8' }),
+    run: (mode = '--execute', overrides = {}) =>
+      spawnSync('bash', [script, mode], {
+        env: { ...env, ...overrides },
+        encoding: 'utf8',
+      }),
     state: async () => JSON.parse(await readFile(statePath, 'utf8')),
   };
 }
@@ -140,8 +188,13 @@ test('approved exact-ID execution checks services and stops after one pair', asy
   const fx = await fixture();
   const result = fx.run();
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /AUDIT deleted_revision=/);
+  assert.match(result.stdout, /AUDIT deletion_completed=true/);
   assert.deepEqual((await fx.state()).removed, [api(old), worker(old)]);
+  for (const rev of recentHolds) {
+    assert.match(result.stdout, new RegExp(`PROTECTED_REVISION revision=${rev}`));
+    assert.ok(!(await fx.state()).removed.includes(api(rev)));
+    assert.ok(!(await fx.state()).removed.includes(worker(rev)));
+  }
 });
 
 test('failed readiness blocks any removal', async () => {
@@ -150,6 +203,93 @@ test('failed readiness blocks any removal', async () => {
   assert.equal(result.status, 1);
   assert.match(result.stderr, /API readiness non-200/);
   assert.deepEqual((await fx.state()).removed, []);
+});
+
+test('failed /health blocks removal even if /ready returns 200', async () => {
+  const fx = await fixture({ health: false, ready: true });
+  const result = fx.run();
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /API health non-200/);
+  assert.deepEqual((await fx.state()).removed, []);
+});
+
+test('inode emergency threshold blocks removal before first image', async () => {
+  const fx = await fixture({ inodeHigh: true });
+  const result = fx.run();
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /inode usage at or above emergency threshold/);
+  assert.deepEqual((await fx.state()).removed, []);
+});
+
+test('normal mode stops at safe capacity; steady-state may clean', async () => {
+  const emergency = await fixture({ lowDisk: true });
+  const result = emergency.run();
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /STOP target reached/);
+  assert.deepEqual((await emergency.state()).removed, []);
+
+  const steady = await fixture({ lowDisk: true });
+  const completed = steady.run('--steady-state-execute');
+  assert.equal(completed.status, 0, completed.stderr);
+  assert.match(completed.stdout, /reclaimed_kib=1200000/);
+  assert.match(completed.stdout, /inode_before_pct=70 inode_after_pct=70/);
+  assert.deepEqual((await steady.state()).removed, [api(old), worker(old)]);
+});
+
+test('bounded GC observation tolerates delayed df updates, without manual prune', async () => {
+  const fx = await fixture({ gcDelayed: true });
+  const result = fx.run();
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /reclaimed_kib=1200000/);
+  assert.deepEqual((await fx.state()).removed, [api(old), worker(old)]);
+});
+
+test('zero reclaimed space records deletion as complete but stops pending GC', async () => {
+  const fx = await fixture({ noReclaim: true });
+  const result = fx.run();
+  assert.equal(result.status, 3);
+  assert.match(result.stdout, /AUDIT deletion_completed=true/);
+  assert.match(result.stdout, /RECLAIM_PENDING deletion_completed=true/);
+  assert.doesNotMatch(result.stdout, /RETENTION COMPLETE/);
+  assert.deepEqual((await fx.state()).removed, [api(old), worker(old)]);
+});
+
+test('plan-only produces exact-ID manifest without deletion or execution approvals', async () => {
+  const fx = await fixture();
+  const result = fx.run('--plan', {
+    STAGING_RETENTION_EXECUTE_ENABLED: 'false',
+    STAGING_RETENTION_APPROVED_PLAN: '/missing',
+    STAGING_RETENTION_APPROVAL_ID: '',
+    STAGING_DEPLOY_SUCCEEDED_REVISION: '',
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(
+    result.stdout,
+    new RegExp(`PLAN revision=${old} api_id=${id('a')} worker_id=${id('b')}`),
+  );
+  assert.match(result.stdout, /approval_status=NOT_GRANTED/);
+  assert.match(result.stdout, /deleted_pairs=0/);
+  assert.deepEqual((await fx.state()).removed, []);
+});
+
+test('plan-only does not propose a protected HOLD release', async () => {
+  const fx = await fixture();
+  const result = fx.run('--plan');
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /PROTECTED_REVISION revision=/);
+  for (const rev of recentHolds) {
+    assert.doesNotMatch(result.stdout, new RegExp(`PLAN revision=${rev}`));
+  }
+  assert.deepEqual((await fx.state()).removed, []);
+});
+
+test('plan-only refuses missing protected release or unhealthy application', async () => {
+  for (const options of [{ missingHold: api(recentHolds[0]) }, { health: false }]) {
+    const fx = await fixture(options);
+    const result = fx.run('--plan');
+    assert.equal(result.status, 1);
+    assert.deepEqual((await fx.state()).removed, []);
+  }
 });
 
 test('Docker failure stops without forced retry after partial removal', async () => {
@@ -180,4 +320,14 @@ test('stopped current Worker blocks removal even if API readiness passes', async
   assert.equal(result.status, 1);
   assert.match(result.stderr, /worker container is not running/);
   assert.deepEqual((await fx.state()).removed, []);
+});
+
+test('execute fails before any removal if a protected HOLD service image is missing', async () => {
+  for (const ref of [api(recentHolds[0]), worker(recentHolds[4])]) {
+    const fx = await fixture({ missingHold: ref });
+    const r = fx.run();
+    assert.equal(r.status, 1, r.stderr);
+    assert.match(r.stderr, /protected image missing/);
+    assert.deepEqual((await fx.state()).removed, []);
+  }
 });

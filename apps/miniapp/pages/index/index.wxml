@@ -32,7 +32,7 @@
         bindtap="openAction"
         aria-label="{{item.title}}"
       >
-        <image wx:if="{{item.mediaUrl}}" class="hero-media" src="{{item.mediaUrl}}" mode="aspectFill" data-index="{{index}}" data-src="{{item.mediaUrl}}" binderror="mediaError" />
+        <image wx:if="{{item.mediaUrl}}" class="hero-media" src="{{item.mediaUrl}}" mode="aspectFill" data-index="{{index}}" data-id="{{item.id}}" data-src="{{item.mediaUrl}}" binderror="mediaError" />
         <image wx:if="{{!item.mediaUrl}}" class="hero-illustration storybook-hero-art" src="/assets/illustrations/home-reading-fox.svg" mode="aspectFit" aria-hidden="true" />
         <text wx:if="{{item.config.eyebrow}}" class="eyebrow">{{item.config.eyebrow}}</text>
         <text class="hero-title">{{item.title}}</text>
