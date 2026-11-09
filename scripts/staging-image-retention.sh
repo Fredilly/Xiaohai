@@ -156,7 +156,11 @@ if [[ "$deleting" == true ]]; then
       "$recovery_b ${recovery_api_ids[$recovery_b]} ${recovery_worker_ids[$recovery_b]}")
     [[ "$(LC_ALL=C sort -- "$STAGING_RETENTION_APPROVED_PLAN")" == "$(printf '%s\n' "$expected_plan" | LC_ALL=C sort)" ]] ||
       fail 'recovery plan must contain exactly two owner-approved revision/image-ID triples'
-    printf 'AUDIT one_time_recovery=true batch2=%s phase_d=%s historic_workflow_conclusion=failure run_id=41982285823\n' "$batch2" "$phase_d"
+    if [[ "$phase_d" == true ]]; then
+      printf 'AUDIT one_time_recovery=true phase_d=true historic_workflow_conclusion=failure run_id=41982285823\n'
+    else
+      printf 'AUDIT one_time_recovery=true batch2=%s historic_workflow_conclusion=failure run_id=41982285823\n' "$batch2"
+    fi
   else
     [[ "${STAGING_DEPLOY_SUCCEEDED_REVISION:-}" == "$current" ]] ||
       fail 'verified successful deployment revision is required'
