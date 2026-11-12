@@ -36,14 +36,14 @@ concurrency:
 jobs:
   execute:
     name: Validate exact plan and execute bounded staging retention
-    if: ${{ vars.STAGING_RETENTION_EXECUTION_ENABLED == 'true' }}
+    if: ${{ vars.STAGING_RETENTION_EXECUTION_ENABLED == 'true' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     environment: staging
     timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.revision }}
+          ref: main
           fetch-depth: 0
 
       - name: Validate owner policy, actor and immutable inputs
