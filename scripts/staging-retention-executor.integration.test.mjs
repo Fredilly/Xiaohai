@@ -129,23 +129,23 @@ async function remoteFixture({
 set -euo pipefail
 printf 'call\\n' >> "$MOCK_CALLS"
 cat "$STAGING_RETENTION_APPROVED_PLAN" > "$MOCK_PLAN_COPY"
-if [[ "${MOCK_HOST_HEALTH_FAIL:-}" == true ]]; then
+if [[ "\${MOCK_HOST_HEALTH_FAIL:-}" == true ]]; then
   echo 'STOP retention: API health non-200' >&2
   exit 1
 fi
-if [[ -n "${MOCK_EXPECT_SECOND_WORKER:-}" ]]; then
+if [[ -n "\${MOCK_EXPECT_SECOND_WORKER:-}" ]]; then
   second_worker="$(awk 'NR==2 {print $3}' "$STAGING_RETENTION_APPROVED_PLAN")"
   [[ "$second_worker" == "$MOCK_EXPECT_SECOND_WORKER" ]] || {
     echo 'STOP retention: second image ID mismatch' >&2
     exit 1
   }
 fi
-if [[ "${MOCK_PARTIAL_FAIL:-}" == true ]]; then
+if [[ "\${MOCK_PARTIAL_FAIL:-}" == true ]]; then
   printf 'removed-one\\n' >> "$MOCK_PARTIAL"
   echo 'STOP retention: Docker refused deletion' >&2
   exit 8
 fi
-if [[ "${MOCK_SLEEP:-}" == true ]]; then
+if [[ "\${MOCK_SLEEP:-}" == true ]]; then
   sleep 0.3
 fi
 echo 'RETENTION COMPLETE mode=--steady-state-execute deleted_pairs=1'
