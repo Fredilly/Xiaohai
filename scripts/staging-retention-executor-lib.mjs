@@ -14,7 +14,8 @@ function requireMatch(value, pattern, message) {
 }
 
 export function validateExecutionInputs(input) {
-  if (input.masterEnabled !== 'true') throw new Error('Retention execution master gate is disabled.');
+  if (input.masterEnabled !== 'true')
+    throw new Error('Retention execution master gate is disabled.');
   requireMatch(input.revision, SHA40, 'Invalid exact revision.');
   requireMatch(input.sourceRunId, /^[1-9][0-9]*$/, 'Invalid source workflow run ID.');
   requireMatch(input.planSha256, SHA256, 'Invalid reviewed plan SHA-256.');
@@ -48,12 +49,18 @@ export function validateExecutionInputs(input) {
     'One additional protected historical revision is required.',
   );
   if ([input.revision, rollbackA, rollbackB].includes(input.extraProtected)) {
-    throw new Error('Additional protected revision must be distinct from current and rollback revisions.');
+    throw new Error(
+      'Additional protected revision must be distinct from current and rollback revisions.',
+    );
   }
   if (input.configCoverage !== 'true') {
     throw new Error('Deployment configuration coverage is not independently verified.');
   }
-  requireMatch(input.expectedHostname, HOSTNAME, 'Expected staging hostname is not configured safely.');
+  requireMatch(
+    input.expectedHostname,
+    HOSTNAME,
+    'Expected staging hostname is not configured safely.',
+  );
   return {
     revision: input.revision,
     sourceRunId: input.sourceRunId,
@@ -111,7 +118,9 @@ export async function verifySourceDeployment({ github, owner, repo, revision, so
     }
   }
   if (!latestSuccessful || latestSuccessful.sha !== revision) {
-    throw new Error('Exact revision is not the latest verified successful staging backend deployment.');
+    throw new Error(
+      'Exact revision is not the latest verified successful staging backend deployment.',
+    );
   }
   return { runId: Number(sourceRunId), revision };
 }
@@ -137,14 +146,14 @@ export function normalizeProposal({ text, revision, expectedSha256 }) {
     const [, candidate, apiId, workerId] = match;
     requireMatch(apiId, IMAGE_ID, 'Invalid API image ID.');
     requireMatch(workerId, IMAGE_ID, 'Invalid Worker image ID.');
-    if (candidate === revision) throw new Error('Current revision must never be a retention candidate.');
+    if (candidate === revision)
+      throw new Error('Current revision must never be a retention candidate.');
     if (seen.has(candidate)) throw new Error('Duplicate candidate revision in proposal.');
     seen.add(candidate);
     normalized.push(`${candidate} ${apiId} ${workerId}`);
   }
 
-  const completion =
-    `PLAN COMPLETE mode=--plan proposed_pairs=${lines.length} deleted_pairs=0 approval_status=NOT_GRANTED`;
+  const completion = `PLAN COMPLETE mode=--plan proposed_pairs=${lines.length} deleted_pairs=0 approval_status=NOT_GRANTED`;
   if (!text.split(/\r?\n/).includes(completion)) {
     throw new Error('Proposal completion marker does not match exact candidate count.');
   }
