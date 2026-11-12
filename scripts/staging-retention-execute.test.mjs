@@ -342,6 +342,9 @@ test('steady-state executor workflow is manual, default-deny and owner-scoped', 
   const source = await readFile(executorWorkflow, 'utf8');
   assert.match(source, /workflow_dispatch:/);
   assert.match(source, /STAGING_RETENTION_EXECUTION_ENABLED == 'true'/);
+  assert.match(source, /github\.ref == 'refs\/heads\/main'/);
+  assert.match(source, /ref: main/);
+  assert.doesNotMatch(source, /ref: \$\{\{ inputs\.revision \}\}/);
   assert.match(source, /STAGING_RETENTION_POLICY_ID/);
   assert.match(source, /STAGING_RETENTION_ALLOWED_ACTOR/);
   assert.match(source, /environment: staging/);
