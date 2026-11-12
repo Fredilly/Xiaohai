@@ -12,6 +12,7 @@ const executorWorkflow = new URL(
 );
 const remoteExecutor = new URL('./staging-retention-remote-executor.sh', import.meta.url).pathname;
 const dispatchScript = new URL('./staging-retention-dispatch.sh', import.meta.url).pathname;
+const executorGuard = new URL('./staging-retention-executor-lib.mjs', import.meta.url).pathname;
 const current = 'e38a1796b7f6eb08a7b10932567c5b781eed606c';
 const rollbackA = 'f8e1fe86bbb904a4e7871901442a5b3dac7890e0';
 const rollbackB = 'd79ca0ff400f52f05a140235565b9c981163ead5';
@@ -339,29 +340,33 @@ test('execute fails before any removal if a protected HOLD service image is miss
 });
 
 test('steady-state executor workflow is manual, default-deny and owner-scoped', async () => {
-  const source = await readFile(executorWorkflow, 'utf8');
-  assert.match(source, /workflow_dispatch:/);
-  assert.match(source, /STAGING_RETENTION_EXECUTION_ENABLED == 'true'/);
-  assert.match(source, /github\.ref == 'refs\/heads\/main'/);
-  assert.match(source, /ref: main/);
-  assert.doesNotMatch(source, /ref: \$\{\{ inputs\.revision \}\}/);
-  assert.match(source, /STAGING_RETENTION_POLICY_ID/);
-  assert.match(source, /STAGING_RETENTION_ALLOWED_ACTOR/);
-  assert.match(source, /environment: staging/);
-  assert.match(source, /\^XIAOHAI-195-STEADY-\[A-Za-z0-9-\]\+\$/);
-  assert.doesNotMatch(source, /schedule:/);
+  const workflow = await readFile(executorWorkflow, 'utf8');
+  const guard = await readFile(executorGuard, 'utf8');
+  assert.match(workflow, /workflow_dispatch:/);
+  assert.match(workflow, /STAGING_RETENTION_EXECUTION_ENABLED == 'true'/);
+  assert.match(workflow, /github\.ref == 'refs\/heads\/main'/);
+  assert.match(workflow, /ref: main/);
+  assert.doesNotMatch(workflow, /ref: \$\{\{ inputs\.revision \}\}/);
+  assert.match(workflow, /STAGING_RETENTION_POLICY_ID/);
+  assert.match(workflow, /STAGING_RETENTION_ALLOWED_ACTOR/);
+  assert.match(workflow, /environment: staging/);
+  assert.match(guard, /XIAOHAI-195-STEADY/);
+  assert.match(guard, /XIAOHAI-195-RETENTION/);
+  assert.doesNotMatch(workflow, /schedule:/);
 });
 
 test('steady-state executor binds exact successful deployment and reviewed proposal artifact', async () => {
-  const source = await readFile(executorWorkflow, 'utf8');
-  assert.match(source, /Deploy staging \(after CI\)/);
-  assert.match(source, /staging-backend-success/);
-  assert.match(source, /staging-retention-proposal-\$\{\{ inputs\.revision \}\}/);
-  assert.match(source, /Reviewed proposal SHA-256 mismatch/);
-  assert.match(source, /NORMALIZED_PLAN_SHA256/);
-  assert.match(source, /uploaded normalized plan hash mismatch/);
-  assert.match(source, /Proposal must contain one or two exact candidate pairs/);
-  assert.match(source, /Current revision must never be a retention candidate/);
+  const workflow = await readFile(executorWorkflow, 'utf8');
+  const guard = await readFile(executorGuard, 'utf8');
+  const remote = await readFile(remoteExecutor, 'utf8');
+  assert.match(guard, /Deploy staging \(after CI\)/);
+  assert.match(guard, /staging-backend-success/);
+  assert.match(workflow, /staging-retention-proposal-\$\{\{ inputs\.revision \}\}/);
+  assert.match(guard, /Reviewed proposal SHA-256 mismatch/);
+  assert.match(workflow, /NORMALIZED_PLAN_SHA256/);
+  assert.match(remote, /uploaded normalized plan hash mismatch/);
+  assert.match(guard, /Proposal must contain one or two exact candidate pairs/);
+  assert.match(guard, /Current revision must never be a retention candidate/);
 });
 
 test('steady-state executor consumes approval before one bounded invocation and has no retry path', async () => {
