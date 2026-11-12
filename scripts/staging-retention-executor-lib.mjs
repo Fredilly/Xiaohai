@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { appendFileSync, chmodSync, readFileSync, writeFileSync } from 'node:fs';
 
 const SHA40 = /^[0-9a-f]{40}$/;
 const SHA256 = /^[0-9a-f]{64}$/;
@@ -156,26 +157,45 @@ export function normalizeProposal({ text, revision, expectedSha256 }) {
   };
 }
 
-if (process.argv[1]?.endsWith('staging-retention-executor-lib.mjs') && process.argv[2] === 'validate-env') {
+if (process.argv[1]?.endsWith('staging-retention-executor-lib.mjs')) {
+  const command = process.argv[2];
   try {
-    validateExecutionInputs({
-      masterEnabled: process.env.STAGING_RETENTION_EXECUTION_ENABLED,
-      revision: process.env.REVISION,
-      sourceRunId: process.env.SOURCE_RUN_ID,
-      planSha256: process.env.PLAN_SHA256,
-      approvalId: process.env.APPROVAL_ID,
-      policyId: process.env.POLICY_ID,
-      approvedPolicyId: process.env.APPROVED_POLICY_ID,
-      dispatchActor: process.env.DISPATCH_ACTOR,
-      allowedActor: process.env.ALLOWED_ACTOR,
-      rollbacks: process.env.ROLLBACKS,
-      extraProtected: process.env.EXTRA_PROTECTED,
-      configCoverage: process.env.CONFIG_COVERAGE,
-      expectedHostname: process.env.EXPECTED_HOSTNAME,
-    });
-    console.log('RETENTION_INPUT_GATES_PASS');
+    if (command === 'validate-env') {
+      validateExecutionInputs({
+        masterEnabled: process.env.STAGING_RETENTION_EXECUTION_ENABLED,
+        revision: process.env.REVISION,
+        sourceRunId: process.env.SOURCE_RUN_ID,
+        planSha256: process.env.PLAN_SHA256,
+        approvalId: process.env.APPROVAL_ID,
+        policyId: process.env.POLICY_ID,
+        approvedPolicyId: process.env.APPROVED_POLICY_ID,
+        dispatchActor: process.env.DISPATCH_ACTOR,
+        allowedActor: process.env.ALLOWED_ACTOR,
+        rollbacks: process.env.ROLLBACKS,
+        extraProtected: process.env.EXTRA_PROTECTED,
+        configCoverage: process.env.CONFIG_COVERAGE,
+        expectedHostname: process.env.EXPECTED_HOSTNAME,
+      });
+      console.log('RETENTION_INPUT_GATES_PASS');
+    } else if (command === 'normalize-env') {
+      const proposalPath = process.env.PROPOSAL_PATH;
+      const approvedPath = process.env.APPROVED_PATH;
+      const githubEnv = process.env.GITHUB_ENV;
+      if (!proposalPath || !approvedPath || !githubEnv) {
+        throw new Error('Proposal normalization paths are not configured.');
+      }
+      const result = normalizeProposal({
+        text: readFileSync(proposalPath, 'utf8'),
+        revision: process.env.REVISION,
+        expectedSha256: process.env.PLAN_SHA256,
+      });
+      writeFileSync(approvedPath, result.normalizedText, { mode: 0o600 });
+      chmodSync(approvedPath, 0o600);
+      appendFileSync(githubEnv, `NORMALIZED_PLAN_SHA256=${result.normalizedSha256}\n`);
+      console.log(`NORMALIZED_CANDIDATE_PAIRS=${result.candidateCount}`);
+    }
   } catch (error) {
-    console.error(`RETENTION_INPUT_GATES_STOP: ${error.message}`);
+    console.error(`RETENTION_EXECUTOR_STOP: ${error.message}`);
     process.exitCode = 1;
   }
 }
