@@ -220,7 +220,7 @@ test('executable input guard fails closed for disabled master gate and wrong act
   }
 });
 
-test('workflow CLI rejects shell metacharacters, quotes and newlines before SSH', () => {
+test('workflow CLI rejects shell metacharacters, quotes and newlines before SSH', async () => {
   const marker = join(tmpdir(), `xiaohai-retention-injection-${process.pid}`);
   const payloads = [
     `XIAOHAI-195-RETENTION-V1';touch ${marker};#`,
@@ -251,7 +251,7 @@ test('workflow CLI rejects shell metacharacters, quotes and newlines before SSH'
     assert.equal(result.status, 1);
     assert.match(result.stderr, /Invalid recurring retention policy ID/);
   }
-  assert.throws(() => stat(marker));
+  await assert.rejects(stat(marker));
 });
 
 test('mock GitHub verification rejects stale main and superseded backend success', async () => {
