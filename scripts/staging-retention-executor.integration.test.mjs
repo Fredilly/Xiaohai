@@ -1,14 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import {
-  chmod,
-  mkdir,
-  mkdtemp,
-  readFile,
-  rm,
-  stat,
-  writeFile,
-} from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { hostname, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
@@ -400,11 +392,7 @@ test('mock SSH dispatcher sends only generated paths in remote command, never pa
   const marker = join(dir, 'should-not-exist');
   const params = join(dir, 'params.txt');
   const plan = join(dir, 'plan.txt');
-  await writeFile(
-    params,
-    `safe\nXIAOHAI-195-RETENTION-V1';touch ${marker};#\n`,
-    { mode: 0o600 },
-  );
+  await writeFile(params, `safe\nXIAOHAI-195-RETENTION-V1';touch ${marker};#\n`, { mode: 0o600 });
   await writeFile(plan, `${candidateA} ${apiA} ${workerA}\n`, { mode: 0o600 });
   await writeFile(
     join(bin, 'scp'),
