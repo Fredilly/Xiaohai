@@ -10,6 +10,8 @@ const executorWorkflow = new URL(
   '../.github/workflows/staging-retention-execute.yml',
   import.meta.url,
 );
+const remoteExecutor = new URL('./staging-retention-remote-executor.sh', import.meta.url).pathname;
+const dispatchScript = new URL('./staging-retention-dispatch.sh', import.meta.url).pathname;
 const current = 'e38a1796b7f6eb08a7b10932567c5b781eed606c';
 const rollbackA = 'f8e1fe86bbb904a4e7871901442a5b3dac7890e0';
 const rollbackB = 'd79ca0ff400f52f05a140235565b9c981163ead5';
@@ -360,24 +362,31 @@ test('steady-state executor binds exact successful deployment and reviewed propo
 });
 
 test('steady-state executor consumes approval before one bounded invocation and has no retry path', async () => {
-  const source = await readFile(executorWorkflow, 'utf8');
-  assert.match(source, /approval ID already consumed/);
-  assert.match(source, /\.retention-authorizations/);
-  assert.match(source, /--steady-state-execute/);
-  assert.match(source, /RETENTION_EXECUTOR_NO_RETRY=true/);
-  assert.match(source, /STAGING_RETENTION_APPROVED_PLAN="\$REMOTE_PLAN"/);
-  assert.match(source, /STAGING_DEPLOY_SUCCEEDED_REVISION="\$REVISION"/);
-  assert.match(source, /STAGING_RETENTION_EXECUTE_ENABLED=true/);
-  assert.doesNotMatch(source, /docker image rm/);
-  assert.doesNotMatch(source, /docker (?:system|image) prune/);
+  const workflow = await readFile(executorWorkflow, 'utf8');
+  const remote = await readFile(remoteExecutor, 'utf8');
+  const dispatch = await readFile(dispatchScript, 'utf8');
+  assert.match(workflow, /staging-retention-dispatch\.sh/);
+  assert.match(remote, /approval ID already consumed/);
+  assert.match(remote, /\.retention-authorizations/);
+  assert.match(remote, /mkdir -m 0700 "\$receipt_dir"/);
+  assert.match(remote, /--steady-state-execute/);
+  assert.match(remote, /RETENTION_EXECUTOR_NO_RETRY=true/);
+  assert.match(remote, /STAGING_RETENTION_APPROVED_PLAN="\$plan"/);
+  assert.match(remote, /STAGING_DEPLOY_SUCCEEDED_REVISION="\$REVISION"/);
+  assert.match(remote, /STAGING_RETENTION_EXECUTE_ENABLED=true/);
+  assert.doesNotMatch(dispatch, /POLICY_ID|APPROVAL_ID|REVISION=/);
+  assert.doesNotMatch(workflow, /docker image rm/);
+  assert.doesNotMatch(workflow, /docker (?:system|image) prune/);
 });
 
 test('steady-state executor preserves host identity, reviewed script and post-run health gates', async () => {
-  const source = await readFile(executorWorkflow, 'utf8');
-  assert.match(source, /host script hash differs from exact deployed revision/);
-  assert.match(source, /EXPECTED_HOSTNAME/);
-  assert.match(source, /docker inspect --format "\{\{\.State\.Health\.Status\}\}"/);
-  assert.match(source, /staging-api\.pamboo\.asia\/health/);
-  assert.match(source, /staging-api\.pamboo\.asia\/ready/);
-  assert.match(source, /df -hT \/|df -hi \//);
+  const workflow = await readFile(executorWorkflow, 'utf8');
+  const remote = await readFile(remoteExecutor, 'utf8');
+  assert.match(remote, /host script hash differs from exact deployed revision/);
+  assert.match(remote, /hostname mismatch/);
+  assert.match(remote, /uploaded normalized plan hash mismatch/);
+  assert.match(workflow, /docker inspect --format "\{\{\.State\.Health\.Status\}\}"/);
+  assert.match(workflow, /staging-api\.pamboo\.asia\/health/);
+  assert.match(workflow, /staging-api\.pamboo\.asia\/ready/);
+  assert.match(workflow, /df -hT \/|df -hi \//);
 });
