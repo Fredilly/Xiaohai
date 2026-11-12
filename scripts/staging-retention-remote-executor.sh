@@ -42,7 +42,7 @@ DISPATCH_ACTOR="${values[11]}"
 [[ "$ROLLBACKS" =~ ^[0-9a-f]{40}[[:space:]][0-9a-f]{40}$ ]] || fail 'invalid rollback set'
 [[ "$EXTRA_PROTECTED" =~ ^[0-9a-f]{40}$ ]] || fail 'invalid extra protected revision'
 [[ "$CONFIG_COVERAGE" == true ]] || fail 'config coverage not confirmed'
-[[ "$EXPECTED_HOSTNAME" =~ ^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,252}[A-Za-z0-9])?$ ]] ||
+[[ "$EXPECTED_HOSTNAME" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,253}$ ]] ||
   fail 'invalid expected hostname'
 [[ "$EXPECTED_SCRIPT_BLOB" =~ ^[0-9a-f]{40}$ ]] || fail 'invalid reviewed script blob'
 [[ "$APPROVAL_ID" =~ ^XIAOHAI-195-STEADY-[A-Za-z0-9-]{1,80}$ ]] || fail 'invalid approval ID'
@@ -50,7 +50,7 @@ DISPATCH_ACTOR="${values[11]}"
 [[ "$PLAN_SHA256" =~ ^[0-9a-f]{64}$ ]] || fail 'invalid reviewed proposal hash'
 [[ "$EXPECTED_NORMALIZED_PLAN_SHA256" =~ ^[0-9a-f]{64}$ ]] || fail 'invalid normalized plan hash'
 [[ "$SOURCE_RUN_ID" =~ ^[1-9][0-9]*$ ]] || fail 'invalid source run ID'
-[[ "$DISPATCH_ACTOR" =~ ^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$ ]] || fail 'invalid dispatch actor'
+[[ "$DISPATCH_ACTOR" =~ ^[A-Za-z0-9][A-Za-z0-9-]{0,38}$ ]] || fail 'invalid dispatch actor'
 
 [[ "$(hostname)" == "$EXPECTED_HOSTNAME" ]] || fail 'hostname mismatch'
 
