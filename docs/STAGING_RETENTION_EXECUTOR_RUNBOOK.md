@@ -59,3 +59,27 @@ The workflow also uses the existing `staging` environment and staging SSH secret
 8. Review the first run's receipt, disk/inode change, protected-image set and health before treating the system as operational.
 
 `STAGING_READY` remains an independent deployment-readiness decision.
+
+## Security transport and executable review gates
+
+- Workflow inputs are validated by `scripts/staging-retention-executor-lib.mjs` against strict allowlists before SSH.
+- `policy_id` must match `^XIAOHAI-195-RETENTION-[A-Za-z0-9-]+$`; approval IDs remain separately scoped as `XIAOHAI-195-STEADY-...`.
+- Revision, source run ID, proposal hashes, actor, rollback set, extra protected revision and expected hostname are all validated before transport and revalidated on-host.
+- User/owner values are **not interpolated into the remote shell command**. They travel in a fixed-order newline-delimited parameter file that is never sourced/eval'd; the remote executor reads fields literally and validates them again.
+- The only values interpolated into the SSH remote command are generated numeric temporary paths derived from GitHub run ID/attempt.
+- Single-use approval consumption uses an atomic `mkdir` under `~/xiaohai-deploy/.retention-authorizations/`; concurrent dispatches with the same approval ID cannot both proceed.
+- Executable mocked integration tests cover disabled master gate, actor/policy/approval mismatch, shell metacharacters/newlines/quotes, stale/superseded backend revision, proposal hash/second image mismatch, host script hash, health refusal, reused approval, partial deletion/no retry, concurrent approval consumption and mocked SSH transport.
+
+## Real-host acceptance remains separate
+
+Code review, CI success and merge do **not** authorize activation. Before the first live steady-state execution:
+
+1. Fred must separately approve the recurring policy identifier and designated operator scope.
+2. Repository/environment variables must be configured while `STAGING_RETENTION_EXECUTION_ENABLED` remains false.
+3. Generate a real read-only proposal from a genuinely successful, latest-main backend deployment and independently review its SHA-256 and exact image IDs.
+4. Perform a read-only real-host acceptance check for installed script hash, expected hostname, current/two rollback/extra/HOLD protections, references, lock, services, volumes, PostgreSQL/Redis/HTTPS health, disk/inodes and the current backup/recovery boundary.
+5. Only after that acceptance may Fred explicitly enable the master execution variable and issue the first fresh single-use `XIAOHAI-195-STEADY-...` approval.
+6. The first live run must be reviewed afterwards before the executor is considered operational.
+
+No existing Phase B/C/D approval may be reused for this acceptance or first steady-state run.
+
