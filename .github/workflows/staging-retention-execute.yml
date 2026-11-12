@@ -48,10 +48,10 @@ jobs:
 
       - name: Validate owner policy, actor and immutable inputs
         env:
+          STAGING_RETENTION_EXECUTION_ENABLED: ${{ vars.STAGING_RETENTION_EXECUTION_ENABLED }}
           REVISION: ${{ inputs.revision }}
           SOURCE_RUN_ID: ${{ inputs.source_run_id }}
           PLAN_SHA256: ${{ inputs.plan_sha256 }}
-          NORMALIZED_PLAN_SHA256: ${{ env.NORMALIZED_PLAN_SHA256 }}
           APPROVAL_ID: ${{ inputs.approval_id }}
           POLICY_ID: ${{ inputs.policy_id }}
           APPROVED_POLICY_ID: ${{ vars.STAGING_RETENTION_POLICY_ID }}
@@ -61,84 +61,34 @@ jobs:
           EXTRA_PROTECTED: ${{ vars.STAGING_EXTRA_PROTECTED_REVISION }}
           CONFIG_COVERAGE: ${{ vars.STAGING_CONFIG_COVERAGE_CONFIRMED }}
           EXPECTED_HOSTNAME: ${{ vars.STAGING_EXPECTED_HOSTNAME }}
-        run: |
-          set -euo pipefail
-          [[ "$REVISION" =~ ^[0-9a-f]{40}$ ]] || { echo '::error::Invalid exact revision.'; exit 1; }
-          [[ "$SOURCE_RUN_ID" =~ ^[0-9]+$ ]] || { echo '::error::Invalid source workflow run ID.'; exit 1; }
-          [[ "$PLAN_SHA256" =~ ^[0-9a-f]{64}$ ]] || { echo '::error::Invalid reviewed plan SHA-256.'; exit 1; }
-          [[ "$APPROVAL_ID" =~ ^XIAOHAI-195-STEADY-[A-Za-z0-9-]+$ ]] || {
-            echo '::error::Steady-state execution requires a distinct single-use approval ID.'
-            exit 1
-          }
-          [[ -n "$APPROVED_POLICY_ID" && "$POLICY_ID" == "$APPROVED_POLICY_ID" ]] || {
-            echo '::error::Owner-approved recurring retention policy ID mismatch.'
-            exit 1
-          }
-          [[ -n "$ALLOWED_ACTOR" && "$DISPATCH_ACTOR" == "$ALLOWED_ACTOR" ]] || {
-            echo '::error::Workflow dispatch actor is not the designated retention operator.'
-            exit 1
-          }
-          [[ "$ROLLBACKS" =~ ^[0-9a-f]{40}[[:space:]][0-9a-f]{40}$ ]] || {
-            echo '::error::Exactly two verified rollback revisions are required.'
-            exit 1
-          }
-          [[ "$EXTRA_PROTECTED" =~ ^[0-9a-f]{40}$ ]] || {
-            echo '::error::One additional protected historical revision is required.'
-            exit 1
-          }
-          [[ "$CONFIG_COVERAGE" == true ]] || {
-            echo '::error::Deployment configuration coverage is not independently verified.'
-            exit 1
-          }
-          [[ "$EXPECTED_HOSTNAME" =~ ^[A-Za-z0-9._-]+$ ]] || {
-            echo '::error::Expected staging hostname is not configured.'
-            exit 1
-          }
+        run: node scripts/staging-retention-executor-lib.mjs validate-env
 
-      - name: Verify source deployment run and successful backend marker
+      - name: Verify source deployment run, latest main and backend success marker
         uses: actions/github-script@v7
         env:
           REVISION: ${{ inputs.revision }}
           SOURCE_RUN_ID: ${{ inputs.source_run_id }}
         with:
           script: |
+            const path = require('node:path');
+            const { pathToFileURL } = require('node:url');
+            const moduleUrl = pathToFileURL(
+              path.join(
+                process.env.GITHUB_WORKSPACE,
+                'scripts/staging-retention-executor-lib.mjs'
+              )
+            ).href;
+            const { verifySourceDeployment } = await import(moduleUrl);
             const { owner, repo } = context.repo;
-            const revision = process.env.REVISION;
-            const runId = Number(process.env.SOURCE_RUN_ID);
-            const source = await github.rest.actions.getWorkflowRun({
-              owner, repo, run_id: runId
+            const result = await verifySourceDeployment({
+              github,
+              owner,
+              repo,
+              revision: process.env.REVISION,
+              sourceRunId: process.env.SOURCE_RUN_ID
             });
-            const run = source.data;
-            if (run.name !== 'Deploy staging (after CI)' ||
-                run.conclusion !== 'success' ||
-                run.head_sha !== revision ||
-                run.head_branch !== 'main') {
-              throw new Error(
-                'Source run must be a successful Deploy staging (after CI) run for exact latest-main revision.'
-              );
-            }
-
-            const deployments = await github.rest.repos.listDeployments({
-              owner, repo, environment: 'staging-backend-success', per_page: 100
-            });
-            const matching = deployments.data.filter((entry) => entry.sha === revision);
-            let verified = false;
-            for (const entry of matching) {
-              const statuses = await github.rest.repos.listDeploymentStatuses({
-                owner, repo, deployment_id: entry.id, per_page: 20
-              });
-              if (statuses.data.some((status) => status.state === 'success')) {
-                verified = true;
-                break;
-              }
-            }
-            if (!verified) {
-              throw new Error(
-                'Exact revision lacks a verified successful staging-backend-success deployment marker.'
-              );
-            }
             core.info(
-              `RETENTION_SOURCE_VERIFIED run=${runId} revision=${revision} backend_success=true`
+              `RETENTION_SOURCE_VERIFIED run=${result.runId} revision=${result.revision} backend_success=true latest_main=true`
             );
 
       - name: Download exact retention proposal from verified deployment run
@@ -152,60 +102,10 @@ jobs:
       - name: Bind reviewed proposal hash and normalize exact-ID plan
         env:
           REVISION: ${{ inputs.revision }}
-          EXPECTED_SHA256: ${{ inputs.plan_sha256 }}
-        run: |
-          set -euo pipefail
-          proposal="$RUNNER_TEMP/retention-proposal/staging-retention-proposal.txt"
-          approved="$RUNNER_TEMP/approved-retention-plan.txt"
-          [[ -f "$proposal" && ! -L "$proposal" ]] || {
-            echo '::error::Expected proposal artifact is missing or symlinked.'
-            exit 1
-          }
-          actual_sha="$(sha256sum "$proposal" | awk '{print $1}')"
-          echo "RETENTION_PLAN_SHA256=$actual_sha"
-          [[ "$actual_sha" == "$EXPECTED_SHA256" ]] || {
-            echo '::error::Reviewed proposal SHA-256 mismatch.'
-            exit 1
-          }
-
-          mapfile -t lines < <(grep '^PLAN revision=' "$proposal")
-          (( ${#lines[@]} >= 1 && ${#lines[@]} <= 2 )) || {
-            echo '::error::Proposal must contain one or two exact candidate pairs.'
-            exit 1
-          }
-
-          : > "$approved"
-          declare -A seen=()
-          for line in "${lines[@]}"; do
-            if [[ "$line" =~ ^PLAN[[:space:]]revision=([0-9a-f]{40})[[:space:]]api_id=(sha256:[0-9a-f]{64})[[:space:]]worker_id=(sha256:[0-9a-f]{64})$ ]]; then
-              candidate="${BASH_REMATCH[1]}"
-              api_id="${BASH_REMATCH[2]}"
-              worker_id="${BASH_REMATCH[3]}"
-            else
-              echo '::error::Malformed exact-ID proposal line.'
-              exit 1
-            fi
-            [[ "$candidate" != "$REVISION" ]] || {
-              echo '::error::Current revision must never be a retention candidate.'
-              exit 1
-            }
-            [[ -z "${seen[$candidate]:-}" ]] || {
-              echo '::error::Duplicate candidate revision in proposal.'
-              exit 1
-            }
-            seen["$candidate"]=1
-            printf '%s %s %s\n' "$candidate" "$api_id" "$worker_id" >> "$approved"
-          done
-
-          expected_complete="PLAN COMPLETE mode=--plan proposed_pairs=${#lines[@]} deleted_pairs=0 approval_status=NOT_GRANTED"
-          grep -Fxq -- "$expected_complete" "$proposal" || {
-            echo '::error::Proposal completion marker does not match exact candidate count.'
-            exit 1
-          }
-          chmod 0600 "$approved"
-          normalized_sha="$(sha256sum "$approved" | awk '{print $1}')"
-          echo "NORMALIZED_CANDIDATE_PAIRS=${#lines[@]}"
-          echo "NORMALIZED_PLAN_SHA256=$normalized_sha" >> "$GITHUB_ENV"
+          PLAN_SHA256: ${{ inputs.plan_sha256 }}
+          PROPOSAL_PATH: ${{ runner.temp }}/retention-proposal/staging-retention-proposal.txt
+          APPROVED_PATH: ${{ runner.temp }}/approved-retention-plan.txt
+        run: node scripts/staging-retention-executor-lib.mjs normalize-env
 
       - name: Install SSH key
         env:
@@ -237,81 +137,36 @@ jobs:
         run: |
           set -euo pipefail
           local_plan="$RUNNER_TEMP/approved-retention-plan.txt"
+          params="$RUNNER_TEMP/retention-params.txt"
           expected_script_blob="$(git hash-object scripts/staging-image-retention.sh)"
-          remote_plan="/tmp/xiaohai-retention-plan-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.txt"
 
-          scp "$local_plan" "$USER@$HOST:$remote_plan"
-
-          ssh "$USER@$HOST"             "REVISION='$REVISION' ROLLBACKS='$ROLLBACKS' EXTRA_PROTECTED='$EXTRA_PROTECTED' CONFIG_COVERAGE='$CONFIG_COVERAGE' EXPECTED_HOSTNAME='$EXPECTED_HOSTNAME' EXPECTED_SCRIPT_BLOB='$expected_script_blob' APPROVAL_ID='$APPROVAL_ID' POLICY_ID='$POLICY_ID' PLAN_SHA256='$PLAN_SHA256' EXPECTED_NORMALIZED_PLAN_SHA256='$NORMALIZED_PLAN_SHA256' SOURCE_RUN_ID='$SOURCE_RUN_ID' DISPATCH_ACTOR='$DISPATCH_ACTOR' REMOTE_PLAN='$remote_plan' bash -s" <<'REMOTE'
-          set -euo pipefail
-          script="$HOME/xiaohai-deploy/staging-image-retention.sh"
-          receipt_dir="$HOME/xiaohai-deploy/.retention-authorizations"
-
-          cleanup() {
-            rm -f -- "$REMOTE_PLAN"
-          }
-          trap cleanup EXIT
-
-          [[ "$(hostname)" == "$EXPECTED_HOSTNAME" ]] || {
-            echo 'STOP retention executor: hostname mismatch' >&2
+          [[ "$NORMALIZED_PLAN_SHA256" =~ ^[0-9a-f]{64}$ ]] || {
+            echo '::error::Normalized plan hash missing.'
             exit 1
           }
-          [[ -f "$script" && ! -L "$script" ]] || {
-            echo 'STOP retention executor: reviewed host script unavailable' >&2
-            exit 1
-          }
-          [[ "$(git hash-object "$script")" == "$EXPECTED_SCRIPT_BLOB" ]] || {
-            echo 'STOP retention executor: host script hash differs from exact deployed revision' >&2
-            exit 1
-          }
-          bash -n "$script"
-          [[ -f "$REMOTE_PLAN" && ! -L "$REMOTE_PLAN" ]] || {
-            echo 'STOP retention executor: exact plan unavailable' >&2
-            exit 1
-          }
-          remote_plan_sha="$(sha256sum "$REMOTE_PLAN" | awk '{print $1}')"
-          [[ "$remote_plan_sha" == "$EXPECTED_NORMALIZED_PLAN_SHA256" ]] || {
-            echo 'STOP retention executor: uploaded normalized plan hash mismatch' >&2
+          [[ "$expected_script_blob" =~ ^[0-9a-f]{40}$ ]] || {
+            echo '::error::Reviewed script blob hash invalid.'
             exit 1
           }
 
-          mkdir -p "$receipt_dir"
-          chmod 0700 "$receipt_dir"
-          receipt="$receipt_dir/$APPROVAL_ID"
-          [[ ! -e "$receipt" ]] || {
-            echo 'STOP retention executor: approval ID already consumed' >&2
-            exit 1
-          }
+          # Fixed-order newline-delimited transport. The remote side never sources
+          # this file and validates every field again before any host action.
+          printf '%s\n' \
+            "$REVISION" \
+            "$ROLLBACKS" \
+            "$EXTRA_PROTECTED" \
+            "$CONFIG_COVERAGE" \
+            "$EXPECTED_HOSTNAME" \
+            "$expected_script_blob" \
+            "$APPROVAL_ID" \
+            "$POLICY_ID" \
+            "$PLAN_SHA256" \
+            "$NORMALIZED_PLAN_SHA256" \
+            "$SOURCE_RUN_ID" \
+            "$DISPATCH_ACTOR" > "$params"
+          chmod 0600 "$params"
 
-          umask 077
-          (
-            set -C
-            : > "$receipt"
-          ) 2>/dev/null || {
-            echo 'STOP retention executor: approval ID already consumed' >&2
-            exit 1
-          }
-          {
-            printf 'approval_id=%s\n' "$APPROVAL_ID"
-            printf 'policy_id=%s\n' "$POLICY_ID"
-            printf 'revision=%s\n' "$REVISION"
-            printf 'source_run_id=%s\n' "$SOURCE_RUN_ID"
-            printf 'reviewed_plan_sha256=%s\n' "$PLAN_SHA256"
-            printf 'dispatch_actor=%s\n' "$DISPATCH_ACTOR"
-            printf 'consumed_at_utc=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          } >> "$receipt"
-
-          set +e
-          STAGING_CURRENT_REVISION="$REVISION"           STAGING_ROLLBACK_REVISIONS="$ROLLBACKS"           STAGING_EXTRA_PROTECTED_REVISION="$EXTRA_PROTECTED"           STAGING_CONFIG_COVERAGE_CONFIRMED="$CONFIG_COVERAGE"           STAGING_RETENTION_EXECUTE_ENABLED=true           STAGING_DEPLOY_SUCCEEDED_REVISION="$REVISION"           STAGING_RETENTION_APPROVED_PLAN="$REMOTE_PLAN"           STAGING_RETENTION_APPROVAL_ID="$APPROVAL_ID"           STAGING_EXPECTED_HOSTNAME="$EXPECTED_HOSTNAME"           bash "$script" --steady-state-execute
-          status=$?
-          set -e
-
-          printf 'execution_status=%s\n' "$status" >> "$receipt"
-          printf 'completed_at_utc=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$receipt"
-          echo "RETENTION_EXECUTOR_STATUS=$status"
-          echo 'RETENTION_EXECUTOR_NO_RETRY=true'
-          exit "$status"
-          REMOTE
+          bash scripts/staging-retention-dispatch.sh "$params" "$local_plan"
 
       - name: Post-execution read-only capacity and health
         if: always()
