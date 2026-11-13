@@ -57,3 +57,39 @@ export function oneSuccessfulDailyDeploy(state, day, { maxPairs = 2 } = {}) {
     bytes: simulatedFootprint(remaining),
   };
 }
+
+/**
+ * Code-only review contract for a future recurring retention executor.
+ * This DOES NOT grant Docker deletion, install scripts, verify cloud evidence,
+ * or replace the host script's exact image-ID approval mechanism.
+ */
+export const STEADY_STATE_REVIEW_GATES = Object.freeze([
+  'verifiedSuccessfulBackendDeployment',
+  'verifiedBaselineAndGhcrDigests',
+  'verifiedCurrentAndTwoRollbackPairs',
+  'verifiedExtraAndFiveHolds',
+  'verifiedSnapshotCompletionAndDiskMatch',
+  'verifiedUsableRestoreAuthorizationAndPath',
+  'documentedPostgresRecoveryLimitations',
+  'approvedExactCandidateIds',
+  'completeReferencesAndAliasCoverage',
+  'fiveServicesAndFourVolumesHealthy',
+  'correctHostAndExclusiveLock',
+  'independentHumanReview',
+  'ownerApprovedRetentionPolicy',
+  'separateOperationalAuthorization',
+  'noContainerdReclaimPending',
+]);
+
+export function assessSteadyStateRetention(evidence) {
+  const observations =
+    evidence && typeof evidence === 'object' && !Array.isArray(evidence) ? evidence : {};
+  const missing = STEADY_STATE_REVIEW_GATES.filter((gate) => observations[gate] !== true);
+  return {
+    stage: missing.length ? 'BLOCKED' : 'REVIEW_COMPLETE_EXECUTION_STILL_SEPARATE',
+    missing,
+    // Intentionally never an execute permit: host-side independent proof,
+    // owner-scoped authorization and a restricted executor are required.
+    dockerDeletionAuthorized: false,
+  };
+}
