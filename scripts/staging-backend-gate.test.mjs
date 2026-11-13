@@ -137,4 +137,3 @@ test('retention executor workflow is explicitly backend-impacting, not unknown',
   assert.deepEqual(result.backend, ['.github/workflows/staging-retention-execute.yml']);
   assert.deepEqual(result.frontend, []);
 });
-
