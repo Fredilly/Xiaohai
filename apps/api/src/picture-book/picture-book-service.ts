@@ -1172,10 +1172,18 @@ export class PictureBookService {
     keys: string[],
     characters: Array<typeof characterProfiles.$inferSelect>,
   ) {
-    const mapped = keys.map((key) => characters.find((character) => character.name === key)?.id);
-    if (mapped.some((id) => !id) || new Set(mapped).size !== mapped.length)
+    const mapped = keys
+      .map((key) => characters.find((character) => character.name === key)?.id)
+      .filter((id): id is string => Boolean(id));
+
+    // Providers occasionally mention one-off scene characters that are not part
+    // of the locked Character Bible. Keep known recurring characters, but fail
+    // closed if nothing can be mapped or the provider duplicated a known key.
+    if ((keys.length > 0 && mapped.length === 0) || new Set(mapped).size !== mapped.length) {
       throw new PictureBookError('INVALID_JOB_OUTPUT');
-    return mapped as string[];
+    }
+
+    return mapped;
   }
 
   private viewPage(
