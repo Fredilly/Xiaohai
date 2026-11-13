@@ -53,7 +53,16 @@
     <view class="inventory-list">
       <view class="inventory-card" wx:for="{{items}}" wx:key="key">
         <view class="book-row">
-          <image wx:if="{{item.product.coverUrl}}" class="cover" src="{{item.product.coverUrl}}" mode="aspectFill" />
+          <image
+            wx:if="{{item.displayCoverUrl}}"
+            class="cover"
+            src="{{item.displayCoverUrl}}"
+            mode="aspectFill"
+            data-index="{{index}}"
+            data-key="{{item.key}}"
+            data-src="{{item.displayCoverUrl}}"
+            binderror="coverError"
+          />
           <view wx:else class="cover cover-placeholder">书</view>
           <view class="book-main">
             <text class="book-title">{{item.book.title}}</text>
