@@ -932,8 +932,9 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
     }
   });
 
-
-  it('applies storyboard when a page also names a one-off character outside the locked Character Bible', async () => {
+  it(
+    'applies storyboard when a page also names a one-off character outside the locked Character Bible',
+    async () => {
     const pictureBook = service();
     const alice = await createUser();
     const { book } = await createBook(pictureBook, alice);
@@ -972,10 +973,13 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
       .offset(1)
       .limit(1);
 
-    expect(page?.characterIds).toEqual([fox.characterId]);
-  });
+      expect(page?.characterIds).toEqual([fox.characterId]);
+    },
+  );
 
-  it('still rejects storyboard pages whose character keys contain no locked Character Bible character', async () => {
+  it(
+    'still rejects storyboard pages whose character keys contain no locked Character Bible character',
+    async () => {
     const pictureBook = service();
     const alice = await createUser();
     const { book } = await createBook(pictureBook, alice);
@@ -1005,10 +1009,11 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
       code: 'INVALID_JOB_OUTPUT',
     });
 
-    expect(await db.select().from(workPages).where(eq(workPages.pictureBookId, book.id))).toHaveLength(
-      0,
-    );
-  });
+      expect(
+        await db.select().from(workPages).where(eq(workPages.pictureBookId, book.id)),
+      ).toHaveLength(0);
+    },
+  );
 
   it('rejects invalid structured AI output without persisting partial storyboard data', async () => {
     const pictureBook = service();
