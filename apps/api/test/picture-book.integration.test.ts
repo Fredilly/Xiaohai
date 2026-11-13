@@ -932,6 +932,75 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
     }
   });
 
+
+  it('applies storyboard when a page also names a one-off character outside the locked Character Bible', async () => {
+    const pictureBook = service();
+    const alice = await createUser();
+    const { book } = await createBook(pictureBook, alice);
+
+    const locked = await applyCharacters(pictureBook, alice, book.id);
+    const fox = locked.detail.characters.find((character) => character.name === '小狐狸')!;
+
+    const storyboard = await pictureBook.generate(alice, book.id, { operation: 'STORYBOARD' });
+    await succeed(
+      storyboard.jobId,
+      JSON.stringify({
+        cover: {
+          characterKeys: ['小狐狸', '小鸟'],
+          sceneDescription: '森林封面',
+          illustrationPrompt: 'fox and bird',
+        },
+        pages: [
+          {
+            characterKeys: ['小狐狸', '路过的鹿'],
+            storyText: '小狐狸遇见一只路过的鹿。',
+            sceneDescription: '森林小路',
+            illustrationPrompt: 'fox beside a passing deer',
+          },
+        ],
+      }),
+    );
+
+    const detail = await pictureBook.applyJob(alice, book.id, storyboard.jobId);
+    expect(detail.pictureBook.status).toBe('PLANNED');
+    expect(detail.pages[1]?.characterIds).toEqual([fox.characterId]);
+  });
+
+  it('still rejects storyboard pages whose character keys contain no locked Character Bible character', async () => {
+    const pictureBook = service();
+    const alice = await createUser();
+    const { book } = await createBook(pictureBook, alice);
+
+    await applyCharacters(pictureBook, alice, book.id);
+    const storyboard = await pictureBook.generate(alice, book.id, { operation: 'STORYBOARD' });
+    await succeed(
+      storyboard.jobId,
+      JSON.stringify({
+        cover: {
+          characterKeys: ['小狐狸'],
+          sceneDescription: '森林封面',
+          illustrationPrompt: 'fox',
+        },
+        pages: [
+          {
+            characterKeys: ['路过的鹿'],
+            storyText: '只有一只路过的鹿。',
+            sceneDescription: '森林小路',
+            illustrationPrompt: 'a passing deer',
+          },
+        ],
+      }),
+    );
+
+    await expect(pictureBook.applyJob(alice, book.id, storyboard.jobId)).rejects.toMatchObject({
+      code: 'INVALID_JOB_OUTPUT',
+    });
+
+    expect(await db.select().from(workPages).where(eq(workPages.pictureBookId, book.id))).toHaveLength(
+      0,
+    );
+  });
+
   it('rejects invalid structured AI output without persisting partial storyboard data', async () => {
     const pictureBook = service();
 
