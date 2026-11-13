@@ -963,7 +963,16 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
 
     const detail = await pictureBook.applyJob(alice, book.id, storyboard.jobId);
     expect(detail.pictureBook.status).toBe('PLANNED');
-    expect(detail.pages[1]?.characterIds).toEqual([fox.characterId]);
+
+    const [page] = await db
+      .select({ characterIds: workPages.characterIds })
+      .from(workPages)
+      .where(eq(workPages.pictureBookId, book.id))
+      .orderBy(workPages.pageNumber)
+      .offset(1)
+      .limit(1);
+
+    expect(page?.characterIds).toEqual([fox.characterId]);
   });
 
   it('still rejects storyboard pages whose character keys contain no locked Character Bible character', async () => {
