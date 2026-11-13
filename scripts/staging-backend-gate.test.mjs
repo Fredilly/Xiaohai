@@ -65,6 +65,7 @@ test('backend, runtime shared packages, locks and deployment config all trigger'
     'deploy/Dockerfile',
     'deploy/staging.compose.yml',
     '.github/workflows/staging-deploy.yml',
+    '.github/workflows/staging-retention-execute.yml',
     'scripts/staging-remote-deploy.sh',
     '.env.staging.example',
   ];
@@ -128,4 +129,11 @@ test('unknown files, invalid digest, missing refs and errors fail closed', () =>
   } finally {
     f.cleanup();
   }
+});
+
+test('retention executor workflow is explicitly backend-impacting, not unknown', () => {
+  const result = classifyPaths(['.github/workflows/staging-retention-execute.yml']);
+  assert.equal(result.changed, true);
+  assert.deepEqual(result.backend, ['.github/workflows/staging-retention-execute.yml']);
+  assert.deepEqual(result.frontend, []);
 });

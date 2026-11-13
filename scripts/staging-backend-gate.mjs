@@ -13,7 +13,7 @@ const runtimePaths = [
   /^packages\/(?:config|contracts|db|domain|validation)\//u,
   /^deploy\/(?!README\.md$)/u,
   /^scripts\/(?![^/]+\.test\.mjs$)/u,
-  /^\.github\/workflows\/(?:ci|staging-deploy|staging-validation)\.yml$/u,
+  /^\.github\/workflows\/(?:ci|staging-deploy|staging-validation|staging-retention-execute)\.yml$/u,
   /^(?:package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|tsconfig\.base\.json|turbo\.json|docker-compose\.yml|\.dockerignore)$/u,
   /^\.env\.(?:example|staging\.example|production\.example)$/u,
 ];
