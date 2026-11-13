@@ -1,0 +1,186 @@
+name: Execute staging retention (manual exact plan)
+
+on:
+  workflow_dispatch:
+    inputs:
+      revision:
+        description: Exact verified successful staging backend revision (40 hex)
+        required: true
+        type: string
+      source_run_id:
+        description: Successful Deploy staging workflow run that produced the reviewed plan artifact
+        required: true
+        type: string
+      plan_sha256:
+        description: SHA-256 of the reviewed staging-retention-proposal artifact text
+        required: true
+        type: string
+      approval_id:
+        description: Single-use owner approval ID (XIAOHAI-195-STEADY-...)
+        required: true
+        type: string
+      policy_id:
+        description: Owner-approved recurring retention policy ID
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+  deployments: read
+
+concurrency:
+  group: staging-retention-executor
+  cancel-in-progress: false
+
+jobs:
+  execute:
+    name: Validate exact plan and execute bounded staging retention
+    if: ${{ vars.STAGING_RETENTION_EXECUTION_ENABLED == 'true' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Validate owner policy, actor and immutable inputs
+        env:
+          STAGING_RETENTION_EXECUTION_ENABLED: ${{ vars.STAGING_RETENTION_EXECUTION_ENABLED }}
+          REVISION: ${{ inputs.revision }}
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+          PLAN_SHA256: ${{ inputs.plan_sha256 }}
+          APPROVAL_ID: ${{ inputs.approval_id }}
+          POLICY_ID: ${{ inputs.policy_id }}
+          APPROVED_POLICY_ID: ${{ vars.STAGING_RETENTION_POLICY_ID }}
+          ALLOWED_ACTOR: ${{ vars.STAGING_RETENTION_ALLOWED_ACTOR }}
+          DISPATCH_ACTOR: ${{ github.actor }}
+          ROLLBACKS: ${{ vars.STAGING_ROLLBACK_REVISIONS }}
+          EXTRA_PROTECTED: ${{ vars.STAGING_EXTRA_PROTECTED_REVISION }}
+          CONFIG_COVERAGE: ${{ vars.STAGING_CONFIG_COVERAGE_CONFIRMED }}
+          EXPECTED_HOSTNAME: ${{ vars.STAGING_EXPECTED_HOSTNAME }}
+        run: node scripts/staging-retention-executor-lib.mjs validate-env
+
+      - name: Verify source deployment run, latest main and backend success marker
+        uses: actions/github-script@v7
+        env:
+          REVISION: ${{ inputs.revision }}
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+        with:
+          script: |
+            const path = require('node:path');
+            const { pathToFileURL } = require('node:url');
+            const moduleUrl = pathToFileURL(
+              path.join(
+                process.env.GITHUB_WORKSPACE,
+                'scripts/staging-retention-executor-lib.mjs'
+              )
+            ).href;
+            const { verifySourceDeployment } = await import(moduleUrl);
+            const { owner, repo } = context.repo;
+            const result = await verifySourceDeployment({
+              github,
+              owner,
+              repo,
+              revision: process.env.REVISION,
+              sourceRunId: process.env.SOURCE_RUN_ID
+            });
+            core.info(
+              `RETENTION_SOURCE_VERIFIED run=${result.runId} revision=${result.revision} backend_success=true latest_main=true`
+            );
+
+      - name: Download exact retention proposal from verified deployment run
+        uses: actions/download-artifact@v4
+        with:
+          name: staging-retention-proposal-${{ inputs.revision }}
+          path: ${{ runner.temp }}/retention-proposal
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ inputs.source_run_id }}
+
+      - name: Bind reviewed proposal hash and normalize exact-ID plan
+        env:
+          REVISION: ${{ inputs.revision }}
+          PLAN_SHA256: ${{ inputs.plan_sha256 }}
+          PROPOSAL_PATH: ${{ runner.temp }}/retention-proposal/staging-retention-proposal.txt
+          APPROVED_PATH: ${{ runner.temp }}/approved-retention-plan.txt
+        run: node scripts/staging-retention-executor-lib.mjs normalize-env
+
+      - name: Install SSH key
+        env:
+          SSH_KEY: ${{ secrets.STAGING_SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.STAGING_SSH_KNOWN_HOSTS }}
+          SSH_USER: ${{ secrets.STAGING_SSH_USER }}
+        run: |
+          set -euo pipefail
+          test -n "$SSH_USER"
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+      - name: Execute single-use bounded retention on verified host
+        env:
+          HOST: ${{ secrets.STAGING_SSH_HOST }}
+          USER: ${{ secrets.STAGING_SSH_USER }}
+          REVISION: ${{ inputs.revision }}
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+          PLAN_SHA256: ${{ inputs.plan_sha256 }}
+          APPROVAL_ID: ${{ inputs.approval_id }}
+          POLICY_ID: ${{ inputs.policy_id }}
+          ROLLBACKS: ${{ vars.STAGING_ROLLBACK_REVISIONS }}
+          EXTRA_PROTECTED: ${{ vars.STAGING_EXTRA_PROTECTED_REVISION }}
+          CONFIG_COVERAGE: ${{ vars.STAGING_CONFIG_COVERAGE_CONFIRMED }}
+          EXPECTED_HOSTNAME: ${{ vars.STAGING_EXPECTED_HOSTNAME }}
+          DISPATCH_ACTOR: ${{ github.actor }}
+        run: |
+          set -euo pipefail
+          local_plan="$RUNNER_TEMP/approved-retention-plan.txt"
+          params="$RUNNER_TEMP/retention-params.txt"
+          expected_script_blob="$(git hash-object scripts/staging-image-retention.sh)"
+
+          [[ "$NORMALIZED_PLAN_SHA256" =~ ^[0-9a-f]{64}$ ]] || {
+            echo '::error::Normalized plan hash missing.'
+            exit 1
+          }
+          [[ "$expected_script_blob" =~ ^[0-9a-f]{40}$ ]] || {
+            echo '::error::Reviewed script blob hash invalid.'
+            exit 1
+          }
+
+          # Fixed-order newline-delimited transport. The remote side never sources
+          # this file and validates every field again before any host action.
+          printf '%s\n' \
+            "$REVISION" \
+            "$ROLLBACKS" \
+            "$EXTRA_PROTECTED" \
+            "$CONFIG_COVERAGE" \
+            "$EXPECTED_HOSTNAME" \
+            "$expected_script_blob" \
+            "$APPROVAL_ID" \
+            "$POLICY_ID" \
+            "$PLAN_SHA256" \
+            "$NORMALIZED_PLAN_SHA256" \
+            "$SOURCE_RUN_ID" \
+            "$DISPATCH_ACTOR" > "$params"
+          chmod 0600 "$params"
+
+          bash scripts/staging-retention-dispatch.sh "$params" "$local_plan"
+
+      - name: Post-execution read-only capacity and health
+        if: always()
+        env:
+          HOST: ${{ secrets.STAGING_SSH_HOST }}
+          USER: ${{ secrets.STAGING_SSH_USER }}
+        run: |
+          set -euo pipefail
+          ssh "$USER@$HOST" '
+            set -euo pipefail
+            df -hT /
+            df -hi /
+            docker ps --format "table {{.Names}}\t{{.Image}}\t{{.Status}}" --filter name=xiaohai-staging
+            test "$(docker inspect --format "{{.State.Health.Status}}" xiaohai-staging-postgres-1)" = healthy
+            test "$(curl -sS -o /dev/null -w "%{http_code}" --max-time 10 https://staging-api.pamboo.asia/health)" = 200
+            test "$(curl -sS -o /dev/null -w "%{http_code}" --max-time 10 https://staging-api.pamboo.asia/ready)" = 200
+          '
