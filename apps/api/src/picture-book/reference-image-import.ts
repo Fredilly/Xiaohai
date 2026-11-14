@@ -148,7 +148,9 @@ export function createIsolatedReferenceImageStorage(
       o.hash ||
       o.port ||
       o.pathname !== '/'
-    ) return null;
+    ) {
+      return null;
+    }
   } catch {
     return null;
   }
