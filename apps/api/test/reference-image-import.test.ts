@@ -4,6 +4,7 @@ import {
   decodeReferencePng,
   InvalidReferencePngError,
   isIsolatedReferenceImportDatabase,
+  isConnectedToIsolatedReferenceDatabase,
   uploadVerifiedReferenceToBos,
   referenceObjectKey,
 } from '../src/picture-book/reference-image-import.js';
@@ -75,6 +76,26 @@ describe('isolated character reference PNG import', () => {
         TEST_DATABASE_URL: isolated.DATABASE_URL,
       }),
     ).toBe(true);
+  });
+
+  it('checks the actual connected DB name before enabling reference import', async () => {
+    const env = {
+      APP_ENV: 'dev',
+      NODE_ENV: 'development',
+      PICTURE_BOOK_REFERENCE_IMPORT_DATABASE_NAME: 'xiaohai_i111_disposable01',
+      DATABASE_URL: 'postgres://test:secret@localhost:5432/xiaohai_i111_disposable01',
+    };
+    const query = vi.fn().mockResolvedValue({ rows: [{ name: 'xiaohai_i111_disposable01' }] });
+    expect(await isConnectedToIsolatedReferenceDatabase(env, query)).toBe(true);
+    query.mockResolvedValueOnce({ rows: [{ name: 'xiaohai_production' }] });
+    expect(await isConnectedToIsolatedReferenceDatabase(env, query)).toBe(false);
+    query.mockResolvedValueOnce({ rows: [] });
+    expect(await isConnectedToIsolatedReferenceDatabase(env, query)).toBe(false);
+    query.mockRejectedValueOnce(new Error('db offline'));
+    expect(await isConnectedToIsolatedReferenceDatabase(env, query)).toBe(false);
+    query.mockClear();
+    expect(await isConnectedToIsolatedReferenceDatabase({ ...env, DATABASE_URL: 'postgres://test:secret@db.internal:5432/xiaohai_i111_disposable01' }, query)).toBe(false);
+    expect(query).not.toHaveBeenCalled();
   });
 
   it('rejects missing/wrong BOS HEAD metadata, 404, and MD5 mismatch before READY', async () => {
