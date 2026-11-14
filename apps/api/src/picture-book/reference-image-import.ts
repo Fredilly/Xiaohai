@@ -165,7 +165,7 @@ export function createIsolatedReferenceImageStorage(
       body: Buffer,
       headers: { 'Content-Type': string; 'Content-Length': number },
     ): Promise<unknown>;
-    headObject(bucketName: string, objectKey: string): Promise<unknown>;
+    getObjectMetadata(bucketName: string, objectKey: string): Promise<unknown>;
   };
   return {
     async upload(input) {
@@ -181,7 +181,7 @@ export function createIsolatedReferenceImageStorage(
         'Content-Length': input.body.byteLength,
       });
       // Positive HEAD is required before any READY database record is written.
-      await client.headObject(bucket, input.objectKey);
+      await client.getObjectMetadata(bucket, input.objectKey);
       return {
         objectKey: input.objectKey,
         playbackUrl: `${origin}/${input.objectKey}`,
