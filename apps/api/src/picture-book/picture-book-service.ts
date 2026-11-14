@@ -531,12 +531,7 @@ export class PictureBookService {
       const [existingMedia] = await tx
         .select()
         .from(mediaAssets)
-        .where(
-          and(
-            eq(mediaAssets.provider, 'BAIDU_BOS'),
-            eq(mediaAssets.objectKey, objectKey),
-          ),
-        )
+        .where(and(eq(mediaAssets.provider, 'BAIDU_BOS'), eq(mediaAssets.objectKey, objectKey)))
         .limit(1);
       if (
         existingMedia &&
