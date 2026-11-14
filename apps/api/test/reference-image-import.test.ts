@@ -1,8 +1,10 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   createIsolatedReferenceImageStorage,
   decodeReferencePng,
   InvalidReferencePngError,
+  isIsolatedReferenceImportDatabase,
+  uploadVerifiedReferenceToBos,
   referenceObjectKey,
 } from '../src/picture-book/reference-image-import.js';
 
@@ -42,6 +44,79 @@ describe('isolated character reference PNG import', () => {
     ]) {
       expect(() => decodeReferencePng(payload)).toThrow(InvalidReferencePngError);
     }
+  });
+
+
+  it('fails closed on shared, remote, mismatched and undisclosed database targets', () => {
+    const isolated = {
+      APP_ENV: 'dev',
+      NODE_ENV: 'development',
+      PICTURE_BOOK_REFERENCE_IMPORT_DATABASE_NAME: 'xiaohai_i111_disposable01',
+      DATABASE_URL: 'postgres://test:secret@127.0.0.1:5432/xiaohai_i111_disposable01',
+    };
+    expect(isIsolatedReferenceImportDatabase(isolated)).toBe(true);
+    for (const env of [
+      { ...isolated, APP_ENV: 'staging' },
+      { ...isolated, NODE_ENV: 'production' },
+      { ...isolated, DATABASE_URL: 'postgres://test:secret@127.0.0.1:5432/xiaohai_test' },
+      { ...isolated, DATABASE_URL: 'postgres://test:secret@db.internal:5432/xiaohai_i111_disposable01' },
+      { ...isolated, DATABASE_URL: 'postgres://test:secret@127.0.0.1:5432/xiaohai_i111_disposable01?sslmode=disable' },
+      { ...isolated, TEST_DATABASE_URL: 'postgres://test:secret@127.0.0.1:5432/xiaohai_test' },
+      { ...isolated, PICTURE_BOOK_REFERENCE_IMPORT_DATABASE_NAME: 'xiaohai_test' },
+      { ...isolated, DATABASE_URL: '' },
+      { ...isolated, NODE_ENV: 'test' },
+    ]) {
+      expect(isIsolatedReferenceImportDatabase(env)).toBe(false);
+    }
+    expect(
+      isIsolatedReferenceImportDatabase({
+        ...isolated,
+        NODE_ENV: 'test',
+        TEST_DATABASE_URL: isolated.DATABASE_URL,
+      }),
+    ).toBe(true);
+  });
+
+  it('rejects missing/wrong BOS HEAD metadata, 404, and MD5 mismatch before READY', async () => {
+    const image = decodeReferencePng(onePixelPng);
+    const key = referenceObjectKey({
+      consumerUserId: '00000000-0000-4000-8000-000000000001',
+      pictureBookId: '00000000-0000-4000-8000-000000000002',
+      characterId: '00000000-0000-4000-8000-000000000003',
+      image,
+    });
+    const headers = { 'Content-Length': String(image.length), 'Content-Type': 'image/png' };
+    const client = {
+      putObject: vi.fn().mockResolvedValue({}),
+      getObjectMetadata: vi.fn().mockResolvedValue({ http_headers: headers }),
+    };
+    const upload = () => uploadVerifiedReferenceToBos(
+      client, 'xiaohai-i111-disposable01',
+      'https://xiaohai-i111-disposable01.cd.bcebos.com', { objectKey: key, body: image },
+    );
+    expect((await upload()).byteSize).toBe(image.length);
+    expect(client.putObject).toHaveBeenCalledWith(
+      'xiaohai-i111-disposable01', key, image,
+      { 'Content-Type': 'image/png', 'Content-Length': image.length },
+    );
+    expect(client.getObjectMetadata).toHaveBeenCalledWith('xiaohai-i111-disposable01', key);
+    for (const metadata of [
+      null,
+      {},
+      { http_headers: {} },
+      { http_headers: { ...headers, 'Content-Length': String(image.length + 1) } },
+      { http_headers: { ...headers, 'Content-Type': 'application/octet-stream' } },
+      { http_headers: { ...headers, 'Content-Md5': 'incorrect' } },
+    ]) {
+      client.getObjectMetadata.mockResolvedValueOnce(metadata);
+      await expect(upload()).rejects.toThrow('REFERENCE_BOS_METADATA_UNVERIFIED');
+    }
+    client.getObjectMetadata.mockRejectedValueOnce(new Error('HEAD 404'));
+    await expect(upload()).rejects.toThrow('HEAD 404');
+    client.getObjectMetadata.mockResolvedValueOnce({
+      http_headers: { ...headers, 'Content-Md5': 'incorrect' },
+    });
+    await expect(upload()).rejects.toThrow('REFERENCE_BOS_METADATA_UNVERIFIED');
   });
 
   it('refuses to configure an uploader in any non-dev or shared-bucket setting', () => {
