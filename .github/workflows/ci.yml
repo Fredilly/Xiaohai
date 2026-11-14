@@ -100,6 +100,8 @@ jobs:
         run: node --test scripts/staging-disk-gate.test.mjs scripts/staging-image-retention.test.mjs scripts/staging-retention-execute.test.mjs scripts/staging-retention-executor.integration.test.mjs scripts/staging-one-time-recovery.test.mjs scripts/staging-retention-model.test.mjs
       - name: Read-only containerd footprint metadata parser (offline)
         run: python3 -m unittest scripts/staging_containerd_footprint_test.py
+      - name: Staging Store/HQ read-only smoke unit regressions (offline)
+        run: node --test scripts/staging-web-smoke.test.mjs
       - name: Private BOS synthetic GET smoke unit regressions (offline)
         run: node --test scripts/private-bos-staging-smoke.test.mjs
       - name: Format, lint and typecheck
