@@ -127,6 +127,66 @@ export function isIsolatedReferenceImportDatabase(env: NodeJS.ProcessEnv): boole
 
 // This narrow acceptance-only capability is intentionally OFF in all staging/production
 // environments, even if someone accidentally sets the feature flag there.
+type ReferenceBosClient = {
+  putObject(
+    bucketName: string,
+    objectKey: string,
+    body: Buffer,
+    headers: { 'Content-Type': string; 'Content-Length': number },
+  ): Promise<unknown>;
+  getObjectMetadata(bucketName: string, objectKey: string): Promise<unknown>;
+};
+
+// The official BOS JS SDK exposes response.http_headers for getObjectMetadata.
+// Keep this function injectable to test the real PUT -> HEAD contract offline.
+export async function uploadVerifiedReferenceToBos(
+  client: ReferenceBosClient,
+  bucket: string,
+  origin: string,
+  input: { objectKey: string; body: Buffer },
+): Promise<ImportedReferenceAsset> {
+  if (
+    !/^picture-books\\/character-references\\/i111\\/[0-9a-f-]+\\/[0-9a-f-]+\\/[0-9a-f-]+\\/[0-9a-f]{64}\\.png$/.test(
+      input.objectKey,
+    )
+  ) throw new Error('INVALID_REFERENCE_OBJECT_KEY');
+  await client.putObject(bucket, input.objectKey, input.body, {
+    'Content-Type': 'image/png',
+    'Content-Length': input.body.byteLength,
+  });
+  const response: unknown = await client.getObjectMetadata(bucket, input.objectKey);
+  if (!response || typeof response !== 'object' || !('http_headers' in response)) {
+    throw new Error('REFERENCE_BOS_METADATA_UNVERIFIED');
+  }
+  const headers = response.http_headers;
+  if (!headers || typeof headers !== 'object') {
+    throw new Error('REFERENCE_BOS_METADATA_UNVERIFIED');
+  }
+  const values = Object.fromEntries(
+    Object.entries(headers).map(([key, value]) => [key.toLowerCase(), value]),
+  );
+  const length = values['content-length'];
+  const mime = values['content-type'];
+  if (
+    !/^(0|[1-9][0-9]*)$/.test(String(length ?? '')) ||
+    Number(length) !== input.body.byteLength ||
+    typeof mime !== 'string' ||
+    mime.toLowerCase() !== 'image/png'
+  ) throw new Error('REFERENCE_BOS_METADATA_UNVERIFIED');
+  // When BOS supplies an MD5 integrity proof, verify it, do not ignore it.
+  const contentMd5 = values['content-md5'];
+  if (
+    contentMd5 != null &&
+    (typeof contentMd5 !== 'string' ||
+      contentMd5 !== createHash('md5').update(input.body).digest('base64'))
+  ) throw new Error('REFERENCE_BOS_METADATA_UNVERIFIED');
+  return {
+    objectKey: input.objectKey,
+    playbackUrl: origin + '/' + input.objectKey,
+    byteSize: Number(length),
+  };
+}
+
 export function createIsolatedReferenceImageStorage(
   env: NodeJS.ProcessEnv,
 ): ReferenceImageStorage | null {
@@ -175,40 +235,14 @@ export function createIsolatedReferenceImageStorage(
     return null;
   }
 
-  // The SDK's public TypeScript declaration omits these runtime BosClient methods.
-  // Keep the narrow interface local and fail closed if HEAD is unavailable.
+  // Verify actual BOS HTTP metadata before exposing a READY revision.
   const client = new baiduSdk.BosClient({
     endpoint,
     credentials: { ak, sk },
-  }) as unknown as {
-    putObject(
-      bucketName: string,
-      objectKey: string,
-      body: Buffer,
-      headers: { 'Content-Type': string; 'Content-Length': number },
-    ): Promise<unknown>;
-    getObjectMetadata(bucketName: string, objectKey: string): Promise<unknown>;
-  };
+  }) as unknown as ReferenceBosClient;
   return {
-    async upload(input) {
-      if (
-        !/^picture-books\/character-references\/i111\/[0-9a-f-]+\/[0-9a-f-]+\/[0-9a-f-]+\/[0-9a-f]{64}\.png$/.test(
-          input.objectKey,
-        )
-      ) {
-        throw new Error('INVALID_REFERENCE_OBJECT_KEY');
-      }
-      await client.putObject(bucket, input.objectKey, input.body, {
-        'Content-Type': 'image/png',
-        'Content-Length': input.body.byteLength,
-      });
-      // Positive HEAD is required before any READY database record is written.
-      await client.getObjectMetadata(bucket, input.objectKey);
-      return {
-        objectKey: input.objectKey,
-        playbackUrl: `${origin}/${input.objectKey}`,
-        byteSize: input.body.byteLength,
-      };
+    upload(input) {
+      return uploadVerifiedReferenceToBos(client, bucket, origin, input);
     },
   };
 }
