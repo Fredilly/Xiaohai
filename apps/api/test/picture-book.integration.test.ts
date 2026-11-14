@@ -605,13 +605,13 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
       undefined,
       (asset) => asset.playbackUrl,
       {
-        async upload(input) {
+        upload(input) {
           uploaded.push(input.objectKey);
-          return {
+          return Promise.resolve({
             objectKey: input.objectKey,
             playbackUrl: `https://test-reference-bucket.cd.bcebos.com/${input.objectKey}`,
             byteSize: input.body.byteLength,
-          };
+          });
         },
       },
     );
@@ -711,8 +711,8 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
       undefined,
       () => null,
       {
-        async upload() {
-          throw new Error('synthetic storage outage');
+        upload() {
+          return Promise.reject(new Error('synthetic storage outage'));
         },
       },
     );
