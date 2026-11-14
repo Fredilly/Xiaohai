@@ -11,10 +11,10 @@ Review each generated image independently, then compare page 1, page 2 and the e
 Score each criterion from 1–5:
 
 - **faceIdentity** — same face/identity as the selected character reference
-- **clothing** — scarf/cap/overalls remain correct
+- **clothing** — Mimi yellow scarf, blue overalls and red satchel; Pip green cap, yellow striped scarf and orange satchel remain correct
 - **colors** — character palette remains stable
 - **proportions** — body/head/limb proportions remain recognizable
-- **artMediumStyle** — watercolor/storybook medium and rendering style stay consistent
+- **artMediumStyle** — owner-approved bright, polished cartoon storybook style (crisp outlines, saturated coherent colors, expressive glossy eyes, sunny lighting) stays consistent
 - **sceneContinuity** — character scale, lighting and scene logic remain coherent across pages
 - **promptAdherence** — requested characters/actions/objects are present and no extra major subject is introduced
 
@@ -44,4 +44,4 @@ The fixture passes the human gate only when:
 
 The committed fixture and deterministic tests are safe to run without provider charges.
 
-Real side-by-side evidence remains **PENDING OWNER APPROVAL**. Existing historical image benchmark evidence may be used only as candidate visual-style references; it is not proof that this fixed two-page fixture has passed.
+The owner approved the bright cartoon visual direction and Pip's fixed yellow striped scarf (Issue #111 comment 6869876034). Real side-by-side generation evidence and locked READY reference assets remain **PENDING**. Existing historical image benchmark evidence may be used only as candidate visual-style references; it is not proof that this fixed two-page fixture has passed.
