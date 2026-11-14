@@ -166,14 +166,14 @@ export function registerPictureBookRoutes(
           .status(201)
           .send(
             pictureBookImportedReferenceAcceptedSchema.parse(
-            await options.pictureBook.importCharacterReference(
-              consumer(request),
-              params.data.bookId,
-              params.data.characterId,
-              input.data.imageBase64,
+              await options.pictureBook.importCharacterReference(
+                consumer(request),
+                params.data.bookId,
+                params.data.characterId,
+                input.data.imageBase64,
+              ),
             ),
-          ),
-        );
+          );
       } catch (error) {
         if (error instanceof InvalidReferencePngError) return invalid(reply, request.id);
         return fail(request, reply, error);
