@@ -3,10 +3,10 @@ import {
   createIsolatedReferenceImageStorage,
   decodeReferencePng,
   InvalidReferencePngError,
-  isIsolatedReferenceImportDatabase,
   isConnectedToIsolatedReferenceDatabase,
-  uploadVerifiedReferenceToBos,
+  isIsolatedReferenceImportDatabase,
   referenceObjectKey,
+  uploadVerifiedReferenceToBos,
 } from '../src/picture-book/reference-image-import.js';
 
 const onePixelPng =
@@ -60,8 +60,15 @@ describe('isolated character reference PNG import', () => {
       { ...isolated, APP_ENV: 'staging' },
       { ...isolated, NODE_ENV: 'production' },
       { ...isolated, DATABASE_URL: 'postgres://test:secret@127.0.0.1:5432/xiaohai_test' },
-      { ...isolated, DATABASE_URL: 'postgres://test:secret@db.internal:5432/xiaohai_i111_disposable01' },
-      { ...isolated, DATABASE_URL: 'postgres://test:secret@127.0.0.1:5432/xiaohai_i111_disposable01?sslmode=disable' },
+      {
+        ...isolated,
+        DATABASE_URL: 'postgres://test:secret@db.internal:5432/xiaohai_i111_disposable01',
+      },
+      {
+        ...isolated,
+        DATABASE_URL:
+          'postgres://test:secret@127.0.0.1:5432/xiaohai_i111_disposable01?sslmode=disable',
+      },
       { ...isolated, TEST_DATABASE_URL: 'postgres://test:secret@127.0.0.1:5432/xiaohai_test' },
       { ...isolated, PICTURE_BOOK_REFERENCE_IMPORT_DATABASE_NAME: 'xiaohai_test' },
       { ...isolated, DATABASE_URL: '' },
@@ -94,7 +101,15 @@ describe('isolated character reference PNG import', () => {
     query.mockRejectedValueOnce(new Error('db offline'));
     expect(await isConnectedToIsolatedReferenceDatabase(env, query)).toBe(false);
     query.mockClear();
-    expect(await isConnectedToIsolatedReferenceDatabase({ ...env, DATABASE_URL: 'postgres://test:secret@db.internal:5432/xiaohai_i111_disposable01' }, query)).toBe(false);
+    expect(
+      await isConnectedToIsolatedReferenceDatabase(
+        {
+          ...env,
+          DATABASE_URL: 'postgres://test:secret@db.internal:5432/xiaohai_i111_disposable01',
+        },
+        query,
+      ),
+    ).toBe(false);
     expect(query).not.toHaveBeenCalled();
   });
 
@@ -111,15 +126,18 @@ describe('isolated character reference PNG import', () => {
       putObject: vi.fn().mockResolvedValue({}),
       getObjectMetadata: vi.fn().mockResolvedValue({ http_headers: headers }),
     };
-    const upload = () => uploadVerifiedReferenceToBos(
-      client, 'xiaohai-i111-disposable01',
-      'https://xiaohai-i111-disposable01.cd.bcebos.com', { objectKey: key, body: image },
-    );
+    const upload = () =>
+      uploadVerifiedReferenceToBos(
+        client,
+        'xiaohai-i111-disposable01',
+        'https://xiaohai-i111-disposable01.cd.bcebos.com',
+        { objectKey: key, body: image },
+      );
     expect((await upload()).byteSize).toBe(image.length);
-    expect(client.putObject).toHaveBeenCalledWith(
-      'xiaohai-i111-disposable01', key, image,
-      { 'Content-Type': 'image/png', 'Content-Length': image.length },
-    );
+    expect(client.putObject).toHaveBeenCalledWith('xiaohai-i111-disposable01', key, image, {
+      'Content-Type': 'image/png',
+      'Content-Length': image.length,
+    });
     expect(client.getObjectMetadata).toHaveBeenCalledWith('xiaohai-i111-disposable01', key);
     for (const metadata of [
       null,
