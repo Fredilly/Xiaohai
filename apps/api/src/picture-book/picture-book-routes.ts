@@ -15,9 +15,12 @@ import {
   pictureBookReferenceAcceptedSchema,
   pictureBookReferenceListSchema,
   selectPictureBookReferenceSchema,
+  pictureBookImportedReferenceAcceptedSchema,
+  importPictureBookReferenceRequestSchema,
 } from '@xiaohai/contracts/picture-book';
 import type { ConsumerSessionService } from '../auth/session.js';
 import { PictureBookError, type PictureBookService } from './picture-book-service.js';
+import { InvalidReferencePngError } from './reference-image-import.js';
 
 class PictureBookAuthError extends Error {}
 
@@ -146,6 +149,38 @@ export function registerPictureBookRoutes(
       }
     },
   );
+  // Deliberately separate from the paid AI-generation route. Inactive unless
+  // the server has been configured with an isolated, dedicated test uploader.
+  app.post(
+    '/api/v1/ai/picture-books/:bookId/characters/:characterId/reference-images/import',
+    { bodyLimit: 4_500_000 },
+    async (request, reply) => {
+      const params = z
+        .object({ bookId: z.uuid(), characterId: z.uuid() })
+        .safeParse(request.params);
+      const input = importPictureBookReferenceRequestSchema.safeParse(request.body);
+      if (!params.success || !input.success) return invalid(reply, request.id);
+      reply.header('Cache-Control', 'private, no-store');
+      try {
+        return reply
+          .status(201)
+          .send(
+            pictureBookImportedReferenceAcceptedSchema.parse(
+              await options.pictureBook.importCharacterReference(
+                consumer(request),
+                params.data.bookId,
+                params.data.characterId,
+                input.data.imageBase64,
+              ),
+            ),
+          );
+      } catch (error) {
+        if (error instanceof InvalidReferencePngError) return invalid(reply, request.id);
+        return fail(request, reply, error);
+      }
+    },
+  );
+
   app.get(
     '/api/v1/ai/picture-books/:bookId/characters/:characterId/reference-images',
     async (request, reply) => {
