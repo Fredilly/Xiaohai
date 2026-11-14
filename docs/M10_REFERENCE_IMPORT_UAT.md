@@ -20,7 +20,7 @@ candidate assets and the existing Character Bible selection/confirmation workflo
    the **dedicated** local test migration/rollout. Merging code is not approval
    to run a migration on a shared server.
 2. Provision fresh, independently identified disposable PostgreSQL and Redis,
-   with private loopback-only ports, no shared volumes and documented owner/cleanup.
+   with private loopback-only ports, no shared volumes and documented owner/cleanup.\n   The connected DB must have a unique name matching `xiaohai_i111_[a-z0-9_]{8,32}`;\n   both the configured URL and the live `current_database()` value are verified\n   before the import route is enabled. No remote/shared DB endpoint is permitted.
 3. Provision a **separate** BOS bucket matching `xiaohai-i111-<unique-test-id>`.
    The same bucket must be configured for the isolated API and Worker. Never
    change the credentials or bucket of an existing API/Worker.
@@ -39,7 +39,7 @@ candidate assets and the existing Character Bible selection/confirmation workflo
 Use managed environment secrets; **do not post values, signed URLs, token, or
 raw image bodies into GitHub/logs**.
 
-- `APP_ENV=dev`
+- `APP_ENV=dev`\n- `PICTURE_BOOK_REFERENCE_IMPORT_DATABASE_NAME=xiaohai_i111_<unique_test_id>`\n- `DATABASE_URL=postgres://<isolated_credentials>@127.0.0.1:<isolated_port>/<exact_database_name>`\n- The database name in the URL must match the explicit name above **and** the\n  live connection's `current_database()`. Any mismatch disables the import.\n- `TEST_DATABASE_URL` must be absent outside `NODE_ENV=test`; in tests it must\n  be exactly equal to the allowlisted `DATABASE_URL`.
 - `PICTURE_BOOK_REFERENCE_IMPORT_ENABLED=true`
 - `NODE_ENV` must not be `production`
 - `BAIDU_BOS_BUCKET=xiaohai-i111-<unique-test-id>`
