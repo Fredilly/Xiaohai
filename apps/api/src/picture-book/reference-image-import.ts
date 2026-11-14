@@ -184,7 +184,10 @@ export async function uploadVerifiedReferenceToBos(
   }
   const length = values.get('content-length');
   const mime = values.get('content-type');
-  if (!/^(0|[1-9][0-9]*)$/.test(String(length ?? ''))) {
+  if (typeof length !== 'string' && typeof length !== 'number') {
+    throw new Error('REFERENCE_BOS_METADATA_UNVERIFIED');
+  }
+  if (!/^(0|[1-9][0-9]*)$/.test(String(length))) {
     throw new Error('REFERENCE_BOS_METADATA_UNVERIFIED');
   }
   if (Number(length) !== input.body.byteLength) {
