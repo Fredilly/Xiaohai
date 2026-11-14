@@ -113,17 +113,10 @@ export function isIsolatedReferenceImportDatabase(env: NodeJS.ProcessEnv): boole
   if (!env.DATABASE_URL) return false;
   try {
     const url = new URL(env.DATABASE_URL);
-    if (
-      !['postgres:', 'postgresql:'].includes(url.protocol) ||
-      !['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname) ||
-      url.pathname !== '/' + expected ||
-      !url.username ||
-      !url.password ||
-      url.search ||
-      url.hash
-    ) {
-      return false;
-    }
+    if (!['postgres:', 'postgresql:'].includes(url.protocol)) return false;
+    if (!['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname)) return false;
+    if (url.pathname !== '/' + expected) return false;
+    if (!url.username || !url.password || url.search || url.hash) return false;
     if (env.NODE_ENV === 'test') return env.TEST_DATABASE_URL === env.DATABASE_URL;
     return !env.TEST_DATABASE_URL;
   } catch {
@@ -131,8 +124,7 @@ export function isIsolatedReferenceImportDatabase(env: NodeJS.ProcessEnv): boole
   }
 }
 
-// Check the actual PostgreSQL database reached by the pool, independently of
-// the URL. A spoofed environment flag alone must not enable READY writes.
+// Independently verify the actual PostgreSQL database reached by the pool.
 export async function isConnectedToIsolatedReferenceDatabase(
   env: NodeJS.ProcessEnv,
   query: () => Promise<{ rows: { name: string }[] }>,
@@ -140,10 +132,8 @@ export async function isConnectedToIsolatedReferenceDatabase(
   if (!isIsolatedReferenceImportDatabase(env)) return false;
   try {
     const result = await query();
-    return (
-      result.rows.length === 1 &&
-      result.rows[0]?.name === env.PICTURE_BOOK_REFERENCE_IMPORT_DATABASE_NAME
-    );
+    if (result.rows.length !== 1) return false;
+    return result.rows[0]?.name === env.PICTURE_BOOK_REFERENCE_IMPORT_DATABASE_NAME;
   } catch {
     return false;
   }
@@ -193,12 +183,13 @@ export async function uploadVerifiedReferenceToBos(
   );
   const length = values['content-length'];
   const mime = values['content-type'];
-  if (
-    !/^(0|[1-9][0-9]*)$/.test(String(length ?? '')) ||
-    Number(length) !== input.body.byteLength ||
-    typeof mime !== 'string' ||
-    mime.toLowerCase() !== 'image/png'
-  ) {
+  if (!/^(0|[1-9][0-9]*)$/.test(String(length ?? ''))) {
+    throw new Error('REFERENCE_BOS_METADATA_UNVERIFIED');
+  }
+  if (Number(length) !== input.body.byteLength) {
+    throw new Error('REFERENCE_BOS_METADATA_UNVERIFIED');
+  }
+  if (typeof mime !== 'string' || mime.toLowerCase() !== 'image/png') {
     throw new Error('REFERENCE_BOS_METADATA_UNVERIFIED');
   }
   // When BOS supplies an MD5 integrity proof, verify it, do not ignore it.
