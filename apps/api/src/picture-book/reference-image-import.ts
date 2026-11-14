@@ -178,11 +178,12 @@ export async function uploadVerifiedReferenceToBos(
   if (!headers || typeof headers !== 'object') {
     throw new Error('REFERENCE_BOS_METADATA_UNVERIFIED');
   }
-  const values = Object.fromEntries(
-    Object.entries(headers).map(([key, value]) => [key.toLowerCase(), value]),
-  );
-  const length = values['content-length'];
-  const mime = values['content-type'];
+  const values = new Map<string, unknown>();
+  for (const [key, value] of Object.entries(headers)) {
+    values.set(key.toLowerCase(), value);
+  }
+  const length = values.get('content-length');
+  const mime = values.get('content-type');
   if (!/^(0|[1-9][0-9]*)$/.test(String(length ?? ''))) {
     throw new Error('REFERENCE_BOS_METADATA_UNVERIFIED');
   }
@@ -193,7 +194,7 @@ export async function uploadVerifiedReferenceToBos(
     throw new Error('REFERENCE_BOS_METADATA_UNVERIFIED');
   }
   // When BOS supplies an MD5 integrity proof, verify it, do not ignore it.
-  const contentMd5 = values['content-md5'];
+  const contentMd5 = values.get('content-md5');
   if (contentMd5 != null && typeof contentMd5 !== 'string') {
     throw new Error('REFERENCE_BOS_METADATA_UNVERIFIED');
   }
