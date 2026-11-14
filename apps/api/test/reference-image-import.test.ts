@@ -47,7 +47,6 @@ describe('isolated character reference PNG import', () => {
     }
   });
 
-
   it('fails closed on shared, remote, mismatched and undisclosed database targets', () => {
     const isolated = {
       APP_ENV: 'dev',
