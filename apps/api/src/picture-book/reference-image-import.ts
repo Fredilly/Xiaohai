@@ -194,11 +194,15 @@ export async function uploadVerifiedReferenceToBos(
   }
   // When BOS supplies an MD5 integrity proof, verify it, do not ignore it.
   const contentMd5 = values['content-md5'];
+  if (contentMd5 != null && typeof contentMd5 !== 'string') {
+    throw new Error('REFERENCE_BOS_METADATA_UNVERIFIED');
+  }
   if (
-    contentMd5 != null &&
-    (typeof contentMd5 !== 'string' ||
-      contentMd5 !== createHash('md5').update(input.body).digest('base64'))
-  ) throw new Error('REFERENCE_BOS_METADATA_UNVERIFIED');
+    typeof contentMd5 === 'string' &&
+    contentMd5 !== createHash('md5').update(input.body).digest('base64')
+  ) {
+    throw new Error('REFERENCE_BOS_METADATA_UNVERIFIED');
+  }
   return {
     objectKey: input.objectKey,
     playbackUrl: `${origin}/${input.objectKey}`,
