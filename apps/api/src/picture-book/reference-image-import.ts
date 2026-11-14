@@ -106,7 +106,6 @@ export function referenceObjectKey(input: {
   return `picture-books/character-references/i111/${input.consumerUserId}/${input.pictureBookId}/${input.characterId}/${digest}.png`;
 }
 
-
 export function isIsolatedReferenceImportDatabase(env: NodeJS.ProcessEnv): boolean {
   if (env.APP_ENV !== 'dev' || env.NODE_ENV === 'production') return false;
   const expected = env.PICTURE_BOOK_REFERENCE_IMPORT_DATABASE_NAME;
@@ -146,7 +145,7 @@ export async function uploadVerifiedReferenceToBos(
   input: { objectKey: string; body: Buffer },
 ): Promise<ImportedReferenceAsset> {
   if (
-    !/^picture-books\\/character-references\\/i111\\/[0-9a-f-]+\\/[0-9a-f-]+\\/[0-9a-f-]+\\/[0-9a-f]{64}\\.png$/.test(
+    !/^picture-books\/character-references\/i111\/[0-9a-f-]+\/[0-9a-f-]+\/[0-9a-f-]+\/[0-9a-f]{64}\.png$/.test(
       input.objectKey,
     )
   ) throw new Error('INVALID_REFERENCE_OBJECT_KEY');
@@ -193,8 +192,8 @@ export function createIsolatedReferenceImageStorage(
   if (
     env.APP_ENV !== 'dev' ||
     env.NODE_ENV === 'production' ||
-    (env.PICTURE_BOOK_REFERENCE_IMPORT_ENABLED !== 'true' ||
-    !isIsolatedReferenceImportDatabase(env))
+    env.PICTURE_BOOK_REFERENCE_IMPORT_ENABLED !== 'true' ||
+    !isIsolatedReferenceImportDatabase(env)
   ) {
     return null;
   }
