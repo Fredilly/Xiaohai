@@ -619,8 +619,7 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
     const bob = await createUser();
     const { book } = await createBook(pictureBook, alice);
     const character = (await pictureBook.getPictureBook(alice, book.id)).characters[0]!;
-    const endpoint =
-      `/api/v1/ai/picture-books/${book.id}/characters/${character.characterId}/reference-images/import`;
+    const endpoint = `/api/v1/ai/picture-books/${book.id}/characters/${character.characterId}/reference-images/import`;
     const app = await createApp(pictureBook);
     try {
       const denied = await app.inject({
@@ -647,10 +646,7 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
         headers: { authorization: `Bearer ${token(alice)}` },
         payload: { imageBase64: png },
       };
-      const [first, second] = await Promise.all([
-        app.inject(authorized),
-        app.inject(authorized),
-      ]);
+      const [first, second] = await Promise.all([app.inject(authorized), app.inject(authorized)]);
       expect(first.statusCode).toBe(201);
       expect(second.statusCode).toBe(201);
       expect(first.json<{ referenceRevisionId: string }>().referenceRevisionId).toBe(
@@ -681,20 +677,26 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
 
       // Existing confirm path still requires a valid reference for ALL characters.
       const allCharacters = (await pictureBook.getPictureBook(alice, book.id)).characters;
-      for (const other of allCharacters.filter((item) => item.characterId !== character.characterId)) {
+      for (const other of allCharacters.filter(
+        (item) => item.characterId !== character.characterId,
+      )) {
         const imported = await pictureBook.importCharacterReference(
-          alice, book.id, other.characterId, png,
+          alice,
+          book.id,
+          other.characterId,
+          png,
         );
         await pictureBook.selectCharacterReference(
-          alice, book.id, other.characterId, imported.referenceRevisionId,
+          alice,
+          book.id,
+          other.characterId,
+          imported.referenceRevisionId,
         );
       }
       await pictureBook.confirmCharacters(alice, book.id);
       const locked = await app.inject(authorized);
       expect(locked.statusCode).toBe(409);
-      expect(
-        (await db.select().from(characterReferenceImages)).length,
-      ).toBe(allCharacters.length);
+      expect((await db.select().from(characterReferenceImages)).length).toBe(allCharacters.length);
     } finally {
       await app.close();
     }
