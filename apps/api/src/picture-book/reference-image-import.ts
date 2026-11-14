@@ -124,6 +124,22 @@ export function isIsolatedReferenceImportDatabase(env: NodeJS.ProcessEnv): boole
   }
 }
 
+// Check the actual PostgreSQL database reached by the pool, independently of
+// the URL. A spoofed environment flag alone must not enable READY writes.
+export async function isConnectedToIsolatedReferenceDatabase(
+  env: NodeJS.ProcessEnv,
+  query: () => Promise<{ rows: { name: string }[] }>,
+): Promise<boolean> {
+  if (!isIsolatedReferenceImportDatabase(env)) return false;
+  try {
+    const result = await query();
+    return result.rows.length === 1 &&
+      result.rows[0]?.name === env.PICTURE_BOOK_REFERENCE_IMPORT_DATABASE_NAME;
+  } catch {
+    return false;
+  }
+}
+
 // This narrow acceptance-only capability is intentionally OFF in all staging/production
 // environments, even if someone accidentally sets the feature flag there.
 type ReferenceBosClient = {
