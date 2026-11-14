@@ -106,6 +106,25 @@ export function referenceObjectKey(input: {
   return `picture-books/character-references/i111/${input.consumerUserId}/${input.pictureBookId}/${input.characterId}/${digest}.png`;
 }
 
+
+export function isIsolatedReferenceImportDatabase(env: NodeJS.ProcessEnv): boolean {
+  if (env.APP_ENV !== 'dev' || env.NODE_ENV === 'production') return false;
+  const expected = env.PICTURE_BOOK_REFERENCE_IMPORT_DATABASE_NAME;
+  if (!expected || !/^xiaohai_i111_[a-z0-9_]{8,32}$/.test(expected)) return false;
+  if (!env.DATABASE_URL) return false;
+  try {
+    const url = new URL(env.DATABASE_URL);
+    if (!['postgres:', 'postgresql:'].includes(url.protocol) ||
+        !['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname) ||
+        url.pathname !== '/' + expected || !url.username || !url.password ||
+        url.search || url.hash) return false;
+    if (env.NODE_ENV === 'test') return env.TEST_DATABASE_URL === env.DATABASE_URL;
+    return !env.TEST_DATABASE_URL;
+  } catch {
+    return false;
+  }
+}
+
 // This narrow acceptance-only capability is intentionally OFF in all staging/production
 // environments, even if someone accidentally sets the feature flag there.
 export function createIsolatedReferenceImageStorage(
@@ -114,7 +133,8 @@ export function createIsolatedReferenceImageStorage(
   if (
     env.APP_ENV !== 'dev' ||
     env.NODE_ENV === 'production' ||
-    env.PICTURE_BOOK_REFERENCE_IMPORT_ENABLED !== 'true'
+    (env.PICTURE_BOOK_REFERENCE_IMPORT_ENABLED !== 'true' ||
+    !isIsolatedReferenceImportDatabase(env))
   ) {
     return null;
   }
