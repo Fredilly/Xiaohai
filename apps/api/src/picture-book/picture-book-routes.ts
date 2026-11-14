@@ -162,8 +162,10 @@ export function registerPictureBookRoutes(
       if (!params.success || !input.success) return invalid(reply, request.id);
       reply.header('Cache-Control', 'private, no-store');
       try {
-        return reply.status(201).send(
-          pictureBookImportedReferenceAcceptedSchema.parse(
+        return reply
+          .status(201)
+          .send(
+            pictureBookImportedReferenceAcceptedSchema.parse(
             await options.pictureBook.importCharacterReference(
               consumer(request),
               params.data.bookId,
