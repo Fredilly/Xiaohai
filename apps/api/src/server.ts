@@ -40,7 +40,7 @@ import { registerPictureBookRoutes } from './picture-book/picture-book-routes.js
 import { createPrivateBosPlaybackResolver } from './picture-book/private-bos-urls.js';
 import {
   createIsolatedReferenceImageStorage,
-  isIsolatedReferenceImportDatabase,
+  isConnectedToIsolatedReferenceDatabase,
 } from './picture-book/reference-image-import.js';
 import { RedisImageQueue } from './picture-book/image-queue.js';
 import { AnimationService } from './animation/animation-service.js';
@@ -241,16 +241,13 @@ const imageQueue = new RedisImageQueue(config.REDIS_URL, () =>
 // reference-import route is activated if the database identity cannot be read.
 const isolatedReferenceStorageCandidate = createIsolatedReferenceImageStorage(process.env);
 let isolatedReferenceStorage = undefined;
-if (isolatedReferenceStorageCandidate && isIsolatedReferenceImportDatabase(process.env)) {
-  try {
-    const target = await pool.query<{ name: string }>('select current_database() as name');
-    if (target.rows.length === 1 &&
-        target.rows[0]?.name === process.env.PICTURE_BOOK_REFERENCE_IMPORT_DATABASE_NAME) {
-      isolatedReferenceStorage = isolatedReferenceStorageCandidate;
-    }
-  } catch {
-    app.log.warn({ event: 'REFERENCE_IMPORT_DB_UNVERIFIED' }, 'Reference import disabled');
-  }
+if (
+  isolatedReferenceStorageCandidate &&
+  (await isConnectedToIsolatedReferenceDatabase(process.env, () =>
+    pool.query<{ name: string }>('select current_database() as name'),
+  ))
+) {
+  isolatedReferenceStorage = isolatedReferenceStorageCandidate;
 }
 
 const pictureBook = new PictureBookService(
