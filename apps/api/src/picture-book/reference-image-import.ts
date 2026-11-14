@@ -54,6 +54,7 @@ export function decodeReferencePng(base64: string): Buffer {
     throw new InvalidReferencePngError();
   }
   let offset = 8;
+  let firstChunk = true;
   let foundIdat = false;
   let foundEnd = false;
   while (offset + 12 <= bytes.length) {
@@ -63,6 +64,14 @@ export function decodeReferencePng(base64: string): Buffer {
       throw new InvalidReferencePngError();
     }
     const type = bytes.toString('ascii', offset + 4, offset + 8);
+    if (firstChunk && type !== 'IHDR') throw new InvalidReferencePngError();
+    firstChunk = false;
+    if (
+      pngCrc32(bytes.subarray(offset + 4, offset + 8 + size)) !==
+      bytes.readUInt32BE(offset + 8 + size)
+    ) {
+      throw new InvalidReferencePngError();
+    }
     if (type === 'IDAT') foundIdat = true;
     if (type === 'IEND') {
       if (size !== 0 || next !== bytes.length) throw new InvalidReferencePngError();
@@ -73,6 +82,19 @@ export function decodeReferencePng(base64: string): Buffer {
   }
   if (!foundIdat || !foundEnd) throw new InvalidReferencePngError();
   return bytes;
+}
+
+
+// PNG CRC validation checks object integrity before sending bytes to BOS.
+function pngCrc32(bytes: Buffer): number {
+  let crc = 0xffffffff;
+  for (const value of bytes) {
+    crc ^= value;
+    for (let bit = 0; bit < 8; bit += 1) {
+      crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0);
+    }
+  }
+  return (crc ^ 0xffffffff) >>> 0;
 }
 
 export function referenceObjectKey(input: {
