@@ -144,10 +144,20 @@ export function createIsolatedReferenceImageStorage(
     return null;
   }
 
+  // The SDK's public TypeScript declaration omits these runtime BosClient methods.
+  // Keep the narrow interface local and fail closed if HEAD is unavailable.
   const client = new baiduSdk.BosClient({
     endpoint,
     credentials: { ak, sk },
-  });
+  }) as unknown as {
+    putObject(
+      bucketName: string,
+      objectKey: string,
+      body: Buffer,
+      headers: { 'Content-Type': string; 'Content-Length': number },
+    ): Promise<unknown>;
+    headObject(bucketName: string, objectKey: string): Promise<unknown>;
+  };
   return {
     async upload(input) {
       if (!/^picture-books\/character-references\/i111\/[0-9a-f-]+\/[0-9a-f-]+\/[0-9a-f-]+\/[0-9a-f]{64}\.png$/.test(input.objectKey)) {
