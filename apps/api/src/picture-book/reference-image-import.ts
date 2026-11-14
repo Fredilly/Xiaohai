@@ -84,7 +84,6 @@ export function decodeReferencePng(base64: string): Buffer {
   return bytes;
 }
 
-
 // PNG CRC validation checks object integrity before sending bytes to BOS.
 function pngCrc32(bytes: Buffer): number {
   let crc = 0xffffffff;
@@ -137,8 +136,18 @@ export function createIsolatedReferenceImageStorage(
       o.protocol !== 'https:' ||
       !e.hostname.endsWith('.bcebos.com') ||
       o.hostname !== `${bucket}.${e.hostname}` ||
-      e.username || e.password || e.search || e.hash || e.port || e.pathname !== '/' ||
-      o.username || o.password || o.search || o.hash || o.port || o.pathname !== '/'
+      e.username ||
+      e.password ||
+      e.search ||
+      e.hash ||
+      e.port ||
+      e.pathname !== '/' ||
+      o.username ||
+      o.password ||
+      o.search ||
+      o.hash ||
+      o.port ||
+      o.pathname !== '/'
     ) return null;
   } catch {
     return null;
@@ -160,7 +169,11 @@ export function createIsolatedReferenceImageStorage(
   };
   return {
     async upload(input) {
-      if (!/^picture-books\/character-references\/i111\/[0-9a-f-]+\/[0-9a-f-]+\/[0-9a-f-]+\/[0-9a-f]{64}\.png$/.test(input.objectKey)) {
+      if (
+        !/^picture-books\/character-references\/i111\/[0-9a-f-]+\/[0-9a-f-]+\/[0-9a-f-]+\/[0-9a-f]{64}\.png$/.test(
+          input.objectKey,
+        )
+      ) {
         throw new Error('INVALID_REFERENCE_OBJECT_KEY');
       }
       await client.putObject(bucket, input.objectKey, input.body, {
