@@ -115,7 +115,10 @@ export const characterReferenceImages = pgTable(
       'character_reference_images_status_check',
       sql`${t.status} in ('QUEUED','RUNNING','READY','FAILED')`,
     ),
-    check('character_reference_images_provider_check', sql`${t.provider} in ('MOCK','BAILIAN','IMPORTED')`),
+    check(
+      'character_reference_images_provider_check',
+      sql`${t.provider} in ('MOCK','BAILIAN','IMPORTED')`,
+    ),
     check(
       'character_reference_images_ready_asset_check',
       sql`${t.status} <> 'READY' or ${t.mediaAssetId} is not null`,
