@@ -68,15 +68,25 @@ for (const removedAsset of [
 }
 const assetManifest = await readFile(`${root}/src/config/assets.ts`, 'utf8');
 const runtimeVisuals = await readFile(`${root}/utils/real-visuals.ts`, 'utf8');
-const [homeTemplate, homeStyles, shopTemplate, globalStyles, productTemplate, productStyles] =
-  await Promise.all([
-    readFile(`${root}/pages/index/index.wxml`, 'utf8'),
-    readFile(`${root}/pages/index/index.wxss`, 'utf8'),
-    readFile(`${root}/pages/shop/shop.wxml`, 'utf8'),
-    readFile(`${root}/app.wxss`, 'utf8'),
-    readFile(`${root}/pages/product/product.wxml`, 'utf8'),
-    readFile(`${root}/pages/product/product.wxss`, 'utf8'),
-  ]);
+const [
+  homeTemplate,
+  homeStyles,
+  shopTemplate,
+  globalStyles,
+  productTemplate,
+  productStyles,
+  bookSearchTemplate,
+  bookSearchSource,
+] = await Promise.all([
+  readFile(`${root}/pages/index/index.wxml`, 'utf8'),
+  readFile(`${root}/pages/index/index.wxss`, 'utf8'),
+  readFile(`${root}/pages/shop/shop.wxml`, 'utf8'),
+  readFile(`${root}/app.wxss`, 'utf8'),
+  readFile(`${root}/pages/product/product.wxml`, 'utf8'),
+  readFile(`${root}/pages/product/product.wxss`, 'utf8'),
+  readFile(`${root}/pages/book-search/book-search.wxml`, 'utf8'),
+  readFile(`${root}/pages/book-search/book-search.ts`, 'utf8'),
+]);
 
 if (!assetManifest.includes("BOS_ASSET_ORIGIN = 'https://xiaohai-prod-assets.cd.bcebos.com'")) {
   throw new Error('Mini Program BOS assets must use the approved HTTPS origin.');
@@ -102,10 +112,18 @@ for (const [name, template, handler] of [
   ['home hero', homeTemplate, 'binderror="mediaError"'],
   ['shop cover', shopTemplate, 'binderror="coverError"'],
   ['product cover', productTemplate, 'binderror="coverError"'],
+  ['book-search cover', bookSearchTemplate, 'binderror="coverError"'],
 ]) {
   if (!template.includes(handler)) {
     throw new Error(`${name} must keep an image-load failure fallback.`);
   }
+}
+
+if (
+  !bookSearchTemplate.includes('item.displayCoverUrl') ||
+  !bookSearchSource.includes('coverError(event: WechatMiniprogram.TouchEvent)')
+) {
+  throw new Error('Book-search cover fallback must bind its display URL to the page handler.');
 }
 
 for (const [name, styles, fixedSizePattern] of [
