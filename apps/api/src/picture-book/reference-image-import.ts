@@ -113,10 +113,17 @@ export function isIsolatedReferenceImportDatabase(env: NodeJS.ProcessEnv): boole
   if (!env.DATABASE_URL) return false;
   try {
     const url = new URL(env.DATABASE_URL);
-    if (!['postgres:', 'postgresql:'].includes(url.protocol) ||
-        !['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname) ||
-        url.pathname !== '/' + expected || !url.username || !url.password ||
-        url.search || url.hash) return false;
+    if (
+      !['postgres:', 'postgresql:'].includes(url.protocol) ||
+      !['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname) ||
+      url.pathname !== '/' + expected ||
+      !url.username ||
+      !url.password ||
+      url.search ||
+      url.hash
+    ) {
+      return false;
+    }
     if (env.NODE_ENV === 'test') return env.TEST_DATABASE_URL === env.DATABASE_URL;
     return !env.TEST_DATABASE_URL;
   } catch {
@@ -133,8 +140,10 @@ export async function isConnectedToIsolatedReferenceDatabase(
   if (!isIsolatedReferenceImportDatabase(env)) return false;
   try {
     const result = await query();
-    return result.rows.length === 1 &&
-      result.rows[0]?.name === env.PICTURE_BOOK_REFERENCE_IMPORT_DATABASE_NAME;
+    return (
+      result.rows.length === 1 &&
+      result.rows[0]?.name === env.PICTURE_BOOK_REFERENCE_IMPORT_DATABASE_NAME
+    );
   } catch {
     return false;
   }
@@ -164,7 +173,9 @@ export async function uploadVerifiedReferenceToBos(
     !/^picture-books\/character-references\/i111\/[0-9a-f-]+\/[0-9a-f-]+\/[0-9a-f-]+\/[0-9a-f]{64}\.png$/.test(
       input.objectKey,
     )
-  ) throw new Error('INVALID_REFERENCE_OBJECT_KEY');
+  ) {
+    throw new Error('INVALID_REFERENCE_OBJECT_KEY');
+  }
   await client.putObject(bucket, input.objectKey, input.body, {
     'Content-Type': 'image/png',
     'Content-Length': input.body.byteLength,
@@ -187,7 +198,9 @@ export async function uploadVerifiedReferenceToBos(
     Number(length) !== input.body.byteLength ||
     typeof mime !== 'string' ||
     mime.toLowerCase() !== 'image/png'
-  ) throw new Error('REFERENCE_BOS_METADATA_UNVERIFIED');
+  ) {
+    throw new Error('REFERENCE_BOS_METADATA_UNVERIFIED');
+  }
   // When BOS supplies an MD5 integrity proof, verify it, do not ignore it.
   const contentMd5 = values['content-md5'];
   if (
@@ -197,7 +210,7 @@ export async function uploadVerifiedReferenceToBos(
   ) throw new Error('REFERENCE_BOS_METADATA_UNVERIFIED');
   return {
     objectKey: input.objectKey,
-    playbackUrl: origin + '/' + input.objectKey,
+    playbackUrl: `${origin}/${input.objectKey}`,
     byteSize: Number(length),
   };
 }
