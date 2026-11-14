@@ -51,10 +51,10 @@ The CI job **PR scope, migration and error safety** enforces a subset of these r
 
 ## Two-person team review and exceptional infrastructure operations / 双人团队审核与高风险操作
 
-**Policy scope:** These are proposed standing collaboration rules for a team with one PR
-author and one distinct human reviewer. They do **not** automatically amend existing
-task-specific authorizations, GitHub branch protection, or infrastructure permissions.
-A draft PR proposing these rules is not itself an approval or an operational permit.
+**Policy scope:** These standing collaboration rules are written for a two-person team:
+one PR author and one distinct human reviewer. They do **not** automatically amend
+existing task-specific authorizations, GitHub branch protection, or infrastructure
+permissions. A policy-document PR is not itself operational authorization.
 
 ### Normal code / 常规代码
 
@@ -103,14 +103,22 @@ A draft PR proposing these rules is not itself an approval or an operational per
   authorized administrator decision. This policy cannot override settings.
   Final release/production deployment still requires its own approval.
 
-**Incident separation:** For [Issue #195](https://github.com/Fredilly/Xiaohai/issues/195)
-and [PR #205](https://github.com/Fredilly/Xiaohai/pull/205), the existing owner
-Phase C second-human condition and installation/deletion HOLD stay in effect
-until explicitly revised **in #195** or satisfied by a real independent
-reviewer. [Issue #219](https://github.com/Fredilly/Xiaohai/issues/219) tracks
-that decision; [PR #218](https://github.com/Fredilly/Xiaohai/pull/218) only
-proposes future recurring retention rules. Do not install or delete based on
-this policy proposal.
+**Recorded incident outcome (not a new authorization):** In
+[Issue #195](https://github.com/Fredilly/Xiaohai/issues/195#issuecomment-6731844100),
+Fred explicitly amended the formerly impossible additional-human review gate **for
+that exact Phase C operation only**, replacing it with Fred's independent human
+review, exact-head green CI, and verifiable safety preflight. The separately
+approved bounded Phase C and Phase D cleanup operations were subsequently completed;
+their one-time authorizations were consumed. Do not describe #205 as still blocked
+waiting for the Phase C amendment or claim those historical cleanups never happened.
+[Issue #219](https://github.com/Fredilly/Xiaohai/issues/219) records the two-person
+policy workstream. [PR #218](https://github.com/Fredilly/Xiaohai/pull/218) and
+[PR #222](https://github.com/Fredilly/Xiaohai/pull/222) subsequently supplied
+reviewed recurring-retention safeguards; their merge is **not** permission to
+execute new cleanup. As Fred directed in #195, retain
+`STAGING_READY=false` and `STAGING_RETENTION_EXECUTION_ENABLED=false`;
+future genuine backend deployments, deletion proposals and each live cleanup
+require their own applicable verification and explicit owner authorization.
 
 ## Destructive integration database safety / 破坏性集成测试的数据库保护
 
