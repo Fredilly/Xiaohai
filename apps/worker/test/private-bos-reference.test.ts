@@ -32,7 +32,7 @@ const config = {
 const now = () => 1_700_000_000_000;
 
 describe('Bailian private BOS reference inputs', () => {
-  it('signs the canonical key for only five minutes, without exposing the stored unsigned URL', () => {
+  it('signs the canonical key with short TTL without exposing the unsigned URL', () => {
     const signer = {
       generatePresignedUrl: vi.fn(() => endpoint + '/' + key + '?authorization=signed-test'),
     };
@@ -68,7 +68,7 @@ describe('Bailian private BOS reference inputs', () => {
     ).toBeNull();
   });
 
-  it('fails closed for wrong bucket, unsafe object key, unsigned or redirected signer output', () => {
+  it('rejects wrong bucket, unsafe key, unsigned or redirected signer outputs', () => {
     const signer = {
       generatePresignedUrl: vi.fn(() => endpoint + '/' + key + '?authorization=signed-test'),
     };
@@ -114,7 +114,8 @@ describe('Bailian private BOS reference inputs', () => {
       { publicOrigin: publicOrigin + '/extra' },
       { endpoint: endpoint + '?unsafe=1' },
     ]) {
-      expect(createPrivateBosReferenceResolver({ ...config, ...changes }, signer)(asset)).toBeNull();
+      const resolver = createPrivateBosReferenceResolver({ ...config, ...changes }, signer);
+      expect(resolver(asset)).toBeNull();
     }
     expect(signer.generatePresignedUrl).not.toHaveBeenCalled();
   });
