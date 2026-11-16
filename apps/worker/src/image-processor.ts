@@ -387,15 +387,11 @@ export class ImageJobProcessor {
       })
       .from(mediaAssets)
       .where(inArray(mediaAssets.id, ids));
-    if (
-      rows.length !== ids.length ||
-      new Set(ids).size !== ids.length ||
-      rows.some(
-        (row) =>
-          row.status !== 'READY' ||
-          (row.provider !== 'MOCK_IMAGE' && row.provider !== 'BAIDU_BOS'),
-      )
-    ) {
+    const hasInvalidReference = rows.some((row) => {
+      if (row.status !== 'READY') return true;
+      return row.provider !== 'MOCK_IMAGE' && row.provider !== 'BAIDU_BOS';
+    });
+    if (rows.length !== ids.length || new Set(ids).size !== ids.length || hasInvalidReference) {
       throw new ImageProviderError('IMAGE_PROVIDER_UNAVAILABLE', {
         stage: 'VALIDATION',
         validationCode: 'INVALID_REFERENCE_ASSET',
