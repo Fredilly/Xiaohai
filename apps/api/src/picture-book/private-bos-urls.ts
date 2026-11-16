@@ -69,12 +69,10 @@ export function createPrivateBosPlaybackResolver(
     return disabled;
   }
 
-  const signer: Presigner =
-    signerOverride ??
-    new baiduSdk.BosClient({
-      endpoint,
-      credentials: { ak, sk },
-    });
+  // BOS SDK 1.0.7 defaults to signing /v1/<key>. Sign the canonical /<key>
+  // path instead; never rewrite an already signed URL or relax path checks.
+  const signerConfig = { endpoint, credentials: { ak, sk }, removeVersionPrefix: true };
+  const signer: Presigner = signerOverride ?? new baiduSdk.BosClient(signerConfig);
 
   return (asset) => {
     if (asset.provider !== 'BAIDU_BOS' || !asset.playbackUrl) return null;

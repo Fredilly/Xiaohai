@@ -74,6 +74,33 @@ describe('private BOS owner-scoped playback signer', () => {
     expect(resolveUrl({ ...asset, playbackUrl: `https://${host}//${key}` })).toBeNull();
   });
 
+  it('accepts the real BOS SDK signature for a locked #111 legacy import (offline)', () => {
+    // Use the actual SDK rather than a stubbed presigner: SDK 1.0.7 adds
+    // /v1/ by default, which the strict canonical-path validator rejects.
+    const resolveUrl = createPrivateBosPlaybackResolver(
+      { ...env, BAIDU_BOS_PUBLIC_ORIGIN: `https://${host}/` },
+      undefined,
+      () => 1_800_000_000_000,
+    );
+    const storedUrl = `https://${host}//${importedKey}`;
+    const signedUrl = resolveUrl({ ...asset, objectKey: importedKey, playbackUrl: storedUrl });
+    expect(signedUrl).not.toBeNull();
+    const signed = new URL(signedUrl!);
+    expect(signed.protocol).toBe('https:');
+    expect(signed.hostname).toBe(host);
+    expect(signed.pathname).toBe(`/${importedKey}`);
+    expect(signed.searchParams.has('authorization')).toBe(true);
+
+    // Even the real SDK must not grant capability to an unrelated object.
+    expect(
+      resolveUrl({
+        ...asset,
+        objectKey: importedKey,
+        playbackUrl: `https://${host}///${importedKey}`,
+      }),
+    ).toBeNull();
+  });
+
   it('returns null without credentials and never discloses a raw BOS URL', () => {
     expect(createPrivateBosPlaybackResolver({})(asset)).toBeNull();
     expect(
