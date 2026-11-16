@@ -2,6 +2,8 @@
   "schemaVersion": 1,
   "fixtureId": "m10-two-character-two-page-v1",
   "reviewStatus": "PENDING_OWNER_APPROVAL",
+  "reviewer": null,
+  "reviewedAt": null,
   "currency": "CNY",
   "runs": [
     {
