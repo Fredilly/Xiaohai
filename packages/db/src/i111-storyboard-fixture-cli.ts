@@ -174,10 +174,7 @@ async function run() {
     if (existingIllustrations.rows[0]?.total !== '0') fail('I111_EXISTING_ILLUSTRATIONS');
 
     if (currentPages.rows.length) {
-      if (
-        book.status !== 'PLANNED' ||
-        !matchExistingI111Pages(currentPages.rows, fixturePages)
-      ) {
+      if (book.status !== 'PLANNED' || !matchExistingI111Pages(currentPages.rows, fixturePages)) {
         fail('I111_EXISTING_PAGES_CONFLICT');
       }
       await client.query('ROLLBACK');
