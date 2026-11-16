@@ -132,8 +132,6 @@ describe('Issue #111 local database target allowlist', () => {
     expect(() => validateI111LocalTarget({ ...valid, NODE_ENV: 'test' })).toThrow(
       'I111_ENVIRONMENT_NOT_DEV',
     );
-    expect(() => validateI111LocalTarget({ APP_ENV: 'dev' })).toThrow(
-      'I111_DATABASE_URL_MISSING',
-    );
+    expect(() => validateI111LocalTarget({ APP_ENV: 'dev' })).toThrow('I111_DATABASE_URL_MISSING');
   });
 });
