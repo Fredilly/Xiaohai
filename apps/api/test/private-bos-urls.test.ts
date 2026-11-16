@@ -92,7 +92,13 @@ describe('private BOS owner-scoped playback signer', () => {
     expect(signed.searchParams.has('authorization')).toBe(true);
 
     // Even the real SDK must not grant capability to an unrelated object.
-    expect(resolveUrl({ ...asset, objectKey: importedKey, playbackUrl: `https://${host}///${importedKey}` })).toBeNull();
+    expect(
+      resolveUrl({
+        ...asset,
+        objectKey: importedKey,
+        playbackUrl: `https://${host}///${importedKey}`,
+      }),
+    ).toBeNull();
   });
 
   it('returns null without credentials and never discloses a raw BOS URL', () => {
