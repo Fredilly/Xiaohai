@@ -187,7 +187,7 @@ async function run() {
       return;
     }
 
-    const inserted = [];
+    const inserted: string[] = [];
     for (const page of fixturePages) {
       const result = await client.query<{ id: string }>(
         [
