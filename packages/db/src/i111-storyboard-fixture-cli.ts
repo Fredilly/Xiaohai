@@ -131,6 +131,19 @@ async function run() {
       fail('I111_LOCKED_REFERENCES_MISMATCH');
     }
 
+    const importedReferences = await client.query<{ total: string }>(
+      [
+        'SELECT count(*)::text AS total FROM character_reference_images r',
+        'JOIN character_profiles c ON c.id = r.character_profile_id',
+        'WHERE c.picture_book_id = $1 AND r.media_asset_id = c.reference_media_asset_id',
+        "AND r.status = 'READY' AND r.provider = 'IMPORTED'",
+      ].join(' '),
+      [I111_BOOK_ID],
+    );
+    if (importedReferences.rows[0]?.total !== '2') {
+      fail('I111_IMPORTED_REFERENCES_MISMATCH');
+    }
+
     const fixturePages = createI111FixturePages(fixture, { mimi: c[0]!.id, pip: c[1]!.id });
     const activeJobs = await client.query(
       "SELECT id FROM ai_jobs WHERE project_id = $1 AND status IN ('QUEUED','RUNNING') LIMIT 1",
