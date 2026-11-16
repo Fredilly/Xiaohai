@@ -7,6 +7,7 @@ import {
   aiCostReservations,
   aiProjects,
   characterProfiles,
+  characterReferenceImages,
   consumerUsers,
   createDatabase,
   mediaAssets,
@@ -23,6 +24,7 @@ import {
   type ImageProvider,
 } from '../src/image-provider.js';
 import { recoverStaleMedia } from '../src/stale-media.js';
+import { createPrivateBosReferenceResolver } from '../src/private-bos-reference.js';
 
 const database = process.env.DATABASE_URL ? createDatabase(process.env) : null;
 const suite = database ? describe : describe.skip;
@@ -186,6 +188,103 @@ suite('M10 image worker PostgreSQL integration', () => {
     return { illustration: illustration!, consistency, userId: user!.id };
   }
 
+  // Disposable integration DB only. Replicate the real #111 requirement:
+  // TWO independently locked characters with selected private BOS PNG assets.
+  async function queuedWithTwoLockedBosReferences() {
+    const fixture = await queued('BAILIAN');
+    const [page] = await db
+      .select({ bookId: workPages.pictureBookId })
+      .from(workPages)
+      .where(eq(workPages.id, fixture.illustration.pageId));
+    const [mimi] = await db
+      .select()
+      .from(characterProfiles)
+      .where(eq(characterProfiles.pictureBookId, page!.bookId));
+    if (!mimi) throw new Error('TEST_MIMI_MISSING');
+
+    const [pip] = await db
+      .insert(characterProfiles)
+      .values({
+        pictureBookId: page!.bookId,
+        name: 'Pip',
+        description: 'sky-blue bird child',
+        visualPrompt: 'blue bird with green cap and yellow striped scarf',
+        confirmed: true,
+        locked: true,
+        sortOrder: 1,
+      })
+      .returning();
+    const bucket = 'xiaohai-i111-work-2ec3900280';
+    const origin = `https://${bucket}.cd.bcebos.com`;
+    const keys = [mimi.id, pip!.id].map(
+      (id, i) =>
+        `picture-books/character-references/i111/${fixture.userId}/${page!.bookId}/${id}/${String(i + 1).repeat(64)}.png`,
+    );
+    const references = await db
+      .insert(mediaAssets)
+      .values(
+        keys.map((key) => ({
+          provider: 'BAIDU_BOS' as const,
+          objectKey: key,
+          playbackUrl: `${origin}/${key}`,
+          mimeType: 'image/png',
+          status: 'READY' as const,
+        })),
+      )
+      .returning();
+    await db
+      .update(characterProfiles)
+      .set({
+        name: 'Mimi',
+        description: 'red panda child',
+        visualPrompt: 'red panda with yellow knit scarf, blue overalls',
+        confirmed: true,
+        locked: true,
+        referenceMediaAssetId: references[0]!.id,
+      })
+      .where(eq(characterProfiles.id, mimi.id));
+    await db
+      .update(characterProfiles)
+      .set({ referenceMediaAssetId: references[1]!.id })
+      .where(eq(characterProfiles.id, pip!.id));
+
+    await db.insert(characterReferenceImages).values([
+      {
+        characterProfileId: mimi.id,
+        revisionNumber: 1,
+        status: 'READY',
+        provider: 'IMPORTED',
+        model: 'OWNER_SUPPLIED_PNG',
+        mediaAssetId: references[0]!.id,
+      },
+      {
+        characterProfileId: pip!.id,
+        revisionNumber: 1,
+        status: 'READY',
+        provider: 'IMPORTED',
+        model: 'OWNER_SUPPLIED_PNG',
+        mediaAssetId: references[1]!.id,
+      },
+    ]);
+    const consistency = [
+      {
+        consistencyKey: mimi.consistencyKey,
+        visualPrompt: 'red panda with yellow knit scarf, blue overalls',
+        referenceMediaAssetId: references[0]!.id,
+      },
+      {
+        consistencyKey: pip!.consistencyKey,
+        visualPrompt: 'blue bird with green cap and yellow striped scarf',
+        referenceMediaAssetId: references[1]!.id,
+      },
+    ];
+    await db
+      .update(workPageIllustrations)
+      .set({ consistency })
+      .where(eq(workPageIllustrations.id, fixture.illustration.id));
+    return { ...fixture, references, keys, origin, bucket, consistency };
+  }
+
   afterEach(async () => {
     await database!.pool.query(`TRUNCATE TABLE media_assets, consumer_users CASCADE`);
   });
@@ -299,6 +398,142 @@ suite('M10 image worker PostgreSQL integration', () => {
     expect(generate).toHaveBeenCalledOnce();
     expect(saved).toMatchObject({ status: 'READY', errorCode: null });
   });
+
+  it('passes both locked private reference signed URLs to Bailian, never unsigned URLs', async () => {
+    const fixture = await queuedWithTwoLockedBosReferences();
+    const signedKeys: string[] = [];
+    const signer = {
+      generatePresignedUrl: vi.fn((_bucket: string, key: string) => {
+        signedKeys.push(key);
+        return `https://cd.bcebos.com/${key}?authorization=synthetic-private-signature`;
+      }),
+    };
+    const resolver = createPrivateBosReferenceResolver(
+      {
+        endpoint: 'https://cd.bcebos.com',
+        publicOrigin: fixture.origin,
+        bucket: fixture.bucket,
+        accessKeyId: 'synthetic-ak',
+        secretAccessKey: 'synthetic-sk',
+      },
+      signer,
+    );
+    const generate = vi.fn<ImageProvider['generate']>((input) => {
+      expect(signedKeys).toEqual(fixture.keys);
+      expect(input.referenceImages).toHaveLength(2);
+      expect(input.referenceImages).toEqual(
+        fixture.keys.map(
+          (key) => `https://cd.bcebos.com/${key}?authorization=synthetic-private-signature`,
+        ),
+      );
+      expect(input.referenceImages).not.toContain(fixture.references[0]!.playbackUrl);
+      expect(input.referenceImages).not.toContain(fixture.references[1]!.playbackUrl);
+      expect(input.consistency).toEqual(fixture.consistency);
+      return Promise.resolve({
+        assetProvider: 'BAIDU_BOS',
+        objectKey: `picture-books/bailian/${fixture.illustration.id}.png`,
+        playbackUrl: `https://assets.example.test/picture-books/bailian/${fixture.illustration.id}.png`,
+        mimeType: 'image/png',
+        byteSize: 9,
+        providerRequestId: 'synthetic-request-id',
+      });
+    });
+    const logger = { error: vi.fn() };
+
+    await new ImageJobProcessor(db, { name: 'BAILIAN', generate }, 5_000, logger, resolver)
+      .processOne();
+
+    expect(signer.generatePresignedUrl).toHaveBeenCalledTimes(2);
+    expect(generate).toHaveBeenCalledOnce();
+    expect(logger.error).not.toHaveBeenCalled();
+    const [saved] = await db
+      .select()
+      .from(workPageIllustrations)
+      .where(eq(workPageIllustrations.id, fixture.illustration.id));
+    expect(saved).toMatchObject({ status: 'READY', errorCode: null });
+  });
+
+  for (const reason of ['missing', 'signing-failed', 'invalid-metadata'] as const) {
+    it(`rejects a ${reason} locked reference before any Bailian call without URL leakage`, async () => {
+      const fixture = await queuedWithTwoLockedBosReferences();
+      if (reason === 'missing') {
+        await db
+          .update(workPageIllustrations)
+          .set({
+            consistency: [
+              fixture.consistency[0]!,
+              { ...fixture.consistency[1]!, referenceMediaAssetId: crypto.randomUUID() },
+            ],
+          })
+          .where(eq(workPageIllustrations.id, fixture.illustration.id));
+      } else if (reason === 'invalid-metadata') {
+        await db
+          .update(mediaAssets)
+          .set({ playbackUrl: 'https://untrusted.example.test/invalid.png' })
+          .where(eq(mediaAssets.id, fixture.references[1]!.id));
+      }
+      const signature = 'synthetic-private-signature-do-not-log';
+      const signer = {
+        generatePresignedUrl: vi.fn((_bucket: string, key: string) =>
+          reason === 'signing-failed' && key === fixture.keys[1]
+            ? 'https://untrusted.example.test/invalid.png?authorization=' + signature
+            : `https://cd.bcebos.com/${key}?authorization=${signature}`,
+        ),
+      };
+      const resolver = createPrivateBosReferenceResolver(
+        {
+          endpoint: 'https://cd.bcebos.com',
+          publicOrigin: fixture.origin,
+          bucket: fixture.bucket,
+          accessKeyId: 'synthetic-ak',
+          secretAccessKey: 'synthetic-sk',
+        },
+        signer,
+      );
+      const generate = vi.fn<ImageProvider['generate']>();
+      const logger = { error: vi.fn() };
+
+      await new ImageJobProcessor(db, { name: 'BAILIAN', generate }, 5_000, logger, resolver)
+        .processOne();
+
+      expect(generate).not.toHaveBeenCalled();
+      const [saved] = await db
+        .select()
+        .from(workPageIllustrations)
+        .where(eq(workPageIllustrations.id, fixture.illustration.id));
+      expect(saved).toMatchObject({
+        status: 'FAILED',
+        errorCode: 'IMAGE_PROVIDER_UNAVAILABLE',
+        mediaAssetId: null,
+      });
+      expect(logger.error).toHaveBeenCalledWith(
+        expect.objectContaining({
+          stage: 'VALIDATION',
+          validationCode: 'INVALID_REFERENCE_ASSET',
+        }),
+        expect.any(String),
+      );
+      const safeLog = JSON.stringify(logger.error.mock.calls);
+      expect(safeLog).not.toContain(signature);
+      expect(safeLog).not.toContain('?authorization=');
+      expect(safeLog).not.toContain(fixture.references[0]!.playbackUrl);
+      const [reservation] = await db
+        .select()
+        .from(aiCostReservations)
+        .where(eq(aiCostReservations.resourceId, fixture.illustration.id));
+      expect(reservation).toMatchObject({
+        status: 'SETTLED',
+        uncertainty: 'NONE',
+        actualMinor: 0,
+      });
+      const ledger = await db
+        .select()
+        .from(aiCostLedger)
+        .where(eq(aiCostLedger.resourceId, fixture.illustration.id));
+      expect(ledger).toHaveLength(1);
+      expect(ledger[0]).toMatchObject({ outcome: 'FAILED', amountMinor: 0 });
+    });
+  }
 
   it('rejects a legacy BAILIAN task without a reservation before Provider.generate', async () => {
     const fixture = await queued('BAILIAN', false);
