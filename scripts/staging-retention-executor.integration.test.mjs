@@ -353,7 +353,7 @@ test('reused approval ID is rejected before a second retention invocation', asyn
 test('concurrent dispatches atomically consume one approval ID', async () => {
   // Each trial uses a fresh test-only HOME and approval ID. Do not mask
   // timing-sensitive double-consumption by relying on a single lucky run.
-  for (let attempt = 0; attempt < 8; attempt += 1) {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
     const fx = await remoteFixture({
       approvalId: `XIAOHAI-195-STEADY-20261112-CONCURRENT-${attempt}`,
     });
