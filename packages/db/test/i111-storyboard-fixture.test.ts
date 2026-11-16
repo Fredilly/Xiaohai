@@ -6,6 +6,7 @@ import {
   I111_BOOK_ID,
   I111_DATABASE,
   I111_OWNER_ID,
+  validateI111LocalTarget,
 } from '../src/i111-storyboard-fixture.js';
 
 const fixture = JSON.parse(
@@ -92,5 +93,44 @@ describe('Issue #111 isolated storyboard fixture', () => {
     const swapped = structuredClone(rows);
     swapped[1]!.character_ids = [ids.pip, ids.mimi];
     expect(matchExistingI111Pages(swapped, expected)).toBe(false);
+  });
+});
+
+describe('Issue #111 local database target allowlist', () => {
+  const valid = {
+    APP_ENV: 'dev',
+    DATABASE_URL:
+      'postgresql://xiaohai_i111_app:synthetic-password@127.0.0.1:52511/xiaohai_i111_mac_20261116',
+  };
+  it('accepts only the exact isolated localhost app database', () => {
+    expect(validateI111LocalTarget(valid)).toBe(valid.DATABASE_URL);
+  });
+  it('rejects other DB names, ports, remote hosts, users and connection options', () => {
+    for (const changed of [
+      valid.DATABASE_URL.replace('52511', '5432'),
+      valid.DATABASE_URL.replace('127.0.0.1', 'staging-db.internal'),
+      valid.DATABASE_URL.replace('xiaohai_i111_mac_20261116', 'xiaohai_prod'),
+      valid.DATABASE_URL.replace('xiaohai_i111_app', 'postgres'),
+      valid.DATABASE_URL + '?sslmode=disable',
+      valid.DATABASE_URL.replace('postgresql:', 'http:'),
+    ]) {
+      expect(() => validateI111LocalTarget({ ...valid, DATABASE_URL: changed })).toThrow(
+        'I111_DATABASE_ALLOWLIST_REJECTED',
+      );
+    }
+  });
+  it('rejects missing context, non-dev environments, and absent credentials', () => {
+    expect(() => validateI111LocalTarget({ DATABASE_URL: valid.DATABASE_URL })).toThrow(
+      'I111_ENVIRONMENT_NOT_DEV',
+    );
+    expect(() => validateI111LocalTarget({ ...valid, APP_ENV: 'staging' })).toThrow(
+      'I111_ENVIRONMENT_NOT_DEV',
+    );
+    expect(() => validateI111LocalTarget({ ...valid, NODE_ENV: 'test' })).toThrow(
+      'I111_ENVIRONMENT_NOT_DEV',
+    );
+    expect(() => validateI111LocalTarget({ APP_ENV: 'dev' })).toThrow(
+      'I111_DATABASE_URL_MISSING',
+    );
   });
 });
