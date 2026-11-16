@@ -119,7 +119,7 @@ async function remoteFixture({
     hostScript,
     `#!/usr/bin/env bash
 set -euo pipefail
-printf 'call\\n' >> "$MOCK_CALLS"
+printf 'call HOME=%s APPROVAL=%s\\n' "$HOME" "$STAGING_RETENTION_APPROVAL_ID" >> "$MOCK_CALLS"
 cat "$STAGING_RETENTION_APPROVED_PLAN" > "$MOCK_PLAN_COPY"
 if [[ "\${MOCK_HOST_HEALTH_FAIL:-}" == true ]]; then
   echo 'STOP retention: API health non-200' >&2
@@ -382,6 +382,10 @@ test('concurrent dispatches atomically consume one approval ID', async () => {
     // Statuses alone cannot tell whether both children invoked the mock executor.
     const observedStatuses = results.map((result) => result.status).sort((a, b) => a - b);
     const observedCalls = await lineCount(fx.calls);
+    const fixtureCalls = (await readFile(fx.calls, 'utf8')).trim().split('\n');
+    const sameHomeAndApproval = fixtureCalls.every(
+      (call) => call === `call HOME=${fx.home} APPROVAL=${fx.approvalId}`,
+    );
     const receiptPath = join(
       fx.home,
       'xiaohai-deploy',
@@ -399,6 +403,7 @@ test('concurrent dispatches atomically consume one approval ID', async () => {
       attempt,
       statuses: observedStatuses,
       mockCallCount: observedCalls,
+      sameHomeAndApproval,
       approvalReceiptExists: receiptExists,
       rejectedAsConsumed: results.map((result) =>
         /approval ID already consumed/.test(result.stderr),
