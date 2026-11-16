@@ -400,7 +400,9 @@ test('concurrent dispatches atomically consume one approval ID', async () => {
       statuses: observedStatuses,
       mockCallCount: observedCalls,
       approvalReceiptExists: receiptExists,
-      rejectedAsConsumed: results.map((result) => /approval ID already consumed/.test(result.stderr)),
+      rejectedAsConsumed: results.map((result) =>
+        /approval ID already consumed/.test(result.stderr),
+      ),
       reportedSuccess: results.map((result) => /RETENTION_EXECUTOR_STATUS=0/.test(result.stdout)),
     });
     assert.deepEqual(observedStatuses, [0, 1], diagnostic);
