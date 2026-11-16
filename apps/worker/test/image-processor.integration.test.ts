@@ -216,9 +216,9 @@ suite('M10 image worker PostgreSQL integration', () => {
       .returning();
     const bucket = 'xiaohai-i111-work-2ec3900280';
     const origin = `https://${bucket}.cd.bcebos.com`;
+    const prefix = `picture-books/character-references/i111/${fixture.userId}/${page!.bookId}`;
     const keys = [mimi.id, pip!.id].map(
-      (id, i) =>
-        `picture-books/character-references/i111/${fixture.userId}/${page!.bookId}/${id}/${String(i + 1).repeat(64)}.png`,
+      (id, i) => `${prefix}/${id}/${String(i + 1).repeat(64)}.png`,
     );
     const references = await db
       .insert(mediaAssets)
@@ -399,7 +399,7 @@ suite('M10 image worker PostgreSQL integration', () => {
     expect(saved).toMatchObject({ status: 'READY', errorCode: null });
   });
 
-  it('passes both locked private reference signed URLs to Bailian, never unsigned URLs', async () => {
+  it('passes two signed private references before the Bailian call', async () => {
     const fixture = await queuedWithTwoLockedBosReferences();
     const signedKeys: string[] = [];
     const signer = {
@@ -440,8 +440,13 @@ suite('M10 image worker PostgreSQL integration', () => {
     });
     const logger = { error: vi.fn() };
 
-    await new ImageJobProcessor(db, { name: 'BAILIAN', generate }, 5_000, logger, resolver)
-      .processOne();
+    await new ImageJobProcessor(
+      db,
+      { name: 'BAILIAN', generate },
+      5_000,
+      logger,
+      resolver,
+    ).processOne();
 
     expect(signer.generatePresignedUrl).toHaveBeenCalledTimes(2);
     expect(generate).toHaveBeenCalledOnce();
@@ -454,7 +459,7 @@ suite('M10 image worker PostgreSQL integration', () => {
   });
 
   for (const reason of ['missing', 'signing-failed', 'invalid-metadata'] as const) {
-    it(`rejects a ${reason} locked reference before any Bailian call without URL leakage`, async () => {
+    it(`fails closed on ${reason} without a paid call or URL leakage`, async () => {
       const fixture = await queuedWithTwoLockedBosReferences();
       if (reason === 'missing') {
         await db
@@ -493,8 +498,13 @@ suite('M10 image worker PostgreSQL integration', () => {
       const generate = vi.fn<ImageProvider['generate']>();
       const logger = { error: vi.fn() };
 
-      await new ImageJobProcessor(db, { name: 'BAILIAN', generate }, 5_000, logger, resolver)
-        .processOne();
+      await new ImageJobProcessor(
+        db,
+        { name: 'BAILIAN', generate },
+        5_000,
+        logger,
+        resolver,
+      ).processOne();
 
       expect(generate).not.toHaveBeenCalled();
       const [saved] = await db
