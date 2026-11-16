@@ -82,13 +82,12 @@ export function createPrivateBosReferenceResolver(
 
   // Match the SDK's actual /<key> object path (without an SDK /v1/ prefix).
   // This was proven with real private GET during Issue #111 Gate B.
-  const signer: Presigner =
-    signerOverride ??
-    new baiduSdk.BosClient({
-      endpoint,
-      credentials: { ak: accessKeyId, sk: secretAccessKey },
-      removeVersionPrefix: true,
-    });
+  const signerConfig = {
+    endpoint,
+    credentials: { ak: accessKeyId, sk: secretAccessKey },
+    removeVersionPrefix: true,
+  };
+  const signer: Presigner = signerOverride ?? new baiduSdk.BosClient(signerConfig);
 
   return (asset) => {
     if (asset.provider !== 'BAIDU_BOS' || !asset.playbackUrl) return null;
