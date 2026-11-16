@@ -122,11 +122,17 @@ export function createI111FixturePages(
     'Pip: small sky-blue bird child; rounded beak; green cap; yellow striped knit scarf; tiny orange satchel.',
     'No written text, lettering, extra characters, garbled symbols, duplicate limbs or photorealism.',
   ];
+  const styleDescription = [
+    style.medium,
+    style.lighting,
+    style.lineAndTexture,
+    style.composition,
+  ].join('. ');
   const renderPrompt = (scene: string, cover: boolean) =>
     [
       cover ? 'Storybook COVER, same characters and no additional story event.' : 'Storybook PAGE.',
       'Scene: ' + scene,
-      'Style: ' + style.medium + '. ' + style.lighting + '. ' + style.lineAndTexture + '. ' + style.composition + '.',
+      'Style: ' + styleDescription + '.',
       ...referenceConstraints,
     ].join('\n');
 
