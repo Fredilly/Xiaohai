@@ -350,6 +350,19 @@ test('reused approval ID is rejected before a second retention invocation', asyn
   assert.equal(await lineCount(fx.calls), 1);
 });
 
+test('missing or unavailable authorization file lock fails closed before retention', async () => {
+  const fx = await remoteFixture({
+    approvalId: 'XIAOHAI-195-STEADY-20261112-LOCK-REFUSED',
+  });
+  const bin = join(fx.home, 'bin');
+  await mkdir(bin);
+  await writeFile(join(bin, 'flock'), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
+  const result = fx.run({ PATH: `${bin}:${process.env.PATH}` });
+  assert.equal(result.status, 1, result.stderr);
+  assert.match(result.stderr, /authorization lock unavailable/);
+  assert.equal(await lineCount(fx.calls), 0);
+});
+
 test('concurrent dispatches atomically consume one approval ID', async () => {
   // Each trial uses a fresh test-only HOME and approval ID. Do not mask
   // timing-sensitive double-consumption by relying on a single lucky run.
