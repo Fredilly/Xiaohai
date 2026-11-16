@@ -69,10 +69,18 @@ mkdir -p "$receipt_root"
 chmod 0700 "$receipt_root"
 receipt_dir="$receipt_root/$APPROVAL_ID"
 
-# mkdir is the atomic consume operation. Exactly one concurrent dispatcher can win.
+# Defense in depth: serialize the single-use claim as well as retaining the
+# atomic mkdir. A missing or timed-out flock must refuse any execution.
+umask 077
+lock_file="$receipt_root/.single-use-claim.lock"
+[[ ! -L "$lock_file" ]] || fail 'unsafe authorization lock'
+exec {claim_fd}>>"$lock_file"
+flock -x -w 15 "$claim_fd" || fail 'authorization lock unavailable'
 if ! mkdir -m 0700 "$receipt_dir" 2>/dev/null; then
   fail 'approval ID already consumed'
 fi
+flock -u "$claim_fd" || fail 'authorization lock release failed'
+exec {claim_fd}>&-
 receipt="$receipt_dir/receipt.txt"
 umask 077
 {
