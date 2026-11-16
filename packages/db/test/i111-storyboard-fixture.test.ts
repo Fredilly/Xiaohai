@@ -10,7 +10,10 @@ import {
 } from '../src/i111-storyboard-fixture.js';
 
 const fixture = JSON.parse(
-  readFileSync(new URL('../../../benchmarks/picture-book-quality/FIXTURE.json', import.meta.url), 'utf8'),
+  readFileSync(
+    new URL('../../../benchmarks/picture-book-quality/FIXTURE.json', import.meta.url),
+    'utf8',
+  ),
 );
 const ids = {
   mimi: 'de0169d8-d975-4f1b-b04c-a15c25f54bdc',
