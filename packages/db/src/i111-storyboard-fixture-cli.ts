@@ -26,7 +26,13 @@ type RawPage = {
   character_ids: string[];
   source_ai_job_id: string | null;
 };
-type Book = { id: string; consumer_user_id: string; ai_project_id: string; status: string; layout_preset: string };
+type Book = {
+  id: string;
+  consumer_user_id: string;
+  ai_project_id: string;
+  status: string;
+  layout_preset: string;
+};
 type Character = {
   id: string;
   name: string;
