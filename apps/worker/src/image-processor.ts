@@ -11,6 +11,7 @@ import {
 } from '@xiaohai/db';
 import type { ImageProvider } from './image-provider.js';
 import { ImageProviderError } from './image-provider.js';
+import type { PrivateBosReferenceResolver } from './private-bos-reference.js';
 
 type Db = ReturnType<typeof createDatabase>['db'];
 type ImageLogger = { error: (fields: Record<string, unknown>, message: string) => void };
@@ -33,6 +34,7 @@ export class ImageJobProcessor {
     private readonly provider: ImageProvider,
     private readonly timeoutMs: number,
     private readonly logger?: ImageLogger,
+    private readonly resolveReferenceUrl: PrivateBosReferenceResolver = () => null,
   ) {}
 
   async processOne(): Promise<string | null> {
@@ -379,28 +381,41 @@ export class ImageJobProcessor {
       .select({
         id: mediaAssets.id,
         provider: mediaAssets.provider,
-        url: mediaAssets.playbackUrl,
+        objectKey: mediaAssets.objectKey,
+        playbackUrl: mediaAssets.playbackUrl,
         status: mediaAssets.status,
       })
       .from(mediaAssets)
       .where(inArray(mediaAssets.id, ids));
-    const realReferenceRows = rows.filter((row) => row.provider === 'BAIDU_BOS');
     if (
       rows.length !== ids.length ||
+      new Set(ids).size !== ids.length ||
       rows.some(
         (row) =>
           row.status !== 'READY' ||
-          (row.provider !== 'MOCK_IMAGE' &&
-            (row.provider !== 'BAIDU_BOS' || !row.url || !row.url.startsWith('https://'))),
+          (row.provider !== 'MOCK_IMAGE' && row.provider !== 'BAIDU_BOS'),
       )
-    )
+    ) {
       throw new ImageProviderError('IMAGE_PROVIDER_UNAVAILABLE', {
         stage: 'VALIDATION',
         validationCode: 'INVALID_REFERENCE_ASSET',
       });
-    return ids
-      .map((id) => realReferenceRows.find((row) => row.id === id)?.url)
-      .filter((url): url is string => Boolean(url));
+    }
+
+    // Only private BOS objects signed for the worker's exact bucket are
+    // allowed as remote I2I inputs. Never fall back to the unsigned URL.
+    return ids.flatMap((id) => {
+      const asset = rows.find((item) => item.id === id)!;
+      if (asset.provider === 'MOCK_IMAGE') return [];
+      const signed = this.resolveReferenceUrl(asset);
+      if (!signed) {
+        throw new ImageProviderError('IMAGE_PROVIDER_UNAVAILABLE', {
+          stage: 'VALIDATION',
+          validationCode: 'INVALID_REFERENCE_ASSET',
+        });
+      }
+      return [signed];
+    });
   }
 }
 
