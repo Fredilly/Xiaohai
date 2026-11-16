@@ -92,11 +92,17 @@ export function createPrivateBosPlaybackResolver(
     try {
       // Only sign media whose canonical address belongs to THIS private bucket.
       const recorded = new URL(asset.playbackUrl);
+      // Only #111 imported reference keys may retain the historical extra slash.
+      // Never normalize arbitrary stored paths or sign the untrusted recorded URL.
+      const legacyI111ReferencePath =
+        /^picture-books\/character-references\/i111\/[0-9a-f-]+\/[0-9a-f-]+\/[0-9a-f-]+\/[0-9a-f]{64}\.png$/.test(
+          key,
+        ) && recorded.pathname === `/${path}`;
       if (
         recorded.protocol !== 'https:' ||
         recorded.hostname !== originHost ||
         recorded.port ||
-        recorded.pathname !== path ||
+        (recorded.pathname !== path && !legacyI111ReferencePath) ||
         recorded.search ||
         recorded.hash ||
         recorded.username ||

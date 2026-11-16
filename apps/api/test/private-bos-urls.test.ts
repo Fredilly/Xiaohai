@@ -4,6 +4,13 @@ import { createPrivateBosPlaybackResolver } from '../src/picture-book/private-bo
 const bucket = 'xiaohai-staging-assets';
 const host = `${bucket}.cd.bcebos.com`;
 const key = 'picture-books/bailian/test.png';
+const importedKey = [
+  'picture-books/character-references/i111',
+  '11111111-1111-4111-8111-111111111111',
+  '22222222-2222-4222-8222-222222222222',
+  '33333333-3333-4333-8333-333333333333',
+  `${'a'.repeat(64)}.png`,
+].join('/');
 const asset = {
   provider: 'BAIDU_BOS',
   objectKey: key,
@@ -32,6 +39,39 @@ describe('private BOS owner-scoped playback signer', () => {
     );
     expect(resolveUrl(asset)).toContain('?authorization=signature');
     expect(calls).toEqual([[bucket, key, 1_800_000_000, 300]]);
+  });
+
+  it('signs the exact legacy #111 double-slash URL without changing the stored record', () => {
+    const calls: unknown[][] = [];
+    const signedUrl = `https://cd.bcebos.com/${bucket}/${importedKey}?authorization=signature`;
+    const resolveUrl = createPrivateBosPlaybackResolver(
+      { ...env, BAIDU_BOS_PUBLIC_ORIGIN: `https://${host}/` },
+      {
+        generatePresignedUrl: (...args) => {
+          calls.push(args);
+          return signedUrl;
+        },
+      },
+      () => 1_800_000_000_000,
+    );
+    const originalUrl = `https://${host}//${importedKey}`;
+    const importedAsset = { ...asset, objectKey: importedKey, playbackUrl: originalUrl };
+    expect(resolveUrl(importedAsset)).toBe(signedUrl);
+    expect(importedAsset.playbackUrl).toBe(originalUrl);
+    expect(calls).toEqual([[bucket, importedKey, 1_800_000_000, 300]]);
+
+    // Compatibility is limited to one historical extra slash on #111 imports.
+    for (const playbackUrl of [
+      `https://${host}///${importedKey}`,
+      `https://${host}//${importedKey}?token=bad`,
+      `https://${host}//${importedKey}#fragment`,
+      `https://xiaohai-prod-assets.cd.bcebos.com//${importedKey}`,
+      `http://${host}//${importedKey}`,
+      `https://${host}//other.png`,
+    ]) {
+      expect(resolveUrl({ ...importedAsset, playbackUrl })).toBeNull();
+    }
+    expect(resolveUrl({ ...asset, playbackUrl: `https://${host}//${key}` })).toBeNull();
   });
 
   it('returns null without credentials and never discloses a raw BOS URL', () => {
