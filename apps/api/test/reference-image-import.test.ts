@@ -132,7 +132,17 @@ describe('isolated character reference PNG import', () => {
         'https://xiaohai-i111-disposable01.cd.bcebos.com',
         { objectKey: key, body: image },
       );
-    expect((await upload()).byteSize).toBe(image.length);
+    const canonicalUrl = `https://xiaohai-i111-disposable01.cd.bcebos.com/${key}`;
+    const firstUpload = await upload();
+    expect(firstUpload.byteSize).toBe(image.length);
+    expect(firstUpload.playbackUrl).toBe(canonicalUrl);
+    const trailingSlashUpload = await uploadVerifiedReferenceToBos(
+      client,
+      'xiaohai-i111-disposable01',
+      'https://xiaohai-i111-disposable01.cd.bcebos.com/',
+      { objectKey: key, body: image },
+    );
+    expect(trailingSlashUpload.playbackUrl).toBe(canonicalUrl);
     expect(client.putObject).toHaveBeenCalledWith('xiaohai-i111-disposable01', key, image, {
       'Content-Type': 'image/png',
       'Content-Length': image.length,

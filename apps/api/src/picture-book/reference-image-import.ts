@@ -209,7 +209,7 @@ export async function uploadVerifiedReferenceToBos(
   }
   return {
     objectKey: input.objectKey,
-    playbackUrl: `${origin}/${input.objectKey}`,
+    playbackUrl: `${origin.replace(/\/+$/, '')}/${input.objectKey}`,
     byteSize: Number(length),
   };
 }
