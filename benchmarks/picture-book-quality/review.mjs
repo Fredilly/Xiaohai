@@ -33,7 +33,7 @@ export function validateQualityReview(artifact, { allowPending = false } = {}) {
     }
     if (
       typeof artifact.reviewedAt !== 'string' ||
-      !/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{3})?Z$/u.test(artifact.reviewedAt) ||
+      !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/u.test(artifact.reviewedAt) ||
       Number.isNaN(Date.parse(artifact.reviewedAt))
     ) {
       throw new Error('human reviewedAt is missing or invalid');
@@ -118,16 +118,18 @@ export function validateQualityReview(artifact, { allowPending = false } = {}) {
     if (!Array.isArray(run.technicalDefects)) {
       throw new Error(`${run.runId} technicalDefects must be an array`);
     }
-    if (run.technicalDefects.some((defect) =>
-      typeof defect !== 'string' || !/^[A-Z][A-Z0-9_]{1,63}$/u.test(defect)
-    )) {
+    if (
+      run.technicalDefects.some(
+        (defect) => typeof defect !== 'string' || !/^[A-Z][A-Z0-9_]{1,63}$/u.test(defect),
+      )
+    ) {
       throw new Error(`${run.runId} technicalDefects must contain safe codes`);
     }
     if (
       run.accepted === true &&
       (run.unwantedTextArtifacts !== 'NONE' ||
         run.technicalDefects.some((defect) =>
-          /^(?:EXTRA_|DUPLICATE_|GARBLED_|UNREQUESTED_|MISSING_LIMB)/u.test(defect)
+          /^(?:EXTRA_|DUPLICATE_|GARBLED_|UNREQUESTED_|MISSING_LIMB)/u.test(defect),
         ))
     ) {
       throw new Error(`${run.runId} critical artifact cannot be accepted`);
