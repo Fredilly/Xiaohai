@@ -25,6 +25,32 @@ export type I111FixturePage = {
   characterIds: string[];
 };
 
+export function validateI111LocalTarget(env: NodeJS.ProcessEnv): string {
+  if (env.APP_ENV !== 'dev' || env.NODE_ENV === 'production' || env.NODE_ENV === 'test') {
+    throw new Error('I111_ENVIRONMENT_NOT_DEV');
+  }
+  if (!env.DATABASE_URL) throw new Error('I111_DATABASE_URL_MISSING');
+  let url: URL;
+  try {
+    url = new URL(env.DATABASE_URL);
+  } catch {
+    throw new Error('I111_DATABASE_URL_INVALID');
+  }
+  if (
+    url.protocol !== 'postgresql:' ||
+    url.hostname !== '127.0.0.1' ||
+    url.port !== '52511' ||
+    url.pathname !== '/' + I111_DATABASE ||
+    decodeURIComponent(url.username) !== 'xiaohai_i111_app' ||
+    !url.password ||
+    url.search ||
+    url.hash
+  ) {
+    throw new Error('I111_DATABASE_ALLOWLIST_REJECTED');
+  }
+  return env.DATABASE_URL;
+}
+
 export function createI111FixturePages(
   raw: unknown,
   characterIds: { mimi: string; pip: string },
