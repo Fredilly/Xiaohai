@@ -150,7 +150,7 @@ async function run() {
       fail('I111_IMPORTED_REFERENCES_MISMATCH');
     }
 
-    const fixturePages = createI111FixturePages(fixture, { mimi: c[0]!.id, pip: c[1]!.id });
+    const fixturePages = createI111FixturePages(fixture, { mimi: c[0].id, pip: c[1].id });
     const activeJobs = await client.query(
       "SELECT id FROM ai_jobs WHERE project_id = $1 AND status IN ('QUEUED','RUNNING') LIMIT 1",
       [book.ai_project_id],
