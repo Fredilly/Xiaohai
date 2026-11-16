@@ -6,9 +6,7 @@ export type PrivateBosReferenceAsset = {
   playbackUrl: string | null;
 };
 
-export type PrivateBosReferenceResolver = (
-  asset: PrivateBosReferenceAsset,
-) => string | null;
+export type PrivateBosReferenceResolver = (asset: PrivateBosReferenceAsset) => string | null;
 
 type Presigner = {
   generatePresignedUrl(
@@ -42,7 +40,11 @@ export function createPrivateBosReferenceResolver(
   if (!endpoint || !publicOrigin || !bucket || !accessKeyId || !secretAccessKey) {
     return disabled;
   }
-  if ([endpoint, publicOrigin, bucket, accessKeyId, secretAccessKey].some((value) => value.startsWith('INJECT_'))) {
+  if (
+    [endpoint, publicOrigin, bucket, accessKeyId, secretAccessKey].some((value) =>
+      value.startsWith('INJECT_'),
+    )
+  ) {
     return disabled;
   }
   if (!/^[a-z0-9-]{4,63}$/.test(bucket)) return disabled;
