@@ -351,57 +351,62 @@ test('reused approval ID is rejected before a second retention invocation', asyn
 });
 
 test('concurrent dispatches atomically consume one approval ID', async () => {
-  const fx = await remoteFixture({
-    approvalId: 'XIAOHAI-195-STEADY-20261112-CONCURRENT',
-  });
-  const secondPaths = await fx.recreateTransport();
-  const run = (paths) =>
-    new Promise((resolve) => {
-      const child = spawn('bash', [remoteScript, paths.paramsPath, paths.planPath], {
-        env: { ...fx.env, MOCK_SLEEP: 'true' },
-        encoding: 'utf8',
-      });
-      let stdout = '';
-      let stderr = '';
-      child.stdout.on('data', (chunk) => {
-        stdout += chunk;
-      });
-      child.stderr.on('data', (chunk) => {
-        stderr += chunk;
-      });
-      child.on('close', (status) => resolve({ status, stdout, stderr }));
+  // Each trial uses a fresh test-only HOME and approval ID. Do not mask
+  // timing-sensitive double-consumption by relying on a single lucky run.
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const fx = await remoteFixture({
+      approvalId: `XIAOHAI-195-STEADY-20261112-CONCURRENT-${attempt}`,
     });
-  const results = await Promise.all([
-    run({ paramsPath: fx.paramsPath, planPath: fx.planPath }),
-    run(secondPaths),
-  ]);
-  // Include safe fixture-only evidence when this concurrency invariant fails in CI.
-  // Statuses alone cannot tell whether both children invoked the mock executor.
-  const observedStatuses = results.map((result) => result.status).sort((a, b) => a - b);
-  const observedCalls = await lineCount(fx.calls);
-  const receiptPath = join(
-    fx.home,
-    'xiaohai-deploy',
-    '.retention-authorizations',
-    fx.approvalId,
-    'receipt.txt',
-  );
-  let receiptExists = false;
-  try {
-    receiptExists = (await stat(receiptPath)).isFile();
-  } catch {
-    receiptExists = false;
+    const secondPaths = await fx.recreateTransport();
+    const run = (paths) =>
+      new Promise((resolve) => {
+        const child = spawn('bash', [remoteScript, paths.paramsPath, paths.planPath], {
+          env: { ...fx.env, MOCK_SLEEP: 'true' },
+          encoding: 'utf8',
+        });
+        let stdout = '';
+        let stderr = '';
+        child.stdout.on('data', (chunk) => {
+          stdout += chunk;
+        });
+        child.stderr.on('data', (chunk) => {
+          stderr += chunk;
+        });
+        child.on('close', (status) => resolve({ status, stdout, stderr }));
+      });
+    const results = await Promise.all([
+      run({ paramsPath: fx.paramsPath, planPath: fx.planPath }),
+      run(secondPaths),
+    ]);
+    // Include safe fixture-only evidence when this concurrency invariant fails in CI.
+    // Statuses alone cannot tell whether both children invoked the mock executor.
+    const observedStatuses = results.map((result) => result.status).sort((a, b) => a - b);
+    const observedCalls = await lineCount(fx.calls);
+    const receiptPath = join(
+      fx.home,
+      'xiaohai-deploy',
+      '.retention-authorizations',
+      fx.approvalId,
+      'receipt.txt',
+    );
+    let receiptExists = false;
+    try {
+      receiptExists = (await stat(receiptPath)).isFile();
+    } catch {
+      receiptExists = false;
+    }
+    const diagnostic = JSON.stringify({
+      attempt,
+      statuses: observedStatuses,
+      mockCallCount: observedCalls,
+      approvalReceiptExists: receiptExists,
+      rejectedAsConsumed: results.map((result) => /approval ID already consumed/.test(result.stderr)),
+      reportedSuccess: results.map((result) => /RETENTION_EXECUTOR_STATUS=0/.test(result.stdout)),
+    });
+    assert.deepEqual(observedStatuses, [0, 1], diagnostic);
+    assert.equal(observedCalls, 1, diagnostic);
+    assert.ok(results.some((result) => /approval ID already consumed/.test(result.stderr)));
   }
-  const diagnostic = JSON.stringify({
-    statuses: observedStatuses,
-    mockCallCount: observedCalls,
-    approvalReceiptExists: receiptExists,
-    rejectedAsConsumed: results.map((result) => /approval ID already consumed/.test(result.stderr)),
-    reportedSuccess: results.map((result) => /RETENTION_EXECUTOR_STATUS=0/.test(result.stdout)),
-  });
-  assert.deepEqual(observedStatuses, [0, 1], diagnostic);
-  assert.equal(observedCalls, 1, diagnostic);
-  assert.ok(results.some((result) => /approval ID already consumed/.test(result.stderr)));
 });
 
 test('mock SSH dispatcher sends only generated paths in remote command, never parameter contents', async () => {
