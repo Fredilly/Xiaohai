@@ -13,6 +13,7 @@ import {
   I111_BOOK_ID,
   I111_DATABASE,
   I111_OWNER_ID,
+  validateI111LocalTarget,
   matchExistingI111Pages,
 } from './i111-storyboard-fixture.js';
 
@@ -41,32 +42,6 @@ function fail(code: string): never {
   throw new Error(code);
 }
 
-function validateLocalTarget(env: NodeJS.ProcessEnv) {
-  if (env.APP_ENV !== 'dev' || env.NODE_ENV === 'production' || env.NODE_ENV === 'test') {
-    fail('I111_ENVIRONMENT_NOT_DEV');
-  }
-  if (!env.DATABASE_URL) fail('I111_DATABASE_URL_MISSING');
-  let url: URL;
-  try {
-    url = new URL(env.DATABASE_URL);
-  } catch {
-    fail('I111_DATABASE_URL_INVALID');
-  }
-  if (
-    url.protocol !== 'postgresql:' ||
-    url.hostname !== '127.0.0.1' ||
-    url.port !== '52511' ||
-    url.pathname !== '/' + I111_DATABASE ||
-    decodeURIComponent(url.username) !== 'xiaohai_i111_app' ||
-    !url.password ||
-    url.search ||
-    url.hash
-  ) {
-    fail('I111_DATABASE_ALLOWLIST_REJECTED');
-  }
-  return env.DATABASE_URL;
-}
-
 async function run() {
   const mode = process.argv.slice(2);
   if (mode.length !== 1 || !['--plan', '--apply'].includes(mode[0]!)) {
@@ -81,7 +56,7 @@ async function run() {
     fail('I111_APPLY_APPROVAL_OR_BACKUP_MISSING');
   }
 
-  const connectionString = validateLocalTarget(process.env);
+  const connectionString = validateI111LocalTarget(process.env);
   // Script is run from its TypeScript source via tsx; fail if the fixed fixture
   // cannot be loaded from the reviewed repository path.
   const fixturePath = fileURLToPath(
