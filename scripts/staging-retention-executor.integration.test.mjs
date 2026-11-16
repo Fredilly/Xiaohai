@@ -375,11 +375,32 @@ test('concurrent dispatches atomically consume one approval ID', async () => {
     run({ paramsPath: fx.paramsPath, planPath: fx.planPath }),
     run(secondPaths),
   ]);
-  assert.deepEqual(
-    results.map((result) => result.status).sort((a, b) => a - b),
-    [0, 1],
+  // Include safe fixture-only evidence when this concurrency invariant fails in CI.
+  // Statuses alone cannot tell whether both children invoked the mock executor.
+  const observedStatuses = results.map((result) => result.status).sort((a, b) => a - b);
+  const observedCalls = await lineCount(fx.calls);
+  const receiptPath = join(
+    fx.home,
+    'xiaohai-deploy',
+    '.retention-authorizations',
+    fx.approvalId,
+    'receipt.txt',
   );
-  assert.equal(await lineCount(fx.calls), 1);
+  let receiptExists = false;
+  try {
+    receiptExists = (await stat(receiptPath)).isFile();
+  } catch {
+    receiptExists = false;
+  }
+  const diagnostic = JSON.stringify({
+    statuses: observedStatuses,
+    mockCallCount: observedCalls,
+    approvalReceiptExists: receiptExists,
+    rejectedAsConsumed: results.map((result) => /approval ID already consumed/.test(result.stderr)),
+    reportedSuccess: results.map((result) => /RETENTION_EXECUTOR_STATUS=0/.test(result.stdout)),
+  });
+  assert.deepEqual(observedStatuses, [0, 1], diagnostic);
+  assert.equal(observedCalls, 1, diagnostic);
   assert.ok(results.some((result) => /approval ID already consumed/.test(result.stderr)));
 });
 
