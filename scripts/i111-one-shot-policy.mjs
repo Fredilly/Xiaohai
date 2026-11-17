@@ -34,25 +34,73 @@ function isSha(value) {
   return typeof value === 'string' && /^[0-9a-f]{40}$/.test(value);
 }
 
+// Accept only bounded, plain JSON-shaped data. Reject accessors, sparse arrays,
+// non-JSON values, cycles, symbols and custom prototypes before reading fields.
+// This is only an input check, not authentication of self-reported facts.
+function isPlainJsonData(value, seen = new Set(), depth = 0) {
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return true;
+  if (typeof value === 'number') return Number.isFinite(value);
+  if (typeof value !== 'object' || depth > 12 || seen.has(value)) return false;
+  const array = Array.isArray(value);
+  if (Object.getPrototypeOf(value) !== (array ? Array.prototype : Object.prototype)) {
+    return false;
+  }
+  const keys = Reflect.ownKeys(value);
+  if (keys.length > 256 || (array && (value.length > 255 || keys.length !== value.length + 1))) {
+    return false;
+  }
+  seen.add(value);
+  const dataKeys = array ? Array.from({ length: value.length }, (_, i) => String(i)) : keys;
+  for (const key of dataKeys) {
+    if (typeof key !== 'string') return false;
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (
+      !descriptor?.enumerable ||
+      !Object.hasOwn(descriptor, 'value') ||
+      !isPlainJsonData(descriptor.value, seen, depth + 1)
+    ) {
+      return false;
+    }
+  }
+  seen.delete(value);
+  return true;
+}
+
+function isNonNegativeMinor(value) {
+  return Number.isSafeInteger(value) && value >= 0;
+}
+
+function invalidSnapshot() {
+  return {
+    verdict: 'STOP',
+    errorCodes: ['I111_SNAPSHOT_INVALID'],
+    paidExecutionAuthorized: false,
+  };
+}
+
 /** Returns allowlisted codes only, never an untrusted value or secret. */
 export function assessI111OneShotSnapshot(snapshot) {
+  try {
+    if (!isObject(snapshot) || !isPlainJsonData(snapshot)) return invalidSnapshot();
+    return assessParsedI111OneShotSnapshot(snapshot);
+  } catch {
+    // No accessor/proxy error or untrusted value may escape the fixed-code API.
+    return invalidSnapshot();
+  }
+}
+
+function assessParsedI111OneShotSnapshot(snapshot) {
   const errors = [];
   const requireValue = (code, condition) => {
     if (!condition) errors.push(code);
   };
-  if (!isObject(snapshot)) {
-    return {
-      verdict: 'STOP',
-      errorCodes: ['I111_SNAPSHOT_INVALID'],
-      paidExecutionAuthorized: false,
-    };
-  }
   const scope = I111_ONE_SHOT_SCOPE;
   const book = isObject(snapshot.book) ? snapshot.book : {};
   const runtime = isObject(snapshot.runtime) ? snapshot.runtime : {};
   const budget = isObject(snapshot.budget) ? snapshot.budget : {};
   const references = Array.isArray(snapshot.references) ? snapshot.references : [];
   const attempts = Array.isArray(snapshot.attempts) ? snapshot.attempts : [];
+  requireValue('I111_ATTEMPTS_INVALID', Array.isArray(snapshot.attempts));
 
   requireValue(
     'I111_CODE_NOT_REVIEWED',
@@ -114,6 +162,24 @@ export function assessI111OneShotSnapshot(snapshot) {
       runtime.imageTimeoutMs >= 600_000 &&
       runtime.imageTimeoutMs <= 780_000,
   );
+  const previousCostValid = attempts.every(
+    (attempt) =>
+      isObject(attempt) &&
+      attempt.reservedMinor === scope.reservationMinor &&
+      isNonNegativeMinor(attempt.actualMinor) &&
+      attempt.actualMinor <= attempt.reservedMinor,
+  );
+  const settledTotalMinor = previousCostValid
+    ? attempts.reduce((sum, attempt) => sum + attempt.actualMinor, 0)
+    : null;
+  const globalWindow = isObject(budget.globalWindow) ? budget.globalWindow : {};
+  const consumerWindow = isObject(budget.consumerWindow) ? budget.consumerWindow : {};
+  const windowWithinLimit = (window) =>
+    isNonNegativeMinor(window.actualMinor) &&
+    isNonNegativeMinor(window.reservedMinor) &&
+    window.actualMinor === settledTotalMinor &&
+    window.reservedMinor === 0 &&
+    window.actualMinor + window.reservedMinor + scope.reservationMinor <= scope.budgetLimitMinor;
   requireValue(
     'I111_BUDGET_INVALID',
     budget.enabled === true &&
@@ -125,7 +191,10 @@ export function assessI111OneShotSnapshot(snapshot) {
       budget.costBasisVerified === true &&
       budget.unaccountedReservations === 0 &&
       budget.unaccountedLedgerEntries === 0 &&
-      budget.unsettledAtRisk === 0,
+      budget.unsettledAtRisk === 0 &&
+      previousCostValid &&
+      windowWithinLimit(globalWindow) &&
+      windowWithinLimit(consumerWindow),
   );
 
   requireValue('I111_ATTEMPT_COUNT_INVALID', attempts.length < scope.maxCalls);
@@ -142,7 +211,10 @@ export function assessI111OneShotSnapshot(snapshot) {
           attempt.mediaReady === true &&
           attempt.settled === true &&
           attempt.completeCostVerified === true &&
-          attempt.providerRequestIdPresent === true
+          attempt.providerRequestIdPresent === true &&
+          attempt.reservedMinor === scope.reservationMinor &&
+          isNonNegativeMinor(attempt.actualMinor) &&
+          attempt.actualMinor <= attempt.reservedMinor
         );
       }),
   );
