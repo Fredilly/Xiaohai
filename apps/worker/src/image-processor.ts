@@ -12,6 +12,11 @@ import {
 } from '@xiaohai/db';
 import type { ImageProvider } from './image-provider.js';
 import { ImageProviderError } from './image-provider.js';
+import {
+  I111_PAID_RUN,
+  consumeI111ProviderSlot,
+  noteI111ProviderOutcome,
+} from './i111-paid-attempt-gate.js';
 import type { PrivateBosReferenceResolver } from './private-bos-reference.js';
 
 type Db = ReturnType<typeof createDatabase>['db'];
@@ -36,6 +41,7 @@ export class ImageJobProcessor {
     private readonly timeoutMs: number,
     private readonly logger?: ImageLogger,
     private readonly resolveReferenceUrl: PrivateBosReferenceResolver = () => null,
+    private readonly i111AllowedIllustrationId?: string,
   ) {
     if (this.provider.name === 'BAILIAN') assertImageReferenceLifetime(this.timeoutMs);
   }
@@ -49,12 +55,16 @@ export class ImageJobProcessor {
           and(
             eq(workPageIllustrations.status, 'QUEUED'),
             eq(workPageIllustrations.provider, this.provider.name),
+            ...(this.i111AllowedIllustrationId
+              ? [eq(workPageIllustrations.id, this.i111AllowedIllustrationId)]
+              : []),
           ),
         )
         .orderBy(asc(workPageIllustrations.createdAt))
         .limit(1)
         .for('update', { skipLocked: true });
       if (!illustration) {
+        if (this.i111AllowedIllustrationId) return null;
         const [reference] = await tx
           .select({ reference: characterReferenceImages, character: characterProfiles })
           .from(characterReferenceImages)
@@ -115,6 +125,7 @@ export class ImageJobProcessor {
           .select({
             status: aiCostReservations.status,
             uncertainty: aiCostReservations.uncertainty,
+            budgetKey: aiCostReservations.budgetKey,
           })
           .from(aiCostReservations)
           .where(
@@ -135,6 +146,15 @@ export class ImageJobProcessor {
             validationCode: 'AI_BUDGET_RESERVATION_REQUIRED',
           });
         }
+        if (
+          (reservation.budgetKey === I111_PAID_RUN.budgetKey) !==
+          (this.i111AllowedIllustrationId === row.id)
+        ) {
+          throw new ImageProviderError('IMAGE_PROVIDER_UNAVAILABLE', {
+            stage: 'BUDGET_VALIDATION',
+            validationCode: 'I111_PAID_ATTEMPT_STOP',
+          });
+        }
       }
       // MOCK uses consistency metadata only. Never pass its local display URL
       // to an image provider as an I2I input. BAILIAN keeps strict HTTPS checks.
@@ -142,6 +162,15 @@ export class ImageJobProcessor {
         illustrationRow && this.provider.name === 'BAILIAN'
           ? await this.referenceUrls(illustrationRow.consistency)
           : [];
+      if (this.provider.name === 'BAILIAN' && this.i111AllowedIllustrationId) {
+        if (isReference || row.id !== this.i111AllowedIllustrationId) {
+          throw new ImageProviderError('IMAGE_PROVIDER_UNAVAILABLE', {
+            stage: 'BUDGET_VALIDATION',
+            validationCode: 'I111_PAID_ATTEMPT_STOP',
+          });
+        }
+        await consumeI111ProviderSlot(this.db, row.id);
+      }
       providerInvoked = true;
       const result = await this.provider.generate({
         generationKey: row.id,
@@ -285,6 +314,10 @@ export class ImageJobProcessor {
     providerRequestId?: string,
     failureCode?: string,
   ) {
+    if (this.i111AllowedIllustrationId === resourceId && this.provider.name === 'BAILIAN') {
+      await noteI111ProviderOutcome(this.db, resourceId, providerRequestId, failureCode);
+      return;
+    }
     await this.db.transaction(async (tx) => {
       const [reservation] = await tx
         .select()
@@ -298,6 +331,7 @@ export class ImageJobProcessor {
         .for('update');
       if (
         !reservation ||
+        reservation.budgetKey === I111_PAID_RUN.budgetKey ||
         reservation.status !== 'RESERVED' ||
         reservation.uncertainty === 'AT_RISK'
       )
