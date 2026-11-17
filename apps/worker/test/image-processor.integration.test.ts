@@ -941,9 +941,7 @@ suite('M10 image worker PostgreSQL integration', () => {
     expect(saved!.mediaAssetId).toBeNull();
   });
 
-  it(
-    'consumes one durable #111 slot under concurrent claim and never retries or opens fourth',
-    async () => {
+  it('enforces three durable slots across concurrent calls and retries', async () => {
     const fixture = await queued('BAILIAN', false);
     const [firstPage] = await db
       .select()
@@ -1142,6 +1140,5 @@ suite('M10 image worker PostgreSQL integration', () => {
     expect(ledgerRows).toHaveLength(3);
     expect(ledgerRows.every((row) => row.usage === I111_PROVIDER_SLOT_MARKER)).toBe(true);
     await db.delete(aiBudgetWindows).where(eq(aiBudgetWindows.budgetKey, scope.budgetKey));
-    },
-  );
+  });
 });
