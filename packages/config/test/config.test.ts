@@ -68,7 +68,7 @@ describe('#111 Beijing image workspace and private reference lifetime', () => {
       [workspace, 'https://ws-benchmark123.cn-shanghai.maas.aliyuncs.com/compatible-mode/v1'],
       [workspace, 'https://ws-benchmark123.cn-beijing.maas.aliyuncs.com/compatible-mode/v1/'],
       [workspace, approvedEndpoint + '?override=1'],
-      [workspace, 'https://ws-benchmark123.cn-beijing.maas.aliyuncs.com:443/compatible-mode/v1'],
+      [workspace, 'https://ws-benchmark123.cn-beijing.maas.aliyuncs.com:8443/compatible-mode/v1'],
       [workspace, 'https://username@ws-benchmark123.cn-beijing.maas.aliyuncs.com/compatible-mode/v1'],
     ] as const;
     for (const [ws, endpoint] of rejected) {
