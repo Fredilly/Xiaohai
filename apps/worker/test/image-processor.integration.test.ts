@@ -940,7 +940,10 @@ suite('M10 image worker PostgreSQL integration', () => {
     expect(saved).toMatchObject({ status: 'FAILED', errorCode: 'IMAGE_WORKER_TIMEOUT' });
     expect(saved!.mediaAssetId).toBeNull();
   });
-  it('consumes one durable #111 slot under concurrent claim and never retries or opens fourth', async () => {
+
+  it(
+    'consumes one durable #111 slot under concurrent claim and never retries or opens fourth',
+    async () => {
     const fixture = await queued('BAILIAN', false);
     const [firstPage] = await db
       .select()
@@ -1013,7 +1016,9 @@ suite('M10 image worker PostgreSQL integration', () => {
       consumeI111ProviderSlot(db, fixture.illustration.id, scope),
     ]);
     expect([a.status, b.status].sort()).toEqual(['fulfilled', 'rejected']);
-    expect((a.status === 'fulfilled' ? a.value : b.status === 'fulfilled' ? b.value : null)).toBe(1);
+    expect(
+      a.status === 'fulfilled' ? a.value : b.status === 'fulfilled' ? b.value : null,
+    ).toBe(1);
 
     const [firstLedger] = await db.select().from(aiCostLedger);
     expect(firstLedger).toMatchObject({
@@ -1025,7 +1030,13 @@ suite('M10 image worker PostgreSQL integration', () => {
     await expect(consumeI111ProviderSlot(db, fixture.illustration.id, scope)).rejects.toThrow(
       'I111_PAID_ATTEMPT_STOP',
     );
-    await noteI111ProviderOutcome(db, fixture.illustration.id, 'synthetic-request-1', undefined, scope);
+    await noteI111ProviderOutcome(
+      db,
+      fixture.illustration.id,
+      'synthetic-request-1',
+      undefined,
+      scope,
+    );
     const [atRisk] = await db
       .select()
       .from(aiCostReservations)
@@ -1131,6 +1142,6 @@ suite('M10 image worker PostgreSQL integration', () => {
     expect(ledgerRows).toHaveLength(3);
     expect(ledgerRows.every((row) => row.usage === I111_PROVIDER_SLOT_MARKER)).toBe(true);
     await db.delete(aiBudgetWindows).where(eq(aiBudgetWindows.budgetKey, scope.budgetKey));
-  });
-
+    },
+  );
 });
