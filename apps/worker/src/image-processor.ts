@@ -44,6 +44,9 @@ export class ImageJobProcessor {
     private readonly i111AllowedIllustrationId?: string,
   ) {
     if (this.provider.name === 'BAILIAN') assertImageReferenceLifetime(this.timeoutMs);
+    if (this.i111AllowedIllustrationId && process.env.APP_ENV !== 'dev') {
+      throw new Error('I111_PAID_ATTEMPT_STOP');
+    }
   }
 
   async processOne(): Promise<string | null> {
@@ -155,6 +158,19 @@ export class ImageJobProcessor {
             validationCode: 'I111_PAID_ATTEMPT_STOP',
           });
         }
+      }
+      // An ordinary Worker must never process either #111 frozen page even
+      // if an operator accidentally configures a different budget key.
+      if (
+        illustrationRow &&
+        (illustrationRow.pageId === I111_PAID_RUN.page1Id ||
+          illustrationRow.pageId === I111_PAID_RUN.page2Id) &&
+        !this.i111AllowedIllustrationId
+      ) {
+        throw new ImageProviderError('IMAGE_PROVIDER_UNAVAILABLE', {
+          stage: 'BUDGET_VALIDATION',
+          validationCode: 'I111_PAID_ATTEMPT_STOP',
+        });
       }
       // MOCK uses consistency metadata only. Never pass its local display URL
       // to an image provider as an I2I input. BAILIAN keeps strict HTTPS checks.
