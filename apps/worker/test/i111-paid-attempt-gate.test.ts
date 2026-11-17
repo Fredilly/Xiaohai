@@ -27,7 +27,9 @@ describe('#111 exactly three paid attempts, fixed page and revision order', () =
     expect(assertI111Slot(I111_PAID_RUN, 2, illustration(page2, 2))).toBe(3);
   });
 
-  it('fails closed for cover, wrong order, unknown revision/model/provider or fourth attempt', () => {
+  it(
+    'fails closed for cover, wrong order, unknown revision/model/provider or fourth attempt',
+    () => {
     for (const [attempts, row] of [
       [0, illustration(page2, 1)],
       [0, illustration(page1, 2)],
@@ -45,5 +47,6 @@ describe('#111 exactly three paid attempts, fixed page and revision order', () =
         'I111_PAID_ATTEMPT_STOP',
       );
     }
-  });
+    },
+  );
 });
