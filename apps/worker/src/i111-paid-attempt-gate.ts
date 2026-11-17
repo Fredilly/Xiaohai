@@ -44,7 +44,16 @@ export class I111AttemptStop extends Error {
   }
 }
 
-const SLOT_MARKER = 'I111_PROVIDER_SLOT_CONSUMED';
+const SLOT_MARKER = JSON.stringify({
+  benchmark: 'I111_MAC_PLAN_B',
+  marker: 'PROVIDER_POST_SLOT_CONSUMED',
+  inputImageCount: 2,
+  outputImageCount: 1,
+  expectedInputUnitMinor: 2,
+  expectedOutputUnitMinor: 18,
+  expectedChargeMinor: 22,
+  actualChargeVerified: false,
+});
 export const I111_PROVIDER_SLOT_MARKER = SLOT_MARKER;
 
 export function i111AllowedSlots(scope: I111PaidRunScope) {
@@ -90,7 +99,8 @@ export function assertI111Slot(
  *
  * The single existing ai_cost_ledger row becomes the durable attempt marker.
  * Later manual AT_RISK confirmation changes only its outcome/amount, preserving
- * the marker in failure_code; no new schema or migration is necessary.
+ * the JSON usage marker with planning price basis (NOT confirmed charge).
+ * No new schema or migration is necessary.
  */
 export async function consumeI111ProviderSlot(
   db: Db,
@@ -168,7 +178,7 @@ export async function consumeI111ProviderSlot(
       .where(inArray(aiCostLedger.reservationId, reservationIds));
     if (
       ledgers.length > scope.maxCalls ||
-      ledgers.some((entry) => entry.failureCode !== SLOT_MARKER)
+      ledgers.some((entry) => entry.usage !== SLOT_MARKER)
     ) {
       throw new I111AttemptStop();
     }
@@ -272,7 +282,7 @@ export async function consumeI111ProviderSlot(
       model: scope.model,
       amountMinor: current.reservation.reservedMinor,
       outcome: 'AT_RISK',
-      failureCode: SLOT_MARKER,
+      usage: SLOT_MARKER,
     });
     const updated = await tx
       .update(aiCostReservations)
@@ -327,7 +337,7 @@ export async function noteI111ProviderOutcome(
       .for('update');
     if (
       rows.length !== 1 ||
-      rows[0]!.failureCode !== SLOT_MARKER ||
+      rows[0]!.usage !== SLOT_MARKER ||
       rows[0]!.outcome !== 'AT_RISK'
     ) {
       throw new I111AttemptStop();
