@@ -25,6 +25,13 @@ import {
 } from '../src/image-provider.js';
 import { recoverStaleMedia } from '../src/stale-media.js';
 import { createPrivateBosReferenceResolver } from '../src/private-bos-reference.js';
+import {
+  I111_PAID_RUN,
+  I111_PROVIDER_SLOT_MARKER,
+  consumeI111ProviderSlot,
+  noteI111ProviderOutcome,
+  type I111PaidRunScope,
+} from '../src/i111-paid-attempt-gate.js';
 
 const database = process.env.DATABASE_URL ? createDatabase(process.env) : null;
 const suite = database ? describe : describe.skip;
@@ -67,7 +74,11 @@ suite('M10 image worker PostgreSQL integration', () => {
     });
   }
 
-  async function queued(provider: 'MOCK' | 'BAILIAN' = 'MOCK', reserve = true) {
+  async function queued(
+    provider: 'MOCK' | 'BAILIAN' = 'MOCK',
+    reserve = true,
+    frozenPageId?: string,
+  ) {
     const [user] = await db.insert(consumerUsers).values({}).returning();
     const [project] = await db
       .insert(aiProjects)
@@ -159,6 +170,7 @@ suite('M10 image worker PostgreSQL integration', () => {
     const [page] = await db
       .insert(workPages)
       .values({
+        ...(frozenPageId ? { id: frozenPageId } : {}),
         pictureBookId: book!.id,
         pageNumber: 1,
         storyText: '小狐狸出发。',
@@ -933,5 +945,234 @@ suite('M10 image worker PostgreSQL integration', () => {
       .where(eq(workPageIllustrations.id, fixture.illustration.id));
     expect(saved).toMatchObject({ status: 'FAILED', errorCode: 'IMAGE_WORKER_TIMEOUT' });
     expect(saved!.mediaAssetId).toBeNull();
+  });
+
+  for (const frozenPageId of [I111_PAID_RUN.page1Id, I111_PAID_RUN.page2Id]) {
+    it(`generic Worker preserves frozen #111 page ${frozenPageId}`, async () => {
+      const fixture = await queued('BAILIAN', true, frozenPageId);
+      const generate = vi.fn<ImageProvider['generate']>();
+      const readState = async () => ({
+        illustration: await db
+          .select()
+          .from(workPageIllustrations)
+          .where(eq(workPageIllustrations.id, fixture.illustration.id)),
+        reservations: await db
+          .select()
+          .from(aiCostReservations)
+          .where(eq(aiCostReservations.resourceId, fixture.illustration.id)),
+        ledger: await db
+          .select()
+          .from(aiCostLedger)
+          .where(eq(aiCostLedger.resourceId, fixture.illustration.id)),
+      });
+      const before = await readState();
+      expect(before.illustration[0]?.status).toBe('QUEUED');
+      expect(before.reservations).toHaveLength(1);
+      expect(before.ledger).toHaveLength(0);
+
+      const processor = new ImageJobProcessor(db, { name: 'BAILIAN', generate }, 5_000);
+      expect(await processor.processOne()).toBeNull();
+      expect(generate).not.toHaveBeenCalled();
+      expect(await readState()).toEqual(before);
+    });
+  }
+
+  it('enforces three durable slots across concurrent calls and retries', async () => {
+    const fixture = await queued('BAILIAN', false);
+    const [firstPage] = await db
+      .select()
+      .from(workPages)
+      .where(eq(workPages.id, fixture.illustration.pageId));
+    const [page2] = await db
+      .insert(workPages)
+      .values({
+        pictureBookId: firstPage!.pictureBookId,
+        pageNumber: 2,
+        storyText: 'synthetic second scene',
+        sceneDescription: 'forest map',
+        illustrationPrompt: 'Mimi and Pip with map',
+      })
+      .returning();
+    const scope = {
+      ...I111_PAID_RUN,
+      bookId: firstPage!.pictureBookId,
+      ownerId: fixture.userId,
+      page1Id: firstPage!.id,
+      page2Id: page2!.id,
+      budgetKey: 'TEST_I111_' + crypto.randomUUID(),
+      windowKey: 'ONLY_ISOLATED_TEST',
+    } as unknown as I111PaidRunScope;
+
+    const prepare = async (id: string) => {
+      await db.insert(aiCostReservations).values({
+        idempotencyKey: 'i111:' + id,
+        budgetKey: scope.budgetKey,
+        windowKey: scope.windowKey,
+        consumerUserId: scope.ownerId,
+        resourceType: 'PICTURE_BOOK_IMAGE',
+        resourceId: id,
+        provider: 'BAILIAN',
+        model: scope.model,
+        reservedMinor: scope.reservationMinor,
+      });
+      await db
+        .update(aiBudgetWindows)
+        .set({
+          reservedMinor: scope.reservationMinor,
+        })
+        .where(eq(aiBudgetWindows.budgetKey, scope.budgetKey));
+    };
+    await db.insert(aiBudgetWindows).values([
+      {
+        budgetKey: scope.budgetKey,
+        windowKey: scope.windowKey,
+        scopeType: 'GLOBAL',
+        limitMinor: 200,
+        consumerUserId: null,
+      },
+      {
+        budgetKey: scope.budgetKey,
+        windowKey: scope.windowKey,
+        scopeType: 'CONSUMER',
+        limitMinor: 200,
+        consumerUserId: fixture.userId,
+      },
+    ]);
+
+    await db
+      .update(workPageIllustrations)
+      .set({ model: scope.model, status: 'RUNNING' })
+      .where(eq(workPageIllustrations.id, fixture.illustration.id));
+    await prepare(fixture.illustration.id);
+
+    const [a, b] = await Promise.allSettled([
+      consumeI111ProviderSlot(db, fixture.illustration.id, scope),
+      consumeI111ProviderSlot(db, fixture.illustration.id, scope),
+    ]);
+    expect([a.status, b.status].sort()).toEqual(['fulfilled', 'rejected']);
+    expect(a.status === 'fulfilled' ? a.value : b.status === 'fulfilled' ? b.value : null).toBe(1);
+
+    const [firstLedger] = await db.select().from(aiCostLedger);
+    expect(firstLedger).toMatchObject({
+      resourceId: fixture.illustration.id,
+      outcome: 'AT_RISK',
+      usage: I111_PROVIDER_SLOT_MARKER,
+      amountMinor: 25,
+    });
+    await expect(consumeI111ProviderSlot(db, fixture.illustration.id, scope)).rejects.toThrow(
+      'I111_PAID_ATTEMPT_STOP',
+    );
+    await noteI111ProviderOutcome(
+      db,
+      fixture.illustration.id,
+      'synthetic-request-1',
+      undefined,
+      scope,
+    );
+    const [atRisk] = await db
+      .select()
+      .from(aiCostReservations)
+      .where(eq(aiCostReservations.resourceId, fixture.illustration.id));
+    expect(atRisk).toMatchObject({
+      status: 'RESERVED',
+      uncertainty: 'AT_RISK',
+      providerRequestId: 'synthetic-request-1',
+    });
+
+    const settle = async (id: string, requestId: string) => {
+      const [asset] = await db
+        .insert(mediaAssets)
+        .values({
+          provider: 'BAIDU_BOS',
+          objectKey: 'picture-books/bailian/' + id + '.png',
+          playbackUrl: 'https://assets.example.test/picture-books/bailian/' + id + '.png',
+          mimeType: 'image/png',
+          byteSize: 32,
+          status: 'READY',
+        })
+        .returning({ id: mediaAssets.id });
+      await db
+        .update(workPageIllustrations)
+        .set({ status: 'READY', mediaAssetId: asset!.id })
+        .where(eq(workPageIllustrations.id, id));
+      const [before] = await db
+        .select({
+          actualMinor: aiBudgetWindows.actualMinor,
+          reservedMinor: aiBudgetWindows.reservedMinor,
+        })
+        .from(aiBudgetWindows)
+        .where(eq(aiBudgetWindows.budgetKey, scope.budgetKey))
+        .limit(1);
+      await db
+        .update(aiCostReservations)
+        .set({
+          status: 'SETTLED',
+          uncertainty: 'NONE',
+          providerRequestId: requestId,
+          actualMinor: 22,
+        })
+        .where(eq(aiCostReservations.resourceId, id));
+      await db
+        .update(aiCostLedger)
+        .set({ outcome: 'SUCCEEDED', providerRequestId: requestId, amountMinor: 22 })
+        .where(eq(aiCostLedger.resourceId, id));
+      await db
+        .update(aiBudgetWindows)
+        .set({
+          reservedMinor: before!.reservedMinor - scope.reservationMinor,
+          actualMinor: before!.actualMinor + 22,
+        })
+        .where(eq(aiBudgetWindows.budgetKey, scope.budgetKey));
+    };
+    await settle(fixture.illustration.id, 'synthetic-request-1');
+
+    for (const [revision, ordinal] of [
+      [1, 2],
+      [2, 3],
+    ] as const) {
+      const [illustration] = await db
+        .insert(workPageIllustrations)
+        .values({
+          pageId: page2!.id,
+          revisionNumber: revision,
+          prompt: 'synthetic map',
+          provider: 'BAILIAN',
+          model: scope.model,
+          consistency: fixture.consistency,
+          status: 'RUNNING',
+        })
+        .returning();
+      await prepare(illustration!.id);
+      expect(await consumeI111ProviderSlot(db, illustration!.id, scope)).toBe(ordinal);
+      await noteI111ProviderOutcome(
+        db,
+        illustration!.id,
+        'synthetic-request-' + ordinal,
+        undefined,
+        scope,
+      );
+      await settle(illustration!.id, 'synthetic-request-' + ordinal);
+    }
+
+    const [fourth] = await db
+      .insert(workPageIllustrations)
+      .values({
+        pageId: page2!.id,
+        revisionNumber: 3,
+        prompt: 'forbidden fourth',
+        provider: 'BAILIAN',
+        model: scope.model,
+        consistency: fixture.consistency,
+        status: 'RUNNING',
+      })
+      .returning();
+    await prepare(fourth!.id);
+    await expect(consumeI111ProviderSlot(db, fourth!.id, scope)).rejects.toThrow(
+      'I111_PAID_ATTEMPT_STOP',
+    );
+    const ledgerRows = await db.select().from(aiCostLedger);
+    expect(ledgerRows).toHaveLength(3);
+    expect(ledgerRows.every((row) => row.usage === I111_PROVIDER_SLOT_MARKER)).toBe(true);
+    await db.delete(aiBudgetWindows).where(eq(aiBudgetWindows.budgetKey, scope.budgetKey));
   });
 });
