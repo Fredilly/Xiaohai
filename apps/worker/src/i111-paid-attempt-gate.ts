@@ -223,6 +223,8 @@ export async function consumeI111ProviderSlot(
           !reservation.providerRequestId ||
           reservation.actualMinor === null ||
           reservation.actualMinor > reservation.reservedMinor ||
+          illustration.status !== 'READY' ||
+          !illustration.mediaAssetId ||
           marker.outcome !== 'SUCCEEDED' ||
           marker.providerRequestId !== reservation.providerRequestId
         ) {
@@ -272,7 +274,7 @@ export async function consumeI111ProviderSlot(
       outcome: 'AT_RISK',
       failureCode: SLOT_MARKER,
     });
-    await tx
+    const updated = await tx
       .update(aiCostReservations)
       .set({ uncertainty: 'AT_RISK' })
       .where(
@@ -281,7 +283,9 @@ export async function consumeI111ProviderSlot(
           eq(aiCostReservations.status, 'RESERVED'),
           eq(aiCostReservations.uncertainty, 'NONE'),
         ),
-      );
+      )
+      .returning({ id: aiCostReservations.id });
+    if (updated.length !== 1) throw new I111AttemptStop();
     return consumed + 1;
   });
 }
