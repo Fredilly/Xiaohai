@@ -1037,6 +1037,29 @@ suite('M10 image worker PostgreSQL integration', () => {
     });
 
     const settle = async (id: string, requestId: string) => {
+      const [asset] = await db
+        .insert(mediaAssets)
+        .values({
+          provider: 'BAIDU_BOS',
+          objectKey: 'picture-books/bailian/' + id + '.png',
+          playbackUrl: 'https://assets.example.test/picture-books/bailian/' + id + '.png',
+          mimeType: 'image/png',
+          byteSize: 32,
+          status: 'READY',
+        })
+        .returning({ id: mediaAssets.id });
+      await db
+        .update(workPageIllustrations)
+        .set({ status: 'READY', mediaAssetId: asset!.id })
+        .where(eq(workPageIllustrations.id, id));
+      const [before] = await db
+        .select({
+          actualMinor: aiBudgetWindows.actualMinor,
+          reservedMinor: aiBudgetWindows.reservedMinor,
+        })
+        .from(aiBudgetWindows)
+        .where(eq(aiBudgetWindows.budgetKey, scope.budgetKey))
+        .limit(1);
       await db
         .update(aiCostReservations)
         .set({
@@ -1053,8 +1076,8 @@ suite('M10 image worker PostgreSQL integration', () => {
       await db
         .update(aiBudgetWindows)
         .set({
-          reservedMinor: 0,
-          actualMinor: 22,
+          reservedMinor: before!.reservedMinor - scope.reservationMinor,
+          actualMinor: before!.actualMinor + 22,
         })
         .where(eq(aiBudgetWindows.budgetKey, scope.budgetKey));
     };
