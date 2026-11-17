@@ -190,18 +190,28 @@ test('never echoes untrusted secrets in stop reasons', () => {
 });
 
 test('only an explicit dense attempts array represents first-slot history', () => {
-  for (const invalid of [undefined, null, 'none', {}, Array(2)]) {
+  for (const [invalid, expectedErrorCode] of [
+    [undefined, 'I111_SNAPSHOT_INVALID'],
+    [null, 'I111_ATTEMPTS_INVALID'],
+    ['none', 'I111_ATTEMPTS_INVALID'],
+    [{}, 'I111_ATTEMPTS_INVALID'],
+    [Array(2), 'I111_SNAPSHOT_INVALID'],
+  ]) {
     const s = fixture();
     s.attempts = invalid;
     const result = assessI111OneShotSnapshot(s);
     assert.equal(result.verdict, 'STOP');
     assert.equal(result.paidExecutionAuthorized, false);
-    assert.ok(
-      result.errorCodes.includes(
-        Array.isArray(invalid) ? 'I111_SNAPSHOT_INVALID' : 'I111_ATTEMPTS_INVALID',
-      ),
-    );
+    assert.ok(result.errorCodes.includes(expectedErrorCode));
   }
+
+  const missing = fixture();
+  delete missing.attempts;
+  const missingResult = assessI111OneShotSnapshot(missing);
+  assert.equal(missingResult.verdict, 'STOP');
+  assert.equal(missingResult.paidExecutionAuthorized, false);
+  assert.ok(missingResult.errorCodes.includes('I111_ATTEMPTS_INVALID'));
+
   assert.equal(assessI111OneShotSnapshot(fixture()).verdict, 'STATIC_REVIEW_ONLY');
 });
 
@@ -335,12 +345,16 @@ test('the exact scope and slot order match the production paid attempt gate', as
     totalLimitMinor: scope.budgetLimitMinor,
     maxCalls: scope.maxCalls,
   });
-  const slots = code.match(/export function i111AllowedSlots\([\s\S]*?return \[([\s\S]*?)\] as const;/);
+  const slots = code.match(
+    /export function i111AllowedSlots\([\s\S]*?return \[([\s\S]*?)\] as const;/,
+  );
   assert.ok(slots);
   assert.deepEqual(
-    [...slots[1].matchAll(/\{\s*pageId:\s*scope\.(page1Id|page2Id),\s*revisionNumber:\s*(\d+)\s*\}/g)].map(
-      ([, key, revision]) => ({ pageId: scope[key], revisionNumber: Number(revision) }),
-    ),
+    [
+      ...slots[1].matchAll(
+        /\{\s*pageId:\s*scope\.(page1Id|page2Id),\s*revisionNumber:\s*(\d+)\s*\}/g,
+      ),
+    ].map(([, key, revision]) => ({ pageId: scope[key], revisionNumber: Number(revision) })),
     [
       { pageId: scope.page1Id, revisionNumber: 1 },
       { pageId: scope.page2Id, revisionNumber: 1 },
@@ -364,5 +378,8 @@ test('the 900s reference lifetime and exact timeout margin match configuration',
     assert.equal(Number(match[1].replaceAll('_', '')), expected, key);
   }
   assert.match(code, /Math\.max\(timeoutMs, IMAGE_PROVIDER_MIN_TIMEOUT_MS\)/);
-  assert.match(code, /effectiveTimeoutMs \+ IMAGE_REFERENCE_EXPIRY_MARGIN_MS >\s+PRIVATE_BOS_IMAGE_REFERENCE_TTL_SECONDS \* 1000/);
+  assert.match(
+    code,
+    /effectiveTimeoutMs \+ IMAGE_REFERENCE_EXPIRY_MARGIN_MS >\s+PRIVATE_BOS_IMAGE_REFERENCE_TTL_SECONDS \* 1000/,
+  );
 });
