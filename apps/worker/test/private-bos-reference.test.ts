@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
+import { ImageJobProcessor } from '../src/image-processor.js';
+import type { ImageProvider } from '../src/image-provider.js';
 import {
   createPrivateBosReferenceResolver,
   PRIVATE_REFERENCE_TTL_SECONDS,
@@ -45,7 +47,7 @@ describe('Bailian private BOS reference inputs', () => {
       1_700_000_000,
       PRIVATE_REFERENCE_TTL_SECONDS,
     );
-    expect(PRIVATE_REFERENCE_TTL_SECONDS).toBe(300);
+    expect(PRIVATE_REFERENCE_TTL_SECONDS).toBe(900);
     expect(signed).not.toBe(recorded);
     expect(new URL(signed!).search).toBe('?authorization=signed-test');
   });
@@ -118,5 +120,19 @@ describe('Bailian private BOS reference inputs', () => {
       expect(resolver(asset)).toBeNull();
     }
     expect(signer.generatePresignedUrl).not.toHaveBeenCalled();
+  });
+});
+
+describe('#111 Bailian image processor signed-input deadline', () => {
+  const db = {} as ConstructorParameters<typeof ImageJobProcessor>[0];
+  const generate = vi.fn();
+  const provider: ImageProvider = { name: 'BAILIAN', generate };
+
+  it('rejects unsafe 900s worker timeout before connecting to DB or provider', () => {
+    expect(() => new ImageJobProcessor(db, provider, 900_000)).toThrow(
+      'IMAGE_REFERENCE_TTL_TIMEOUT_MISMATCH',
+    );
+    expect(() => new ImageJobProcessor(db, provider, 600_000)).not.toThrow();
+    expect(generate).not.toHaveBeenCalled();
   });
 });

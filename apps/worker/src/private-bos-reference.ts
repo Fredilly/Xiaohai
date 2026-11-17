@@ -1,4 +1,5 @@
 import baiduSdk from '@baiducloud/sdk';
+import { PRIVATE_BOS_IMAGE_REFERENCE_TTL_SECONDS } from '@xiaohai/config';
 
 export type PrivateBosReferenceAsset = {
   provider: string;
@@ -17,7 +18,7 @@ type Presigner = {
   ): string;
 };
 
-export const PRIVATE_REFERENCE_TTL_SECONDS = 300;
+export const PRIVATE_REFERENCE_TTL_SECONDS = PRIVATE_BOS_IMAGE_REFERENCE_TTL_SECONDS;
 
 /**
  * Sign ONLY existing, validated character-reference objects for a paid

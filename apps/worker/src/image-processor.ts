@@ -1,4 +1,5 @@
 import { and, asc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
+import { assertImageReferenceLifetime, IMAGE_PROVIDER_MIN_TIMEOUT_MS } from '@xiaohai/config';
 import {
   characterProfiles,
   characterReferenceImages,
@@ -35,7 +36,9 @@ export class ImageJobProcessor {
     private readonly timeoutMs: number,
     private readonly logger?: ImageLogger,
     private readonly resolveReferenceUrl: PrivateBosReferenceResolver = () => null,
-  ) {}
+  ) {
+    if (this.provider.name === 'BAILIAN') assertImageReferenceLifetime(this.timeoutMs);
+  }
 
   async processOne(): Promise<string | null> {
     const claimed = await this.db.transaction(async (tx) => {
@@ -104,7 +107,7 @@ export class ImageJobProcessor {
     const illustrationRow = isReference ? null : (row as IllustrationInputRow);
 
     const generationStartedAt = Date.now();
-    const effectiveTimeoutMs = Math.max(this.timeoutMs, 600_000);
+    const effectiveTimeoutMs = Math.max(this.timeoutMs, IMAGE_PROVIDER_MIN_TIMEOUT_MS);
     let providerInvoked = false;
     try {
       if (this.provider.name === 'BAILIAN') {
