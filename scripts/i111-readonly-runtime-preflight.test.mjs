@@ -1,14 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { runI111ReadonlyRuntimePreflight } from './i111-readonly-runtime-preflight.mjs';
+import {
+  runI111ReadonlyRuntimePreflight,
+  secureReadFile,
+} from './i111-readonly-runtime-preflight.mjs';
 import { I111_ONE_SHOT_SCOPE as scope } from './i111-one-shot-policy.mjs';
 
 const reviewedSha = 'a'.repeat(40);
-const mimiId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
-const pipId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+const mimiId = 'de0169d8-d975-4f1b-b04c-a15c25f54bdc';
+const pipId = '249a719e-d284-46e0-a525-285e93270248';
+const mimiReferenceId = 'fa526d14-9fc4-4cba-bf3e-ae9c8a888906';
+const pipReferenceId = 'bed51270-3add-4d10-93fb-8ffa085ff7a7';
 const mimiHash = 'a50abb6b7195a2be7886b47351f259c930aca36ebacec500b6fbfab65136f304';
 const pipHash = 'af3845b30a28a82c7cbcc491b76c1291355009c347274437ff23968ee144c06d';
 const bucket = 'xiaohai-i111-work-2ec3900280';
@@ -28,7 +32,7 @@ function env() {
     APP_ENV: 'dev',
     DATABASE_URL:
       'postgresql://xiaohai_i111_app:synthetic-password@127.0.0.1:52511/xiaohai_i111_mac_20261116',
-    I111_REVIEWED_SHA: reviewedSha,
+    REDIS_URL: 'redis://:synthetic-password@127.0.0.1:52512',
     PICTURE_BOOK_IMAGE_ENABLED: 'true',
     PICTURE_BOOK_IMAGE_PROVIDER: 'BAILIAN',
     PICTURE_BOOK_IMAGE_MODEL: 'qwen-image-3.0',
@@ -51,9 +55,49 @@ function env() {
   };
 }
 
+function migrationRows() {
+  return Array.from({ length: 42 }, (_, index) => ({
+    id: index + 1,
+    hash: String(index).padStart(64, '0'),
+    created_at: String(1_790_000_000_000 + index),
+  }));
+}
+
+function expectedMigrations(rows = migrationRows()) {
+  return rows.map((row, index) => ({
+    tag: `${String(index).padStart(4, '0')}_synthetic`,
+    hash: row.hash,
+    createdAt: row.created_at,
+  }));
+}
+
+function reference({ name, id, referenceId, digest, size, sortOrder, legacy = false }) {
+  const key = `picture-books/character-references/i111/${scope.ownerId}/${scope.bookId}/${id}/${digest}.png`;
+  const mediaId =
+    name === 'Mimi'
+      ? '10000000-0000-4000-8000-000000000001'
+      : '20000000-0000-4000-8000-000000000002';
+  return {
+    character_id: id,
+    name,
+    sort_order: sortOrder,
+    confirmed: true,
+    locked: true,
+    reference_media_asset_id: mediaId,
+    reference_id: referenceId,
+    reference_row_media_asset_id: mediaId,
+    reference_status: 'READY',
+    reference_provider: 'IMPORTED',
+    media_provider: 'BAIDU_BOS',
+    media_status: 'READY',
+    mime_type: 'image/png',
+    object_key: key,
+    playback_url: `https://${bucket}.cd.bcebos.com/${legacy ? '/' : ''}${key}`,
+    byte_size: size,
+  };
+}
+
 function baseRows() {
-  const objectKey = (id, digest) =>
-    `picture-books/character-references/i111/${scope.ownerId}/${scope.bookId}/${id}/${digest}.png`;
   return {
     identity: [
       {
@@ -61,11 +105,24 @@ function baseRows() {
         database_user: 'xiaohai_i111_app',
         transaction_read_only: 'on',
         is_replica: false,
+        server_port: 5432,
+        server_version_num: '170011',
       },
     ],
-    migrations: Array.from({ length: 42 }, (_, index) => ({
-      created_at: String(1_790_000_000_000 + index),
-    })),
+    role: [
+      {
+        rolname: 'xiaohai_i111_app',
+        rolsuper: false,
+        rolinherit: false,
+        rolcreaterole: false,
+        rolcreatedb: false,
+        rolcanlogin: true,
+        rolreplication: false,
+        rolbypassrls: false,
+        can_connect: true,
+      },
+    ],
+    migrations: migrationRows(),
     book: [
       {
         id: scope.bookId,
@@ -98,36 +155,32 @@ function baseRows() {
       },
     ],
     references: [
-      {
-        character_id: mimiId,
+      reference({
         name: 'Mimi',
-        confirmed: true,
-        locked: true,
-        reference_status: 'READY',
-        reference_provider: 'IMPORTED',
-        media_provider: 'BAIDU_BOS',
-        media_status: 'READY',
-        mime_type: 'image/png',
-        object_key: objectKey(mimiId, mimiHash),
-        playback_url: `https://${bucket}.cd.bcebos.com/${objectKey(mimiId, mimiHash)}`,
-        byte_size: 1_843_161,
-      },
-      {
-        character_id: pipId,
+        id: mimiId,
+        referenceId: mimiReferenceId,
+        digest: mimiHash,
+        size: 1_843_161,
+        sortOrder: 0,
+        legacy: true,
+      }),
+      reference({
         name: 'Pip',
-        confirmed: true,
-        locked: true,
-        reference_status: 'READY',
-        reference_provider: 'IMPORTED',
-        media_provider: 'BAIDU_BOS',
-        media_status: 'READY',
-        mime_type: 'image/png',
-        object_key: objectKey(pipId, pipHash),
-        playback_url: `https://${bucket}.cd.bcebos.com/${objectKey(pipId, pipHash)}`,
-        byte_size: 738_959,
+        id: pipId,
+        referenceId: pipReferenceId,
+        digest: pipHash,
+        size: 738_959,
+        sortOrder: 1,
+      }),
+    ],
+    activity: [
+      {
+        active_ai_jobs: 0,
+        active_illustrations: 0,
+        active_references: 0,
+        book_reference_rows: 2,
       },
     ],
-    activity: [{ active_jobs: 0, project_jobs: 0 }],
     illustrations: [],
     reservations: [],
     ledgers: [],
@@ -145,6 +198,7 @@ function fakeDatabase(rows = baseRows()) {
       if (/^BEGIN|^SET LOCAL|^ROLLBACK/.test(sql)) return { rows: [] };
       for (const [marker, key] of [
         ['I111_IDENTITY', 'identity'],
+        ['I111_ROLE', 'role'],
         ['I111_MIGRATIONS', 'migrations'],
         ['I111_BOOK', 'book'],
         ['I111_PAGES', 'pages'],
@@ -167,8 +221,33 @@ function validFiles() {
   return {
     errors: [],
     backupVerified: true,
-    mimiMatched: true,
-    pipMatched: true,
+    mimiLocalPngVerified: true,
+    pipLocalPngVerified: true,
+    apiModeDisabled: true,
+    approval: { synthetic: true },
+  };
+}
+
+function validSource(rows = baseRows()) {
+  return {
+    errors: [],
+    checkedOutSha: reviewedSha,
+    reviewedSha,
+    versionMatch: true,
+    checkoutClean: true,
+    signedTtlSeconds: 900,
+    retryPolicyVerified: true,
+    migrations: expectedMigrations(rows.migrations),
+  };
+}
+
+function validRuntime() {
+  return {
+    probesVerified: true,
+    gateVerified: true,
+    resourcesVerified: true,
+    apiRunning: false,
+    genericWorkerRunning: false,
   };
 }
 
@@ -176,43 +255,35 @@ async function run({
   environment = env(),
   rows = baseRows(),
   fileResult = validFiles(),
+  sourceResult = validSource(rows),
+  runtimeResult = validRuntime(),
+  redisResult = { verified: true, queuedJobs: 0 },
   open,
+  redisInspector,
 } = {}) {
   const database = fakeDatabase(rows);
   const result = await runI111ReadonlyRuntimePreflight({
     env: environment,
     argv: [],
     dependencies: {
-      gitSha: () => reviewedSha,
-      runtimeInspector: () => ({
-        gateVerified: true,
-        apiRunning: false,
-        genericWorkerRunning: false,
-      }),
+      runtimeInspector: () => runtimeResult,
       fileInspector: () => fileResult,
-      readFile: (path, encoding) =>
-        String(path).endsWith('_journal.json')
-          ? Promise.resolve(
-              JSON.stringify({
-                entries: rows.migrations.map((row) => ({ when: Number(row.created_at) })),
-              }),
-            )
-          : String(path).endsWith('private-bos-reference.ts')
-            ? Promise.resolve(`
-                export const PRIVATE_REFERENCE_TTL_SECONDS = PRIVATE_BOS_IMAGE_REFERENCE_TTL_SECONDS;
-                signer.generatePresignedUrl(bucket, key, now, PRIVATE_REFERENCE_TTL_SECONDS,);
-              `)
-            : readFile(path, encoding),
+      sourceInspector: () => sourceResult,
+      redisInspector: redisInspector ?? (() => redisResult),
       openDatabase: open ?? (() => database.client),
     },
   });
   return { result, statements: database.statements };
 }
 
-test('collects real-shaped rows only through a read-only transaction and never authorizes payment', async () => {
+test('uses only a read-only transaction, separates remote proof, and never authorizes payment', async () => {
   const { result, statements } = await run();
   assert.equal(result.result, 'STOP');
-  assert.deepEqual(result.errorCodes, ['I111_BUDGET_INVALID', 'I111_PRICE_BASIS_UNVERIFIED']);
+  assert.ok(result.errorCodes.includes('I111_PRICE_BASIS_UNVERIFIED'));
+  assert.ok(result.errorCodes.includes('I111_REMOTE_BOS_UNVERIFIED'));
+  assert.equal(result.checks.localPngFingerprints, 'PASS');
+  assert.equal(result.checks.databaseReferenceMetadata, 'PASS');
+  assert.equal(result.checks.remoteBos, 'STOP');
   assert.equal(result.paidExecutionAuthorized, false);
   assert.equal(statements[0], 'BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY');
   assert.equal(statements.at(-1), 'ROLLBACK');
@@ -223,54 +294,244 @@ test('collects real-shaped rows only through a read-only transaction and never a
   );
 });
 
-test('stops before scoped reads for a wrong connected database or user', async () => {
-  for (const field of ['database_name', 'database_user']) {
+test('rejects wrong database identity and restricted-role privilege drift before scoped reads', async () => {
+  for (const mutate of [
+    (rows) => (rows.identity[0].database_name = 'wrong'),
+    (rows) => (rows.identity[0].database_user = 'wrong'),
+    (rows) => (rows.identity[0].server_port = 5433),
+    (rows) => (rows.role[0].rolsuper = true),
+    (rows) => (rows.role[0].rolinherit = true),
+  ]) {
     const rows = baseRows();
-    rows.identity[0][field] = 'wrong';
-    const { result, statements } = await run({ rows });
+    mutate(rows);
+    const { result, statements } = await run({ rows, sourceResult: validSource(rows) });
     assert.ok(result.errorCodes.includes('I111_DATABASE_IDENTITY_INVALID'));
+    assert.equal(result.checks.database, 'STOP');
     assert.ok(!statements.some((sql) => sql.includes('I111_BOOK')));
   }
 });
 
-test('requires the exact ordered migration journal', async () => {
+test('compares ordered Drizzle SQL hashes and marks database STOP on replacement', async () => {
   const rows = baseRows();
-  rows.migrations[20].created_at = '123';
-  const environment = env();
-  const database = fakeDatabase(rows);
-  const result = await runI111ReadonlyRuntimePreflight({
-    env: environment,
-    argv: [],
-    dependencies: {
-      gitSha: () => reviewedSha,
-      runtimeInspector: () => ({
-        gateVerified: true,
-        apiRunning: false,
-        genericWorkerRunning: false,
-      }),
-      fileInspector: () => validFiles(),
-      openDatabase: () => database.client,
-      readFile: (path, encoding) => {
-        if (String(path).endsWith('_journal.json')) {
-          const expected = baseRows().migrations;
-          return Promise.resolve(
-            JSON.stringify({ entries: expected.map((row) => ({ when: Number(row.created_at) })) }),
-          );
-        }
-        if (String(path).endsWith('private-bos-reference.ts')) {
-          return Promise.resolve(`
-            export const PRIVATE_REFERENCE_TTL_SECONDS = PRIVATE_BOS_IMAGE_REFERENCE_TTL_SECONDS;
-            signer.generatePresignedUrl(bucket, key, now, PRIVATE_REFERENCE_TTL_SECONDS,);
-          `);
-        }
-        return readFile(path, encoding);
-      },
-    },
-  });
+  const source = validSource(rows);
+  rows.migrations[20].hash = 'f'.repeat(64);
+  const { result } = await run({ rows, sourceResult: source });
   assert.ok(result.errorCodes.includes('I111_MIGRATION_STATE_INVALID'));
+  assert.equal(result.checks.database, 'STOP');
 });
 
-test('rejects a non-allowlisted database URL without opening a connection', async () => {
+test('requires exact Mimi then Pip identity on every page and all character rows', async () => {
+  const mutations = [
+    (rows) => (rows.pages[0].character_ids = [mimiId, mimiId]),
+    (rows) => (rows.pages[1].character_ids = [pipId, mimiId]),
+    (rows) => (rows.pages[2].character_ids = [mimiId, '99999999-9999-4999-8999-999999999999']),
+    (rows) => rows.references.push({ ...rows.references[1], character_id: 'extra', name: 'Other' }),
+    (rows) => rows.references.reverse(),
+    (rows) => (rows.activity[0].book_reference_rows = 3),
+  ];
+  for (const mutate of mutations) {
+    const rows = baseRows();
+    mutate(rows);
+    const { result } = await run({ rows, sourceResult: validSource(rows) });
+    assert.ok(
+      result.errorCodes.includes('I111_BOOK_SCOPE_INVALID') ||
+        result.errorCodes.includes('I111_REFERENCES_INVALID'),
+    );
+    assert.equal(result.checks.database, 'STOP');
+  }
+});
+
+test('accepts only the narrow historical double slash and rejects a nondefault BOS port', async () => {
+  const legacy = await run();
+  assert.equal(legacy.result.checks.databaseReferenceMetadata, 'PASS');
+  const rows = baseRows();
+  rows.references[0].playback_url = rows.references[0].playback_url.replace(
+    '.bcebos.com',
+    '.bcebos.com:444',
+  );
+  const { result } = await run({ rows, sourceResult: validSource(rows) });
+  assert.ok(result.errorCodes.includes('I111_REFERENCES_INVALID'));
+});
+
+test('fails closed for probe failure, active unrelated image work, Redis queues and Redis errors', async () => {
+  const probe = validRuntime();
+  probe.probesVerified = false;
+  assert.ok(
+    (await run({ runtimeResult: probe })).result.errorCodes.includes('I111_RUNTIME_NOT_ISOLATED'),
+  );
+
+  const rows = baseRows();
+  rows.activity[0].active_illustrations = 1;
+  assert.ok(
+    (await run({ rows, sourceResult: validSource(rows) })).result.errorCodes.includes(
+      'I111_RUNTIME_NOT_ISOLATED',
+    ),
+  );
+
+  assert.ok(
+    (await run({ redisResult: { verified: false, queuedJobs: 1 } })).result.errorCodes.includes(
+      'I111_REDIS_CHECK_FAILED',
+    ),
+  );
+  assert.ok(
+    (
+      await run({
+        redisInspector: () => {
+          throw new Error('redis private detail');
+        },
+      })
+    ).result.errorCodes.includes('I111_REDIS_CHECK_FAILED'),
+  );
+});
+
+test('does not claim auto-retry is disabled unless exact approved source proves it', async () => {
+  const source = validSource();
+  source.retryPolicyVerified = false;
+  const { result } = await run({ sourceResult: source });
+  assert.ok(result.errorCodes.includes('I111_RUNTIME_NOT_ISOLATED'));
+});
+
+test('requires trusted approval, clean source, signer TTL and migration provenance', async () => {
+  for (const mutate of [
+    (source) => {
+      source.versionMatch = false;
+      source.errors = ['I111_CODE_NOT_REVIEWED'];
+    },
+    (source) => (source.signedTtlSeconds = 300),
+    (source) => (source.migrations = []),
+  ]) {
+    const source = validSource();
+    mutate(source);
+    const { result } = await run({ sourceResult: source });
+    assert.ok(
+      result.errorCodes.includes('I111_CODE_NOT_REVIEWED') ||
+        result.errorCodes.includes('I111_PROVIDER_CONFIG_INVALID') ||
+        result.errorCodes.includes('I111_MIGRATION_STATE_INVALID'),
+    );
+    assert.equal(result.paidExecutionAuthorized, false);
+  }
+});
+
+test('classifies any extraneous budget window or reservation as STOP', async () => {
+  const rows = baseRows();
+  rows.windows.push({
+    budget_key: 'UNEXPECTED',
+    window_key: 'OTHER',
+    scope_type: 'GLOBAL',
+    consumer_user_id: null,
+    limit_minor: 200,
+    reserved_minor: 0,
+    actual_minor: 0,
+  });
+  const { result } = await run({ rows, sourceResult: validSource(rows) });
+  assert.ok(result.errorCodes.includes('I111_BUDGET_INVALID'));
+});
+
+test('stops on backup mismatch, insufficient headroom, and unsettled AT_RISK cost', async () => {
+  const backup = validFiles();
+  backup.backupVerified = false;
+  backup.errors = ['I111_BACKUP_NOT_VERIFIED'];
+  assert.ok(
+    (await run({ fileResult: backup })).result.errorCodes.includes('I111_BACKUP_NOT_VERIFIED'),
+  );
+
+  const budgetRows = baseRows();
+  budgetRows.windows = [
+    {
+      budget_key: scope.budgetKey,
+      window_key: scope.windowKey,
+      scope_type: 'GLOBAL',
+      consumer_user_id: null,
+      limit_minor: 200,
+      reserved_minor: 0,
+      actual_minor: 190,
+    },
+    {
+      budget_key: scope.budgetKey,
+      window_key: scope.windowKey,
+      scope_type: 'CONSUMER',
+      consumer_user_id: scope.ownerId,
+      limit_minor: 200,
+      reserved_minor: 0,
+      actual_minor: 190,
+    },
+  ];
+  assert.ok(
+    (
+      await run({ rows: budgetRows, sourceResult: validSource(budgetRows) })
+    ).result.errorCodes.includes('I111_BUDGET_INVALID'),
+  );
+
+  const atRiskRows = baseRows();
+  atRiskRows.reservations.push({
+    id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+    budget_key: scope.budgetKey,
+    window_key: scope.windowKey,
+    consumer_user_id: scope.ownerId,
+    resource_type: 'PICTURE_BOOK_IMAGE',
+    resource_id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+    status: 'RESERVED',
+    uncertainty: 'AT_RISK',
+    provider: 'BAILIAN',
+    model: scope.model,
+    reserved_minor: 25,
+    actual_minor: null,
+    provider_request_id: null,
+  });
+  assert.ok(
+    (
+      await run({ rows: atRiskRows, sourceResult: validSource(atRiskRows) })
+    ).result.errorCodes.includes('I111_BUDGET_INVALID'),
+  );
+});
+
+test('requires a real READY media join for historical successful illustrations', async () => {
+  const rows = baseRows();
+  const illustrationId = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+  rows.illustrations.push({
+    id: illustrationId,
+    book_id: scope.bookId,
+    page_id: scope.page1Id,
+    revision_number: 1,
+    provider: 'BAILIAN',
+    model: scope.model,
+    status: 'READY',
+    media_asset_id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+    media_id: null,
+  });
+  rows.reservations.push({
+    id: 'ffffffff-ffff-4fff-8fff-ffffffffffff',
+    budget_key: scope.budgetKey,
+    window_key: scope.windowKey,
+    consumer_user_id: scope.ownerId,
+    resource_type: 'PICTURE_BOOK_IMAGE',
+    resource_id: illustrationId,
+    status: 'SETTLED',
+    uncertainty: 'NONE',
+    provider: 'BAILIAN',
+    model: scope.model,
+    reserved_minor: 25,
+    actual_minor: 22,
+    provider_request_id: 'opaque-request',
+  });
+  rows.ledgers.push({
+    reservation_id: rows.reservations[0].id,
+    consumer_user_id: scope.ownerId,
+    resource_type: 'PICTURE_BOOK_IMAGE',
+    resource_id: illustrationId,
+    provider: 'BAILIAN',
+    model: scope.model,
+    outcome: 'SUCCEEDED',
+    amount_minor: 22,
+    usage: slotMarker,
+    provider_request_id: 'opaque-request',
+  });
+  const { result } = await run({ rows, sourceResult: validSource(rows) });
+  assert.ok(result.errorCodes.includes('I111_BUDGET_INVALID'));
+  assert.ok(result.errorCodes.includes('I111_PRICE_BASIS_UNVERIFIED'));
+});
+
+test('rejects unallowlisted connection URLs without opening a connection', async () => {
   const environment = env();
   environment.DATABASE_URL =
     'postgresql://xiaohai_i111_app:synthetic-password@127.0.0.1:52511/other';
@@ -286,22 +547,22 @@ test('rejects a non-allowlisted database URL without opening a connection', asyn
   assert.ok(result.errorCodes.includes('I111_DATABASE_IDENTITY_INVALID'));
 });
 
-test('rejects CLI arguments before filesystem, process or database inspection', async () => {
+test('rejects CLI arguments before any filesystem, runtime, Redis or database inspection', async () => {
   let touched = false;
   const result = await runI111ReadonlyRuntimePreflight({
     argv: ['--execute'],
     dependencies: {
-      readFile: () => {
+      fileInspector: () => {
         touched = true;
-        throw new Error('must not read');
       },
       runtimeInspector: () => {
         touched = true;
-        throw new Error('must not inspect');
+      },
+      redisInspector: () => {
+        touched = true;
       },
       openDatabase: () => {
         touched = true;
-        throw new Error('must not connect');
       },
     },
   });
@@ -314,177 +575,61 @@ test('rejects CLI arguments before filesystem, process or database inspection', 
   });
 });
 
-test('reads temporary files and rejects wrong archive and asset fingerprints', async () => {
-  const directory = await mkdtemp(join(tmpdir(), 'i111-readonly-'));
+test('rejects symlinks and detects same-handle metadata changes', async () => {
+  const directory = await mkdtemp(join(process.cwd(), '.i111-secure-read-'));
   try {
-    const paths = {
-      gateRoot: directory,
-      backup: join(directory, 'backup.dump'),
-      mimi: join(directory, 'mimi.png'),
-      pip: join(directory, 'pip.png'),
-      apiMode: join(directory, 'api.mode'),
+    const target = join(directory, 'target');
+    const link = join(directory, 'link');
+    await writeFile(target, 'safe', { mode: 0o600 });
+    await symlink(target, link);
+    await assert.rejects(() => secureReadFile(link, { mode: 0o600, maxBytes: 16 }));
+
+    let statCall = 0;
+    const fakeStat = () => {
+      statCall += 1;
+      return {
+        isFile: () => true,
+        dev: 1n,
+        ino: 2n,
+        size: 4n,
+        mode: 0o100600n,
+        uid: BigInt(process.getuid()),
+        mtimeNs: BigInt(statCall),
+        ctimeNs: 1n,
+      };
     };
-    for (const [path, body] of [
-      [paths.backup, Buffer.from('PGDMP-wrong')],
-      [paths.mimi, Buffer.from('not-mimi')],
-      [paths.pip, Buffer.from('not-pip')],
-      [paths.apiMode, Buffer.from('disabled\n')],
-    ]) {
-      await writeFile(path, body, { mode: 0o600 });
-      await chmod(path, 0o600);
-    }
-    const rows = baseRows();
-    const database = fakeDatabase(rows);
-    const result = await runI111ReadonlyRuntimePreflight({
-      env: env(),
-      argv: [],
-      paths,
-      dependencies: {
-        gitSha: () => reviewedSha,
-        runtimeInspector: () => ({
-          gateVerified: true,
-          apiRunning: false,
-          genericWorkerRunning: false,
-        }),
-        openDatabase: () => database.client,
-        readFile: (path, encoding) =>
-          String(path).endsWith('_journal.json')
-            ? Promise.resolve(
-                JSON.stringify({
-                  entries: rows.migrations.map((row) => ({ when: Number(row.created_at) })),
-                }),
-              )
-            : String(path).endsWith('private-bos-reference.ts')
-              ? Promise.resolve(`
-                  export const PRIVATE_REFERENCE_TTL_SECONDS = PRIVATE_BOS_IMAGE_REFERENCE_TTL_SECONDS;
-                  signer.generatePresignedUrl(bucket, key, now, PRIVATE_REFERENCE_TTL_SECONDS,);
-                `)
-              : readFile(path, encoding),
-      },
-    });
-    assert.ok(result.errorCodes.includes('I111_BACKUP_NOT_VERIFIED'));
-    assert.ok(result.errorCodes.includes('I111_REFERENCES_INVALID'));
+    const fakeHandle = {
+      stat: async () => fakeStat(),
+      readFile: async () => Buffer.from('safe'),
+      close: async () => {},
+    };
+    await assert.rejects(() =>
+      secureReadFile(target, { mode: 0o600, maxBytes: 16 }, { open: async () => fakeHandle }),
+    );
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
 });
 
-test('fails closed on missing references and mismatched backup evidence', async () => {
-  const rows = baseRows();
-  rows.references.pop();
-  const { result } = await run({
-    rows,
-    fileResult: {
-      errors: ['I111_BACKUP_NOT_VERIFIED'],
-      backupVerified: false,
-      mimiMatched: true,
-      pipMatched: true,
-    },
-  });
-  assert.ok(result.errorCodes.includes('I111_REFERENCES_INVALID'));
-  assert.ok(result.errorCodes.includes('I111_BACKUP_NOT_VERIFIED'));
-});
-
-test('stops on an unexpected active task', async () => {
-  const rows = baseRows();
-  rows.activity[0].active_jobs = 1;
-  const { result } = await run({ rows });
-  assert.ok(result.errorCodes.includes('I111_RUNTIME_NOT_ISOLATED'));
-});
-
-test('stops when either budget window lacks next-slot headroom', async () => {
-  const rows = baseRows();
-  rows.windows = [
-    {
-      scope_type: 'GLOBAL',
-      consumer_user_id: null,
-      limit_minor: 200,
-      reserved_minor: 0,
-      actual_minor: 190,
-    },
-    {
-      scope_type: 'CONSUMER',
-      consumer_user_id: scope.ownerId,
-      limit_minor: 200,
-      reserved_minor: 0,
-      actual_minor: 190,
-    },
-  ];
-  const { result } = await run({ rows });
-  assert.ok(result.errorCodes.includes('I111_BUDGET_INVALID'));
-});
-
-test('stops on an unsettled AT_RISK provider slot', async () => {
-  const rows = baseRows();
-  rows.illustrations = [
-    {
-      id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
-      page_id: scope.page1Id,
-      revision_number: 1,
-      provider: 'BAILIAN',
-      model: scope.model,
-      status: 'RUNNING',
-      media_asset_id: null,
-    },
-  ];
-  rows.reservations = [
-    {
-      id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
-      budget_key: scope.budgetKey,
-      window_key: scope.windowKey,
-      consumer_user_id: scope.ownerId,
-      resource_type: 'PICTURE_BOOK_IMAGE',
-      resource_id: rows.illustrations[0].id,
-      status: 'RESERVED',
-      uncertainty: 'AT_RISK',
-      provider: 'BAILIAN',
-      model: scope.model,
-      reserved_minor: 25,
-      actual_minor: null,
-      provider_request_id: null,
-    },
-  ];
-  rows.ledgers = [
-    {
-      reservation_id: rows.reservations[0].id,
-      consumer_user_id: scope.ownerId,
-      resource_type: 'PICTURE_BOOK_IMAGE',
-      resource_id: rows.illustrations[0].id,
-      provider: 'BAILIAN',
-      model: scope.model,
-      outcome: 'AT_RISK',
-      amount_minor: 25,
-      usage: slotMarker,
-      provider_request_id: null,
-    },
-  ];
-  const { result } = await run({ rows });
-  assert.ok(result.errorCodes.includes('I111_BUDGET_INVALID'));
-  assert.ok(result.errorCodes.includes('I111_PREVIOUS_ATTEMPT_INVALID'));
-});
-
-test('rejects wrong Beijing configuration and missing secret presence without echoing values', async () => {
+test('redacts configuration and backend failures', async () => {
   const secret = 'private-secret-never-echo';
   const environment = env();
-  environment.PICTURE_BOOK_IMAGE_BASE_URL = 'https://dashscope.aliyuncs.com';
+  environment.PICTURE_BOOK_IMAGE_BASE_URL = 'https://wrong.example.invalid';
   environment.DASHSCOPE_API_KEY = secret;
   delete environment.BAIDU_BOS_SECRET_ACCESS_KEY;
-  const { result } = await run({ environment });
-  const output = JSON.stringify(result);
-  assert.ok(result.errorCodes.includes('I111_PROVIDER_CONFIG_INVALID'));
-  assert.ok(result.errorCodes.includes('I111_PROVIDER_CREDENTIALS_MISSING'));
-  assert.ok(!output.includes(secret));
-  assert.ok(!output.includes('dashscope.aliyuncs.com'));
-});
+  const configResult = (await run({ environment })).result;
+  assert.ok(configResult.errorCodes.includes('I111_PROVIDER_CONFIG_INVALID'));
+  assert.ok(configResult.errorCodes.includes('I111_PROVIDER_CREDENTIALS_MISSING'));
+  assert.ok(!JSON.stringify(configResult).includes(secret));
 
-test('redacts unexpected database failures and exits with a fixed code', async () => {
-  const secret = 'database-password-never-echo';
-  const { result } = await run({
-    open: () => {
-      throw new Error(secret);
-    },
-  });
-  assert.ok(result.errorCodes.includes('I111_DATABASE_CHECK_FAILED'));
-  assert.ok(!JSON.stringify(result).includes(secret));
-  assert.equal(result.paidExecutionAuthorized, false);
+  const databaseResult = (
+    await run({
+      open: () => {
+        throw new Error(secret);
+      },
+    })
+  ).result;
+  assert.ok(databaseResult.errorCodes.includes('I111_DATABASE_CHECK_FAILED'));
+  assert.ok(!JSON.stringify(databaseResult).includes(secret));
+  assert.equal(databaseResult.paidExecutionAuthorized, false);
 });

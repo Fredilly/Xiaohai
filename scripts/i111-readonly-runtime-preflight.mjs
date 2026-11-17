@@ -1,16 +1,19 @@
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
+import { constants as fsConstants } from 'node:fs';
+import { lstat, open } from 'node:fs/promises';
 import { createRequire } from 'node:module';
-import { readFile, stat } from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
-import { resolve } from 'node:path';
+import { createConnection } from 'node:net';
+import { dirname, isAbsolute, join, resolve, sep } from 'node:path';
 import process from 'node:process';
+import { fileURLToPath } from 'node:url';
 import {
   assessI111OneShotSnapshot,
   I111_ONE_SHOT_SCOPE as scope,
 } from './i111-one-shot-policy.mjs';
 
 const requireFromDb = createRequire(new URL('../packages/db/package.json', import.meta.url));
+const requireFromApi = createRequire(new URL('../apps/api/package.json', import.meta.url));
 
 export const I111_READONLY_PATHS = Object.freeze({
   gateRoot: '/Volumes/Data/Xiaohai-i111-gate-b',
@@ -19,12 +22,25 @@ export const I111_READONLY_PATHS = Object.freeze({
   mimi: '/Volumes/Data/Xiaohai-i111-gate-b/.i111-plan-b/assets/mimi_reference_candidate.png',
   pip: '/Volumes/Data/Xiaohai-i111-gate-b/.i111-plan-b/assets/pip_reference_candidate.png',
   apiMode: '/Volumes/Data/Xiaohai-i111-gate-b/.i111-plan-b/api.mode',
+  approval:
+    '/Volumes/Data/Xiaohai-i111-gate-b/.i111-plan-b/evidence/i111-readonly-runtime-approval.json',
 });
 
 const EXPECTED = Object.freeze({
   gateSha: '6898d09a3fcf76c5006ab271d0168643de2bf1fd',
   databaseUser: 'xiaohai_i111_app',
   databasePort: '52511',
+  redisPort: '52512',
+  postgresContainer: 'xiaohai-i111-planb-postgres',
+  postgresContainerId: 'fdede2cf57f70465a950b0a4ea2d13cb6894cc13bc97b540ecf660b9c1629f24',
+  postgresVolume: 'xiaohai_i111_planb_pgdata',
+  redisContainer: 'xiaohai-i111-planb-redis',
+  redisContainerId: '920804ca22010bfe8ae8791e9f6ec88604d870151685ea6a31e66dc23182f031',
+  redisVolume: 'xiaohai_i111_planb_redisdata',
+  mimiId: 'de0169d8-d975-4f1b-b04c-a15c25f54bdc',
+  pipId: '249a719e-d284-46e0-a525-285e93270248',
+  mimiReferenceId: 'fa526d14-9fc4-4cba-bf3e-ae9c8a888906',
+  pipReferenceId: 'bed51270-3add-4d10-93fb-8ffa085ff7a7',
   bucket: 'xiaohai-i111-work-2ec3900280',
   bosEndpoint: 'https://cd.bcebos.com/',
   backupSha256: 'a920f381a1aab434cef041c6d6ab470a3d546f245426185aaea606ec4cede603',
@@ -35,6 +51,24 @@ const EXPECTED = Object.freeze({
   pipBytes: 738_959,
   migrationCount: 42,
 });
+
+const PROVENANCE_FILES = Object.freeze([
+  'scripts/i111-readonly-runtime-preflight.mjs',
+  'scripts/i111-one-shot-policy.mjs',
+  'packages/config/src/image-runtime-safety.ts',
+  'apps/worker/src/private-bos-reference.ts',
+  'apps/worker/src/image-processor.ts',
+  'apps/worker/src/i111-paid-attempt-gate.ts',
+  'apps/worker/src/index.ts',
+  'apps/api/src/picture-book/image-queue.ts',
+]);
+
+const REDIS_QUEUES = Object.freeze([
+  'xiaohai:ai:jobs',
+  'xiaohai:image:jobs',
+  'xiaohai:animation:jobs',
+  'xiaohai:animation:compositions',
+]);
 
 const ALLOWED_CODES = new Set([
   'I111_ARGUMENTS_FORBIDDEN',
@@ -47,14 +81,19 @@ const ALLOWED_CODES = new Set([
   'I111_DATABASE_CHECK_FAILED',
   'I111_DATABASE_IDENTITY_INVALID',
   'I111_ENV_INVALID',
+  'I111_FILESYSTEM_UNTRUSTED',
+  'I111_LOCAL_REFERENCE_FILES_INVALID',
   'I111_MIGRATION_STATE_INVALID',
-  'I111_PRICE_BASIS_UNVERIFIED',
+  'I111_NEXT_SLOT_INVALID',
+  'I111_POSTGRES_RESOURCE_INVALID',
   'I111_PREVIOUS_ATTEMPT_INVALID',
+  'I111_PRICE_BASIS_UNVERIFIED',
   'I111_PROVIDER_CONFIG_INVALID',
   'I111_PROVIDER_CREDENTIALS_MISSING',
+  'I111_REDIS_CHECK_FAILED',
   'I111_REFERENCES_INVALID',
+  'I111_REMOTE_BOS_UNVERIFIED',
   'I111_RUNTIME_NOT_ISOLATED',
-  'I111_NEXT_SLOT_INVALID',
   'I111_SNAPSHOT_INVALID',
   'I111_UNEXPECTED_FAILURE',
 ]);
@@ -96,20 +135,21 @@ function safeCodes(codes) {
   return [...new Set(codes)].sort();
 }
 
-function validateLocalDatabaseUrl(raw) {
+function validateLocalUrl(raw, kind) {
   if (typeof raw !== 'string') return null;
   try {
     const url = new URL(raw);
-    if (
-      url.protocol !== 'postgresql:' ||
-      url.hostname !== '127.0.0.1' ||
-      url.port !== EXPECTED.databasePort ||
-      url.pathname !== '/' + scope.databaseName ||
-      url.username !== EXPECTED.databaseUser ||
-      !url.password ||
-      url.search ||
-      url.hash
-    ) {
+    const postgres = kind === 'postgres';
+    const valid = postgres
+      ? url.protocol === 'postgresql:' &&
+        url.port === EXPECTED.databasePort &&
+        url.pathname === '/' + scope.databaseName &&
+        url.username === EXPECTED.databaseUser
+      : url.protocol === 'redis:' &&
+        url.port === EXPECTED.redisPort &&
+        (url.pathname === '' || url.pathname === '/') &&
+        (url.username === '' || url.username === 'default');
+    if (!valid || url.hostname !== '127.0.0.1' || !url.password || url.search || url.hash) {
       return null;
     }
     return raw;
@@ -118,13 +158,14 @@ function validateLocalDatabaseUrl(raw) {
   }
 }
 
-function inspectConfiguration(env, signedTtlSeconds) {
+function inspectConfiguration(env, source) {
   const errors = [];
   const timeout = integer(env.PICTURE_BOOK_IMAGE_TIMEOUT_MS);
   const reservation = integer(env.PICTURE_BOOK_IMAGE_BUDGET_RESERVATION_MINOR);
   const globalLimit = integer(env.PICTURE_BOOK_IMAGE_BUDGET_GLOBAL_LIMIT_MINOR);
   const consumerLimit = integer(env.PICTURE_BOOK_IMAGE_BUDGET_CONSUMER_LIMIT_MINOR);
   let workspaceBound = false;
+  let bosBound = false;
   try {
     const workspace = env.DASHSCOPE_WORKSPACE_ID;
     const endpoint = new URL(env.PICTURE_BOOK_IMAGE_BASE_URL);
@@ -139,17 +180,11 @@ function inspectConfiguration(env, signedTtlSeconds) {
       !endpoint.password &&
       !endpoint.search &&
       !endpoint.hash;
-  } catch {
-    workspaceBound = false;
-  }
-
-  let bosBound = false;
-  try {
-    const endpoint = new URL(env.BAIDU_BOS_ENDPOINT);
+    const bosEndpoint = new URL(env.BAIDU_BOS_ENDPOINT);
     const origin = new URL(env.BAIDU_BOS_PUBLIC_ORIGIN);
     bosBound =
       env.BAIDU_BOS_BUCKET === EXPECTED.bucket &&
-      endpoint.toString() === EXPECTED.bosEndpoint &&
+      bosEndpoint.toString() === EXPECTED.bosEndpoint &&
       origin.protocol === 'https:' &&
       origin.hostname === EXPECTED.bucket + '.cd.bcebos.com' &&
       origin.pathname === '/' &&
@@ -159,9 +194,9 @@ function inspectConfiguration(env, signedTtlSeconds) {
       !origin.username &&
       !origin.password;
   } catch {
+    workspaceBound = false;
     bosBound = false;
   }
-
   const imageEnabled = env.PICTURE_BOOK_IMAGE_ENABLED === 'true';
   const budgetEnabled = env.PICTURE_BOOK_IMAGE_BUDGET_ENABLED === 'true';
   if (
@@ -177,7 +212,7 @@ function inspectConfiguration(env, signedTtlSeconds) {
     env.PICTURE_BOOK_IMAGE_MODEL !== scope.model ||
     !workspaceBound ||
     !bosBound ||
-    signedTtlSeconds !== scope.signedTtlSeconds ||
+    source.signedTtlSeconds !== scope.signedTtlSeconds ||
     timeout === null ||
     timeout < 600_000 ||
     timeout > 780_000
@@ -201,7 +236,6 @@ function inspectConfiguration(env, signedTtlSeconds) {
   ) {
     errors.push('I111_PROVIDER_CREDENTIALS_MISSING');
   }
-
   return {
     errors,
     runtime: {
@@ -209,8 +243,9 @@ function inspectConfiguration(env, signedTtlSeconds) {
       provider: env.PICTURE_BOOK_IMAGE_PROVIDER,
       model: env.PICTURE_BOOK_IMAGE_MODEL,
       beijingWorkspaceBound: workspaceBound,
-      signedTtlSeconds,
+      signedTtlSeconds: source.signedTtlSeconds,
       imageTimeoutMs: timeout,
+      autoRetryEnabled: source.retryPolicyVerified ? false : null,
     },
     budget: {
       enabled: budgetEnabled,
@@ -219,59 +254,200 @@ function inspectConfiguration(env, signedTtlSeconds) {
       reservationMinor: reservation,
       globalLimitMinor: globalLimit,
       consumerLimitMinor: consumerLimit,
-      // Offline configuration and a planning estimate cannot prove the provider invoice.
       costBasisVerified: false,
+      providerInvoiceVerified: false,
     },
   };
 }
 
-async function inspectFile(path, expectedHash, expectedBytes, dependencies) {
-  const [bytes, info] = await Promise.all([dependencies.readFile(path), dependencies.stat(path)]);
-  return (
-    info.isFile() &&
-    (info.mode & 0o777) === 0o600 &&
-    bytes.byteLength === expectedBytes &&
-    sha256(bytes) === expectedHash
-  );
+async function trustedParents(path, dependencies) {
+  if (!isAbsolute(path)) throw new Error('UNTRUSTED_PATH');
+  const parts = dirname(path).split(sep).filter(Boolean);
+  let current = sep;
+  for (const part of parts) {
+    current = join(current, part);
+    const info = await dependencies.lstat(current);
+    const allowedOwners = [0, process.getuid?.()].filter((value) => value !== undefined);
+    if (
+      info.isSymbolicLink() ||
+      !info.isDirectory() ||
+      !allowedOwners.includes(info.uid) ||
+      (info.mode & 0o022) !== 0
+    ) {
+      throw new Error('UNTRUSTED_PARENT');
+    }
+  }
+}
+
+export async function secureReadFile(path, options = {}, dependencies = {}) {
+  const adapter = {
+    lstat: dependencies.lstat ?? lstat,
+    open: dependencies.open ?? open,
+  };
+  await trustedParents(path, adapter);
+  const flags = fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0);
+  const handle = await adapter.open(path, flags);
+  try {
+    const before = await handle.stat({ bigint: true });
+    const maxBytes = BigInt(options.maxBytes ?? 4 * 1024 * 1024);
+    const allowedOwners = [0, process.getuid?.()].filter((value) => value !== undefined);
+    if (
+      !before.isFile() ||
+      before.size > maxBytes ||
+      (options.mode !== undefined && Number(before.mode & 0o777n) !== options.mode) ||
+      !allowedOwners.includes(Number(before.uid))
+    ) {
+      throw new Error('UNTRUSTED_FILE');
+    }
+    const bytes = await handle.readFile();
+    const after = await handle.stat({ bigint: true });
+    if (
+      before.dev !== after.dev ||
+      before.ino !== after.ino ||
+      before.size !== after.size ||
+      before.mtimeNs !== after.mtimeNs ||
+      before.ctimeNs !== after.ctimeNs ||
+      BigInt(bytes.byteLength) !== before.size
+    ) {
+      throw new Error('FILE_CHANGED_DURING_READ');
+    }
+    return bytes;
+  } finally {
+    await handle.close();
+  }
 }
 
 async function inspectFiles(paths, dependencies) {
   const errors = [];
-  let backupVerified = false;
-  let mimiMatched = false;
-  let pipMatched = false;
-  let apiModeDisabled = false;
+  const result = {
+    backupVerified: false,
+    mimiLocalPngVerified: false,
+    pipLocalPngVerified: false,
+    apiModeDisabled: false,
+    approval: null,
+  };
   try {
-    const backup = await dependencies.readFile(paths.backup);
-    const backupInfo = await dependencies.stat(paths.backup);
-    backupVerified =
-      backupInfo.isFile() &&
-      (backupInfo.mode & 0o777) === 0o600 &&
+    const backup = await dependencies.secureRead(paths.backup, {
+      mode: 0o600,
+      maxBytes: EXPECTED.backupBytes,
+    });
+    result.backupVerified =
       backup.byteLength === EXPECTED.backupBytes &&
       backup.subarray(0, 5).toString('ascii') === 'PGDMP' &&
       sha256(backup) === EXPECTED.backupSha256;
-    [mimiMatched, pipMatched] = await Promise.all([
-      inspectFile(paths.mimi, EXPECTED.mimiSha256, EXPECTED.mimiBytes, dependencies),
-      inspectFile(paths.pip, EXPECTED.pipSha256, EXPECTED.pipBytes, dependencies),
-    ]);
-    apiModeDisabled = (await dependencies.readFile(paths.apiMode, 'utf8')).trim() === 'disabled';
   } catch {
-    // The fixed error codes below deliberately omit paths and underlying messages.
+    errors.push('I111_FILESYSTEM_UNTRUSTED');
   }
-  if (!backupVerified) errors.push('I111_BACKUP_NOT_VERIFIED');
-  if (!mimiMatched || !pipMatched) errors.push('I111_REFERENCES_INVALID');
-  if (!apiModeDisabled) errors.push('I111_RUNTIME_NOT_ISOLATED');
-  return { errors, backupVerified, mimiMatched, pipMatched };
+  for (const [name, path, digest, size] of [
+    ['mimiLocalPngVerified', paths.mimi, EXPECTED.mimiSha256, EXPECTED.mimiBytes],
+    ['pipLocalPngVerified', paths.pip, EXPECTED.pipSha256, EXPECTED.pipBytes],
+  ]) {
+    try {
+      const bytes = await dependencies.secureRead(path, { mode: 0o600, maxBytes: size });
+      result[name] = bytes.byteLength === size && sha256(bytes) === digest;
+    } catch {
+      errors.push('I111_FILESYSTEM_UNTRUSTED');
+    }
+  }
+  try {
+    const mode = await dependencies.secureRead(paths.apiMode, { mode: 0o600, maxBytes: 32 });
+    result.apiModeDisabled = mode.toString('utf8').trim() === 'disabled';
+  } catch {
+    errors.push('I111_FILESYSTEM_UNTRUSTED');
+  }
+  try {
+    const approval = await dependencies.secureRead(paths.approval, {
+      mode: 0o600,
+      maxBytes: 32_768,
+    });
+    result.approval = JSON.parse(approval.toString('utf8'));
+  } catch {
+    errors.push('I111_CODE_NOT_REVIEWED');
+  }
+  if (!result.backupVerified) errors.push('I111_BACKUP_NOT_VERIFIED');
+  if (!result.mimiLocalPngVerified || !result.pipLocalPngVerified) {
+    errors.push('I111_LOCAL_REFERENCE_FILES_INVALID');
+  }
+  if (!result.apiModeDisabled) errors.push('I111_RUNTIME_NOT_ISOLATED');
+  return { ...result, errors };
 }
 
 function runCommand(command, args, cwd) {
-  const result = spawnSync(command, args, { cwd, encoding: 'utf8' });
+  const result = spawnSync(command, args, {
+    cwd,
+    encoding: 'utf8',
+    env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' },
+  });
   if (result.error || result.status === null) throw new Error('COMMAND_FAILED');
-  return { status: result.status, stdout: result.stdout };
+  return { status: result.status, stdout: result.stdout, stderr: result.stderr };
 }
 
-function defaultRuntimeInspector(paths) {
-  const gateHead = runCommand('git', ['-C', paths.gateRoot, 'rev-parse', 'HEAD']).stdout.trim();
+function dockerResource(name, expected, port, containerPort, volume, destination) {
+  const inspected = runCommand('docker', ['inspect', name]);
+  const volumeInfo = runCommand('docker', ['volume', 'inspect', volume]);
+  if (inspected.status !== 0 || volumeInfo.status !== 0) return false;
+  const [container] = JSON.parse(inspected.stdout);
+  const [storedVolume] = JSON.parse(volumeInfo.stdout);
+  const binding = container?.HostConfig?.PortBindings?.[`${containerPort}/tcp`];
+  const mount = container?.Mounts?.filter((item) => item.Destination === destination);
+  return (
+    container?.Id === expected &&
+    container?.Name === `/${name}` &&
+    container?.State?.Running === true &&
+    container?.Config?.Labels?.['com.xiaohai.issue'] === '111' &&
+    container?.Config?.Labels?.['com.xiaohai.plan'] === 'plan-b' &&
+    Array.isArray(binding) &&
+    binding.length === 1 &&
+    binding[0]?.HostIp === '127.0.0.1' &&
+    binding[0]?.HostPort === port &&
+    Array.isArray(mount) &&
+    mount.length === 1 &&
+    mount[0]?.Type === 'volume' &&
+    mount[0]?.Name === volume &&
+    mount[0]?.RW === true &&
+    storedVolume?.Name === volume &&
+    storedVolume?.Driver === 'local'
+  );
+}
+
+function listener(port, expectedPresent) {
+  const result = runCommand('lsof', ['-nP', `-iTCP:${port}`, '-sTCP:LISTEN']);
+  if (!expectedPresent && result.status === 1 && !result.stdout.trim() && !result.stderr.trim()) {
+    return { verified: true, present: false };
+  }
+  if (result.status !== 0 || !result.stdout.trim() || result.stderr.trim()) {
+    return { verified: false, present: null };
+  }
+  const lines = result.stdout.trim().split('\n');
+  const valid =
+    lines.length >= 2 &&
+    lines.slice(1).every((line) => {
+      const fields = line.trim().split(/\s+/);
+      return (
+        /^\d+$/.test(fields[1] ?? '') && /(?:docker|vpnkit|^com\.docke)/i.test(fields[0] ?? '')
+      );
+    });
+  return { verified: valid, present: true };
+}
+
+function tcpProbe(port) {
+  return new Promise((resolveProbe) => {
+    const socket = createConnection({ host: '127.0.0.1', port: Number(port) });
+    let settled = false;
+    const finish = (state) => {
+      if (settled) return;
+      settled = true;
+      socket.destroy();
+      resolveProbe(state);
+    };
+    socket.setTimeout(750, () => finish('failed'));
+    socket.once('connect', () => finish('open'));
+    socket.once('error', (error) => finish(error?.code === 'ECONNREFUSED' ? 'closed' : 'failed'));
+  });
+}
+
+async function defaultRuntimeInspector(paths) {
+  const gateHead = runCommand('git', ['-C', paths.gateRoot, 'rev-parse', '--verify', 'HEAD']);
   const gateStatus = runCommand('git', [
     '-C',
     paths.gateRoot,
@@ -279,35 +455,182 @@ function defaultRuntimeInspector(paths) {
     '--porcelain=v1',
     '--untracked-files=no',
   ]);
-  const lsof = runCommand('lsof', ['-nP', '-iTCP:52513', '-sTCP:LISTEN']);
+  const api = listener('52513', false);
+  const postgres = listener(EXPECTED.databasePort, true);
+  const redis = listener(EXPECTED.redisPort, true);
+  const [apiTcp, postgresTcp, redisTcp] = await Promise.all([
+    tcpProbe('52513'),
+    tcpProbe(EXPECTED.databasePort),
+    tcpProbe(EXPECTED.redisPort),
+  ]);
   const ps = runCommand('ps', ['-axo', 'command=']);
   const workerPattern = /(?:apps\/worker|@xiaohai\/worker|dist\/[^ ]*worker)/;
+  const probesVerified =
+    gateHead.status === 0 &&
+    gateStatus.status === 0 &&
+    api.verified &&
+    postgres.verified &&
+    redis.verified &&
+    apiTcp === 'closed' &&
+    postgresTcp === 'open' &&
+    redisTcp === 'open' &&
+    ps.status === 0 &&
+    !ps.stderr.trim();
   return {
+    probesVerified,
     gateVerified:
-      gateHead === EXPECTED.gateSha && gateStatus.status === 0 && gateStatus.stdout === '',
-    apiRunning: lsof.status === 0 && lsof.stdout.trim() !== '',
+      gateHead.stdout.trim() === EXPECTED.gateSha && gateStatus.stdout === '' && probesVerified,
+    resourcesVerified:
+      probesVerified &&
+      dockerResource(
+        EXPECTED.postgresContainer,
+        EXPECTED.postgresContainerId,
+        EXPECTED.databasePort,
+        '5432',
+        EXPECTED.postgresVolume,
+        '/var/lib/postgresql/data',
+      ) &&
+      dockerResource(
+        EXPECTED.redisContainer,
+        EXPECTED.redisContainerId,
+        EXPECTED.redisPort,
+        '6379',
+        EXPECTED.redisVolume,
+        '/data',
+      ),
+    apiRunning: api.present,
     genericWorkerRunning:
-      ps.status !== 0 || ps.stdout.split('\n').some((line) => workerPattern.test(line)),
+      ps.status === 0 ? ps.stdout.split('\n').some((line) => workerPattern.test(line)) : null,
   };
 }
 
-function defaultGitSha(root) {
-  const result = runCommand('git', ['rev-parse', 'HEAD'], root);
-  if (result.status !== 0 || !/^[0-9a-f]{40}\n?$/.test(result.stdout))
-    throw new Error('GIT_FAILED');
-  return result.stdout.trim();
+async function loadSourceState(root, approval, dependencies) {
+  const migrationRoot = resolve(root, 'packages/db/migrations');
+  const journalBytes = await dependencies.secureRead(join(migrationRoot, 'meta/_journal.json'), {
+    maxBytes: 256_000,
+  });
+  const journal = JSON.parse(journalBytes.toString('utf8'));
+  if (
+    !Array.isArray(journal.entries) ||
+    journal.entries.length !== EXPECTED.migrationCount ||
+    journal.entries.some(
+      (entry, index) =>
+        entry?.idx !== index ||
+        !Number.isSafeInteger(entry?.when) ||
+        typeof entry?.tag !== 'string' ||
+        !new RegExp(`^${String(index).padStart(4, '0')}_[a-z0-9_]+$`).test(entry.tag),
+    )
+  ) {
+    throw new Error('INVALID_JOURNAL');
+  }
+  const migrations = [];
+  for (const entry of journal.entries) {
+    const sql = await dependencies.secureRead(join(migrationRoot, `${entry.tag}.sql`), {
+      maxBytes: 2_000_000,
+    });
+    migrations.push({ tag: entry.tag, createdAt: String(entry.when), hash: sha256(sql) });
+  }
+  const migrationDigest = sha256(Buffer.from(JSON.stringify(migrations)));
+  const head = runCommand('git', ['rev-parse', '--verify', 'HEAD'], root);
+  const status = runCommand(
+    'git',
+    ['status', '--porcelain=v1', '--untracked-files=no', '--ignore-submodules=none'],
+    root,
+  );
+  const diff = runCommand('git', ['diff', '--no-ext-diff', '--quiet', 'HEAD', '--'], root);
+  const sourceHashes = {};
+  for (const relative of PROVENANCE_FILES) {
+    sourceHashes[relative] = sha256(
+      await dependencies.secureRead(resolve(root, relative), { maxBytes: 2_000_000 }),
+    );
+  }
+  const checkedOutSha = head.status === 0 ? head.stdout.trim() : '';
+  const approvalValid =
+    approval?.schemaVersion === 1 &&
+    approval?.approvedBy === 'Fredilly' &&
+    /^https:\/\/github\.com\/Fredilly\/Xiaohai\/pull\/237#pullrequestreview-\d+$/.test(
+      approval?.approvalUrl ?? '',
+    ) &&
+    approval?.approvedCommit === checkedOutSha &&
+    /^[0-9a-f]{40}$/.test(checkedOutSha) &&
+    approval?.migrationDigest === migrationDigest &&
+    PROVENANCE_FILES.every(
+      (relative) => approval?.sourceSha256?.[relative] === sourceHashes[relative],
+    );
+  const checkoutClean =
+    status.status === 0 &&
+    status.stdout === '' &&
+    diff.status === 0 &&
+    !status.stderr &&
+    !diff.stderr;
+  const safetyText = (
+    await dependencies.secureRead(resolve(root, 'packages/config/src/image-runtime-safety.ts'), {
+      maxBytes: 200_000,
+    })
+  ).toString('utf8');
+  const signerText = (
+    await dependencies.secureRead(resolve(root, 'apps/worker/src/private-bos-reference.ts'), {
+      maxBytes: 300_000,
+    })
+  ).toString('utf8');
+  const workerText = (
+    await dependencies.secureRead(resolve(root, 'apps/worker/src/index.ts'), {
+      maxBytes: 300_000,
+    })
+  ).toString('utf8');
+  const ttl = safetyText.match(
+    /^export const PRIVATE_BOS_IMAGE_REFERENCE_TTL_SECONDS = ([\d_]+);$/m,
+  );
+  const signedTtlSeconds = ttl ? Number(ttl[1].replaceAll('_', '')) : null;
+  const signerVerified =
+    /PRIVATE_REFERENCE_TTL_SECONDS\s*=\s*PRIVATE_BOS_IMAGE_REFERENCE_TTL_SECONDS/.test(
+      signerText,
+    ) && /generatePresignedUrl\([\s\S]*?PRIVATE_REFERENCE_TTL_SECONDS/.test(signerText);
+  const retryPolicyVerified =
+    approvalValid &&
+    /const queues = \['xiaohai:ai:jobs'\]/.test(workerText) &&
+    /await imageProcessor\?\.processOne\(\)/.test(workerText) &&
+    !/PICTURE_BOOK_IMAGE_MAX_ATTEMPTS/.test(workerText + signerText);
+  return {
+    errors: approvalValid && checkoutClean && signerVerified ? [] : ['I111_CODE_NOT_REVIEWED'],
+    checkedOutSha,
+    reviewedSha: approvalValid ? approval.approvedCommit : '',
+    versionMatch: approvalValid && checkoutClean,
+    checkoutClean,
+    signedTtlSeconds: signerVerified ? signedTtlSeconds : null,
+    retryPolicyVerified,
+    migrations,
+  };
 }
 
 function referenceFingerprint(row) {
-  const digest = row.name === 'Mimi' ? EXPECTED.mimiSha256 : EXPECTED.pipSha256;
-  const expectedBytes = row.name === 'Mimi' ? EXPECTED.mimiBytes : EXPECTED.pipBytes;
-  const expectedKey = `picture-books/character-references/i111/${scope.ownerId}/${scope.bookId}/${row.character_id}/${digest}.png`;
-  let privateBos = false;
+  const expected =
+    row.name === 'Mimi'
+      ? {
+          id: EXPECTED.mimiId,
+          referenceId: EXPECTED.mimiReferenceId,
+          digest: EXPECTED.mimiSha256,
+          bytes: EXPECTED.mimiBytes,
+          sort: 0,
+        }
+      : row.name === 'Pip'
+        ? {
+            id: EXPECTED.pipId,
+            referenceId: EXPECTED.pipReferenceId,
+            digest: EXPECTED.pipSha256,
+            bytes: EXPECTED.pipBytes,
+            sort: 1,
+          }
+        : null;
+  if (!expected) return { name: 'UNEXPECTED', databaseMediaMetadataMatched: false };
+  const expectedKey = `picture-books/character-references/i111/${scope.ownerId}/${scope.bookId}/${expected.id}/${expected.digest}.png`;
+  let urlMatched = false;
   try {
     const playback = new URL(row.playback_url);
-    privateBos =
+    urlMatched =
       playback.protocol === 'https:' &&
       playback.hostname === EXPECTED.bucket + '.cd.bcebos.com' &&
+      !playback.port &&
       [new URL('/' + expectedKey, playback).pathname, '//' + expectedKey].includes(
         playback.pathname,
       ) &&
@@ -316,26 +639,66 @@ function referenceFingerprint(row) {
       !playback.username &&
       !playback.password;
   } catch {
-    privateBos = false;
+    urlMatched = false;
   }
+  const databaseMediaMetadataMatched =
+    row.character_id === expected.id &&
+    row.reference_id === expected.referenceId &&
+    row.sort_order === expected.sort &&
+    row.confirmed === true &&
+    row.locked === true &&
+    row.reference_media_asset_id === row.reference_row_media_asset_id &&
+    row.reference_status === 'READY' &&
+    row.reference_provider === 'IMPORTED' &&
+    row.media_provider === 'BAIDU_BOS' &&
+    row.media_status === 'READY' &&
+    row.mime_type === 'image/png' &&
+    row.object_key === expectedKey &&
+    Number(row.byte_size) === expected.bytes &&
+    urlMatched;
   return {
     name: row.name,
-    confirmed: row.confirmed === true,
+    characterId: row.character_id,
     locked: row.locked === true,
+    confirmed: row.confirmed === true,
     status: row.reference_status,
     imported: row.reference_provider === 'IMPORTED',
-    privateBos:
-      privateBos &&
-      row.media_provider === 'BAIDU_BOS' &&
-      row.media_status === 'READY' &&
-      row.mime_type === 'image/png',
-    objectKeyMatched: row.object_key === expectedKey && Number(row.byte_size) === expectedBytes,
-    sha256Matched: row.name === 'Mimi' || row.name === 'Pip',
+    privateBos: databaseMediaMetadataMatched,
+    objectKeyMatched: row.object_key === expectedKey,
+    databaseMediaMetadataMatched,
+    remoteBosVerified: false,
   };
 }
 
 function emptyWindow() {
   return { actualMinor: 0, reservedMinor: 0 };
+}
+
+function illustrationMediaValid(row) {
+  if (row.status !== 'READY') return row.media_asset_id === null;
+  if (!row.media_asset_id || row.media_id !== row.media_asset_id) return false;
+  const key = `picture-books/bailian/${row.id}.png`;
+  try {
+    const url = new URL(row.media_playback_url);
+    return (
+      row.media_provider === 'BAIDU_BOS' &&
+      row.media_status === 'READY' &&
+      row.media_mime_type === 'image/png' &&
+      row.media_object_key === key &&
+      Number.isSafeInteger(Number(row.media_byte_size)) &&
+      Number(row.media_byte_size) > 0 &&
+      url.protocol === 'https:' &&
+      url.hostname === EXPECTED.bucket + '.cd.bcebos.com' &&
+      !url.port &&
+      url.pathname === '/' + key &&
+      !url.search &&
+      !url.hash &&
+      !url.username &&
+      !url.password
+    );
+  } catch {
+    return false;
+  }
 }
 
 function classifyCosts(illustrations, reservations, ledgers, windows) {
@@ -357,10 +720,12 @@ function classifyCosts(illustrations, reservations, ledgers, windows) {
     const ledger = ledgerMatches[0];
     if (
       !expected ||
+      illustration.book_id !== scope.bookId ||
       illustration.page_id !== expected.pageId ||
       illustration.revision_number !== expected.revisionNumber ||
       illustration.provider !== scope.provider ||
       illustration.model !== scope.model ||
+      !illustrationMediaValid(illustration) ||
       matches.length !== 1 ||
       ledgerMatches.length !== 1 ||
       reservation.budget_key !== scope.budgetKey ||
@@ -380,16 +745,19 @@ function classifyCosts(illustrations, reservations, ledgers, windows) {
       invalid = true;
       continue;
     }
+    const ledgerConsistent =
+      ledger.outcome === 'SUCCEEDED' &&
+      reservation.actual_minor !== null &&
+      ledger.amount_minor === reservation.actual_minor;
     attempts.push({
       pageId: illustration.page_id,
       revisionNumber: illustration.revision_number,
       outcome: ledger.outcome,
-      mediaReady: illustration.status === 'READY' && Boolean(illustration.media_asset_id),
+      mediaReady: illustration.status === 'READY' && illustrationMediaValid(illustration),
       settled: reservation.status === 'SETTLED' && reservation.uncertainty === 'NONE',
-      completeCostVerified:
-        ledger.outcome === 'SUCCEEDED' &&
-        reservation.actual_minor !== null &&
-        ledger.amount_minor === reservation.actual_minor,
+      completeCostVerified: ledgerConsistent,
+      ledgerAmountConsistent: ledgerConsistent,
+      providerInvoiceVerified: false,
       providerRequestIdPresent:
         Boolean(reservation.provider_request_id) &&
         reservation.provider_request_id === ledger.provider_request_id,
@@ -401,12 +769,19 @@ function classifyCosts(illustrations, reservations, ledgers, windows) {
     invalid = true;
   }
   if (![0, 2].includes(windows.length)) invalid = true;
-
   const globalRows = windows.filter(
-    (row) => row.scope_type === 'GLOBAL' && row.consumer_user_id === null,
+    (row) =>
+      row.budget_key === scope.budgetKey &&
+      row.window_key === scope.windowKey &&
+      row.scope_type === 'GLOBAL' &&
+      row.consumer_user_id === null,
   );
   const consumerRows = windows.filter(
-    (row) => row.scope_type === 'CONSUMER' && row.consumer_user_id === scope.ownerId,
+    (row) =>
+      row.budget_key === scope.budgetKey &&
+      row.window_key === scope.windowKey &&
+      row.scope_type === 'CONSUMER' &&
+      row.consumer_user_id === scope.ownerId,
   );
   const noCosts = illustrations.length === 0 && reservations.length === 0 && ledgers.length === 0;
   const window = (rows) => {
@@ -417,6 +792,7 @@ function classifyCosts(illustrations, reservations, ledgers, windows) {
     }
     return { actualMinor: rows[0].actual_minor, reservedMinor: rows[0].reserved_minor };
   };
+  if (globalRows.length + consumerRows.length !== windows.length) invalid = true;
   const unsettledAtRisk =
     reservations.filter((row) => row.uncertainty === 'AT_RISK').length +
     ledgers.filter((row) => row.outcome === 'AT_RISK').length;
@@ -429,7 +805,7 @@ function classifyCosts(illustrations, reservations, ledgers, windows) {
   };
 }
 
-async function collectDatabase(connectionString, openDatabase, expectedMigrationTimes) {
+export async function collectI111Database(connectionString, openDatabase, expectedMigrations) {
   const client = await openDatabase(connectionString);
   let transaction = false;
   try {
@@ -439,26 +815,51 @@ async function collectDatabase(connectionString, openDatabase, expectedMigration
     await client.query("SET LOCAL lock_timeout = '1500ms'");
     await client.query("SET LOCAL statement_timeout = '8000ms'");
     const identity = await client.query(
-      "/* I111_IDENTITY */ SELECT current_database() AS database_name, current_user AS database_user, current_setting('transaction_read_only') AS transaction_read_only, pg_is_in_recovery() AS is_replica",
+      `/* I111_IDENTITY */ SELECT current_database() AS database_name,
+       current_user AS database_user, current_setting('transaction_read_only') AS transaction_read_only,
+       pg_is_in_recovery() AS is_replica, inet_server_port() AS server_port,
+       current_setting('server_version_num') AS server_version_num`,
+    );
+    const role = await client.query(
+      `/* I111_ROLE */ SELECT rolname, rolsuper, rolinherit, rolcreaterole, rolcreatedb,
+       rolcanlogin, rolreplication, rolbypassrls,
+       has_database_privilege(current_user, current_database(), 'CONNECT') AS can_connect
+       FROM pg_roles WHERE rolname = current_user`,
     );
     const id = identity.rows[0];
+    const account = role.rows[0];
     if (
       identity.rows.length !== 1 ||
+      role.rows.length !== 1 ||
       id.database_name !== scope.databaseName ||
       id.database_user !== EXPECTED.databaseUser ||
       id.transaction_read_only !== 'on' ||
-      id.is_replica !== false
+      id.is_replica !== false ||
+      Number(id.server_port) !== 5432 ||
+      !/^17\d{4}$/.test(String(id.server_version_num)) ||
+      account.rolname !== EXPECTED.databaseUser ||
+      account.rolsuper !== false ||
+      account.rolinherit !== false ||
+      account.rolcreaterole !== false ||
+      account.rolcreatedb !== false ||
+      account.rolcanlogin !== true ||
+      account.rolreplication !== false ||
+      account.rolbypassrls !== false ||
+      account.can_connect !== true
     ) {
       return { errors: ['I111_DATABASE_IDENTITY_INVALID'] };
     }
     const migration = await client.query(
-      '/* I111_MIGRATIONS */ SELECT created_at::text AS created_at FROM drizzle.__drizzle_migrations ORDER BY id',
+      '/* I111_MIGRATIONS */ SELECT id, hash, created_at::text AS created_at FROM drizzle.__drizzle_migrations ORDER BY id',
     );
     const migrationValid =
-      expectedMigrationTimes.length === EXPECTED.migrationCount &&
+      expectedMigrations.length === EXPECTED.migrationCount &&
       migration.rows.length === EXPECTED.migrationCount &&
       migration.rows.every(
-        (row, index) => String(row.created_at) === String(expectedMigrationTimes[index]),
+        (row, index) =>
+          Number(row.id) === index + 1 &&
+          row.hash === expectedMigrations[index]?.hash &&
+          String(row.created_at) === expectedMigrations[index]?.createdAt,
       );
     const bookResult = await client.query(
       '/* I111_BOOK */ SELECT id, consumer_user_id, ai_project_id, status FROM picture_books WHERE id = $1',
@@ -469,52 +870,67 @@ async function collectDatabase(connectionString, openDatabase, expectedMigration
       [scope.bookId],
     );
     const referenceResult = await client.query(
-      `/* I111_REFERENCES */ SELECT c.id AS character_id, c.name, c.confirmed, c.locked,
-       r.status AS reference_status, r.provider AS reference_provider,
-       m.provider AS media_provider, m.status AS media_status, m.mime_type, m.object_key,
-       m.playback_url, m.byte_size
+      `/* I111_REFERENCES */ SELECT c.id AS character_id, c.name, c.sort_order, c.confirmed,
+       c.locked, c.reference_media_asset_id, r.id AS reference_id,
+       r.media_asset_id AS reference_row_media_asset_id, r.status AS reference_status,
+       r.provider AS reference_provider, m.provider AS media_provider, m.status AS media_status,
+       m.mime_type, m.object_key, m.playback_url, m.byte_size
        FROM character_profiles c
-       JOIN character_reference_images r ON r.character_profile_id = c.id AND r.media_asset_id = c.reference_media_asset_id
-       JOIN media_assets m ON m.id = c.reference_media_asset_id
-       WHERE c.picture_book_id = $1 ORDER BY c.sort_order`,
-      [scope.bookId],
+       LEFT JOIN character_reference_images r
+         ON r.id = CASE
+           WHEN c.id = $2 THEN $4::uuid
+           WHEN c.id = $3 THEN $5::uuid
+           ELSE NULL
+         END
+        AND r.character_profile_id = c.id
+        AND r.media_asset_id = c.reference_media_asset_id
+       LEFT JOIN media_assets m ON m.id = c.reference_media_asset_id
+       WHERE c.picture_book_id = $1 ORDER BY c.sort_order, c.id`,
+      [
+        scope.bookId,
+        EXPECTED.mimiId,
+        EXPECTED.pipId,
+        EXPECTED.mimiReferenceId,
+        EXPECTED.pipReferenceId,
+      ],
     );
     const activity = await client.query(
       `/* I111_ACTIVITY */ SELECT
-       (SELECT count(*)::int FROM ai_jobs WHERE status IN ('QUEUED','RUNNING')) AS active_jobs,
-       (SELECT count(*)::int FROM ai_jobs WHERE project_id = $1) AS project_jobs`,
-      [bookResult.rows[0]?.ai_project_id ?? null],
+       (SELECT count(*)::int FROM ai_jobs WHERE status IN ('QUEUED','RUNNING')) AS active_ai_jobs,
+       (SELECT count(*)::int FROM work_page_illustrations WHERE status IN ('QUEUED','RUNNING')) AS active_illustrations,
+       (SELECT count(*)::int FROM character_reference_images WHERE status IN ('QUEUED','RUNNING')) AS active_references,
+       (SELECT count(*)::int FROM character_reference_images r JOIN character_profiles c
+          ON c.id = r.character_profile_id WHERE c.picture_book_id = $1) AS book_reference_rows`,
+      [scope.bookId],
     );
     const illustrations = await client.query(
-      `/* I111_ILLUSTRATIONS */ SELECT i.id, i.page_id, i.revision_number, i.provider, i.model,
-       i.status, i.media_asset_id FROM work_page_illustrations i
-       JOIN work_pages p ON p.id = i.page_id WHERE p.picture_book_id = $1
+      `/* I111_ILLUSTRATIONS */ SELECT i.id, p.picture_book_id AS book_id, i.page_id,
+       i.revision_number, i.provider, i.model, i.status, i.media_asset_id,
+       m.id AS media_id, m.provider AS media_provider, m.status AS media_status,
+       m.mime_type AS media_mime_type, m.object_key AS media_object_key,
+       m.playback_url AS media_playback_url, m.byte_size AS media_byte_size
+       FROM work_page_illustrations i
+       JOIN work_pages p ON p.id = i.page_id
+       LEFT JOIN media_assets m ON m.id = i.media_asset_id
        ORDER BY i.created_at, i.id`,
-      [scope.bookId],
     );
     const reservations = await client.query(
       `/* I111_RESERVATIONS */ SELECT id, budget_key, window_key, consumer_user_id,
        resource_type, resource_id, status, uncertainty, provider, model, reserved_minor,
-       actual_minor, provider_request_id FROM ai_cost_reservations
-       WHERE budget_key = $1 OR resource_id = ANY($2::uuid[]) ORDER BY created_at, id`,
-      [scope.budgetKey, illustrations.rows.map((row) => row.id)],
+       actual_minor, provider_request_id FROM ai_cost_reservations ORDER BY created_at, id`,
     );
     const ledgers = await client.query(
-      `/* I111_LEDGERS */ SELECT l.reservation_id, l.consumer_user_id, l.resource_type,
-       l.resource_id, l.provider, l.model, l.outcome, l.amount_minor, l.usage,
-       l.provider_request_id FROM ai_cost_ledger l
-       JOIN ai_cost_reservations r ON r.id = l.reservation_id
-       WHERE r.budget_key = $1 ORDER BY l.created_at, l.id`,
-      [scope.budgetKey],
+      `/* I111_LEDGERS */ SELECT reservation_id, consumer_user_id, resource_type,
+       resource_id, provider, model, outcome, amount_minor, usage, provider_request_id
+       FROM ai_cost_ledger ORDER BY created_at, id`,
     );
     const windows = await client.query(
-      `/* I111_WINDOWS */ SELECT scope_type, consumer_user_id, limit_minor, reserved_minor,
-       actual_minor FROM ai_budget_windows WHERE budget_key = $1 AND window_key = $2`,
-      [scope.budgetKey, scope.windowKey],
+      `/* I111_WINDOWS */ SELECT budget_key, window_key, scope_type, consumer_user_id,
+       limit_minor, reserved_minor, actual_minor FROM ai_budget_windows ORDER BY created_at, id`,
     );
-
     const book = bookResult.rows[0];
     const pages = pageResult.rows;
+    const orderedCharacterIds = [EXPECTED.mimiId, EXPECTED.pipId];
     const pageValid =
       pages.length === 3 &&
       pages[0]?.id === scope.coverId &&
@@ -530,7 +946,10 @@ async function collectDatabase(connectionString, openDatabase, expectedMigration
         (page) =>
           page.source_ai_job_id === null &&
           Array.isArray(page.character_ids) &&
-          page.character_ids.length === 2,
+          page.character_ids.length === 2 &&
+          page.character_ids[0] === orderedCharacterIds[0] &&
+          page.character_ids[1] === orderedCharacterIds[1] &&
+          new Set(page.character_ids).size === 2,
       );
     const bookValid =
       bookResult.rows.length === 1 &&
@@ -541,24 +960,23 @@ async function collectDatabase(connectionString, openDatabase, expectedMigration
     const references = referenceResult.rows.map(referenceFingerprint);
     const referencesValid =
       references.length === 2 &&
-      ['Mimi', 'Pip'].every(
-        (name) => references.filter((item) => item.name === name).length === 1,
-      ) &&
-      references.every(
-        (item) =>
-          item.confirmed &&
-          item.locked &&
-          item.status === 'READY' &&
-          item.imported &&
-          item.privateBos &&
-          item.objectKeyMatched,
-      );
+      references[0]?.name === 'Mimi' &&
+      references[0]?.characterId === EXPECTED.mimiId &&
+      references[1]?.name === 'Pip' &&
+      references[1]?.characterId === EXPECTED.pipId &&
+      references.every((item) => item.databaseMediaMetadataMatched === true) &&
+      activity.rows[0]?.book_reference_rows === 2;
     const costs = classifyCosts(illustrations.rows, reservations.rows, ledgers.rows, windows.rows);
     const errors = [];
     if (!migrationValid) errors.push('I111_MIGRATION_STATE_INVALID');
     if (!bookValid) errors.push('I111_BOOK_SCOPE_INVALID');
     if (!referencesValid) errors.push('I111_REFERENCES_INVALID');
-    if (activity.rows[0]?.active_jobs !== 0 || activity.rows[0]?.project_jobs !== 0) {
+    if (
+      activity.rows.length !== 1 ||
+      activity.rows[0]?.active_ai_jobs !== 0 ||
+      activity.rows[0]?.active_illustrations !== 0 ||
+      activity.rows[0]?.active_references !== 0
+    ) {
       errors.push('I111_RUNTIME_NOT_ISOLATED');
     }
     if (costs.invalid || costs.unsettledAtRisk > 0) errors.push('I111_BUDGET_INVALID');
@@ -566,6 +984,7 @@ async function collectDatabase(connectionString, openDatabase, expectedMigration
       errors,
       databaseName: id.database_name,
       dbIdentityVerified: true,
+      migrationsVerified: migrationValid,
       book: bookValid
         ? {
             id: book.id,
@@ -577,9 +996,13 @@ async function collectDatabase(connectionString, openDatabase, expectedMigration
           }
         : {},
       references,
+      referenceMetadataVerified: referencesValid,
       activity: {
-        unrelatedQueuedJobs: activity.rows[0]?.active_jobs ?? -1,
-        otherActiveJobs: activity.rows[0]?.project_jobs ?? -1,
+        unrelatedQueuedJobs:
+          (activity.rows[0]?.active_ai_jobs ?? -1) +
+          (activity.rows[0]?.active_illustrations ?? -1) +
+          (activity.rows[0]?.active_references ?? -1),
+        otherActiveJobs: activity.rows[0]?.active_illustrations ?? -1,
       },
       attempts: costs.attempts,
       budget: {
@@ -588,6 +1011,8 @@ async function collectDatabase(connectionString, openDatabase, expectedMigration
         unsettledAtRisk: costs.unsettledAtRisk,
         globalWindow: costs.globalWindow,
         consumerWindow: costs.consumerWindow,
+        ledgerConsistencyVerified: !costs.invalid,
+        providerInvoiceVerified: false,
       },
     };
   } finally {
@@ -607,18 +1032,35 @@ function defaultOpenDatabase(connectionString) {
   });
 }
 
+async function defaultRedisInspector(redisUrl) {
+  const { createClient } = requireFromApi('redis');
+  const client = createClient({ url: redisUrl, socket: { connectTimeout: 3_000 } });
+  client.on('error', () => undefined);
+  try {
+    await client.connect();
+    const lengths = await Promise.all(REDIS_QUEUES.map((queue) => client.lLen(queue)));
+    return {
+      verified: lengths.every((length) => Number.isSafeInteger(length) && length === 0),
+      queuedJobs: lengths.reduce((sum, length) => sum + length, 0),
+    };
+  } finally {
+    if (client.isOpen) await client.quit().catch(() => client.disconnect());
+  }
+}
+
 export async function runI111ReadonlyRuntimePreflight(options = {}) {
   const root = options.root ?? resolve(fileURLToPath(new URL('..', import.meta.url)));
   const env = options.env ?? process.env;
   const paths = options.paths ?? I111_READONLY_PATHS;
   const dependencies = {
-    readFile: options.dependencies?.readFile ?? readFile,
-    stat: options.dependencies?.stat ?? stat,
-    gitSha: options.dependencies?.gitSha ?? defaultGitSha,
+    secureRead:
+      options.dependencies?.secureRead ??
+      ((path, settings) => secureReadFile(path, settings, options.dependencies)),
     runtimeInspector: options.dependencies?.runtimeInspector ?? defaultRuntimeInspector,
     openDatabase: options.dependencies?.openDatabase ?? defaultOpenDatabase,
-    // Test-only raw filesystem adapter; the direct CLI always uses inspectFiles above.
+    redisInspector: options.dependencies?.redisInspector ?? defaultRedisInspector,
     fileInspector: options.dependencies?.fileInspector ?? inspectFiles,
+    sourceInspector: options.dependencies?.sourceInspector ?? loadSourceState,
   };
   const errors = [];
   try {
@@ -630,79 +1072,85 @@ export async function runI111ReadonlyRuntimePreflight(options = {}) {
         checks: {},
       };
     }
-    const connectionString = validateLocalDatabaseUrl(env.DATABASE_URL);
+    const connectionString = validateLocalUrl(env.DATABASE_URL, 'postgres');
+    const redisUrl = validateLocalUrl(env.REDIS_URL, 'redis');
     if (!connectionString) errors.push('I111_DATABASE_IDENTITY_INVALID');
-
-    const ttlSource = await dependencies.readFile(
-      resolve(root, 'packages/config/src/image-runtime-safety.ts'),
-      'utf8',
-    );
-    const ttlMatch = ttlSource.match(
-      /^export const PRIVATE_BOS_IMAGE_REFERENCE_TTL_SECONDS = ([\d_]+);$/m,
-    );
-    const workerSignerSource = await dependencies.readFile(
-      resolve(root, 'apps/worker/src/private-bos-reference.ts'),
-      'utf8',
-    );
-    const workerUsesReviewedTtl =
-      /export const PRIVATE_REFERENCE_TTL_SECONDS\s*=\s*PRIVATE_BOS_IMAGE_REFERENCE_TTL_SECONDS;/.test(
-        workerSignerSource,
-      ) &&
-      /generatePresignedUrl\([\s\S]*?PRIVATE_REFERENCE_TTL_SECONDS,[\s\S]*?\)/.test(
-        workerSignerSource,
-      );
-    const signedTtlSeconds =
-      ttlMatch && workerUsesReviewedTtl ? Number(ttlMatch[1].replaceAll('_', '')) : null;
-    const journal = JSON.parse(
-      await dependencies.readFile(
-        resolve(root, 'packages/db/migrations/meta/_journal.json'),
-        'utf8',
-      ),
-    );
-    const migrationTimes = Array.isArray(journal.entries)
-      ? journal.entries.map((entry) => entry?.when)
-      : [];
-    const config = inspectConfiguration(env, signedTtlSeconds);
-    errors.push(...config.errors);
+    if (!redisUrl) errors.push('I111_REDIS_CHECK_FAILED');
 
     const files = await dependencies.fileInspector(paths, dependencies);
     errors.push(...files.errors);
+    let source;
+    try {
+      source = await dependencies.sourceInspector(root, files.approval, dependencies);
+      errors.push(...source.errors);
+    } catch {
+      source = {
+        errors: ['I111_CODE_NOT_REVIEWED'],
+        checkedOutSha: '',
+        reviewedSha: '',
+        versionMatch: false,
+        signedTtlSeconds: null,
+        retryPolicyVerified: false,
+        migrations: [],
+      };
+      errors.push(...source.errors);
+    }
+    const config = inspectConfiguration(env, source);
+    errors.push(...config.errors);
+
     let runtime;
     try {
       runtime = await dependencies.runtimeInspector(paths);
-      if (!runtime.gateVerified || runtime.apiRunning || runtime.genericWorkerRunning) {
+      if (
+        !runtime.probesVerified ||
+        !runtime.gateVerified ||
+        !runtime.resourcesVerified ||
+        runtime.apiRunning !== false ||
+        runtime.genericWorkerRunning !== false
+      ) {
         errors.push('I111_RUNTIME_NOT_ISOLATED');
       }
+      if (!runtime.resourcesVerified) errors.push('I111_POSTGRES_RESOURCE_INVALID');
     } catch {
-      runtime = { gateVerified: false, apiRunning: true, genericWorkerRunning: true };
-      errors.push('I111_RUNTIME_NOT_ISOLATED');
+      runtime = {
+        probesVerified: false,
+        gateVerified: false,
+        resourcesVerified: false,
+        apiRunning: null,
+        genericWorkerRunning: null,
+      };
+      errors.push('I111_RUNTIME_NOT_ISOLATED', 'I111_POSTGRES_RESOURCE_INVALID');
+    }
+
+    let redis = { verified: false, queuedJobs: -1 };
+    if (redisUrl) {
+      try {
+        redis = await dependencies.redisInspector(redisUrl);
+      } catch {
+        errors.push('I111_REDIS_CHECK_FAILED');
+      }
+    }
+    if (!redis.verified || redis.queuedJobs !== 0) {
+      errors.push('I111_REDIS_CHECK_FAILED', 'I111_RUNTIME_NOT_ISOLATED');
     }
 
     let database = { errors: ['I111_DATABASE_IDENTITY_INVALID'] };
-    if (connectionString) {
+    if (connectionString && source.migrations.length === EXPECTED.migrationCount) {
       try {
-        database = await collectDatabase(
+        database = await collectI111Database(
           connectionString,
           dependencies.openDatabase,
-          migrationTimes,
+          source.migrations,
         );
       } catch {
         database = { errors: ['I111_DATABASE_CHECK_FAILED'] };
       }
+    } else if (connectionString) {
+      database = { errors: ['I111_MIGRATION_STATE_INVALID'] };
     }
     errors.push(...database.errors);
 
-    const checkedOutSha = await dependencies.gitSha(root);
-    const reviewedSha = env.I111_REVIEWED_SHA;
-    if (
-      !/^[0-9a-f]{40}$/.test(checkedOutSha) ||
-      !/^[0-9a-f]{40}$/.test(reviewedSha ?? '') ||
-      checkedOutSha !== reviewedSha
-    ) {
-      errors.push('I111_CODE_NOT_REVIEWED');
-    }
-
-    // A local estimate or environment assertion cannot independently verify the provider invoice.
+    errors.push('I111_REMOTE_BOS_UNVERIFIED');
     errors.push('I111_PRICE_BASIS_UNVERIFIED');
     const attempts = database.attempts ?? [];
     const next = [
@@ -711,31 +1159,31 @@ export async function runI111ReadonlyRuntimePreflight(options = {}) {
       { pageId: scope.page2Id, revisionNumber: 2 },
     ][attempts.length] ?? { pageId: '', revisionNumber: 0 };
     const snapshot = {
-      checkedOutSha,
-      reviewedSha,
+      checkedOutSha: source.checkedOutSha,
+      reviewedSha: source.reviewedSha,
       appEnv: env.APP_ENV,
       databaseName: database.databaseName,
-      dbIdentityVerified: database.dbIdentityVerified === true,
+      dbIdentityVerified:
+        database.dbIdentityVerified === true && runtime.resourcesVerified === true,
       originalBackupVerified: files.backupVerified,
       backupSha256Matched: files.backupVerified,
       book: database.book ?? {},
       references: (database.references ?? []).map((item) => ({
         ...item,
         sha256Matched:
-          item.name === 'Mimi' ? files.mimiMatched : item.name === 'Pip' && files.pipMatched,
+          item.name === 'Mimi'
+            ? files.mimiLocalPngVerified
+            : item.name === 'Pip' && files.pipLocalPngVerified,
       })),
       runtime: {
         ...config.runtime,
         apiRunning: runtime.apiRunning,
         genericWorkerRunning: runtime.genericWorkerRunning,
-        unrelatedQueuedJobs: database.activity?.unrelatedQueuedJobs ?? -1,
+        unrelatedQueuedJobs:
+          (database.activity?.unrelatedQueuedJobs ?? -1) + (redis.queuedJobs ?? -1),
         otherActiveJobs: database.activity?.otherActiveJobs ?? -1,
-        autoRetryEnabled: false,
       },
-      budget: {
-        ...config.budget,
-        ...(database.budget ?? {}),
-      },
+      budget: { ...config.budget, ...(database.budget ?? {}) },
       attempts,
       requestedPageId: next.pageId,
       requestedRevisionNumber: next.revisionNumber,
@@ -743,23 +1191,31 @@ export async function runI111ReadonlyRuntimePreflight(options = {}) {
     const policy = assessI111OneShotSnapshot(snapshot);
     errors.push(...policy.errorCodes);
     const errorCodes = safeCodes(errors);
+    const databaseStop = (database.errors ?? []).some((code) =>
+      [
+        'I111_DATABASE_CHECK_FAILED',
+        'I111_DATABASE_IDENTITY_INVALID',
+        'I111_MIGRATION_STATE_INVALID',
+        'I111_BOOK_SCOPE_INVALID',
+        'I111_REFERENCES_INVALID',
+      ].includes(code),
+    );
     return {
       result: errorCodes.length === 0 && policy.verdict === 'STATIC_REVIEW_ONLY' ? 'PASS' : 'STOP',
       errorCodes,
       paidExecutionAuthorized: false,
       checks: {
-        code: errorCodes.includes('I111_CODE_NOT_REVIEWED') ? 'STOP' : 'PASS',
-        database: errorCodes.some((code) =>
-          ['I111_DATABASE_CHECK_FAILED', 'I111_DATABASE_IDENTITY_INVALID'].includes(code),
-        )
-          ? 'STOP'
-          : 'PASS',
+        code:
+          source.versionMatch && !errorCodes.includes('I111_CODE_NOT_REVIEWED') ? 'PASS' : 'STOP',
+        database: databaseStop ? 'STOP' : 'PASS',
+        postgresResource: runtime.resourcesVerified ? 'PASS' : 'STOP',
         backup: files.backupVerified ? 'PASS' : 'STOP',
-        references:
-          files.mimiMatched && files.pipMatched && !errorCodes.includes('I111_REFERENCES_INVALID')
-            ? 'PASS'
-            : 'STOP',
+        localPngFingerprints:
+          files.mimiLocalPngVerified && files.pipLocalPngVerified ? 'PASS' : 'STOP',
+        databaseReferenceMetadata: database.referenceMetadataVerified === true ? 'PASS' : 'STOP',
+        remoteBos: 'STOP',
         runtime: errorCodes.includes('I111_RUNTIME_NOT_ISOLATED') ? 'STOP' : 'PASS',
+        redis: redis.verified && redis.queuedJobs === 0 ? 'PASS' : 'STOP',
         providerConfig: errorCodes.some((code) =>
           ['I111_PROVIDER_CONFIG_INVALID', 'I111_PROVIDER_CREDENTIALS_MISSING'].includes(code),
         )
