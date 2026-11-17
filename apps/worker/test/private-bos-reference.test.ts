@@ -123,7 +123,6 @@ describe('Bailian private BOS reference inputs', () => {
   });
 });
 
-
 describe('#111 Bailian image processor signed-input deadline', () => {
   const db = {} as ConstructorParameters<typeof ImageJobProcessor>[0];
   const provider: ImageProvider = { name: 'BAILIAN', generate: vi.fn() };
