@@ -17,10 +17,8 @@ describe('environment isolation foundation', () => {
     expect(() => loadDatabaseConfig({ APP_ENV: 'dev', DATABASE_URL: 'sqlite://local' })).toThrow());
 });
 
-
 const workspace = 'ws-benchmark123';
-const approvedEndpoint =
-  'https://ws-benchmark123.cn-beijing.maas.aliyuncs.com/compatible-mode/v1';
+const approvedEndpoint = 'https://ws-benchmark123.cn-beijing.maas.aliyuncs.com/compatible-mode/v1';
 const baseImageEnv = {
   APP_ENV: 'dev',
   PICTURE_BOOK_IMAGE_ENABLED: 'true',
@@ -65,11 +63,11 @@ describe('#111 Beijing image workspace and private reference lifetime', () => {
       ['ws-another123', approvedEndpoint],
       [workspace, undefined],
       [workspace, 'https://dashscope.aliyuncs.com/compatible-mode/v1'],
-      [workspace, 'https://ws-benchmark123.cn-shanghai.maas.aliyuncs.com/compatible-mode/v1'],
-      [workspace, 'https://ws-benchmark123.cn-beijing.maas.aliyuncs.com/compatible-mode/v1/'],
+      [workspace, approvedEndpoint.replace('cn-beijing', 'cn-shanghai')],
+      [workspace, approvedEndpoint + '/'],
       [workspace, approvedEndpoint + '?override=1'],
-      [workspace, 'https://ws-benchmark123.cn-beijing.maas.aliyuncs.com:8443/compatible-mode/v1'],
-      [workspace, 'https://username@ws-benchmark123.cn-beijing.maas.aliyuncs.com/compatible-mode/v1'],
+      [workspace, approvedEndpoint.replace('maas.aliyuncs.com/', 'maas.aliyuncs.com:8443/')],
+      [workspace, approvedEndpoint.replace('https://', 'https://username@')],
     ] as const;
     for (const [ws, endpoint] of rejected) {
       expect(() => assertBeijingImageWorkspaceEndpoint(ws, endpoint)).toThrow(
