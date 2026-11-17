@@ -168,11 +168,7 @@ denies('unsettled prior call', 'I111_PREVIOUS_ATTEMPT_INVALID', (s) => {
   s.requestedPageId = scope.page2Id;
 });
 denies('fourth provider call', 'I111_ATTEMPT_COUNT_INVALID', (s) => {
-  s.attempts = [
-    attempt(scope.page1Id, 1),
-    attempt(scope.page2Id, 1),
-    attempt(scope.page2Id, 2),
-  ];
+  s.attempts = [attempt(scope.page1Id, 1), attempt(scope.page2Id, 1), attempt(scope.page2Id, 2)];
   s.requestedPageId = scope.page2Id;
   s.requestedRevisionNumber = 3;
 });
