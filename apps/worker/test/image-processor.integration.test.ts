@@ -948,7 +948,7 @@ suite('M10 image worker PostgreSQL integration', () => {
   });
 
   for (const frozenPageId of [I111_PAID_RUN.page1Id, I111_PAID_RUN.page2Id]) {
-    it(`does not claim or mutate frozen #111 page ${frozenPageId} in a generic Worker`, async () => {
+    it(`generic Worker preserves frozen #111 page ${frozenPageId}`, async () => {
       const fixture = await queued('BAILIAN', true, frozenPageId);
       const generate = vi.fn<ImageProvider['generate']>();
       const readState = async () => ({
