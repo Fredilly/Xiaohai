@@ -25,6 +25,12 @@ import {
 } from '../src/image-provider.js';
 import { recoverStaleMedia } from '../src/stale-media.js';
 import { createPrivateBosReferenceResolver } from '../src/private-bos-reference.js';
+import {
+  I111_PAID_RUN,
+  I111_PROVIDER_SLOT_MARKER,
+  consumeI111ProviderSlot,
+  noteI111ProviderOutcome,
+} from '../src/i111-paid-attempt-gate.js';
 
 const database = process.env.DATABASE_URL ? createDatabase(process.env) : null;
 const suite = database ? describe : describe.skip;
@@ -934,4 +940,174 @@ suite('M10 image worker PostgreSQL integration', () => {
     expect(saved).toMatchObject({ status: 'FAILED', errorCode: 'IMAGE_WORKER_TIMEOUT' });
     expect(saved!.mediaAssetId).toBeNull();
   });
+  it('consumes one durable #111 slot under concurrent claim and never retries or opens fourth', async () => {
+    const fixture = await queued('BAILIAN', false);
+    const [firstPage] = await db
+      .select()
+      .from(workPages)
+      .where(eq(workPages.id, fixture.illustration.pageId));
+    const [page2] = await db
+      .insert(workPages)
+      .values({
+        pictureBookId: firstPage!.pictureBookId,
+        pageNumber: 2,
+        storyText: 'synthetic second scene',
+        sceneDescription: 'forest map',
+        illustrationPrompt: 'Mimi and Pip with map',
+      })
+      .returning();
+    const scope = {
+      ...I111_PAID_RUN,
+      bookId: firstPage!.pictureBookId,
+      ownerId: fixture.userId,
+      page1Id: firstPage!.id,
+      page2Id: page2!.id,
+      budgetKey: 'TEST_I111_' + crypto.randomUUID(),
+      windowKey: 'ONLY_ISOLATED_TEST',
+    };
+
+    const prepare = async (id: string) => {
+      await db.insert(aiCostReservations).values({
+        idempotencyKey: 'i111:' + id,
+        budgetKey: scope.budgetKey,
+        windowKey: scope.windowKey,
+        consumerUserId: scope.ownerId,
+        resourceType: 'PICTURE_BOOK_IMAGE',
+        resourceId: id,
+        provider: 'BAILIAN',
+        model: scope.model,
+        reservedMinor: scope.reservationMinor,
+      });
+      await db
+        .update(aiBudgetWindows)
+        .set({
+          reservedMinor: scope.reservationMinor,
+        })
+        .where(eq(aiBudgetWindows.budgetKey, scope.budgetKey));
+    };
+    await db.insert(aiBudgetWindows).values([
+      {
+        budgetKey: scope.budgetKey,
+        windowKey: scope.windowKey,
+        scopeType: 'GLOBAL',
+        limitMinor: 200,
+        consumerUserId: null,
+      },
+      {
+        budgetKey: scope.budgetKey,
+        windowKey: scope.windowKey,
+        scopeType: 'CONSUMER',
+        limitMinor: 200,
+        consumerUserId: fixture.userId,
+      },
+    ]);
+
+    await db
+      .update(workPageIllustrations)
+      .set({ model: scope.model, status: 'RUNNING' })
+      .where(eq(workPageIllustrations.id, fixture.illustration.id));
+    await prepare(fixture.illustration.id);
+
+    const [a, b] = await Promise.allSettled([
+      consumeI111ProviderSlot(db, fixture.illustration.id, scope),
+      consumeI111ProviderSlot(db, fixture.illustration.id, scope),
+    ]);
+    expect([a.status, b.status].sort()).toEqual(['fulfilled', 'rejected']);
+    expect((a.status === 'fulfilled' ? a.value : b.status === 'fulfilled' ? b.value : null)).toBe(1);
+
+    const [firstLedger] = await db.select().from(aiCostLedger);
+    expect(firstLedger).toMatchObject({
+      resourceId: fixture.illustration.id,
+      outcome: 'AT_RISK',
+      failureCode: I111_PROVIDER_SLOT_MARKER,
+      amountMinor: 25,
+    });
+    await expect(consumeI111ProviderSlot(db, fixture.illustration.id, scope)).rejects.toThrow(
+      'I111_PAID_ATTEMPT_STOP',
+    );
+    await noteI111ProviderOutcome(db, fixture.illustration.id, 'synthetic-request-1', undefined, scope);
+    const [atRisk] = await db
+      .select()
+      .from(aiCostReservations)
+      .where(eq(aiCostReservations.resourceId, fixture.illustration.id));
+    expect(atRisk).toMatchObject({
+      status: 'RESERVED',
+      uncertainty: 'AT_RISK',
+      providerRequestId: 'synthetic-request-1',
+    });
+
+    const settle = async (id: string, requestId: string) => {
+      await db
+        .update(aiCostReservations)
+        .set({
+          status: 'SETTLED',
+          uncertainty: 'NONE',
+          providerRequestId: requestId,
+          actualMinor: 22,
+        })
+        .where(eq(aiCostReservations.resourceId, id));
+      await db
+        .update(aiCostLedger)
+        .set({ outcome: 'SUCCEEDED', providerRequestId: requestId, amountMinor: 22 })
+        .where(eq(aiCostLedger.resourceId, id));
+      await db
+        .update(aiBudgetWindows)
+        .set({
+          reservedMinor: 0,
+          actualMinor: 22,
+        })
+        .where(eq(aiBudgetWindows.budgetKey, scope.budgetKey));
+    };
+    await settle(fixture.illustration.id, 'synthetic-request-1');
+
+    for (const [revision, ordinal] of [
+      [1, 2],
+      [2, 3],
+    ] as const) {
+      const [illustration] = await db
+        .insert(workPageIllustrations)
+        .values({
+          pageId: page2!.id,
+          revisionNumber: revision,
+          prompt: 'synthetic map',
+          provider: 'BAILIAN',
+          model: scope.model,
+          consistency: fixture.consistency,
+          status: 'RUNNING',
+        })
+        .returning();
+      await prepare(illustration!.id);
+      expect(await consumeI111ProviderSlot(db, illustration!.id, scope)).toBe(ordinal);
+      await noteI111ProviderOutcome(
+        db,
+        illustration!.id,
+        'synthetic-request-' + ordinal,
+        undefined,
+        scope,
+      );
+      await settle(illustration!.id, 'synthetic-request-' + ordinal);
+    }
+
+    const [fourth] = await db
+      .insert(workPageIllustrations)
+      .values({
+        pageId: page2!.id,
+        revisionNumber: 3,
+        prompt: 'forbidden fourth',
+        provider: 'BAILIAN',
+        model: scope.model,
+        consistency: fixture.consistency,
+        status: 'RUNNING',
+      })
+      .returning();
+    await prepare(fourth!.id);
+    await expect(consumeI111ProviderSlot(db, fourth!.id, scope)).rejects.toThrow(
+      'I111_PAID_ATTEMPT_STOP',
+    );
+    const ledgerRows = await db.select().from(aiCostLedger);
+    expect(ledgerRows).toHaveLength(3);
+    expect(ledgerRows.every((row) => row.failureCode === I111_PROVIDER_SLOT_MARKER)).toBe(true);
+    await db.delete(aiBudgetWindows).where(eq(aiBudgetWindows.budgetKey, scope.budgetKey));
+  });
+
 });
