@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  I111_PAID_RUN,
-  assertI111Slot,
-  i111AllowedSlots,
-} from '../src/i111-paid-attempt-gate.js';
+import { I111_PAID_RUN, assertI111Slot, i111AllowedSlots } from '../src/i111-paid-attempt-gate.js';
 
 const page1 = I111_PAID_RUN.page1Id;
 const page2 = I111_PAID_RUN.page2Id;
@@ -41,9 +37,7 @@ describe('#111 exactly three paid attempts, fixed page and revision order', () =
       [0, { ...illustration(page1, 1), provider: 'MOCK' }],
       [0, { ...illustration(page1, 1), model: 'qwen-image-3.0-pro' }],
     ] as const) {
-      expect(() => assertI111Slot(I111_PAID_RUN, attempts, row)).toThrow(
-        'I111_PAID_ATTEMPT_STOP',
-      );
+      expect(() => assertI111Slot(I111_PAID_RUN, attempts, row)).toThrow('I111_PAID_ATTEMPT_STOP');
     }
   });
 });

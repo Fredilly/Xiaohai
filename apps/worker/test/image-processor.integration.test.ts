@@ -30,6 +30,7 @@ import {
   I111_PROVIDER_SLOT_MARKER,
   consumeI111ProviderSlot,
   noteI111ProviderOutcome,
+  type I111PaidRunScope,
 } from '../src/i111-paid-attempt-gate.js';
 
 const database = process.env.DATABASE_URL ? createDatabase(process.env) : null;
@@ -965,7 +966,7 @@ suite('M10 image worker PostgreSQL integration', () => {
       page2Id: page2!.id,
       budgetKey: 'TEST_I111_' + crypto.randomUUID(),
       windowKey: 'ONLY_ISOLATED_TEST',
-    };
+    } as unknown as I111PaidRunScope;
 
     const prepare = async (id: string) => {
       await db.insert(aiCostReservations).values({
@@ -1014,9 +1015,7 @@ suite('M10 image worker PostgreSQL integration', () => {
       consumeI111ProviderSlot(db, fixture.illustration.id, scope),
     ]);
     expect([a.status, b.status].sort()).toEqual(['fulfilled', 'rejected']);
-    expect(
-      a.status === 'fulfilled' ? a.value : b.status === 'fulfilled' ? b.value : null,
-    ).toBe(1);
+    expect(a.status === 'fulfilled' ? a.value : b.status === 'fulfilled' ? b.value : null).toBe(1);
 
     const [firstLedger] = await db.select().from(aiCostLedger);
     expect(firstLedger).toMatchObject({

@@ -154,10 +154,7 @@ export async function consumeI111ProviderSlot(
         book: pictureBooks,
       })
       .from(aiCostReservations)
-      .leftJoin(
-        workPageIllustrations,
-        eq(workPageIllustrations.id, aiCostReservations.resourceId),
-      )
+      .leftJoin(workPageIllustrations, eq(workPageIllustrations.id, aiCostReservations.resourceId))
       .leftJoin(workPages, eq(workPages.id, workPageIllustrations.pageId))
       .leftJoin(pictureBooks, eq(pictureBooks.id, workPages.pictureBookId))
       .where(
@@ -176,10 +173,7 @@ export async function consumeI111ProviderSlot(
       .select()
       .from(aiCostLedger)
       .where(inArray(aiCostLedger.reservationId, reservationIds));
-    if (
-      ledgers.length > scope.maxCalls ||
-      ledgers.some((entry) => entry.usage !== SLOT_MARKER)
-    ) {
+    if (ledgers.length > scope.maxCalls || ledgers.some((entry) => entry.usage !== SLOT_MARKER)) {
       throw new I111AttemptStop();
     }
     const byReservation = new Map<string, (typeof ledgers)[number]>();
@@ -336,11 +330,7 @@ export async function noteI111ProviderOutcome(
       .from(aiCostLedger)
       .where(eq(aiCostLedger.reservationId, reservation.id))
       .for('update');
-    if (
-      rows.length !== 1 ||
-      rows[0]!.usage !== SLOT_MARKER ||
-      rows[0]!.outcome !== 'AT_RISK'
-    ) {
+    if (rows.length !== 1 || rows[0]!.usage !== SLOT_MARKER || rows[0]!.outcome !== 'AT_RISK') {
       throw new I111AttemptStop();
     }
     const requestId = reservation.providerRequestId ?? providerRequestId ?? null;
