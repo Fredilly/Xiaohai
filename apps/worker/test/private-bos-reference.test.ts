@@ -45,7 +45,7 @@ describe('Bailian private BOS reference inputs', () => {
       1_700_000_000,
       PRIVATE_REFERENCE_TTL_SECONDS,
     );
-    expect(PRIVATE_REFERENCE_TTL_SECONDS).toBe(300);
+    expect(PRIVATE_REFERENCE_TTL_SECONDS).toBe(900);
     expect(signed).not.toBe(recorded);
     expect(new URL(signed!).search).toBe('?authorization=signed-test');
   });
