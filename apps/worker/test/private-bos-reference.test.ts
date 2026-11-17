@@ -125,13 +125,14 @@ describe('Bailian private BOS reference inputs', () => {
 
 describe('#111 Bailian image processor signed-input deadline', () => {
   const db = {} as ConstructorParameters<typeof ImageJobProcessor>[0];
-  const provider: ImageProvider = { name: 'BAILIAN', generate: vi.fn() };
+  const generate = vi.fn();
+  const provider: ImageProvider = { name: 'BAILIAN', generate };
 
   it('rejects unsafe 900s worker timeout before connecting to DB or provider', () => {
     expect(() => new ImageJobProcessor(db, provider, 900_000)).toThrow(
       'IMAGE_REFERENCE_TTL_TIMEOUT_MISMATCH',
     );
     expect(() => new ImageJobProcessor(db, provider, 600_000)).not.toThrow();
-    expect(provider.generate).not.toHaveBeenCalled();
+    expect(generate).not.toHaveBeenCalled();
   });
 });
