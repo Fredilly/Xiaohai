@@ -189,8 +189,9 @@ export async function consumeI111ProviderSlot(
     }
 
     const consumed = byReservation.size;
-    const [current] = records.filter((record) => record.reservation.resourceId === illustrationId);
-    if (!current || records.filter((record) => record.reservation.resourceId === illustrationId).length !== 1) {
+    const matches = records.filter((record) => record.reservation.resourceId === illustrationId);
+    const [current] = matches;
+    if (!current || matches.length !== 1) {
       throw new I111AttemptStop();
     }
     if (records.length !== consumed + 1 || byReservation.has(current.reservation.id)) {
