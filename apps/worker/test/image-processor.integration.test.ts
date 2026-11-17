@@ -74,7 +74,11 @@ suite('M10 image worker PostgreSQL integration', () => {
     });
   }
 
-  async function queued(provider: 'MOCK' | 'BAILIAN' = 'MOCK', reserve = true) {
+  async function queued(
+    provider: 'MOCK' | 'BAILIAN' = 'MOCK',
+    reserve = true,
+    frozenPageId?: string,
+  ) {
     const [user] = await db.insert(consumerUsers).values({}).returning();
     const [project] = await db
       .insert(aiProjects)
@@ -166,6 +170,7 @@ suite('M10 image worker PostgreSQL integration', () => {
     const [page] = await db
       .insert(workPages)
       .values({
+        ...(frozenPageId ? { id: frozenPageId } : {}),
         pictureBookId: book!.id,
         pageNumber: 1,
         storyText: '小狐狸出发。',
@@ -941,6 +946,36 @@ suite('M10 image worker PostgreSQL integration', () => {
     expect(saved).toMatchObject({ status: 'FAILED', errorCode: 'IMAGE_WORKER_TIMEOUT' });
     expect(saved!.mediaAssetId).toBeNull();
   });
+
+  for (const frozenPageId of [I111_PAID_RUN.page1Id, I111_PAID_RUN.page2Id]) {
+    it(`does not claim or mutate frozen #111 page ${frozenPageId} in a generic Worker`, async () => {
+      const fixture = await queued('BAILIAN', true, frozenPageId);
+      const generate = vi.fn<ImageProvider['generate']>();
+      const readState = async () => ({
+        illustration: await db
+          .select()
+          .from(workPageIllustrations)
+          .where(eq(workPageIllustrations.id, fixture.illustration.id)),
+        reservations: await db
+          .select()
+          .from(aiCostReservations)
+          .where(eq(aiCostReservations.resourceId, fixture.illustration.id)),
+        ledger: await db
+          .select()
+          .from(aiCostLedger)
+          .where(eq(aiCostLedger.resourceId, fixture.illustration.id)),
+      });
+      const before = await readState();
+      expect(before.illustration[0]?.status).toBe('QUEUED');
+      expect(before.reservations).toHaveLength(1);
+      expect(before.ledger).toHaveLength(0);
+
+      const processor = new ImageJobProcessor(db, { name: 'BAILIAN', generate }, 5_000);
+      expect(await processor.processOne()).toBeNull();
+      expect(generate).not.toHaveBeenCalled();
+      expect(await readState()).toEqual(before);
+    });
+  }
 
   it('enforces three durable slots across concurrent calls and retries', async () => {
     const fixture = await queued('BAILIAN', false);

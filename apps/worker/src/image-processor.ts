@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, notInArray, or, sql } from 'drizzle-orm';
 import { assertImageReferenceLifetime, IMAGE_PROVIDER_MIN_TIMEOUT_MS } from '@xiaohai/config';
 import {
   characterProfiles,
@@ -60,7 +60,12 @@ export class ImageJobProcessor {
             eq(workPageIllustrations.provider, this.provider.name),
             ...(this.i111AllowedIllustrationId
               ? [eq(workPageIllustrations.id, this.i111AllowedIllustrationId)]
-              : []),
+              : [
+                  notInArray(workPageIllustrations.pageId, [
+                    I111_PAID_RUN.page1Id,
+                    I111_PAID_RUN.page2Id,
+                  ]),
+                ]),
           ),
         )
         .orderBy(asc(workPageIllustrations.createdAt))
