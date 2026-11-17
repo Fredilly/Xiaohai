@@ -1019,7 +1019,7 @@ suite('M10 image worker PostgreSQL integration', () => {
     expect(firstLedger).toMatchObject({
       resourceId: fixture.illustration.id,
       outcome: 'AT_RISK',
-      failureCode: I111_PROVIDER_SLOT_MARKER,
+      usage: I111_PROVIDER_SLOT_MARKER,
       amountMinor: 25,
     });
     await expect(consumeI111ProviderSlot(db, fixture.illustration.id, scope)).rejects.toThrow(
@@ -1129,7 +1129,7 @@ suite('M10 image worker PostgreSQL integration', () => {
     );
     const ledgerRows = await db.select().from(aiCostLedger);
     expect(ledgerRows).toHaveLength(3);
-    expect(ledgerRows.every((row) => row.failureCode === I111_PROVIDER_SLOT_MARKER)).toBe(true);
+    expect(ledgerRows.every((row) => row.usage === I111_PROVIDER_SLOT_MARKER)).toBe(true);
     await db.delete(aiBudgetWindows).where(eq(aiBudgetWindows.budgetKey, scope.budgetKey));
   });
 
