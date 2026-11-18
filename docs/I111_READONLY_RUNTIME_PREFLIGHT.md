@@ -39,6 +39,13 @@ reported as independent human approval. The review request explicitly passes
 
 ## Read-only guarantees
 
+- All local prerequisites are mandatory before the first Docker or network
+  inspection: allowlisted PostgreSQL/Redis URLs, trusted backup/PNG/api.mode/
+  approval files, a clean and independently Fred-approved source checkout,
+  reviewed migration provenance, and valid provider/budget configuration and
+  credential presence. If any prerequisite fails, the CLI immediately returns
+  a redacted STOP with zero runtime-inspector, TCP, Redis and PostgreSQL calls;
+  the remote BOS, pricing, atomic-isolation and retry STOP codes remain present.
 - PostgreSQL and Redis URLs must use the exact isolated loopback ports and
   restricted identities. Docker inspection is pinned to the reviewed local
   Docker Desktop Unix socket, CLI path and daemon ID; remote context/TLS

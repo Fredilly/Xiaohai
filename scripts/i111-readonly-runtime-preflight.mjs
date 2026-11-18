@@ -1675,7 +1675,74 @@ export async function runI111ReadonlyRuntimePreflight(options = {}) {
     const config = inspectConfiguration(env, source);
     errors.push(...config.errors);
 
-    errors.push('I111_ATOMIC_ISOLATION_UNVERIFIED', 'I111_RETRY_SEMANTICS_UNVERIFIED');
+    errors.push(
+      'I111_ATOMIC_ISOLATION_UNVERIFIED',
+      'I111_RETRY_SEMANTICS_UNVERIFIED',
+      'I111_REMOTE_BOS_UNVERIFIED',
+      'I111_PRICE_BASIS_UNVERIFIED',
+    );
+
+    // A STOP verdict alone is insufficient: a rejected local prerequisite must
+    // prevent even Docker inspection and unauthenticated TCP probes.
+    const filesVerified =
+      files.errors.length === 0 &&
+      files.backupVerified === true &&
+      files.mimiLocalPngVerified === true &&
+      files.pipLocalPngVerified === true &&
+      files.apiModeDisabled === true;
+    const sourceVerified =
+      source.errors.length === 0 &&
+      source.versionMatch === true &&
+      source.checkoutClean === true &&
+      source.independentReviewVerified === true &&
+      Array.isArray(source.migrations) &&
+      source.migrations.length === EXPECTED.migrationCount;
+    if (!files.backupVerified) errors.push('I111_BACKUP_NOT_VERIFIED');
+    if (!files.mimiLocalPngVerified || !files.pipLocalPngVerified) {
+      errors.push('I111_LOCAL_REFERENCE_FILES_INVALID');
+    }
+    if (!files.apiModeDisabled) errors.push('I111_RUNTIME_NOT_ISOLATED');
+    if (!sourceVerified) errors.push('I111_CODE_NOT_REVIEWED');
+    if (!Array.isArray(source.migrations) || source.migrations.length !== EXPECTED.migrationCount) {
+      errors.push('I111_MIGRATION_STATE_INVALID');
+    }
+    if (
+      !connectionString ||
+      !redisUrl ||
+      !filesVerified ||
+      !sourceVerified ||
+      config.errors.length
+    ) {
+      const errorCodes = safeCodes(errors);
+      return {
+        result: 'STOP',
+        errorCodes,
+        paidExecutionAuthorized: false,
+        checks: {
+          code: sourceVerified ? 'PASS' : 'STOP',
+          database: 'STOP',
+          postgresResource: 'STOP',
+          backup: files.backupVerified === true ? 'PASS' : 'STOP',
+          localPngFingerprints:
+            files.mimiLocalPngVerified === true && files.pipLocalPngVerified === true
+              ? 'PASS'
+              : 'STOP',
+          databaseReferenceMetadata: 'STOP',
+          remoteBos: 'STOP',
+          processAndRedisSampling: 'STOP',
+          atomicIsolation: 'STOP',
+          retrySemantics: 'STOP',
+          runtime: 'STOP',
+          redis: 'STOP',
+          providerConfig: config.errors.some((code) =>
+            ['I111_PROVIDER_CONFIG_INVALID', 'I111_PROVIDER_CREDENTIALS_MISSING'].includes(code),
+          )
+            ? 'STOP'
+            : 'PASS',
+          budget: 'STOP',
+        },
+      };
+    }
 
     let runtimeBefore;
     try {
@@ -1797,8 +1864,6 @@ export async function runI111ReadonlyRuntimePreflight(options = {}) {
       redisAfter.queuedJobs === 0;
     if (!runtimeSamplesIdle) errors.push('I111_RUNTIME_NOT_ISOLATED');
 
-    errors.push('I111_REMOTE_BOS_UNVERIFIED');
-    errors.push('I111_PRICE_BASIS_UNVERIFIED');
     const attempts = database.attempts ?? [];
     const next = [
       { pageId: scope.page1Id, revisionNumber: 1 },

@@ -240,6 +240,7 @@ function validSource(rows = baseRows()) {
     reviewedSha,
     versionMatch: true,
     checkoutClean: true,
+    independentReviewVerified: true,
     signedTtlSeconds: 900,
     retrySemanticsVerified: false,
     migrations: expectedMigrations(rows.migrations),
@@ -283,6 +284,86 @@ async function run({
   });
   return { result, statements: database.statements };
 }
+
+test('rejects failed local prerequisites before runtime, TCP, Redis or PostgreSQL access', async () => {
+  const cases = [
+    {
+      name: 'invalid Fred approval',
+      source: { ...validSource(), independentReviewVerified: false, versionMatch: false },
+      expectedCode: 'I111_CODE_NOT_REVIEWED',
+    },
+    {
+      name: 'dirty source checkout',
+      source: { ...validSource(), checkoutClean: false },
+      expectedCode: 'I111_CODE_NOT_REVIEWED',
+    },
+    {
+      name: 'corrupt backup',
+      files: { ...validFiles(), backupVerified: false },
+      expectedCode: 'I111_BACKUP_NOT_VERIFIED',
+    },
+    {
+      name: 'untrusted approval file',
+      files: { ...validFiles(), approval: null, errors: ['I111_CODE_NOT_REVIEWED'] },
+      expectedCode: 'I111_CODE_NOT_REVIEWED',
+    },
+    {
+      name: 'invalid provider configuration',
+      environment: { ...env(), PICTURE_BOOK_IMAGE_MODEL: 'unexpected-model' },
+      expectedCode: 'I111_PROVIDER_CONFIG_INVALID',
+    },
+    {
+      name: 'invalid database URL',
+      environment: { ...env(), DATABASE_URL: 'postgresql://user:pass@localhost/other' },
+      expectedCode: 'I111_DATABASE_IDENTITY_INVALID',
+    },
+  ];
+  for (const scenario of cases) {
+    let runtimeCalls = 0;
+    let tcpCalls = 0;
+    let redisCalls = 0;
+    let postgresCalls = 0;
+    const result = await runI111ReadonlyRuntimePreflight({
+      argv: [],
+      env: scenario.environment ?? env(),
+      dependencies: {
+        fileInspector: () => scenario.files ?? validFiles(),
+        sourceInspector: () => scenario.source ?? validSource(),
+        runtimeInspector: () => {
+          runtimeCalls += 1;
+          tcpCalls += 1;
+          return validRuntime();
+        },
+        redisInspector: () => {
+          redisCalls += 1;
+          return { verified: true, queuedJobs: 0 };
+        },
+        openDatabase: () => {
+          postgresCalls += 1;
+          return fakeDatabase().client;
+        },
+      },
+    });
+    assert.equal(result.result, 'STOP', scenario.name);
+    assert.equal(result.paidExecutionAuthorized, false, scenario.name);
+    assert.ok(result.errorCodes.includes(scenario.expectedCode), scenario.name);
+    for (const code of [
+      'I111_REMOTE_BOS_UNVERIFIED',
+      'I111_PRICE_BASIS_UNVERIFIED',
+      'I111_ATOMIC_ISOLATION_UNVERIFIED',
+      'I111_RETRY_SEMANTICS_UNVERIFIED',
+    ]) {
+      assert.ok(result.errorCodes.includes(code), `${scenario.name}: ${code}`);
+    }
+    assert.deepEqual(
+      { runtimeCalls, tcpCalls, redisCalls, postgresCalls },
+      { runtimeCalls: 0, tcpCalls: 0, redisCalls: 0, postgresCalls: 0 },
+      scenario.name,
+    );
+    assert.equal(result.checks.database, 'STOP', scenario.name);
+    assert.equal(result.checks.processAndRedisSampling, 'STOP', scenario.name);
+  }
+});
 
 test('uses only a read-only transaction, separates remote proof, and never authorizes payment', async () => {
   const { result, statements } = await run();
