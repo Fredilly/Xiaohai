@@ -37,6 +37,11 @@ const EXPECTED = Object.freeze({
   redisContainer: 'xiaohai-i111-planb-redis',
   redisContainerId: '920804ca22010bfe8ae8791e9f6ec88604d870151685ea6a31e66dc23182f031',
   redisVolume: 'xiaohai_i111_planb_redisdata',
+  dockerEndpoint: 'unix:///Users/li/.docker/run/docker.sock',
+  dockerSocketPath: '/Users/li/.docker/run/docker.sock',
+  dockerDaemonId: '85a4eb36-df0b-474f-854d-52a141733ea8',
+  dockerCli: '/Applications/Docker.app/Contents/Resources/bin/docker',
+  dockerBackendExecutable: '/Applications/Docker.app/Contents/MacOS/com.docker.backend',
   mimiId: 'de0169d8-d975-4f1b-b04c-a15c25f54bdc',
   pipId: '249a719e-d284-46e0-a525-285e93270248',
   mimiReferenceId: 'fa526d14-9fc4-4cba-bf3e-ae9c8a888906',
@@ -437,7 +442,14 @@ export async function verifyGitHubApproval(approval, checkedOutSha, dependencies
   try {
     const response = await commandRunner(
       'gh',
-      ['api', '--method', 'GET', `repos/Fredilly/Xiaohai/pulls/237/reviews/${match[1]}`],
+      [
+        'api',
+        '--hostname',
+        'github.com',
+        '--method',
+        'GET',
+        `repos/Fredilly/Xiaohai/pulls/237/reviews/${match[1]}`,
+      ],
       dependencies.root,
     );
     if (response.status !== 0 || response.stderr.trim()) return false;
@@ -454,13 +466,110 @@ export async function verifyGitHubApproval(approval, checkedOutSha, dependencies
   }
 }
 
-function dockerResource(name, expected, port, containerPort, volume, destination) {
-  const inspected = runCommand('docker', ['inspect', name]);
-  const volumeInfo = runCommand('docker', ['volume', 'inspect', volume]);
-  if (inspected.status !== 0 || volumeInfo.status !== 0) return false;
+function dockerArgs(args) {
+  return ['--host', EXPECTED.dockerEndpoint, ...args];
+}
+
+async function trustedDockerSocket(dependencies) {
+  const adapter = {
+    lstat: dependencies.lstat ?? lstat,
+    realpath: dependencies.realpath ?? realpath,
+  };
+  try {
+    if ((await adapter.realpath(EXPECTED.dockerSocketPath)) !== EXPECTED.dockerSocketPath) {
+      return false;
+    }
+    const parents = await trustedParents(EXPECTED.dockerSocketPath, adapter);
+    const before = await adapter.lstat(EXPECTED.dockerSocketPath);
+    if (
+      before.isSymbolicLink() ||
+      !before.isSocket() ||
+      before.uid !== process.getuid?.() ||
+      (before.mode & 0o002) !== 0
+    ) {
+      return false;
+    }
+    await parentsUnchanged(parents, adapter);
+    const after = await adapter.lstat(EXPECTED.dockerSocketPath);
+    return (
+      after.isSocket() &&
+      !after.isSymbolicLink() &&
+      after.dev === before.dev &&
+      after.ino === before.ino &&
+      after.uid === before.uid &&
+      after.mode === before.mode
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function trustedDockerEndpoint(dependencies) {
+  const environment = dependencies.env ?? process.env;
+  if (
+    (environment.DOCKER_HOST !== undefined &&
+      environment.DOCKER_HOST !== EXPECTED.dockerEndpoint) ||
+    environment.DOCKER_CONTEXT !== undefined ||
+    environment.DOCKER_TLS_VERIFY !== undefined ||
+    environment.DOCKER_CERT_PATH !== undefined
+  ) {
+    return false;
+  }
+  const socketVerified = await (dependencies.socketInspector ?? trustedDockerSocket)(dependencies);
+  if (!socketVerified) return false;
+  const commandRunner = dependencies.commandRunner ?? runCommand;
+  try {
+    const result = await commandRunner(
+      EXPECTED.dockerCli,
+      dockerArgs(['info', '--format', '{{json .}}']),
+    );
+    if (result.status !== 0 || result.stderr.trim()) return false;
+    const info = JSON.parse(result.stdout);
+    return (
+      info?.ID === EXPECTED.dockerDaemonId &&
+      info?.Name === 'docker-desktop' &&
+      info?.OperatingSystem === 'Docker Desktop' &&
+      info?.OSType === 'linux' &&
+      info?.DockerRootDir === '/var/lib/docker' &&
+      /^\d+\.\d+\.\d+$/.test(info?.ServerVersion ?? '')
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function dockerResource(
+  name,
+  expected,
+  port,
+  containerPort,
+  volume,
+  destination,
+  commandRunner,
+) {
+  const inspected = await commandRunner(EXPECTED.dockerCli, dockerArgs(['inspect', name]));
+  const volumeInfo = await commandRunner(
+    EXPECTED.dockerCli,
+    dockerArgs(['volume', 'inspect', volume]),
+  );
+  const published = await commandRunner(
+    EXPECTED.dockerCli,
+    dockerArgs(['port', name, `${containerPort}/tcp`]),
+  );
+  if (
+    inspected.status !== 0 ||
+    volumeInfo.status !== 0 ||
+    published.status !== 0 ||
+    inspected.stderr.trim() ||
+    volumeInfo.stderr.trim() ||
+    published.stderr.trim()
+  ) {
+    return false;
+  }
   const [container] = JSON.parse(inspected.stdout);
   const [storedVolume] = JSON.parse(volumeInfo.stdout);
   const binding = container?.HostConfig?.PortBindings?.[`${containerPort}/tcp`];
+  const actualBinding = container?.NetworkSettings?.Ports?.[`${containerPort}/tcp`];
   const mount = container?.Mounts?.filter((item) => item.Destination === destination);
   return (
     container?.Id === expected &&
@@ -472,18 +581,24 @@ function dockerResource(name, expected, port, containerPort, volume, destination
     binding.length === 1 &&
     binding[0]?.HostIp === '127.0.0.1' &&
     binding[0]?.HostPort === port &&
+    Array.isArray(actualBinding) &&
+    actualBinding.length === 1 &&
+    actualBinding[0]?.HostIp === '127.0.0.1' &&
+    actualBinding[0]?.HostPort === port &&
+    published.stdout.trim() === `127.0.0.1:${port}` &&
     Array.isArray(mount) &&
     mount.length === 1 &&
     mount[0]?.Type === 'volume' &&
     mount[0]?.Name === volume &&
     mount[0]?.RW === true &&
     storedVolume?.Name === volume &&
-    storedVolume?.Driver === 'local'
+    storedVolume?.Driver === 'local' &&
+    storedVolume?.Scope === 'local'
   );
 }
 
-function listener(port, expectedPresent) {
-  const result = runCommand('lsof', ['-nP', `-iTCP:${port}`, '-sTCP:LISTEN']);
+async function listener(port, expectedPresent, commandRunner) {
+  const result = await commandRunner('lsof', ['-nP', `-iTCP:${port}`, '-sTCP:LISTEN']);
   if (!expectedPresent && result.status === 1 && !result.stdout.trim() && !result.stderr.trim()) {
     return { verified: true, present: false };
   }
@@ -491,15 +606,29 @@ function listener(port, expectedPresent) {
     return { verified: false, present: null };
   }
   const lines = result.stdout.trim().split('\n');
-  const valid =
-    lines.length >= 2 &&
-    lines.slice(1).every((line) => {
-      const fields = line.trim().split(/\s+/);
-      return (
-        /^\d+$/.test(fields[1] ?? '') && /(?:docker|vpnkit|^com\.docke)/i.test(fields[0] ?? '')
-      );
-    });
-  return { verified: valid, present: true };
+  const records = lines.slice(1).map((line) => ({
+    fields: line.trim().split(/\s+/),
+    line,
+  }));
+  const pids = [...new Set(records.map((record) => record.fields[1]))];
+  if (
+    records.length === 0 ||
+    pids.length !== 1 ||
+    !/^\d+$/.test(pids[0] ?? '') ||
+    records.some(
+      (record) =>
+        record.fields[0] !== 'com.docke' ||
+        !new RegExp(`\\bTCP 127\\.0\\.0\\.1:${port} \\(LISTEN\\)$`).test(record.line),
+    )
+  ) {
+    return { verified: false, present: true, pid: null };
+  }
+  const executable = await commandRunner('ps', ['-p', pids[0], '-o', 'comm=']);
+  const verified =
+    executable.status === 0 &&
+    !executable.stderr.trim() &&
+    executable.stdout.trim() === EXPECTED.dockerBackendExecutable;
+  return { verified, present: true, pid: verified ? Number(pids[0]) : null };
 }
 
 function tcpProbe(port) {
@@ -518,24 +647,38 @@ function tcpProbe(port) {
   });
 }
 
-async function defaultRuntimeInspector(paths) {
-  const gateHead = runCommand('git', ['-C', paths.gateRoot, 'rev-parse', '--verify', 'HEAD']);
-  const gateStatus = runCommand('git', [
+export async function inspectI111RuntimeResources(paths, dependencies = {}) {
+  const commandRunner = dependencies.commandRunner ?? runCommand;
+  const probe = dependencies.tcpProbe ?? tcpProbe;
+  const gateHead = await commandRunner('git', [
+    '-C',
+    paths.gateRoot,
+    'rev-parse',
+    '--verify',
+    'HEAD',
+  ]);
+  const gateStatus = await commandRunner('git', [
     '-C',
     paths.gateRoot,
     'status',
     '--porcelain=v1',
     '--untracked-files=no',
   ]);
-  const api = listener('52513', false);
-  const postgres = listener(EXPECTED.databasePort, true);
-  const redis = listener(EXPECTED.redisPort, true);
-  const [apiTcp, postgresTcp, redisTcp] = await Promise.all([
-    tcpProbe('52513'),
-    tcpProbe(EXPECTED.databasePort),
-    tcpProbe(EXPECTED.redisPort),
+  const dockerEndpointVerified = await trustedDockerEndpoint({
+    ...dependencies,
+    commandRunner,
+  });
+  const [api, postgres, redis] = await Promise.all([
+    listener('52513', false, commandRunner),
+    listener(EXPECTED.databasePort, true, commandRunner),
+    listener(EXPECTED.redisPort, true, commandRunner),
   ]);
-  const ps = runCommand('ps', ['-axo', 'command=']);
+  const [apiTcp, postgresTcp, redisTcp] = await Promise.all([
+    probe('52513'),
+    probe(EXPECTED.databasePort),
+    probe(EXPECTED.redisPort),
+  ]);
+  const ps = await commandRunner('ps', ['-axo', 'command=']);
   const workerPattern = /(?:apps\/worker|@xiaohai\/worker|dist\/[^ ]*worker)/;
   const probesVerified =
     gateHead.status === 0 &&
@@ -546,30 +689,34 @@ async function defaultRuntimeInspector(paths) {
     apiTcp === 'closed' &&
     postgresTcp === 'open' &&
     redisTcp === 'open' &&
+    dockerEndpointVerified &&
     ps.status === 0 &&
     !ps.stderr.trim();
   const postgresResourceVerified =
     probesVerified &&
-    dockerResource(
+    (await dockerResource(
       EXPECTED.postgresContainer,
       EXPECTED.postgresContainerId,
       EXPECTED.databasePort,
       '5432',
       EXPECTED.postgresVolume,
       '/var/lib/postgresql/data',
-    );
+      commandRunner,
+    ));
   const redisResourceVerified =
     probesVerified &&
-    dockerResource(
+    (await dockerResource(
       EXPECTED.redisContainer,
       EXPECTED.redisContainerId,
       EXPECTED.redisPort,
       '6379',
       EXPECTED.redisVolume,
       '/data',
-    );
+      commandRunner,
+    ));
   return {
     probesVerified,
+    dockerEndpointVerified,
     gateVerified:
       gateHead.stdout.trim() === EXPECTED.gateSha && gateStatus.stdout === '' && probesVerified,
     listenerTargetsVerified:
@@ -1142,7 +1289,7 @@ export async function runI111ReadonlyRuntimePreflight(options = {}) {
     secureRead:
       options.dependencies?.secureRead ??
       ((path, settings) => secureReadFile(path, settings, options.dependencies)),
-    runtimeInspector: options.dependencies?.runtimeInspector ?? defaultRuntimeInspector,
+    runtimeInspector: options.dependencies?.runtimeInspector ?? inspectI111RuntimeResources,
     openDatabase: options.dependencies?.openDatabase ?? defaultOpenDatabase,
     redisInspector: options.dependencies?.redisInspector ?? defaultRedisInspector,
     fileInspector: options.dependencies?.fileInspector ?? inspectFiles,
@@ -1191,6 +1338,7 @@ export async function runI111ReadonlyRuntimePreflight(options = {}) {
       runtimeBefore = await dependencies.runtimeInspector(paths);
       if (
         !runtimeBefore.probesVerified ||
+        !runtimeBefore.dockerEndpointVerified ||
         !runtimeBefore.gateVerified ||
         !runtimeBefore.listenerTargetsVerified ||
         !runtimeBefore.resourcesVerified ||
@@ -1205,6 +1353,7 @@ export async function runI111ReadonlyRuntimePreflight(options = {}) {
     } catch {
       runtimeBefore = {
         probesVerified: false,
+        dockerEndpointVerified: false,
         gateVerified: false,
         listenerTargetsVerified: false,
         resourcesVerified: false,
@@ -1216,6 +1365,7 @@ export async function runI111ReadonlyRuntimePreflight(options = {}) {
 
     const resourcesVerifiedBeforeConnections =
       runtimeBefore.probesVerified === true &&
+      runtimeBefore.dockerEndpointVerified === true &&
       runtimeBefore.gateVerified === true &&
       runtimeBefore.listenerTargetsVerified === true &&
       runtimeBefore.resourcesVerified === true &&
@@ -1269,6 +1419,7 @@ export async function runI111ReadonlyRuntimePreflight(options = {}) {
 
     let runtimeAfter = {
       probesVerified: false,
+      dockerEndpointVerified: false,
       gateVerified: false,
       listenerTargetsVerified: false,
       resourcesVerified: false,
@@ -1285,6 +1436,7 @@ export async function runI111ReadonlyRuntimePreflight(options = {}) {
     const runtimeSamplesIdle =
       resourcesVerifiedBeforeConnections &&
       runtimeAfter.probesVerified === true &&
+      runtimeAfter.dockerEndpointVerified === true &&
       runtimeAfter.gateVerified === true &&
       runtimeAfter.listenerTargetsVerified === true &&
       runtimeAfter.resourcesVerified === true &&
@@ -1367,7 +1519,7 @@ export async function runI111ReadonlyRuntimePreflight(options = {}) {
           files.mimiLocalPngVerified && files.pipLocalPngVerified ? 'PASS' : 'STOP',
         databaseReferenceMetadata: database.referenceMetadataVerified === true ? 'PASS' : 'STOP',
         remoteBos: 'STOP',
-        runtimeSampling: runtimeSamplesIdle ? 'PASS' : 'STOP',
+        processAndRedisSampling: runtimeSamplesIdle ? 'PASS' : 'STOP',
         atomicIsolation: 'STOP',
         retrySemantics: 'STOP',
         runtime: 'STOP',

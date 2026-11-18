@@ -34,14 +34,18 @@ consistency. The CLI separately reads the exact GitHub review ID and requires
 its trusted API response to name `Fredilly`, state `APPROVED`, and bind the
 exact checkout commit and review URL. Missing authentication, network failure,
 or any mismatch leaves code provenance at STOP. A local record alone is never
-reported as independent human approval.
+reported as independent human approval. The review request explicitly passes
+`gh api --hostname github.com`; an inherited `GH_HOST` cannot redirect it.
 
 ## Read-only guarantees
 
 - PostgreSQL and Redis URLs must use the exact isolated loopback ports and
-  restricted identities. Docker container IDs, volumes, port mappings,
-  listener targets and the stopped API/Worker state are checked before either
-  connector may run; a failed resource probe causes zero connection attempts.
+  restricted identities. Docker inspection is pinned to the reviewed local
+  Docker Desktop Unix socket, CLI path and daemon ID; remote context/TLS
+  overrides are rejected. Container IDs, volumes, configured and actual
+  published ports, local listener PIDs, listener executable paths and the
+  stopped API/Worker state are checked before either connector may run. A
+  failed resource probe causes zero PostgreSQL and Redis connection attempts.
 - The client sets `default_transaction_read_only=on`, starts an explicit
   `REPEATABLE READ READ ONLY` transaction and always rolls it back.
 - Queries are `SELECT`/session-local timeout statements only. The CLI does not
@@ -68,12 +72,15 @@ all 42 Drizzle SQL hashes/timestamps/order; exact Mimi/Pip IDs/order on all thre
 pages; every character row and selected reference; all image work; Redis queue
 lengths; illustration media joins; every reservation, ledger and budget-window
 row; Beijing Workspace binding; and the 900-second signer/timeout invariant.
-Runtime and queues are sampled before and after the database snapshot so an
-observed Worker/queue race stops the check. These remain time-separated samples,
-not atomic isolation. The complete provider/queue retry chain is also not
-provable from source regexes. Accordingly atomic isolation and retry semantics
-are always explicit STOP conditions that a future executor must recheck under
-its own lock immediately before any paid call.
+Processes and Redis queues are sampled before and after the database snapshot;
+the output labels this narrowly as `processAndRedisSampling`. PostgreSQL active
+jobs are checked inside the read-only database snapshot and can independently
+STOP the overall result, but are not misrepresented as part of that sampling
+label. An observed Worker/queue race stops the check. These remain
+time-separated samples, not atomic isolation. The complete provider/queue retry
+chain is also not provable from source regexes. Accordingly atomic isolation
+and retry semantics are always explicit STOP conditions that a future executor
+must recheck under its own lock immediately before any paid call.
 
 Offline configuration cannot prove the provider's complete invoice. Therefore
 the CLI unconditionally reports `I111_PRICE_BASIS_UNVERIFIED`. Matching database

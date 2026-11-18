@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { lstat, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
+  inspectI111RuntimeResources,
   loadI111SourceState,
   runI111ReadonlyRuntimePreflight,
   secureReadFile,
@@ -246,6 +247,7 @@ function validSource(rows = baseRows()) {
 function validRuntime() {
   return {
     probesVerified: true,
+    dockerEndpointVerified: true,
     gateVerified: true,
     listenerTargetsVerified: true,
     resourcesVerified: true,
@@ -390,6 +392,7 @@ test('fails closed for probe failure, active unrelated image work, Redis queues 
 test('does not open PostgreSQL or Redis before every resource identity check passes', async () => {
   for (const field of [
     'probesVerified',
+    'dockerEndpointVerified',
     'gateVerified',
     'listenerTargetsVerified',
     'resourcesVerified',
@@ -416,6 +419,126 @@ test('does not open PostgreSQL or Redis before every resource identity check pas
   }
 });
 
+function runtimeResourceHarness({ dockerContext, listenerExecutable, publishedPort } = {}) {
+  let dockerCalls = 0;
+  const commandRunner = async (command, args) => {
+    const success = (stdout = '') => ({ status: 0, stdout, stderr: '' });
+    if (command === 'git') {
+      return success(args.includes('status') ? '' : '6898d09a3fcf76c5006ab271d0168643de2bf1fd\n');
+    }
+    if (command === 'lsof') {
+      const port = args.find((value) => value.startsWith('-iTCP:'))?.slice(6);
+      if (port === '52513') return { status: 1, stdout: '', stderr: '' };
+      const executable = listenerExecutable ?? 'com.docke';
+      return success(
+        `COMMAND PID USER FD TYPE DEVICE SIZE/OFF NODE NAME\n${executable} 7001 li 42u IPv4 0x0 0t0 TCP 127.0.0.1:${port} (LISTEN)\n`,
+      );
+    }
+    if (command === 'ps' && args[0] === '-p') {
+      return success('/Applications/Docker.app/Contents/MacOS/com.docker.backend\n');
+    }
+    if (command === 'ps') return success('node harmless-script.mjs\n');
+    assert.equal(command, '/Applications/Docker.app/Contents/Resources/bin/docker');
+    dockerCalls += 1;
+    assert.deepEqual(args.slice(0, 2), ['--host', 'unix:///Users/li/.docker/run/docker.sock']);
+    if (args[2] === 'info') {
+      return success(
+        JSON.stringify({
+          ID: '85a4eb36-df0b-474f-854d-52a141733ea8',
+          Name: 'docker-desktop',
+          OperatingSystem: 'Docker Desktop',
+          OSType: 'linux',
+          DockerRootDir: '/var/lib/docker',
+          ServerVersion: '29.8.0',
+        }),
+      );
+    }
+    if (args[2] === 'inspect') {
+      const postgres = args[3] === 'xiaohai-i111-planb-postgres';
+      const port = postgres ? '52511' : '52512';
+      const containerPort = postgres ? '5432' : '6379';
+      const volume = postgres ? 'xiaohai_i111_planb_pgdata' : 'xiaohai_i111_planb_redisdata';
+      const destination = postgres ? '/var/lib/postgresql/data' : '/data';
+      return success(
+        JSON.stringify([
+          {
+            Id: postgres
+              ? 'fdede2cf57f70465a950b0a4ea2d13cb6894cc13bc97b540ecf660b9c1629f24'
+              : '920804ca22010bfe8ae8791e9f6ec88604d870151685ea6a31e66dc23182f031',
+            Name: `/${args[3]}`,
+            State: { Running: true },
+            Config: { Labels: { 'com.xiaohai.issue': '111', 'com.xiaohai.plan': 'plan-b' } },
+            HostConfig: {
+              PortBindings: {
+                [`${containerPort}/tcp`]: [{ HostIp: '127.0.0.1', HostPort: port }],
+              },
+            },
+            NetworkSettings: {
+              Ports: {
+                [`${containerPort}/tcp`]: [
+                  { HostIp: '127.0.0.1', HostPort: publishedPort ?? port },
+                ],
+              },
+            },
+            Mounts: [{ Destination: destination, Type: 'volume', Name: volume, RW: true }],
+          },
+        ]),
+      );
+    }
+    if (args[2] === 'volume') {
+      return success(JSON.stringify([{ Name: args[4], Driver: 'local', Scope: 'local' }]));
+    }
+    if (args[2] === 'port') {
+      const port = args[3] === 'xiaohai-i111-planb-postgres' ? '52511' : '52512';
+      return success(`127.0.0.1:${port}\n`);
+    }
+    throw new Error('unexpected synthetic command');
+  };
+  return {
+    dependencies: {
+      commandRunner,
+      env: dockerContext ? { DOCKER_CONTEXT: dockerContext } : {},
+      socketInspector: async () => true,
+      tcpProbe: async (port) => (port === '52513' ? 'closed' : 'open'),
+    },
+    dockerCalls: () => dockerCalls,
+  };
+}
+
+test('pins the local Docker endpoint and binds listeners to published container ports', async () => {
+  const paths = { gateRoot: '/synthetic/gate' };
+  const trusted = runtimeResourceHarness();
+  const verified = await inspectI111RuntimeResources(paths, trusted.dependencies);
+  assert.equal(verified.dockerEndpointVerified, true);
+  assert.equal(verified.listenerTargetsVerified, true);
+  assert.equal(verified.resourcesVerified, true);
+  assert.ok(trusted.dockerCalls() > 0);
+
+  for (const fixture of [
+    runtimeResourceHarness({ dockerContext: 'remote-attacker' }),
+    runtimeResourceHarness({ listenerExecutable: 'socat' }),
+    runtimeResourceHarness({ publishedPort: '59999' }),
+  ]) {
+    const runtime = await inspectI111RuntimeResources(paths, fixture.dependencies);
+    assert.equal(runtime.resourcesVerified, false);
+    let databaseCalls = 0;
+    let redisCalls = 0;
+    await run({
+      runtimeResult: runtime,
+      open: () => {
+        databaseCalls += 1;
+        throw new Error('must not open PostgreSQL');
+      },
+      redisInspector: () => {
+        redisCalls += 1;
+        throw new Error('must not open Redis');
+      },
+    });
+    assert.equal(databaseCalls, 0);
+    assert.equal(redisCalls, 0);
+  }
+});
+
 test('detects a Worker or Redis task appearing between the two non-atomic samples', async () => {
   let runtimeCalls = 0;
   const workerRace = await runI111ReadonlyRuntimePreflight({
@@ -434,7 +557,7 @@ test('detects a Worker or Redis task appearing between the two non-atomic sample
   });
   assert.equal(runtimeCalls, 2);
   assert.ok(workerRace.errorCodes.includes('I111_RUNTIME_NOT_ISOLATED'));
-  assert.equal(workerRace.checks.runtimeSampling, 'STOP');
+  assert.equal(workerRace.checks.processAndRedisSampling, 'STOP');
 
   let redisCalls = 0;
   const queueRace = await runI111ReadonlyRuntimePreflight({
@@ -461,7 +584,7 @@ test('never treats source regexes as proof that provider retry semantics are dis
   assert.ok(result.errorCodes.includes('I111_RETRY_SEMANTICS_UNVERIFIED'));
   assert.equal(result.checks.retrySemantics, 'STOP');
   assert.equal(result.checks.atomicIsolation, 'STOP');
-  assert.equal(result.checks.runtimeSampling, 'PASS');
+  assert.equal(result.checks.processAndRedisSampling, 'PASS');
 });
 
 test('verifies the exact GitHub review identity, state, URL and commit through the API path', async () => {
@@ -482,13 +605,21 @@ test('verifies the exact GitHub review identity, state, URL and commit through t
     assert.equal(command, 'gh');
     assert.deepEqual(args, [
       'api',
+      '--hostname',
+      'github.com',
       '--method',
       'GET',
       'repos/Fredilly/Xiaohai/pulls/237/reviews/12345',
     ]);
     return { status: 0, stdout: JSON.stringify(valid), stderr: '' };
   };
-  assert.equal(await verifyGitHubApproval(approval, sha, { commandRunner }), true);
+  assert.equal(
+    await verifyGitHubApproval(approval, sha, {
+      commandRunner,
+      env: { GH_HOST: 'attacker.example.invalid' },
+    }),
+    true,
+  );
   for (const mutation of [
     { user: { login: 'someone-else' } },
     { state: 'COMMENTED' },
@@ -506,6 +637,13 @@ test('verifies the exact GitHub review identity, state, URL and commit through t
       false,
     );
   }
+  assert.equal(
+    await verifyGitHubApproval(approval, sha, {
+      commandRunner: async () => ({ status: 1, stdout: '', stderr: 'redacted failure' }),
+      env: { GH_HOST: 'attacker.example.invalid' },
+    }),
+    false,
+  );
 });
 
 test('real source inspection separates local consistency from independent review proof', async () => {
