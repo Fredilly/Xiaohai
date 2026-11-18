@@ -7,6 +7,8 @@ import {
   loadI111SourceState,
   runI111ReadonlyRuntimePreflight,
   secureReadFile,
+  validateDockerBackendProvenance,
+  validateDockerSocketEvidence,
   verifyGitHubApproval,
 } from './i111-readonly-runtime-preflight.mjs';
 import { I111_ONE_SHOT_SCOPE as scope } from './i111-one-shot-policy.mjs';
@@ -248,6 +250,7 @@ function validRuntime() {
   return {
     probesVerified: true,
     dockerEndpointVerified: true,
+    backendProvenanceVerified: true,
     gateVerified: true,
     listenerTargetsVerified: true,
     resourcesVerified: true,
@@ -393,6 +396,7 @@ test('does not open PostgreSQL or Redis before every resource identity check pas
   for (const field of [
     'probesVerified',
     'dockerEndpointVerified',
+    'backendProvenanceVerified',
     'gateVerified',
     'listenerTargetsVerified',
     'resourcesVerified',
@@ -419,32 +423,69 @@ test('does not open PostgreSQL or Redis before every resource identity check pas
   }
 });
 
-function runtimeResourceHarness({ dockerContext, listenerExecutable, publishedPort } = {}) {
+function runtimeResourceHarness({
+  dockerContext,
+  listenerExecutable,
+  publishedPort,
+  daemonId,
+  separateRedisBackend = false,
+} = {}) {
   let dockerCalls = 0;
+  let tcpCalls = 0;
   const commandRunner = async (command, args) => {
     const success = (stdout = '') => ({ status: 0, stdout, stderr: '' });
     if (command === 'git') {
       return success(args.includes('status') ? '' : '6898d09a3fcf76c5006ab271d0168643de2bf1fd\n');
     }
-    if (command === 'lsof') {
+    if (command === '/usr/sbin/lsof' && args.includes('-iTCP:52513')) {
+      return { status: 1, stdout: '', stderr: '' };
+    }
+    if (command === '/usr/sbin/lsof' && args.some((value) => value.startsWith('-iTCP:'))) {
       const port = args.find((value) => value.startsWith('-iTCP:'))?.slice(6);
-      if (port === '52513') return { status: 1, stdout: '', stderr: '' };
       const executable = listenerExecutable ?? 'com.docke';
+      const pid = port === '52512' && separateRedisBackend ? 7001 : port === '52512' ? 5917 : 5916;
       return success(
-        `COMMAND PID USER FD TYPE DEVICE SIZE/OFF NODE NAME\n${executable} 7001 li 42u IPv4 0x0 0t0 TCP 127.0.0.1:${port} (LISTEN)\n`,
+        `COMMAND PID USER FD TYPE DEVICE SIZE/OFF NODE NAME\n${executable} ${pid} li 42u IPv4 0x0 0t0 TCP 127.0.0.1:${port} (LISTEN)\n`,
       );
     }
-    if (command === 'ps' && args[0] === '-p') {
-      return success('/Applications/Docker.app/Contents/MacOS/com.docker.backend\n');
+    if (command === '/usr/sbin/lsof' && args.includes('-d')) {
+      const pid = args[args.indexOf('-p') + 1];
+      return success(
+        `p${pid}\nf txt\nD0x1000004\ni3424107\nn/Applications/Docker.app/Contents/MacOS/com.docker.backend\n`,
+      );
     }
-    if (command === 'ps') return success('node harmless-script.mjs\n');
+    if (command === '/usr/sbin/lsof') {
+      return success(
+        'COMMAND PID USER FD TYPE DEVICE SIZE/OFF NODE NAME\ncom.docke 5916 li 42u unix 0x0 0t0 /Users/li/.docker/run/docker.sock\n',
+      );
+    }
+    if (command === '/bin/ps' && args.includes('pid=,ppid=,uid=,comm=')) {
+      return success(
+        `5908 1 501 /Applications/Docker.app/Contents/MacOS/com.docker.backend\n5916 5908 501 /Applications/Docker.app/Contents/MacOS/com.docker.backend\n5917 5908 501 /Applications/Docker.app/Contents/MacOS/com.docker.backend\n${
+          separateRedisBackend
+            ? '7000 1 501 /Applications/Docker.app/Contents/MacOS/com.docker.backend\n7001 7000 501 /Applications/Docker.app/Contents/MacOS/com.docker.backend\n'
+            : ''
+        }`,
+      );
+    }
+    if (command === '/bin/ps') return success('node harmless-script.mjs\n');
+    if (command === '/usr/bin/stat') return success('16777220:3424107:501:-rwxr-xr-x\n');
+    if (command === '/usr/bin/codesign' && args[0] === '--verify') return success();
+    if (command === '/usr/bin/codesign') {
+      return {
+        status: 0,
+        stdout: '',
+        stderr:
+          'Identifier=com.docker.docker\nTeamIdentifier=9BNSXJN65R\nCDHash=54c72e39ae7276bc1a096e7494615a690a0d31d8\ndesignated => anchor apple generic and certificate leaf[subject.OU] = 9BNSXJN65R\n',
+      };
+    }
     assert.equal(command, '/Applications/Docker.app/Contents/Resources/bin/docker');
     dockerCalls += 1;
     assert.deepEqual(args.slice(0, 2), ['--host', 'unix:///Users/li/.docker/run/docker.sock']);
     if (args[2] === 'info') {
       return success(
         JSON.stringify({
-          ID: '85a4eb36-df0b-474f-854d-52a141733ea8',
+          ID: daemonId ?? '85a4eb36-df0b-474f-854d-52a141733ea8',
           Name: 'docker-desktop',
           OperatingSystem: 'Docker Desktop',
           OSType: 'linux',
@@ -498,10 +539,15 @@ function runtimeResourceHarness({ dockerContext, listenerExecutable, publishedPo
     dependencies: {
       commandRunner,
       env: dockerContext ? { DOCKER_CONTEXT: dockerContext } : {},
+      uid: 501,
       socketInspector: async () => true,
-      tcpProbe: async (port) => (port === '52513' ? 'closed' : 'open'),
+      tcpProbe: async (port) => {
+        tcpCalls += 1;
+        return port === '52513' ? 'closed' : 'open';
+      },
     },
     dockerCalls: () => dockerCalls,
+    tcpCalls: () => tcpCalls,
   };
 }
 
@@ -510,6 +556,7 @@ test('pins the local Docker endpoint and binds listeners to published container 
   const trusted = runtimeResourceHarness();
   const verified = await inspectI111RuntimeResources(paths, trusted.dependencies);
   assert.equal(verified.dockerEndpointVerified, true);
+  assert.equal(verified.backendProvenanceVerified, true);
   assert.equal(verified.listenerTargetsVerified, true);
   assert.equal(verified.resourcesVerified, true);
   assert.ok(trusted.dockerCalls() > 0);
@@ -537,6 +584,93 @@ test('pins the local Docker endpoint and binds listeners to published container 
     assert.equal(databaseCalls, 0);
     assert.equal(redisCalls, 0);
   }
+});
+
+test('stops before TCP probing when the Docker endpoint static identity fails', async () => {
+  const paths = { gateRoot: '/synthetic/gate' };
+  for (const fixture of [
+    runtimeResourceHarness({ dockerContext: 'remote-attacker' }),
+    runtimeResourceHarness({ daemonId: 'different-daemon' }),
+  ]) {
+    const runtime = await inspectI111RuntimeResources(paths, fixture.dependencies);
+    assert.equal(runtime.dockerEndpointVerified, false);
+    assert.equal(runtime.resourcesVerified, false);
+    assert.equal(fixture.tcpCalls(), 0);
+  }
+});
+
+test('requires socket, PostgreSQL and Redis listeners to share one verified backend root', async () => {
+  const fixture = runtimeResourceHarness({ separateRedisBackend: true });
+  const runtime = await inspectI111RuntimeResources(
+    { gateRoot: '/synthetic/gate' },
+    fixture.dependencies,
+  );
+  assert.equal(runtime.socketBackendVerified, true);
+  assert.equal(runtime.postgresBackendVerified, true);
+  assert.equal(runtime.redisBackendVerified, true);
+  assert.equal(runtime.backendProvenanceVerified, false);
+  assert.equal(runtime.resourcesVerified, false);
+  assert.equal(fixture.tcpCalls(), 0);
+  let databaseCalls = 0;
+  let redisCalls = 0;
+  await run({
+    runtimeResult: runtime,
+    open: () => {
+      databaseCalls += 1;
+    },
+    redisInspector: () => {
+      redisCalls += 1;
+    },
+  });
+  assert.equal(databaseCalls, 0);
+  assert.equal(redisCalls, 0);
+});
+
+test('rejects wrong Docker socket type, owner, replaced path and daemon provenance', () => {
+  const evidence = {
+    canonicalPath: '/Users/li/.docker/run/docker.sock',
+    uid: 501,
+    before: { symbolicLink: false, socket: true, dev: 1, ino: 2, uid: 501, mode: 0o140600 },
+    after: { symbolicLink: false, socket: true, dev: 1, ino: 2, uid: 501, mode: 0o140600 },
+  };
+  assert.equal(validateDockerSocketEvidence(evidence), true);
+  assert.equal(
+    validateDockerSocketEvidence({ ...evidence, before: { ...evidence.before, socket: false } }),
+    false,
+  );
+  assert.equal(validateDockerSocketEvidence({ ...evidence, uid: 502 }), false);
+  assert.equal(
+    validateDockerSocketEvidence({ ...evidence, after: { ...evidence.after, ino: 3 } }),
+    false,
+  );
+  assert.equal(
+    validateDockerSocketEvidence({ ...evidence, canonicalPath: '/tmp/replaced.sock' }),
+    false,
+  );
+
+  const processRow = (pid, ppid) => ({
+    pid,
+    ppid,
+    uid: 501,
+    executable: '/Applications/Docker.app/Contents/MacOS/com.docker.backend',
+  });
+  const processes = new Map([
+    [10, processRow(10, 1)],
+    [11, processRow(11, 10)],
+    [12, processRow(12, 10)],
+  ]);
+  const vnodes = new Map([
+    [11, { dev: 1, ino: 2 }],
+    [12, { dev: 1, ino: 2 }],
+  ]);
+  const provenance = validateDockerBackendProvenance({
+    groups: { socket: [11], postgres: [11], redis: [12] },
+    processes,
+    executable: { signatureVerified: false, dev: 1, ino: 2, uid: 501 },
+    vnodes,
+    uid: 501,
+  });
+  assert.equal(provenance.commonBackendVerified, false);
 });
 
 test('detects a Worker or Redis task appearing between the two non-atomic samples', async () => {

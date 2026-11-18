@@ -43,9 +43,16 @@ reported as independent human approval. The review request explicitly passes
   restricted identities. Docker inspection is pinned to the reviewed local
   Docker Desktop Unix socket, CLI path and daemon ID; remote context/TLS
   overrides are rejected. Container IDs, volumes, configured and actual
-  published ports, local listener PIDs, listener executable paths and the
-  stopped API/Worker state are checked before either connector may run. A
-  failed resource probe causes zero PostgreSQL and Redis connection attempts.
+  published ports and the stopped API/Worker state are checked before either
+  connector may run. Kernel process/socket evidence must also trace the Docker
+  Unix-socket server and both published-port listeners through their parent
+  processes to one common Docker Desktop backend root. Each participating
+  backend process must map the same on-disk executable vnode, whose Apple code
+  signature identity, team and reviewed CDHash are independently checked. This
+  permits Docker Desktop's legitimate multi-PID backend while rejecting three
+  individually plausible listeners from different backend roots. A failed
+  static endpoint or provenance check stops before TCP probing and causes zero
+  PostgreSQL and Redis protocol connection attempts.
 - The client sets `default_transaction_read_only=on`, starts an explicit
   `REPEATABLE READ READ ONLY` transaction and always rolls it back.
 - Queries are `SELECT`/session-local timeout statements only. The CLI does not

@@ -42,6 +42,9 @@ const EXPECTED = Object.freeze({
   dockerDaemonId: '85a4eb36-df0b-474f-854d-52a141733ea8',
   dockerCli: '/Applications/Docker.app/Contents/Resources/bin/docker',
   dockerBackendExecutable: '/Applications/Docker.app/Contents/MacOS/com.docker.backend',
+  dockerBackendIdentifier: 'com.docker.docker',
+  dockerBackendTeamId: '9BNSXJN65R',
+  dockerBackendCdHash: '54c72e39ae7276bc1a096e7494615a690a0d31d8',
   mimiId: 'de0169d8-d975-4f1b-b04c-a15c25f54bdc',
   pipId: '249a719e-d284-46e0-a525-285e93270248',
   mimiReferenceId: 'fa526d14-9fc4-4cba-bf3e-ae9c8a888906',
@@ -470,38 +473,76 @@ function dockerArgs(args) {
   return ['--host', EXPECTED.dockerEndpoint, ...args];
 }
 
+export function validateDockerSocketEvidence({ canonicalPath, before, after, uid }) {
+  return (
+    canonicalPath === EXPECTED.dockerSocketPath &&
+    before?.symbolicLink === false &&
+    before?.socket === true &&
+    before?.uid === uid &&
+    (before?.mode & 0o002) === 0 &&
+    after?.symbolicLink === false &&
+    after?.socket === true &&
+    after?.dev === before?.dev &&
+    after?.ino === before?.ino &&
+    after?.uid === before?.uid &&
+    after?.mode === before?.mode
+  );
+}
+
+function socketSnapshot(info) {
+  return {
+    symbolicLink: info.isSymbolicLink(),
+    socket: info.isSocket(),
+    dev: info.dev,
+    ino: info.ino,
+    uid: info.uid,
+    mode: info.mode,
+  };
+}
+
 async function trustedDockerSocket(dependencies) {
   const adapter = {
     lstat: dependencies.lstat ?? lstat,
     realpath: dependencies.realpath ?? realpath,
   };
   try {
-    if ((await adapter.realpath(EXPECTED.dockerSocketPath)) !== EXPECTED.dockerSocketPath) {
-      return false;
-    }
+    const canonicalPath = await adapter.realpath(EXPECTED.dockerSocketPath);
     const parents = await trustedParents(EXPECTED.dockerSocketPath, adapter);
-    const before = await adapter.lstat(EXPECTED.dockerSocketPath);
-    if (
-      before.isSymbolicLink() ||
-      !before.isSocket() ||
-      before.uid !== process.getuid?.() ||
-      (before.mode & 0o002) !== 0
-    ) {
-      return false;
-    }
+    const before = socketSnapshot(await adapter.lstat(EXPECTED.dockerSocketPath));
     await parentsUnchanged(parents, adapter);
-    const after = await adapter.lstat(EXPECTED.dockerSocketPath);
-    return (
-      after.isSocket() &&
-      !after.isSymbolicLink() &&
-      after.dev === before.dev &&
-      after.ino === before.ino &&
-      after.uid === before.uid &&
-      after.mode === before.mode
-    );
+    const after = socketSnapshot(await adapter.lstat(EXPECTED.dockerSocketPath));
+    return validateDockerSocketEvidence({
+      canonicalPath,
+      before,
+      after,
+      uid: process.getuid?.(),
+    });
   } catch {
     return false;
   }
+}
+
+function parseProcessIds(result, expectedName) {
+  if (result.status !== 0 || !result.stdout.trim() || result.stderr.trim()) return [];
+  const lines = result.stdout.trim().split('\n');
+  const rows = lines.slice(1).map((line) => ({ fields: line.trim().split(/\s+/), line }));
+  if (
+    rows.length === 0 ||
+    rows.some(
+      (row) =>
+        row.fields[0] !== 'com.docke' ||
+        !/^\d+$/.test(row.fields[1] ?? '') ||
+        !row.line.endsWith(expectedName),
+    )
+  ) {
+    return [];
+  }
+  return [...new Set(rows.map((row) => Number(row.fields[1])))];
+}
+
+async function socketServingProcesses(commandRunner) {
+  const result = await commandRunner('/usr/sbin/lsof', ['-nP', EXPECTED.dockerSocketPath]);
+  return parseProcessIds(result, EXPECTED.dockerSocketPath);
 }
 
 async function trustedDockerEndpoint(dependencies) {
@@ -513,28 +554,30 @@ async function trustedDockerEndpoint(dependencies) {
     environment.DOCKER_TLS_VERIFY !== undefined ||
     environment.DOCKER_CERT_PATH !== undefined
   ) {
-    return false;
+    return { verified: false, socketPids: [] };
   }
   const socketVerified = await (dependencies.socketInspector ?? trustedDockerSocket)(dependencies);
-  if (!socketVerified) return false;
+  if (!socketVerified) return { verified: false, socketPids: [] };
   const commandRunner = dependencies.commandRunner ?? runCommand;
   try {
     const result = await commandRunner(
       EXPECTED.dockerCli,
       dockerArgs(['info', '--format', '{{json .}}']),
     );
-    if (result.status !== 0 || result.stderr.trim()) return false;
+    if (result.status !== 0 || result.stderr.trim()) return { verified: false, socketPids: [] };
     const info = JSON.parse(result.stdout);
-    return (
+    const daemonVerified =
       info?.ID === EXPECTED.dockerDaemonId &&
       info?.Name === 'docker-desktop' &&
       info?.OperatingSystem === 'Docker Desktop' &&
       info?.OSType === 'linux' &&
       info?.DockerRootDir === '/var/lib/docker' &&
-      /^\d+\.\d+\.\d+$/.test(info?.ServerVersion ?? '')
-    );
+      /^\d+\.\d+\.\d+$/.test(info?.ServerVersion ?? '');
+    if (!daemonVerified) return { verified: false, socketPids: [] };
+    const socketPids = await socketServingProcesses(commandRunner);
+    return { verified: socketPids.length > 0, socketPids };
   } catch {
-    return false;
+    return { verified: false, socketPids: [] };
   }
 }
 
@@ -598,12 +641,12 @@ async function dockerResource(
 }
 
 async function listener(port, expectedPresent, commandRunner) {
-  const result = await commandRunner('lsof', ['-nP', `-iTCP:${port}`, '-sTCP:LISTEN']);
+  const result = await commandRunner('/usr/sbin/lsof', ['-nP', `-iTCP:${port}`, '-sTCP:LISTEN']);
   if (!expectedPresent && result.status === 1 && !result.stdout.trim() && !result.stderr.trim()) {
-    return { verified: true, present: false };
+    return { verified: true, present: false, pids: [] };
   }
   if (result.status !== 0 || !result.stdout.trim() || result.stderr.trim()) {
-    return { verified: false, present: null };
+    return { verified: false, present: null, pids: [] };
   }
   const lines = result.stdout.trim().split('\n');
   const records = lines.slice(1).map((line) => ({
@@ -621,14 +664,173 @@ async function listener(port, expectedPresent, commandRunner) {
         !new RegExp(`\\bTCP 127\\.0\\.0\\.1:${port} \\(LISTEN\\)$`).test(record.line),
     )
   ) {
-    return { verified: false, present: true, pid: null };
+    return { verified: false, present: true, pids: [] };
   }
-  const executable = await commandRunner('ps', ['-p', pids[0], '-o', 'comm=']);
-  const verified =
-    executable.status === 0 &&
-    !executable.stderr.trim() &&
-    executable.stdout.trim() === EXPECTED.dockerBackendExecutable;
-  return { verified, present: true, pid: verified ? Number(pids[0]) : null };
+  return { verified: true, present: true, pids: pids.map(Number) };
+}
+
+function parseBackendProcesses(result) {
+  if (result.status !== 0 || result.stderr.trim()) return new Map();
+  const processes = new Map();
+  for (const line of result.stdout.trim().split('\n')) {
+    const match = /^\s*(\d+)\s+(\d+)\s+(\d+)\s+(.+?)\s*$/.exec(line);
+    if (!match) return new Map();
+    processes.set(Number(match[1]), {
+      pid: Number(match[1]),
+      ppid: Number(match[2]),
+      uid: Number(match[3]),
+      executable: match[4],
+    });
+  }
+  return processes;
+}
+
+function parseBackendSignature(result) {
+  if (result.status !== 0) return false;
+  const output = `${result.stdout}\n${result.stderr}`;
+  return (
+    new RegExp(`^Identifier=${EXPECTED.dockerBackendIdentifier}$`, 'm').test(output) &&
+    new RegExp(`^TeamIdentifier=${EXPECTED.dockerBackendTeamId}$`, 'm').test(output) &&
+    new RegExp(`^CDHash=${EXPECTED.dockerBackendCdHash}$`, 'm').test(output) &&
+    output.includes(`certificate leaf[subject.OU] = ${EXPECTED.dockerBackendTeamId}`)
+  );
+}
+
+function parseExecutableStat(result) {
+  const match = /^(\d+):(\d+):(\d+):-rwxr-xr-x\s*$/.exec(result.stdout);
+  if (result.status !== 0 || result.stderr.trim() || !match) return null;
+  return { dev: Number(match[1]), ino: Number(match[2]), uid: Number(match[3]) };
+}
+
+function parseTextVnode(result) {
+  if (result.status !== 0 || result.stderr.trim()) return null;
+  const records = result.stdout.split(/^p/m).filter(Boolean);
+  for (const record of records) {
+    const path = /^n(.+)$/m.exec(record)?.[1];
+    const dev = /^D(0x[0-9a-f]+|\d+)$/im.exec(record)?.[1];
+    const ino = /^i(\d+)$/m.exec(record)?.[1];
+    if (path === EXPECTED.dockerBackendExecutable && dev && ino) {
+      return { dev: Number(dev), ino: Number(ino) };
+    }
+  }
+  return null;
+}
+
+function backendRoot(pid, processes, vnodes, executable, expectedUid) {
+  let current = processes.get(pid);
+  if (
+    !current ||
+    ![0, expectedUid].includes(current.uid) ||
+    current.executable !== EXPECTED.dockerBackendExecutable
+  ) {
+    return null;
+  }
+  const seen = new Set();
+  while (true) {
+    if (seen.has(current.pid)) return null;
+    seen.add(current.pid);
+    const vnode = vnodes.get(current.pid);
+    if (!vnode || vnode.dev !== executable.dev || vnode.ino !== executable.ino) return null;
+    if (current.ppid === 1) return current.pid;
+    const parent = processes.get(current.ppid);
+    if (
+      !parent ||
+      ![0, expectedUid].includes(parent.uid) ||
+      parent.executable !== EXPECTED.dockerBackendExecutable
+    ) {
+      return null;
+    }
+    current = parent;
+  }
+}
+
+export function validateDockerBackendProvenance({ groups, processes, executable, vnodes, uid }) {
+  if (!executable?.signatureVerified || executable.uid !== uid) {
+    return {
+      socketBackendVerified: false,
+      postgresBackendVerified: false,
+      redisBackendVerified: false,
+      commonBackendVerified: false,
+    };
+  }
+  const roots = {};
+  for (const [name, pids] of Object.entries(groups)) {
+    const groupRoots = new Set();
+    let valid = Array.isArray(pids) && pids.length > 0;
+    for (const pid of pids ?? []) {
+      const root = backendRoot(pid, processes, vnodes, executable, uid);
+      if (!root) {
+        valid = false;
+        break;
+      }
+      groupRoots.add(root);
+    }
+    roots[name] = valid && groupRoots.size === 1 ? [...groupRoots][0] : null;
+  }
+  return {
+    socketBackendVerified: roots.socket !== null,
+    postgresBackendVerified: roots.postgres !== null,
+    redisBackendVerified: roots.redis !== null,
+    commonBackendVerified:
+      roots.socket !== null && roots.socket === roots.postgres && roots.socket === roots.redis,
+  };
+}
+
+async function inspectBackendProvenance(groups, commandRunner, uid = process.getuid?.()) {
+  const verify = await commandRunner('/usr/bin/codesign', [
+    '--verify',
+    '--strict',
+    EXPECTED.dockerBackendExecutable,
+  ]);
+  const signature = await commandRunner('/usr/bin/codesign', [
+    '-d',
+    '-r-',
+    '--verbose=4',
+    EXPECTED.dockerBackendExecutable,
+  ]);
+  const stat = await commandRunner('/usr/bin/stat', [
+    '-f',
+    '%d:%i:%u:%Sp',
+    EXPECTED.dockerBackendExecutable,
+  ]);
+  const ps = await commandRunner('/bin/ps', ['-axo', 'pid=,ppid=,uid=,comm=']);
+  const executableStat = parseExecutableStat(stat);
+  const processes = parseBackendProcesses(ps);
+  const pids = [
+    ...new Set([
+      ...Object.values(groups).flat(),
+      ...[...processes.values()]
+        .filter((entry) => entry.executable === EXPECTED.dockerBackendExecutable)
+        .map((entry) => entry.pid),
+    ]),
+  ];
+  const vnodes = new Map();
+  for (const pid of pids) {
+    const evidence = await commandRunner('/usr/sbin/lsof', [
+      '-nP',
+      '-a',
+      '-p',
+      String(pid),
+      '-d',
+      'txt',
+      '-FpfnDi',
+    ]);
+    vnodes.set(pid, parseTextVnode(evidence));
+  }
+  return validateDockerBackendProvenance({
+    groups,
+    processes,
+    executable: {
+      ...executableStat,
+      signatureVerified:
+        verify.status === 0 &&
+        !verify.stdout.trim() &&
+        !verify.stderr.trim() &&
+        parseBackendSignature(signature),
+    },
+    vnodes,
+    uid,
+  });
 }
 
 function tcpProbe(port) {
@@ -650,6 +852,20 @@ function tcpProbe(port) {
 export async function inspectI111RuntimeResources(paths, dependencies = {}) {
   const commandRunner = dependencies.commandRunner ?? runCommand;
   const probe = dependencies.tcpProbe ?? tcpProbe;
+  const stopped = (overrides = {}) => ({
+    probesVerified: false,
+    dockerEndpointVerified: false,
+    backendProvenanceVerified: false,
+    socketBackendVerified: false,
+    postgresBackendVerified: false,
+    redisBackendVerified: false,
+    gateVerified: false,
+    listenerTargetsVerified: false,
+    resourcesVerified: false,
+    apiRunning: null,
+    genericWorkerRunning: null,
+    ...overrides,
+  });
   const gateHead = await commandRunner('git', [
     '-C',
     paths.gateRoot,
@@ -664,68 +880,98 @@ export async function inspectI111RuntimeResources(paths, dependencies = {}) {
     '--porcelain=v1',
     '--untracked-files=no',
   ]);
-  const dockerEndpointVerified = await trustedDockerEndpoint({
+  const dockerEndpoint = await trustedDockerEndpoint({
     ...dependencies,
     commandRunner,
   });
+  if (!dockerEndpoint.verified) return stopped();
   const [api, postgres, redis] = await Promise.all([
     listener('52513', false, commandRunner),
     listener(EXPECTED.databasePort, true, commandRunner),
     listener(EXPECTED.redisPort, true, commandRunner),
   ]);
+  const ps = await commandRunner('/bin/ps', ['-axo', 'command=']);
+  const workerPattern = /(?:apps\/worker|@xiaohai\/worker|dist\/[^ ]*worker)/;
+  const listenerTargetsVerified =
+    postgres.verified &&
+    postgres.present === true &&
+    redis.verified &&
+    redis.present === true &&
+    api.verified &&
+    api.present === false;
+  if (!listenerTargetsVerified || ps.status !== 0 || ps.stderr.trim()) {
+    return stopped({
+      dockerEndpointVerified: true,
+      listenerTargetsVerified,
+      apiRunning: api.present,
+    });
+  }
+  const provenance = await inspectBackendProvenance(
+    {
+      socket: dockerEndpoint.socketPids,
+      postgres: postgres.pids,
+      redis: redis.pids,
+    },
+    commandRunner,
+    dependencies.uid,
+  );
+  if (!provenance.commonBackendVerified) {
+    return stopped({
+      dockerEndpointVerified: true,
+      listenerTargetsVerified: true,
+      apiRunning: false,
+      genericWorkerRunning: ps.stdout.split('\n').some((line) => workerPattern.test(line)),
+      ...provenance,
+    });
+  }
+  const postgresResourceVerified = await dockerResource(
+    EXPECTED.postgresContainer,
+    EXPECTED.postgresContainerId,
+    EXPECTED.databasePort,
+    '5432',
+    EXPECTED.postgresVolume,
+    '/var/lib/postgresql/data',
+    commandRunner,
+  );
+  const redisResourceVerified = await dockerResource(
+    EXPECTED.redisContainer,
+    EXPECTED.redisContainerId,
+    EXPECTED.redisPort,
+    '6379',
+    EXPECTED.redisVolume,
+    '/data',
+    commandRunner,
+  );
+  if (!postgresResourceVerified || !redisResourceVerified) {
+    return stopped({
+      dockerEndpointVerified: true,
+      backendProvenanceVerified: true,
+      listenerTargetsVerified: true,
+      apiRunning: false,
+      genericWorkerRunning: ps.stdout.split('\n').some((line) => workerPattern.test(line)),
+      ...provenance,
+    });
+  }
   const [apiTcp, postgresTcp, redisTcp] = await Promise.all([
     probe('52513'),
     probe(EXPECTED.databasePort),
     probe(EXPECTED.redisPort),
   ]);
-  const ps = await commandRunner('ps', ['-axo', 'command=']);
-  const workerPattern = /(?:apps\/worker|@xiaohai\/worker|dist\/[^ ]*worker)/;
   const probesVerified =
     gateHead.status === 0 &&
     gateStatus.status === 0 &&
-    api.verified &&
-    postgres.verified &&
-    redis.verified &&
     apiTcp === 'closed' &&
     postgresTcp === 'open' &&
     redisTcp === 'open' &&
-    dockerEndpointVerified &&
-    ps.status === 0 &&
-    !ps.stderr.trim();
-  const postgresResourceVerified =
-    probesVerified &&
-    (await dockerResource(
-      EXPECTED.postgresContainer,
-      EXPECTED.postgresContainerId,
-      EXPECTED.databasePort,
-      '5432',
-      EXPECTED.postgresVolume,
-      '/var/lib/postgresql/data',
-      commandRunner,
-    ));
-  const redisResourceVerified =
-    probesVerified &&
-    (await dockerResource(
-      EXPECTED.redisContainer,
-      EXPECTED.redisContainerId,
-      EXPECTED.redisPort,
-      '6379',
-      EXPECTED.redisVolume,
-      '/data',
-      commandRunner,
-    ));
+    provenance.commonBackendVerified;
   return {
     probesVerified,
-    dockerEndpointVerified,
+    dockerEndpointVerified: true,
+    backendProvenanceVerified: provenance.commonBackendVerified,
+    ...provenance,
     gateVerified:
       gateHead.stdout.trim() === EXPECTED.gateSha && gateStatus.stdout === '' && probesVerified,
-    listenerTargetsVerified:
-      postgres.verified &&
-      postgres.present === true &&
-      redis.verified &&
-      redis.present === true &&
-      api.verified &&
-      api.present === false,
+    listenerTargetsVerified,
     resourcesVerified: postgresResourceVerified && redisResourceVerified,
     apiRunning: api.present,
     genericWorkerRunning:
@@ -1339,6 +1585,7 @@ export async function runI111ReadonlyRuntimePreflight(options = {}) {
       if (
         !runtimeBefore.probesVerified ||
         !runtimeBefore.dockerEndpointVerified ||
+        !runtimeBefore.backendProvenanceVerified ||
         !runtimeBefore.gateVerified ||
         !runtimeBefore.listenerTargetsVerified ||
         !runtimeBefore.resourcesVerified ||
@@ -1354,6 +1601,7 @@ export async function runI111ReadonlyRuntimePreflight(options = {}) {
       runtimeBefore = {
         probesVerified: false,
         dockerEndpointVerified: false,
+        backendProvenanceVerified: false,
         gateVerified: false,
         listenerTargetsVerified: false,
         resourcesVerified: false,
@@ -1366,6 +1614,7 @@ export async function runI111ReadonlyRuntimePreflight(options = {}) {
     const resourcesVerifiedBeforeConnections =
       runtimeBefore.probesVerified === true &&
       runtimeBefore.dockerEndpointVerified === true &&
+      runtimeBefore.backendProvenanceVerified === true &&
       runtimeBefore.gateVerified === true &&
       runtimeBefore.listenerTargetsVerified === true &&
       runtimeBefore.resourcesVerified === true &&
@@ -1420,6 +1669,7 @@ export async function runI111ReadonlyRuntimePreflight(options = {}) {
     let runtimeAfter = {
       probesVerified: false,
       dockerEndpointVerified: false,
+      backendProvenanceVerified: false,
       gateVerified: false,
       listenerTargetsVerified: false,
       resourcesVerified: false,
@@ -1437,6 +1687,7 @@ export async function runI111ReadonlyRuntimePreflight(options = {}) {
       resourcesVerifiedBeforeConnections &&
       runtimeAfter.probesVerified === true &&
       runtimeAfter.dockerEndpointVerified === true &&
+      runtimeAfter.backendProvenanceVerified === true &&
       runtimeAfter.gateVerified === true &&
       runtimeAfter.listenerTargetsVerified === true &&
       runtimeAfter.resourcesVerified === true &&
