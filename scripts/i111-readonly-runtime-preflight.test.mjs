@@ -1,10 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
+import { lstat, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
+  loadI111SourceState,
   runI111ReadonlyRuntimePreflight,
   secureReadFile,
+  verifyGitHubApproval,
 } from './i111-readonly-runtime-preflight.mjs';
 import { I111_ONE_SHOT_SCOPE as scope } from './i111-one-shot-policy.mjs';
 
@@ -236,7 +238,7 @@ function validSource(rows = baseRows()) {
     versionMatch: true,
     checkoutClean: true,
     signedTtlSeconds: 900,
-    retryPolicyVerified: true,
+    retrySemanticsVerified: false,
     migrations: expectedMigrations(rows.migrations),
   };
 }
@@ -245,6 +247,7 @@ function validRuntime() {
   return {
     probesVerified: true,
     gateVerified: true,
+    listenerTargetsVerified: true,
     resourcesVerified: true,
     apiRunning: false,
     genericWorkerRunning: false,
@@ -384,11 +387,177 @@ test('fails closed for probe failure, active unrelated image work, Redis queues 
   );
 });
 
-test('does not claim auto-retry is disabled unless exact approved source proves it', async () => {
-  const source = validSource();
-  source.retryPolicyVerified = false;
-  const { result } = await run({ sourceResult: source });
-  assert.ok(result.errorCodes.includes('I111_RUNTIME_NOT_ISOLATED'));
+test('does not open PostgreSQL or Redis before every resource identity check passes', async () => {
+  for (const field of [
+    'probesVerified',
+    'gateVerified',
+    'listenerTargetsVerified',
+    'resourcesVerified',
+  ]) {
+    const runtime = validRuntime();
+    runtime[field] = false;
+    let databaseCalls = 0;
+    let redisCalls = 0;
+    const { result } = await run({
+      runtimeResult: runtime,
+      open: () => {
+        databaseCalls += 1;
+        throw new Error('must not open PostgreSQL');
+      },
+      redisInspector: () => {
+        redisCalls += 1;
+        throw new Error('must not open Redis');
+      },
+    });
+    assert.equal(databaseCalls, 0, field);
+    assert.equal(redisCalls, 0, field);
+    assert.equal(result.checks.postgresResource, 'STOP');
+    assert.ok(result.errorCodes.includes('I111_RUNTIME_NOT_ISOLATED'));
+  }
+});
+
+test('detects a Worker or Redis task appearing between the two non-atomic samples', async () => {
+  let runtimeCalls = 0;
+  const workerRace = await runI111ReadonlyRuntimePreflight({
+    env: env(),
+    argv: [],
+    dependencies: {
+      fileInspector: () => validFiles(),
+      sourceInspector: () => validSource(),
+      runtimeInspector: () => {
+        runtimeCalls += 1;
+        return { ...validRuntime(), genericWorkerRunning: runtimeCalls === 2 };
+      },
+      redisInspector: () => ({ verified: true, queuedJobs: 0 }),
+      openDatabase: () => fakeDatabase().client,
+    },
+  });
+  assert.equal(runtimeCalls, 2);
+  assert.ok(workerRace.errorCodes.includes('I111_RUNTIME_NOT_ISOLATED'));
+  assert.equal(workerRace.checks.runtimeSampling, 'STOP');
+
+  let redisCalls = 0;
+  const queueRace = await runI111ReadonlyRuntimePreflight({
+    env: env(),
+    argv: [],
+    dependencies: {
+      fileInspector: () => validFiles(),
+      sourceInspector: () => validSource(),
+      runtimeInspector: () => validRuntime(),
+      redisInspector: () => {
+        redisCalls += 1;
+        return { verified: true, queuedJobs: redisCalls === 1 ? 0 : 1 };
+      },
+      openDatabase: () => fakeDatabase().client,
+    },
+  });
+  assert.equal(redisCalls, 2);
+  assert.ok(queueRace.errorCodes.includes('I111_RUNTIME_NOT_ISOLATED'));
+  assert.equal(queueRace.checks.redis, 'STOP');
+});
+
+test('never treats source regexes as proof that provider retry semantics are disabled', async () => {
+  const { result } = await run();
+  assert.ok(result.errorCodes.includes('I111_RETRY_SEMANTICS_UNVERIFIED'));
+  assert.equal(result.checks.retrySemantics, 'STOP');
+  assert.equal(result.checks.atomicIsolation, 'STOP');
+  assert.equal(result.checks.runtimeSampling, 'PASS');
+});
+
+test('verifies the exact GitHub review identity, state, URL and commit through the API path', async () => {
+  const sha = '1'.repeat(40);
+  const approval = {
+    approvedBy: 'Fredilly',
+    approvedCommit: sha,
+    approvalUrl: 'https://github.com/Fredilly/Xiaohai/pull/237#pullrequestreview-12345',
+  };
+  const valid = {
+    id: 12345,
+    user: { login: 'Fredilly' },
+    state: 'APPROVED',
+    commit_id: sha,
+    html_url: approval.approvalUrl,
+  };
+  const commandRunner = async (command, args) => {
+    assert.equal(command, 'gh');
+    assert.deepEqual(args, [
+      'api',
+      '--method',
+      'GET',
+      'repos/Fredilly/Xiaohai/pulls/237/reviews/12345',
+    ]);
+    return { status: 0, stdout: JSON.stringify(valid), stderr: '' };
+  };
+  assert.equal(await verifyGitHubApproval(approval, sha, { commandRunner }), true);
+  for (const mutation of [
+    { user: { login: 'someone-else' } },
+    { state: 'COMMENTED' },
+    { commit_id: '2'.repeat(40) },
+    { html_url: approval.approvalUrl + '-wrong' },
+  ]) {
+    assert.equal(
+      await verifyGitHubApproval(approval, sha, {
+        commandRunner: async () => ({
+          status: 0,
+          stdout: JSON.stringify({ ...valid, ...mutation }),
+          stderr: '',
+        }),
+      }),
+      false,
+    );
+  }
+});
+
+test('real source inspection separates local consistency from independent review proof', async () => {
+  const root = new URL('..', import.meta.url).pathname.replace(/\/$/, '');
+  const sha = '3'.repeat(40);
+  const commandRunner = async (_command, args) => {
+    if (args[0] === 'rev-parse') return { status: 0, stdout: `${sha}\n`, stderr: '' };
+    return { status: 0, stdout: '', stderr: '' };
+  };
+  const unsigned = await loadI111SourceState(root, null, {
+    secureRead: readFile,
+    commandRunner,
+    reviewVerifier: async () => {
+      throw new Error('must not query review without a consistent local record');
+    },
+  });
+  assert.equal(unsigned.localApprovalRecordConsistent, false);
+  assert.equal(unsigned.independentReviewVerified, false);
+  assert.ok(unsigned.errors.includes('I111_CODE_NOT_REVIEWED'));
+
+  const approval = {
+    schemaVersion: 1,
+    approvedBy: 'Fredilly',
+    approvalUrl: 'https://github.com/Fredilly/Xiaohai/pull/237#pullrequestreview-12345',
+    approvedCommit: sha,
+    migrationDigest: unsigned.migrationDigest,
+    sourceSha256: unsigned.sourceHashes,
+  };
+  const verified = await loadI111SourceState(root, approval, {
+    secureRead: readFile,
+    commandRunner,
+    reviewVerifier: async () => true,
+  });
+  assert.equal(verified.localApprovalRecordConsistent, true);
+  assert.equal(verified.independentReviewVerified, true);
+  assert.equal(verified.signedTtlSeconds, 900);
+  assert.deepEqual(verified.errors, []);
+
+  const drifted = structuredClone(approval);
+  drifted.sourceSha256['apps/worker/src/image-processor.ts'] = '0'.repeat(64);
+  let reviewCalled = false;
+  const rejected = await loadI111SourceState(root, drifted, {
+    secureRead: readFile,
+    commandRunner,
+    reviewVerifier: async () => {
+      reviewCalled = true;
+      return true;
+    },
+  });
+  assert.equal(reviewCalled, false);
+  assert.equal(rejected.localApprovalRecordConsistent, false);
+  assert.ok(rejected.errors.includes('I111_CODE_NOT_REVIEWED'));
 });
 
 test('requires trusted approval, clean source, signer TTL and migration provenance', async () => {
@@ -584,6 +753,12 @@ test('rejects symlinks and detects same-handle metadata changes', async () => {
     await symlink(target, link);
     await assert.rejects(() => secureReadFile(link, { mode: 0o600, maxBytes: 16 }));
 
+    const linkedParent = join(directory, 'linked-parent');
+    await symlink(directory, linkedParent);
+    await assert.rejects(() =>
+      secureReadFile(join(linkedParent, 'target'), { mode: 0o600, maxBytes: 16 }),
+    );
+
     let statCall = 0;
     const fakeStat = () => {
       statCall += 1;
@@ -600,11 +775,63 @@ test('rejects symlinks and detects same-handle metadata changes', async () => {
     };
     const fakeHandle = {
       stat: async () => fakeStat(),
-      readFile: async () => Buffer.from('safe'),
+      read: async (buffer, offset, length) => {
+        const bytes = Buffer.from('safe');
+        if (offset >= bytes.length) return { bytesRead: 0, buffer };
+        const bytesRead = Math.min(length, bytes.length - offset);
+        bytes.copy(buffer, offset, offset, offset + bytesRead);
+        return { bytesRead, buffer };
+      },
       close: async () => {},
     };
     await assert.rejects(() =>
       secureReadFile(target, { mode: 0o600, maxBytes: 16 }, { open: async () => fakeHandle }),
+    );
+
+    const stableStat = {
+      isFile: () => true,
+      dev: 1n,
+      ino: 2n,
+      size: 4n,
+      mode: 0o100600n,
+      uid: BigInt(process.getuid()),
+      mtimeNs: 1n,
+      ctimeNs: 1n,
+    };
+    const growingHandle = {
+      stat: async () => stableStat,
+      read: async (buffer, offset, length) => {
+        const bytes = Buffer.from('safex');
+        if (offset >= bytes.length) return { bytesRead: 0, buffer };
+        const bytesRead = Math.min(length, bytes.length - offset);
+        bytes.copy(buffer, offset, offset, offset + bytesRead);
+        return { bytesRead, buffer };
+      },
+      close: async () => {},
+    };
+    await assert.rejects(() =>
+      secureReadFile(target, { mode: 0o600, maxBytes: 16 }, { open: async () => growingHandle }),
+    );
+
+    let watchedParentCalls = 0;
+    await assert.rejects(() =>
+      secureReadFile(
+        target,
+        { mode: 0o600, maxBytes: 16 },
+        {
+          lstat: async (path) => {
+            const info = await lstat(path);
+            if (path !== directory || (watchedParentCalls += 1) === 1) return info;
+            return new Proxy(info, {
+              get(object, property) {
+                if (property === 'ino') return object.ino + 1;
+                const value = object[property];
+                return typeof value === 'function' ? value.bind(object) : value;
+              },
+            });
+          },
+        },
+      ),
     );
   } finally {
     await rm(directory, { recursive: true, force: true });

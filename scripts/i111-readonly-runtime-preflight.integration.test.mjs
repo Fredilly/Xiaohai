@@ -1,16 +1,25 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
 import { collectI111Database } from './i111-readonly-runtime-preflight.mjs';
 import { I111_ONE_SHOT_SCOPE as scope } from './i111-one-shot-policy.mjs';
 
 const enabled = process.env.I111_DISPOSABLE_DATABASE === 'YES';
 const integration = enabled ? test : test.skip;
 const requireFromDb = createRequire(new URL('../packages/db/package.json', import.meta.url));
-const migrations = Array.from({ length: 42 }, (_, index) => ({
-  tag: `${String(index).padStart(4, '0')}_synthetic`,
-  hash: String(index).padStart(64, '0'),
-  createdAt: String(1_790_000_000_000 + index),
+const { drizzle } = requireFromDb('drizzle-orm/node-postgres');
+const { migrate } = requireFromDb('drizzle-orm/node-postgres/migrator');
+const migrationsFolder = fileURLToPath(new URL('../packages/db/migrations/', import.meta.url));
+const journal = JSON.parse(readFileSync(`${migrationsFolder}/meta/_journal.json`, 'utf8'));
+const migrations = journal.entries.map((entry) => ({
+  tag: entry.tag,
+  hash: createHash('sha256')
+    .update(readFileSync(`${migrationsFolder}/${entry.tag}.sql`))
+    .digest('hex'),
+  createdAt: String(entry.when),
 }));
 
 function guardedUrl(raw, database, user) {
@@ -54,33 +63,41 @@ integration('runs the collector against an explicitly guarded disposable Postgre
   }
 
   const owner = new pg.Client({ connectionString: appUrl.toString() });
+  const migrationPool = new pg.Pool({ connectionString: appUrl.toString(), max: 1 });
+  await migrate(drizzle(migrationPool), { migrationsFolder });
+  await migrationPool.end();
   await owner.connect();
   try {
     await owner.query(`
-      CREATE SCHEMA drizzle;
-      CREATE TABLE drizzle.__drizzle_migrations (id serial PRIMARY KEY, hash text NOT NULL, created_at numeric);
-      CREATE TABLE picture_books (id uuid PRIMARY KEY, consumer_user_id uuid, ai_project_id uuid, status text);
-      CREATE TABLE work_pages (id uuid PRIMARY KEY, picture_book_id uuid, page_number integer, page_kind text, source_ai_job_id uuid, character_ids uuid[]);
-      CREATE TABLE media_assets (id uuid PRIMARY KEY, provider text, status text, mime_type text, object_key text, playback_url text, byte_size integer);
-      CREATE TABLE character_profiles (id uuid PRIMARY KEY, picture_book_id uuid, name text, sort_order integer, confirmed boolean, locked boolean, reference_media_asset_id uuid);
-      CREATE TABLE character_reference_images (id uuid PRIMARY KEY, character_profile_id uuid, media_asset_id uuid, status text, provider text);
-      CREATE TABLE ai_jobs (id uuid PRIMARY KEY, status text);
-      CREATE TABLE work_page_illustrations (id uuid PRIMARY KEY, page_id uuid, revision_number integer, provider text, model text, status text, media_asset_id uuid, created_at timestamptz DEFAULT now());
-      CREATE TABLE ai_cost_reservations (id uuid PRIMARY KEY, budget_key text, window_key text, consumer_user_id uuid, resource_type text, resource_id uuid, status text, uncertainty text, provider text, model text, reserved_minor integer, actual_minor integer, provider_request_id text, created_at timestamptz DEFAULT now());
-      CREATE TABLE ai_cost_ledger (id uuid PRIMARY KEY, reservation_id uuid, consumer_user_id uuid, resource_type text, resource_id uuid, provider text, model text, outcome text, amount_minor integer, usage text, provider_request_id text, created_at timestamptz DEFAULT now());
-      CREATE TABLE ai_budget_windows (id uuid PRIMARY KEY, budget_key text, window_key text, scope_type text, consumer_user_id uuid, limit_minor integer, reserved_minor integer, actual_minor integer, created_at timestamptz DEFAULT now());
+      INSERT INTO consumer_users (id) VALUES ('${scope.ownerId}');
+      INSERT INTO ai_projects (id, project_type, title, created_by_consumer_user_id)
+        VALUES ('cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'STORY', 'fixture', '${scope.ownerId}');
+      INSERT INTO ai_jobs
+        (id, project_id, job_type, provider, model, status, input, max_attempts, timeout_ms)
+        VALUES
+        ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+         'cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'STORY_OUTLINE', 'MOCK', 'fixture',
+         'SUCCEEDED', '{"prompt":"fixture"}'::jsonb, 1, 30000);
+      INSERT INTO works
+        (id, consumer_user_id, ai_project_id, work_type, title, idea, age_range, theme, style)
+        VALUES
+        ('dddddddd-dddd-4ddd-8ddd-dddddddddddd', '${scope.ownerId}',
+         'cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'STORY', 'fixture', 'fixture',
+         '3-6', 'fixture', 'fixture');
+      INSERT INTO work_versions
+        (id, work_id, version_number, content_kind, operation, source_ai_job_id, content)
+        VALUES
+        ('eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+         'dddddddd-dddd-4ddd-8ddd-dddddddddddd', 1, 'OUTLINE', 'OUTLINE',
+         'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'fixture');
+      INSERT INTO picture_books
+        (id, consumer_user_id, ai_project_id, story_work_id, source_story_version_id,
+         title, status, layout_preset)
+        VALUES
+        ('${scope.bookId}', '${scope.ownerId}', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+         'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+         'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee', 'fixture', 'PLANNED', 'AUTO');
     `);
-    for (const migration of migrations) {
-      await owner.query(
-        'INSERT INTO drizzle.__drizzle_migrations (hash, created_at) VALUES ($1, $2)',
-        [migration.hash, migration.createdAt],
-      );
-    }
-    await owner.query(`INSERT INTO picture_books VALUES ($1,$2,$3,'PLANNED')`, [
-      scope.bookId,
-      scope.ownerId,
-      'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
-    ]);
     const characters = [
       {
         id: 'de0169d8-d975-4f1b-b04c-a15c25f54bdc',
@@ -104,7 +121,9 @@ integration('runs the collector against an explicitly guarded disposable Postgre
     for (const character of characters) {
       const key = `picture-books/character-references/i111/${scope.ownerId}/${scope.bookId}/${character.id}/${character.digest}.png`;
       await owner.query(
-        `INSERT INTO media_assets VALUES ($1,'BAIDU_BOS','READY','image/png',$2,$3,$4)`,
+        `INSERT INTO media_assets
+          (id, provider, status, mime_type, object_key, playback_url, byte_size)
+         VALUES ($1,'BAIDU_BOS','READY','image/png',$2,$3,$4)`,
         [
           character.media,
           key,
@@ -112,15 +131,17 @@ integration('runs the collector against an explicitly guarded disposable Postgre
           character.bytes,
         ],
       );
-      await owner.query(`INSERT INTO character_profiles VALUES ($1,$2,$3,$4,true,true,$5)`, [
-        character.id,
-        scope.bookId,
-        character.name,
-        character.sort,
-        character.media,
-      ]);
       await owner.query(
-        `INSERT INTO character_reference_images VALUES ($1,$2,$3,'READY','IMPORTED')`,
+        `INSERT INTO character_profiles
+          (id, picture_book_id, name, role, description, visual_prompt, confirmed, locked,
+           reference_media_asset_id, sort_order)
+         VALUES ($1,$2,$3,'MAIN','fixture','fixture',true,true,$5,$4)`,
+        [character.id, scope.bookId, character.name, character.sort, character.media],
+      );
+      await owner.query(
+        `INSERT INTO character_reference_images
+          (id, character_profile_id, media_asset_id, revision_number, status, provider, model)
+         VALUES ($1,$2,$3,1,'READY','IMPORTED','imported-fixture')`,
         [character.reference, character.id, character.media],
       );
     }
@@ -129,13 +150,19 @@ integration('runs the collector against an explicitly guarded disposable Postgre
       [scope.page1Id, 1, 'CONTENT'],
       [scope.page2Id, 2, 'CONTENT'],
     ]) {
-      await owner.query(`INSERT INTO work_pages VALUES ($1,$2,$3,$4,NULL,$5)`, [
-        id,
-        scope.bookId,
-        number,
-        kind,
-        characters.map((character) => character.id),
-      ]);
+      await owner.query(
+        `INSERT INTO work_pages
+          (id, picture_book_id, page_number, page_kind, story_text, source_ai_job_id, character_ids)
+         VALUES ($1,$2,$3,$4,$5,NULL,$6)`,
+        [
+          id,
+          scope.bookId,
+          number,
+          kind,
+          kind === 'CONTENT' ? 'fixture' : null,
+          characters.map((character) => character.id),
+        ],
+      );
     }
   } finally {
     await owner.end();

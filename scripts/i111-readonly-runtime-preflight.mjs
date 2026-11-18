@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { constants as fsConstants } from 'node:fs';
-import { lstat, open } from 'node:fs/promises';
+import { lstat, open, realpath } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { createConnection } from 'node:net';
 import { dirname, isAbsolute, join, resolve, sep } from 'node:path';
@@ -74,6 +74,7 @@ const ALLOWED_CODES = new Set([
   'I111_ARGUMENTS_FORBIDDEN',
   'I111_ATTEMPTS_INVALID',
   'I111_ATTEMPT_COUNT_INVALID',
+  'I111_ATOMIC_ISOLATION_UNVERIFIED',
   'I111_BACKUP_NOT_VERIFIED',
   'I111_BOOK_SCOPE_INVALID',
   'I111_BUDGET_INVALID',
@@ -93,6 +94,7 @@ const ALLOWED_CODES = new Set([
   'I111_REDIS_CHECK_FAILED',
   'I111_REFERENCES_INVALID',
   'I111_REMOTE_BOS_UNVERIFIED',
+  'I111_RETRY_SEMANTICS_UNVERIFIED',
   'I111_RUNTIME_NOT_ISOLATED',
   'I111_SNAPSHOT_INVALID',
   'I111_UNEXPECTED_FAILURE',
@@ -245,7 +247,7 @@ function inspectConfiguration(env, source) {
       beijingWorkspaceBound: workspaceBound,
       signedTtlSeconds: source.signedTtlSeconds,
       imageTimeoutMs: timeout,
-      autoRetryEnabled: source.retryPolicyVerified ? false : null,
+      autoRetryEnabled: null,
     },
     budget: {
       enabled: budgetEnabled,
@@ -264,6 +266,7 @@ async function trustedParents(path, dependencies) {
   if (!isAbsolute(path)) throw new Error('UNTRUSTED_PATH');
   const parts = dirname(path).split(sep).filter(Boolean);
   let current = sep;
+  const snapshots = [];
   for (const part of parts) {
     current = join(current, part);
     const info = await dependencies.lstat(current);
@@ -276,15 +279,48 @@ async function trustedParents(path, dependencies) {
     ) {
       throw new Error('UNTRUSTED_PARENT');
     }
+    snapshots.push({ path: current, dev: info.dev, ino: info.ino, uid: info.uid, mode: info.mode });
   }
+  return snapshots;
+}
+
+async function parentsUnchanged(snapshots, dependencies) {
+  for (const before of snapshots) {
+    const after = await dependencies.lstat(before.path);
+    if (
+      after.isSymbolicLink() ||
+      !after.isDirectory() ||
+      after.dev !== before.dev ||
+      after.ino !== before.ino ||
+      after.uid !== before.uid ||
+      after.mode !== before.mode
+    ) {
+      throw new Error('PARENT_CHANGED_DURING_READ');
+    }
+  }
+}
+
+async function boundedRead(handle, expectedSize) {
+  const expected = Number(expectedSize);
+  const buffer = Buffer.alloc(expected + 1);
+  let offset = 0;
+  while (offset < buffer.byteLength) {
+    const { bytesRead } = await handle.read(buffer, offset, buffer.byteLength - offset, null);
+    if (bytesRead === 0) break;
+    offset += bytesRead;
+  }
+  if (offset !== expected) throw new Error('FILE_CHANGED_DURING_READ');
+  return buffer.subarray(0, expected);
 }
 
 export async function secureReadFile(path, options = {}, dependencies = {}) {
   const adapter = {
     lstat: dependencies.lstat ?? lstat,
     open: dependencies.open ?? open,
+    realpath: dependencies.realpath ?? realpath,
   };
-  await trustedParents(path, adapter);
+  if ((await adapter.realpath(path)) !== resolve(path)) throw new Error('UNTRUSTED_PATH');
+  const parentSnapshots = await trustedParents(path, adapter);
   const flags = fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0);
   const handle = await adapter.open(path, flags);
   try {
@@ -299,8 +335,10 @@ export async function secureReadFile(path, options = {}, dependencies = {}) {
     ) {
       throw new Error('UNTRUSTED_FILE');
     }
-    const bytes = await handle.readFile();
+    const bytes = await boundedRead(handle, before.size);
     const after = await handle.stat({ bigint: true });
+    await parentsUnchanged(parentSnapshots, adapter);
+    if ((await adapter.realpath(path)) !== resolve(path)) throw new Error('UNTRUSTED_PATH');
     if (
       before.dev !== after.dev ||
       before.ino !== after.ino ||
@@ -380,6 +418,40 @@ function runCommand(command, args, cwd) {
   });
   if (result.error || result.status === null) throw new Error('COMMAND_FAILED');
   return { status: result.status, stdout: result.stdout, stderr: result.stderr };
+}
+
+export async function verifyGitHubApproval(approval, checkedOutSha, dependencies = {}) {
+  const match =
+    /^https:\/\/github\.com\/Fredilly\/Xiaohai\/pull\/237#pullrequestreview-(\d+)$/.exec(
+      approval?.approvalUrl ?? '',
+    );
+  if (
+    !match ||
+    approval?.approvedBy !== 'Fredilly' ||
+    approval?.approvedCommit !== checkedOutSha ||
+    !/^[0-9a-f]{40}$/.test(checkedOutSha)
+  ) {
+    return false;
+  }
+  const commandRunner = dependencies.commandRunner ?? runCommand;
+  try {
+    const response = await commandRunner(
+      'gh',
+      ['api', '--method', 'GET', `repos/Fredilly/Xiaohai/pulls/237/reviews/${match[1]}`],
+      dependencies.root,
+    );
+    if (response.status !== 0 || response.stderr.trim()) return false;
+    const review = JSON.parse(response.stdout);
+    return (
+      String(review?.id) === match[1] &&
+      review?.user?.login === 'Fredilly' &&
+      review?.state === 'APPROVED' &&
+      review?.commit_id === checkedOutSha &&
+      review?.html_url === approval.approvalUrl
+    );
+  } catch {
+    return false;
+  }
 }
 
 function dockerResource(name, expected, port, containerPort, volume, destination) {
@@ -476,35 +548,45 @@ async function defaultRuntimeInspector(paths) {
     redisTcp === 'open' &&
     ps.status === 0 &&
     !ps.stderr.trim();
+  const postgresResourceVerified =
+    probesVerified &&
+    dockerResource(
+      EXPECTED.postgresContainer,
+      EXPECTED.postgresContainerId,
+      EXPECTED.databasePort,
+      '5432',
+      EXPECTED.postgresVolume,
+      '/var/lib/postgresql/data',
+    );
+  const redisResourceVerified =
+    probesVerified &&
+    dockerResource(
+      EXPECTED.redisContainer,
+      EXPECTED.redisContainerId,
+      EXPECTED.redisPort,
+      '6379',
+      EXPECTED.redisVolume,
+      '/data',
+    );
   return {
     probesVerified,
     gateVerified:
       gateHead.stdout.trim() === EXPECTED.gateSha && gateStatus.stdout === '' && probesVerified,
-    resourcesVerified:
-      probesVerified &&
-      dockerResource(
-        EXPECTED.postgresContainer,
-        EXPECTED.postgresContainerId,
-        EXPECTED.databasePort,
-        '5432',
-        EXPECTED.postgresVolume,
-        '/var/lib/postgresql/data',
-      ) &&
-      dockerResource(
-        EXPECTED.redisContainer,
-        EXPECTED.redisContainerId,
-        EXPECTED.redisPort,
-        '6379',
-        EXPECTED.redisVolume,
-        '/data',
-      ),
+    listenerTargetsVerified:
+      postgres.verified &&
+      postgres.present === true &&
+      redis.verified &&
+      redis.present === true &&
+      api.verified &&
+      api.present === false,
+    resourcesVerified: postgresResourceVerified && redisResourceVerified,
     apiRunning: api.present,
     genericWorkerRunning:
       ps.status === 0 ? ps.stdout.split('\n').some((line) => workerPattern.test(line)) : null,
   };
 }
 
-async function loadSourceState(root, approval, dependencies) {
+export async function loadI111SourceState(root, approval, dependencies) {
   const migrationRoot = resolve(root, 'packages/db/migrations');
   const journalBytes = await dependencies.secureRead(join(migrationRoot, 'meta/_journal.json'), {
     maxBytes: 256_000,
@@ -531,13 +613,14 @@ async function loadSourceState(root, approval, dependencies) {
     migrations.push({ tag: entry.tag, createdAt: String(entry.when), hash: sha256(sql) });
   }
   const migrationDigest = sha256(Buffer.from(JSON.stringify(migrations)));
-  const head = runCommand('git', ['rev-parse', '--verify', 'HEAD'], root);
-  const status = runCommand(
+  const commandRunner = dependencies.commandRunner ?? runCommand;
+  const head = await commandRunner('git', ['rev-parse', '--verify', 'HEAD'], root);
+  const status = await commandRunner(
     'git',
     ['status', '--porcelain=v1', '--untracked-files=no', '--ignore-submodules=none'],
     root,
   );
-  const diff = runCommand('git', ['diff', '--no-ext-diff', '--quiet', 'HEAD', '--'], root);
+  const diff = await commandRunner('git', ['diff', '--no-ext-diff', '--quiet', 'HEAD', '--'], root);
   const sourceHashes = {};
   for (const relative of PROVENANCE_FILES) {
     sourceHashes[relative] = sha256(
@@ -545,7 +628,7 @@ async function loadSourceState(root, approval, dependencies) {
     );
   }
   const checkedOutSha = head.status === 0 ? head.stdout.trim() : '';
-  const approvalValid =
+  const localApprovalRecordConsistent =
     approval?.schemaVersion === 1 &&
     approval?.approvedBy === 'Fredilly' &&
     /^https:\/\/github\.com\/Fredilly\/Xiaohai\/pull\/237#pullrequestreview-\d+$/.test(
@@ -557,6 +640,12 @@ async function loadSourceState(root, approval, dependencies) {
     PROVENANCE_FILES.every(
       (relative) => approval?.sourceSha256?.[relative] === sourceHashes[relative],
     );
+  const independentReviewVerified =
+    localApprovalRecordConsistent &&
+    (await (dependencies.reviewVerifier ?? verifyGitHubApproval)(approval, checkedOutSha, {
+      commandRunner,
+      root,
+    }));
   const checkoutClean =
     status.status === 0 &&
     status.stdout === '' &&
@@ -573,11 +662,6 @@ async function loadSourceState(root, approval, dependencies) {
       maxBytes: 300_000,
     })
   ).toString('utf8');
-  const workerText = (
-    await dependencies.secureRead(resolve(root, 'apps/worker/src/index.ts'), {
-      maxBytes: 300_000,
-    })
-  ).toString('utf8');
   const ttl = safetyText.match(
     /^export const PRIVATE_BOS_IMAGE_REFERENCE_TTL_SECONDS = ([\d_]+);$/m,
   );
@@ -586,20 +670,22 @@ async function loadSourceState(root, approval, dependencies) {
     /PRIVATE_REFERENCE_TTL_SECONDS\s*=\s*PRIVATE_BOS_IMAGE_REFERENCE_TTL_SECONDS/.test(
       signerText,
     ) && /generatePresignedUrl\([\s\S]*?PRIVATE_REFERENCE_TTL_SECONDS/.test(signerText);
-  const retryPolicyVerified =
-    approvalValid &&
-    /const queues = \['xiaohai:ai:jobs'\]/.test(workerText) &&
-    /await imageProcessor\?\.processOne\(\)/.test(workerText) &&
-    !/PICTURE_BOOK_IMAGE_MAX_ATTEMPTS/.test(workerText + signerText);
   return {
-    errors: approvalValid && checkoutClean && signerVerified ? [] : ['I111_CODE_NOT_REVIEWED'],
+    errors:
+      independentReviewVerified && checkoutClean && signerVerified
+        ? []
+        : ['I111_CODE_NOT_REVIEWED'],
     checkedOutSha,
-    reviewedSha: approvalValid ? approval.approvedCommit : '',
-    versionMatch: approvalValid && checkoutClean,
+    reviewedSha: independentReviewVerified ? approval.approvedCommit : '',
+    versionMatch: independentReviewVerified && checkoutClean,
     checkoutClean,
+    localApprovalRecordConsistent,
+    independentReviewVerified,
     signedTtlSeconds: signerVerified ? signedTtlSeconds : null,
-    retryPolicyVerified,
+    retrySemanticsVerified: false,
     migrations,
+    migrationDigest,
+    sourceHashes,
   };
 }
 
@@ -1060,7 +1146,7 @@ export async function runI111ReadonlyRuntimePreflight(options = {}) {
     openDatabase: options.dependencies?.openDatabase ?? defaultOpenDatabase,
     redisInspector: options.dependencies?.redisInspector ?? defaultRedisInspector,
     fileInspector: options.dependencies?.fileInspector ?? inspectFiles,
-    sourceInspector: options.dependencies?.sourceInspector ?? loadSourceState,
+    sourceInspector: options.dependencies?.sourceInspector ?? loadI111SourceState,
   };
   const errors = [];
   try {
@@ -1090,7 +1176,7 @@ export async function runI111ReadonlyRuntimePreflight(options = {}) {
         reviewedSha: '',
         versionMatch: false,
         signedTtlSeconds: null,
-        retryPolicyVerified: false,
+        retrySemanticsVerified: false,
         migrations: [],
       };
       errors.push(...source.errors);
@@ -1098,23 +1184,29 @@ export async function runI111ReadonlyRuntimePreflight(options = {}) {
     const config = inspectConfiguration(env, source);
     errors.push(...config.errors);
 
-    let runtime;
+    errors.push('I111_ATOMIC_ISOLATION_UNVERIFIED', 'I111_RETRY_SEMANTICS_UNVERIFIED');
+
+    let runtimeBefore;
     try {
-      runtime = await dependencies.runtimeInspector(paths);
+      runtimeBefore = await dependencies.runtimeInspector(paths);
       if (
-        !runtime.probesVerified ||
-        !runtime.gateVerified ||
-        !runtime.resourcesVerified ||
-        runtime.apiRunning !== false ||
-        runtime.genericWorkerRunning !== false
+        !runtimeBefore.probesVerified ||
+        !runtimeBefore.gateVerified ||
+        !runtimeBefore.listenerTargetsVerified ||
+        !runtimeBefore.resourcesVerified ||
+        runtimeBefore.apiRunning !== false ||
+        runtimeBefore.genericWorkerRunning !== false
       ) {
         errors.push('I111_RUNTIME_NOT_ISOLATED');
       }
-      if (!runtime.resourcesVerified) errors.push('I111_POSTGRES_RESOURCE_INVALID');
+      if (!runtimeBefore.resourcesVerified || !runtimeBefore.listenerTargetsVerified) {
+        errors.push('I111_POSTGRES_RESOURCE_INVALID');
+      }
     } catch {
-      runtime = {
+      runtimeBefore = {
         probesVerified: false,
         gateVerified: false,
+        listenerTargetsVerified: false,
         resourcesVerified: false,
         apiRunning: null,
         genericWorkerRunning: null,
@@ -1122,20 +1214,34 @@ export async function runI111ReadonlyRuntimePreflight(options = {}) {
       errors.push('I111_RUNTIME_NOT_ISOLATED', 'I111_POSTGRES_RESOURCE_INVALID');
     }
 
-    let redis = { verified: false, queuedJobs: -1 };
-    if (redisUrl) {
+    const resourcesVerifiedBeforeConnections =
+      runtimeBefore.probesVerified === true &&
+      runtimeBefore.gateVerified === true &&
+      runtimeBefore.listenerTargetsVerified === true &&
+      runtimeBefore.resourcesVerified === true &&
+      runtimeBefore.apiRunning === false &&
+      runtimeBefore.genericWorkerRunning === false;
+    let redisBefore = { verified: false, queuedJobs: -1 };
+    let redisAfter = { verified: false, queuedJobs: -1 };
+    if (resourcesVerifiedBeforeConnections && redisUrl) {
       try {
-        redis = await dependencies.redisInspector(redisUrl);
+        redisBefore = await dependencies.redisInspector(redisUrl);
       } catch {
         errors.push('I111_REDIS_CHECK_FAILED');
       }
     }
-    if (!redis.verified || redis.queuedJobs !== 0) {
+    if (!redisBefore.verified || redisBefore.queuedJobs !== 0) {
       errors.push('I111_REDIS_CHECK_FAILED', 'I111_RUNTIME_NOT_ISOLATED');
     }
 
-    let database = { errors: ['I111_DATABASE_IDENTITY_INVALID'] };
-    if (connectionString && source.migrations.length === EXPECTED.migrationCount) {
+    let database = { errors: ['I111_DATABASE_CHECK_FAILED'] };
+    if (
+      resourcesVerifiedBeforeConnections &&
+      redisBefore.verified === true &&
+      redisBefore.queuedJobs === 0 &&
+      connectionString &&
+      source.migrations.length === EXPECTED.migrationCount
+    ) {
       try {
         database = await collectI111Database(
           connectionString,
@@ -1145,10 +1251,50 @@ export async function runI111ReadonlyRuntimePreflight(options = {}) {
       } catch {
         database = { errors: ['I111_DATABASE_CHECK_FAILED'] };
       }
-    } else if (connectionString) {
+    } else if (resourcesVerifiedBeforeConnections && connectionString) {
       database = { errors: ['I111_MIGRATION_STATE_INVALID'] };
     }
     errors.push(...database.errors);
+
+    if (resourcesVerifiedBeforeConnections && redisUrl && redisBefore.verified) {
+      try {
+        redisAfter = await dependencies.redisInspector(redisUrl);
+      } catch {
+        errors.push('I111_REDIS_CHECK_FAILED');
+      }
+    }
+    if (!redisAfter.verified || redisAfter.queuedJobs !== 0) {
+      errors.push('I111_REDIS_CHECK_FAILED', 'I111_RUNTIME_NOT_ISOLATED');
+    }
+
+    let runtimeAfter = {
+      probesVerified: false,
+      gateVerified: false,
+      listenerTargetsVerified: false,
+      resourcesVerified: false,
+      apiRunning: null,
+      genericWorkerRunning: null,
+    };
+    if (resourcesVerifiedBeforeConnections) {
+      try {
+        runtimeAfter = await dependencies.runtimeInspector(paths);
+      } catch {
+        errors.push('I111_RUNTIME_NOT_ISOLATED', 'I111_POSTGRES_RESOURCE_INVALID');
+      }
+    }
+    const runtimeSamplesIdle =
+      resourcesVerifiedBeforeConnections &&
+      runtimeAfter.probesVerified === true &&
+      runtimeAfter.gateVerified === true &&
+      runtimeAfter.listenerTargetsVerified === true &&
+      runtimeAfter.resourcesVerified === true &&
+      runtimeAfter.apiRunning === false &&
+      runtimeAfter.genericWorkerRunning === false &&
+      redisBefore.verified === true &&
+      redisBefore.queuedJobs === 0 &&
+      redisAfter.verified === true &&
+      redisAfter.queuedJobs === 0;
+    if (!runtimeSamplesIdle) errors.push('I111_RUNTIME_NOT_ISOLATED');
 
     errors.push('I111_REMOTE_BOS_UNVERIFIED');
     errors.push('I111_PRICE_BASIS_UNVERIFIED');
@@ -1163,8 +1309,7 @@ export async function runI111ReadonlyRuntimePreflight(options = {}) {
       reviewedSha: source.reviewedSha,
       appEnv: env.APP_ENV,
       databaseName: database.databaseName,
-      dbIdentityVerified:
-        database.dbIdentityVerified === true && runtime.resourcesVerified === true,
+      dbIdentityVerified: database.dbIdentityVerified === true && runtimeSamplesIdle,
       originalBackupVerified: files.backupVerified,
       backupSha256Matched: files.backupVerified,
       book: database.book ?? {},
@@ -1177,10 +1322,18 @@ export async function runI111ReadonlyRuntimePreflight(options = {}) {
       })),
       runtime: {
         ...config.runtime,
-        apiRunning: runtime.apiRunning,
-        genericWorkerRunning: runtime.genericWorkerRunning,
+        apiRunning:
+          runtimeBefore.apiRunning === false && runtimeAfter.apiRunning === false
+            ? false
+            : runtimeAfter.apiRunning,
+        genericWorkerRunning:
+          runtimeBefore.genericWorkerRunning === false &&
+          runtimeAfter.genericWorkerRunning === false
+            ? false
+            : runtimeAfter.genericWorkerRunning,
         unrelatedQueuedJobs:
-          (database.activity?.unrelatedQueuedJobs ?? -1) + (redis.queuedJobs ?? -1),
+          (database.activity?.unrelatedQueuedJobs ?? -1) +
+          Math.max(redisBefore.queuedJobs ?? -1, redisAfter.queuedJobs ?? -1),
         otherActiveJobs: database.activity?.otherActiveJobs ?? -1,
       },
       budget: { ...config.budget, ...(database.budget ?? {}) },
@@ -1208,14 +1361,23 @@ export async function runI111ReadonlyRuntimePreflight(options = {}) {
         code:
           source.versionMatch && !errorCodes.includes('I111_CODE_NOT_REVIEWED') ? 'PASS' : 'STOP',
         database: databaseStop ? 'STOP' : 'PASS',
-        postgresResource: runtime.resourcesVerified ? 'PASS' : 'STOP',
+        postgresResource: runtimeSamplesIdle ? 'PASS' : 'STOP',
         backup: files.backupVerified ? 'PASS' : 'STOP',
         localPngFingerprints:
           files.mimiLocalPngVerified && files.pipLocalPngVerified ? 'PASS' : 'STOP',
         databaseReferenceMetadata: database.referenceMetadataVerified === true ? 'PASS' : 'STOP',
         remoteBos: 'STOP',
-        runtime: errorCodes.includes('I111_RUNTIME_NOT_ISOLATED') ? 'STOP' : 'PASS',
-        redis: redis.verified && redis.queuedJobs === 0 ? 'PASS' : 'STOP',
+        runtimeSampling: runtimeSamplesIdle ? 'PASS' : 'STOP',
+        atomicIsolation: 'STOP',
+        retrySemantics: 'STOP',
+        runtime: 'STOP',
+        redis:
+          redisBefore.verified &&
+          redisBefore.queuedJobs === 0 &&
+          redisAfter.verified &&
+          redisAfter.queuedJobs === 0
+            ? 'PASS'
+            : 'STOP',
         providerConfig: errorCodes.some((code) =>
           ['I111_PROVIDER_CONFIG_INVALID', 'I111_PROVIDER_CREDENTIALS_MISSING'].includes(code),
         )

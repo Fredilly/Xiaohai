@@ -27,25 +27,33 @@ IDs, bucket, backup digest and Mimi/Pip source digests in code. It accepts the
 database/Redis passwords and provider credential presence only from the current
 process environment and never includes their values in output.
 
-The process cannot self-assert review. A separate mode-0600 approval record is
-required at the fixed evidence path. It must bind the actual clean checkout
-commit, Fred's PR review URL, the reviewed source-file SHA-256 values and the
-combined ordered migration manifest digest. Until that record is created under
-a separately authorized post-review handoff, code provenance is STOP.
+The process cannot self-assert review. A mode-0600 local record can bind the
+actual clean checkout commit, Fred's PR review URL, reviewed source SHA-256
+values and the ordered migration digest, but that proves only local record
+consistency. The CLI separately reads the exact GitHub review ID and requires
+its trusted API response to name `Fredilly`, state `APPROVED`, and bind the
+exact checkout commit and review URL. Missing authentication, network failure,
+or any mismatch leaves code provenance at STOP. A local record alone is never
+reported as independent human approval.
 
 ## Read-only guarantees
 
 - PostgreSQL and Redis URLs must use the exact isolated loopback ports and
-  restricted identities before connection.
+  restricted identities. Docker container IDs, volumes, port mappings,
+  listener targets and the stopped API/Worker state are checked before either
+  connector may run; a failed resource probe causes zero connection attempts.
 - The client sets `default_transaction_read_only=on`, starts an explicit
   `REPEATABLE READ READ ONLY` transaction and always rolls it back.
 - Queries are `SELECT`/session-local timeout statements only. The CLI does not
   start API/Worker processes. Redis inspection uses only queue-length reads for
   the four queues consumed by the Worker. It makes no BOS or Bailian request.
 - Backup, PNG, approval, source and migration evidence reject symlinks and
-  untrusted parents, and are opened with `O_NOFOLLOW`; permissions, size and
-  SHA-256 are checked on the same file descriptor. No restore or remote object
-  request occurs.
+  untrusted parents, and are opened with `O_NOFOLLOW`; reads are bounded to the
+  opened file's size, and file plus parent identity are rechecked after the
+  same-handle read. No restore or remote object request occurs. Portable Node
+  APIs cannot provide a fully descriptor-relative `openat` walk, so this is
+  fail-closed hardening rather than a claim that every parent race is
+  cryptographically impossible.
 - Read-only Git probes set `GIT_OPTIONAL_LOCKS=0` and reject a dirty tracked
   checkout. Untracked local evidence is not modified.
 - Output contains only allowlisted codes and PASS/STOP classifications. It does
@@ -59,9 +67,13 @@ listeners, volumes and PostgreSQL data directory; restricted role attributes;
 all 42 Drizzle SQL hashes/timestamps/order; exact Mimi/Pip IDs/order on all three
 pages; every character row and selected reference; all image work; Redis queue
 lengths; illustration media joins; every reservation, ledger and budget-window
-row; Beijing Workspace binding; approved Worker retry semantics; and the
-900-second signer/timeout invariant. Probe failure is distinct from confirmed
-absence and always stops.
+row; Beijing Workspace binding; and the 900-second signer/timeout invariant.
+Runtime and queues are sampled before and after the database snapshot so an
+observed Worker/queue race stops the check. These remain time-separated samples,
+not atomic isolation. The complete provider/queue retry chain is also not
+provable from source regexes. Accordingly atomic isolation and retry semantics
+are always explicit STOP conditions that a future executor must recheck under
+its own lock immediately before any paid call.
 
 Offline configuration cannot prove the provider's complete invoice. Therefore
 the CLI unconditionally reports `I111_PRICE_BASIS_UNVERIFIED`. Matching database
