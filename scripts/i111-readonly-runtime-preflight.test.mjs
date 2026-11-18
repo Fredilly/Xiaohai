@@ -429,13 +429,21 @@ function runtimeResourceHarness({
   publishedPort,
   daemonId,
   separateRedisBackend = false,
+  gateSha = '6898d09a3fcf76c5006ab271d0168643de2bf1fd',
+  dirty = false,
+  workerRunning = false,
+  socketReplacementPhase,
+  multiplePostgresPids = false,
+  signatureTeamId = '9BNSXJN65R',
+  signatureCdHash = '54c72e39ae7276bc1a096e7494615a690a0d31d8',
+  executableUid = 501,
 } = {}) {
   let dockerCalls = 0;
   let tcpCalls = 0;
   const commandRunner = async (command, args) => {
     const success = (stdout = '') => ({ status: 0, stdout, stderr: '' });
     if (command === 'git') {
-      return success(args.includes('status') ? '' : '6898d09a3fcf76c5006ab271d0168643de2bf1fd\n');
+      return success(args.includes('status') ? (dirty ? ' M tracked-file\n' : '') : `${gateSha}\n`);
     }
     if (command === '/usr/sbin/lsof' && args.includes('-iTCP:52513')) {
       return { status: 1, stdout: '', stderr: '' };
@@ -444,8 +452,12 @@ function runtimeResourceHarness({
       const port = args.find((value) => value.startsWith('-iTCP:'))?.slice(6);
       const executable = listenerExecutable ?? 'com.docke';
       const pid = port === '52512' && separateRedisBackend ? 7001 : port === '52512' ? 5917 : 5916;
+      const extra =
+        port === '52511' && multiplePostgresPids
+          ? `${executable} 5918 li 43u IPv4 0x1 0t0 TCP 127.0.0.1:${port} (LISTEN)\n`
+          : '';
       return success(
-        `COMMAND PID USER FD TYPE DEVICE SIZE/OFF NODE NAME\n${executable} ${pid} li 42u IPv4 0x0 0t0 TCP 127.0.0.1:${port} (LISTEN)\n`,
+        `COMMAND PID USER FD TYPE DEVICE SIZE/OFF NODE NAME\n${executable} ${pid} li 42u IPv4 0x0 0t0 TCP 127.0.0.1:${port} (LISTEN)\n${extra}`,
       );
     }
     if (command === '/usr/sbin/lsof' && args.includes('-d')) {
@@ -461,22 +473,27 @@ function runtimeResourceHarness({
     }
     if (command === '/bin/ps' && args.includes('pid=,ppid=,uid=,comm=')) {
       return success(
-        `5908 1 501 /Applications/Docker.app/Contents/MacOS/com.docker.backend\n5916 5908 501 /Applications/Docker.app/Contents/MacOS/com.docker.backend\n5917 5908 501 /Applications/Docker.app/Contents/MacOS/com.docker.backend\n${
+        `5908 1 501 /Applications/Docker.app/Contents/MacOS/com.docker.backend\n5916 5908 501 /Applications/Docker.app/Contents/MacOS/com.docker.backend\n5917 5908 501 /Applications/Docker.app/Contents/MacOS/com.docker.backend\n5918 5908 501 /Applications/Docker.app/Contents/MacOS/com.docker.backend\n${
           separateRedisBackend
             ? '7000 1 501 /Applications/Docker.app/Contents/MacOS/com.docker.backend\n7001 7000 501 /Applications/Docker.app/Contents/MacOS/com.docker.backend\n'
             : ''
         }`,
       );
     }
-    if (command === '/bin/ps') return success('node harmless-script.mjs\n');
-    if (command === '/usr/bin/stat') return success('16777220:3424107:501:-rwxr-xr-x\n');
+    if (command === '/bin/ps') {
+      return success(
+        workerRunning ? 'node apps/worker/dist/worker.js\n' : 'node harmless-script.mjs\n',
+      );
+    }
+    if (command === '/usr/bin/stat') {
+      return success(`16777220:3424107:${executableUid}:-rwxr-xr-x\n`);
+    }
     if (command === '/usr/bin/codesign' && args[0] === '--verify') return success();
     if (command === '/usr/bin/codesign') {
       return {
         status: 0,
         stdout: '',
-        stderr:
-          'Identifier=com.docker.docker\nTeamIdentifier=9BNSXJN65R\nCDHash=54c72e39ae7276bc1a096e7494615a690a0d31d8\ndesignated => anchor apple generic and certificate leaf[subject.OU] = 9BNSXJN65R\n',
+        stderr: `Identifier=com.docker.docker\nTeamIdentifier=${signatureTeamId}\nCDHash=${signatureCdHash}\ndesignated => anchor apple generic and certificate leaf[subject.OU] = ${signatureTeamId}\n`,
       };
     }
     assert.equal(command, '/Applications/Docker.app/Contents/Resources/bin/docker');
@@ -540,7 +557,18 @@ function runtimeResourceHarness({
       commandRunner,
       env: dockerContext ? { DOCKER_CONTEXT: dockerContext } : {},
       uid: 501,
-      socketInspector: async () => true,
+      socketInspector: async () => ({
+        verified: true,
+        identity: {
+          symbolicLink: false,
+          socket: true,
+          dev: 1,
+          ino: 2,
+          uid: 501,
+          mode: 0o140600,
+        },
+      }),
+      socketRechecker: async (_identity, _dependencies, phase) => phase !== socketReplacementPhase,
       tcpProbe: async (port) => {
         tcpCalls += 1;
         return port === '52513' ? 'closed' : 'open';
@@ -594,6 +622,90 @@ test('stops before TCP probing when the Docker endpoint static identity fails', 
   ]) {
     const runtime = await inspectI111RuntimeResources(paths, fixture.dependencies);
     assert.equal(runtime.dockerEndpointVerified, false);
+    assert.equal(runtime.resourcesVerified, false);
+    assert.equal(fixture.tcpCalls(), 0);
+  }
+});
+
+test('preserves socket identity across daemon and backend sampling before any TCP or connector', async () => {
+  for (const phase of [
+    'after-daemon',
+    'after-socket-process',
+    'before-backend-provenance',
+    'after-backend-provenance',
+    'before-tcp',
+  ]) {
+    const fixture = runtimeResourceHarness({ socketReplacementPhase: phase });
+    const runtime = await inspectI111RuntimeResources(
+      { gateRoot: '/synthetic/gate' },
+      fixture.dependencies,
+    );
+    assert.equal(runtime.resourcesVerified, false, phase);
+    assert.equal(fixture.tcpCalls(), 0, phase);
+    let databaseCalls = 0;
+    let redisCalls = 0;
+    await run({
+      runtimeResult: runtime,
+      open: () => {
+        databaseCalls += 1;
+      },
+      redisInspector: () => {
+        redisCalls += 1;
+      },
+    });
+    assert.equal(databaseCalls, 0, phase);
+    assert.equal(redisCalls, 0, phase);
+  }
+});
+
+test('wrong Gate SHA, dirty tracked checkout and running Worker stop before TCP and connectors', async () => {
+  for (const fixture of [
+    runtimeResourceHarness({ gateSha: '0'.repeat(40) }),
+    runtimeResourceHarness({ dirty: true }),
+    runtimeResourceHarness({ workerRunning: true }),
+  ]) {
+    const runtime = await inspectI111RuntimeResources(
+      { gateRoot: '/synthetic/gate' },
+      fixture.dependencies,
+    );
+    assert.equal(runtime.gateVerified, false);
+    assert.equal(runtime.resourcesVerified, false);
+    assert.equal(fixture.tcpCalls(), 0);
+    let databaseCalls = 0;
+    let redisCalls = 0;
+    await run({
+      runtimeResult: runtime,
+      open: () => {
+        databaseCalls += 1;
+      },
+      redisInspector: () => {
+        redisCalls += 1;
+      },
+    });
+    assert.equal(databaseCalls, 0);
+    assert.equal(redisCalls, 0);
+  }
+});
+
+test('accepts multiple same-root listener PIDs and rejects signature or vnode-owner drift', async () => {
+  const multiple = runtimeResourceHarness({ multiplePostgresPids: true });
+  const verified = await inspectI111RuntimeResources(
+    { gateRoot: '/synthetic/gate' },
+    multiple.dependencies,
+  );
+  assert.equal(verified.backendProvenanceVerified, true);
+  assert.equal(verified.resourcesVerified, true);
+
+  for (const fixture of [
+    runtimeResourceHarness({ signatureTeamId: 'WRONGTEAM' }),
+    runtimeResourceHarness({ signatureCdHash: '0'.repeat(40) }),
+    runtimeResourceHarness({ executableUid: 0 }),
+  ]) {
+    const runtime = await inspectI111RuntimeResources(
+      { gateRoot: '/synthetic/gate' },
+      fixture.dependencies,
+    );
+    assert.equal(runtime.backendProvenanceVerified, false);
     assert.equal(runtime.resourcesVerified, false);
     assert.equal(fixture.tcpCalls(), 0);
   }

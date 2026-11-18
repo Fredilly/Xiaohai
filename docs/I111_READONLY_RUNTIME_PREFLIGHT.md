@@ -52,7 +52,12 @@ reported as independent human approval. The review request explicitly passes
   permits Docker Desktop's legitimate multi-PID backend while rejecting three
   individually plausible listeners from different backend roots. A failed
   static endpoint or provenance check stops before TCP probing and causes zero
-  PostgreSQL and Redis protocol connection attempts.
+  PostgreSQL and Redis protocol connection attempts. The collector retains the
+  initial socket device/inode identity and resamples it after daemon lookup,
+  socket-owner discovery, backend provenance and resource inspection. Gate B
+  HEAD, tracked cleanliness and generic Worker state are also sampled before
+  Docker inspection and again immediately before the first TCP probe. Any
+  sampled replacement or prerequisite failure stops before that probe.
 - The client sets `default_transaction_read_only=on`, starts an explicit
   `REPEATABLE READ READ ONLY` transaction and always rolls it back.
 - Queries are `SELECT`/session-local timeout statements only. The CLI does not
