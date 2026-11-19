@@ -436,7 +436,7 @@ function runCommand(command, args, cwd) {
 
 export async function verifyGitHubApproval(approval, checkedOutSha, dependencies = {}) {
   const match =
-    /^https:\/\/github\.com\/Fredilly\/Xiaohai\/pull\/([1-9]\d*)#pullrequestreview-([1-9]\d*)$/.exec(
+    /^https:\/\/github\.com\/Fredilly\/Xiaohai\/pull\/239#pullrequestreview-([1-9]\d*)$/.exec(
       approval?.approvalUrl ?? '',
     );
   if (
@@ -457,14 +457,14 @@ export async function verifyGitHubApproval(approval, checkedOutSha, dependencies
         'github.com',
         '--method',
         'GET',
-        `repos/Fredilly/Xiaohai/pulls/${match[1]}/reviews/${match[2]}`,
+        `repos/Fredilly/Xiaohai/pulls/239/reviews/${match[1]}`,
       ],
       dependencies.root,
     );
     if (response.status !== 0 || response.stderr.trim()) return false;
     const review = JSON.parse(response.stdout);
     return (
-      String(review?.id) === match[2] &&
+      String(review?.id) === match[1] &&
       review?.user?.login === 'Fredilly' &&
       review?.state === 'APPROVED' &&
       review?.commit_id === checkedOutSha &&
@@ -685,8 +685,8 @@ async function dockerResource(
     container?.Image === image &&
     labels?.['com.xiaohai.issue'] === '111' &&
     labels?.['com.xiaohai.plan'] === 'plan-b' &&
-    Object.values(labels).includes(sourceId) &&
-    Object.values(labels).includes(sourceVolume) &&
+    labels?.['com.xiaohai.source-container-id'] === sourceId &&
+    labels?.['com.xiaohai.source-volume'] === sourceVolume &&
     Array.isArray(binding) &&
     binding.length === 1 &&
     binding[0]?.HostIp === '127.0.0.1' &&
@@ -1144,7 +1144,7 @@ export async function loadI111SourceState(root, approval, dependencies) {
   const localApprovalRecordConsistent =
     approval?.schemaVersion === 1 &&
     approval?.approvedBy === 'Fredilly' &&
-    /^https:\/\/github\.com\/Fredilly\/Xiaohai\/pull\/[1-9]\d*#pullrequestreview-[1-9]\d*$/.test(
+    /^https:\/\/github\.com\/Fredilly\/Xiaohai\/pull\/239#pullrequestreview-[1-9]\d*$/.test(
       approval?.approvalUrl ?? '',
     ) &&
     approval?.approvedCommit === checkedOutSha &&

@@ -515,6 +515,8 @@ function runtimeResourceHarness({
   wrongVolume = false,
   missingSourceId = false,
   missingSourceVolume = false,
+  misplacedSourceId = false,
+  misplacedSourceVolume = false,
   extraMount = false,
   alteredResource = 'postgres',
   separateRedisBackend = false,
@@ -633,9 +635,15 @@ function runtimeResourceHarness({
                 'com.xiaohai.issue': '111',
                 'com.xiaohai.plan': 'plan-b',
                 'com.xiaohai.source-container-id':
-                  altered && missingSourceId ? '0'.repeat(64) : sourceId,
+                  altered && (missingSourceId || misplacedSourceId) ? '0'.repeat(64) : sourceId,
                 'com.xiaohai.source-volume':
-                  altered && missingSourceVolume ? 'wrong-source-volume' : sourceVolume,
+                  altered && (missingSourceVolume || misplacedSourceVolume)
+                    ? 'wrong-source-volume'
+                    : sourceVolume,
+                ...(altered && misplacedSourceId ? { 'unrelated.source-id': sourceId } : {}),
+                ...(altered && misplacedSourceVolume
+                  ? { 'unrelated.source-volume': sourceVolume }
+                  : {}),
               },
             },
             HostConfig: {
@@ -772,6 +780,8 @@ test('new fixed-port resource identity drift stops before TCP and PostgreSQL/Red
     { wrongVolume: true },
     { missingSourceId: true },
     { missingSourceVolume: true },
+    { misplacedSourceId: true },
+    { misplacedSourceVolume: true },
     { extraMount: true },
     { persistedHostPort: '' },
     { persistedHostPort: '59999' },
@@ -1060,6 +1070,7 @@ test('verifies the exact GitHub review identity, state, URL and commit through t
     true,
   );
   for (const mutation of [
+    { id: 54321 },
     { user: { login: 'someone-else' } },
     { state: 'COMMENTED' },
     { commit_id: '2'.repeat(40) },
@@ -1088,6 +1099,7 @@ test('verifies the exact GitHub review identity, state, URL and commit through t
     { approvedBy: 'unknown' },
     { approvalUrl: 'https://attacker.example/Fredilly/Xiaohai/pull/239#pullrequestreview-12345' },
     { approvalUrl: 'https://github.com/Other/Xiaohai/pull/239#pullrequestreview-12345' },
+    { approvalUrl: 'https://github.com/Fredilly/Xiaohai/pull/238#pullrequestreview-12345' },
     { approvalUrl: 'https://github.com/Fredilly/Xiaohai/pull/0#pullrequestreview-12345' },
   ]) {
     let reviewQueries = 0;
@@ -1139,6 +1151,24 @@ test('real source inspection separates local consistency from independent review
   assert.equal(verified.independentReviewVerified, true);
   assert.equal(verified.signedTtlSeconds, 900);
   assert.deepEqual(verified.errors, []);
+
+  const wrongPrApproval = {
+    ...approval,
+    approvalUrl: 'https://github.com/Fredilly/Xiaohai/pull/238#pullrequestreview-12345',
+  };
+  let wrongPrReviewQueries = 0;
+  const wrongPr = await loadI111SourceState(root, wrongPrApproval, {
+    secureRead: readFile,
+    commandRunner,
+    reviewVerifier: async () => {
+      wrongPrReviewQueries += 1;
+      return true;
+    },
+  });
+  assert.equal(wrongPr.localApprovalRecordConsistent, false);
+  assert.equal(wrongPr.independentReviewVerified, false);
+  assert.equal(wrongPrReviewQueries, 0);
+  assert.ok(wrongPr.errors.includes('I111_CODE_NOT_REVIEWED'));
 
   const drifted = structuredClone(approval);
   drifted.sourceSha256['apps/worker/src/image-processor.ts'] = '0'.repeat(64);

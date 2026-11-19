@@ -107,10 +107,11 @@ before any Phase A invocation; this table is not a substitute for live proof.
 | Original preserved volume | `xiaohai_i111_planb_pgdata` | `xiaohai_i111_planb_redisdata` |
 
 The new code pins these candidate IDs, immutable image IDs, source provenance
-label values and exact dedicated volume mounts. Its local regression suite
+labels by the **exact** `com.xiaohai.source-container-id` and
+`com.xiaohai.source-volume` keys, and exact dedicated volume mounts. Its local regression suite
 must reject identity drift without opening PostgreSQL or Redis. This is a
 **new unreviewed source revision**: the prior `#237` approval and existing
-local approval JSON **must not** be reused. The new approval verifier derives
-the GitHub PR/review API path only from a canonical `Fredilly/Xiaohai` review
-URL and still requires a live Fredilly `APPROVED` review for the exact checked-out
+local approval JSON **must not** be reused. The new approval verifier accepts
+**only PR #239** approval URLs and queries that exact GitHub PR's Review API;
+it still requires a live Fredilly `APPROVED` review for the exact checked-out
 SHA, matching review ID and canonical URL. No Phase A CLI invocation occurred.
