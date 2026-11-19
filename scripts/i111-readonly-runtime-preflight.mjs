@@ -684,8 +684,8 @@ async function dockerResource(
     container?.State?.Running === true &&
     container?.Image === image &&
     labels?.['com.xiaohai.issue'] === '111' &&
-    labels?.['com.xiaohai.plan'] === 'plan-b' &&
-    labels?.['com.xiaohai.source-container-id'] === sourceId &&
+    labels?.['com.xiaohai.plan'] === 'plan-b-fixed-ports-v1' &&
+    labels?.['com.xiaohai.source-container'] === sourceId &&
     labels?.['com.xiaohai.source-volume'] === sourceVolume &&
     Array.isArray(binding) &&
     binding.length === 1 &&

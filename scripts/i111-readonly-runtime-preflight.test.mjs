@@ -513,6 +513,7 @@ function runtimeResourceHarness({
   wrongContainerId = false,
   wrongImage = false,
   wrongVolume = false,
+  wrongPlan = false,
   missingSourceId = false,
   missingSourceVolume = false,
   misplacedSourceId = false,
@@ -633,14 +634,16 @@ function runtimeResourceHarness({
             Config: {
               Labels: {
                 'com.xiaohai.issue': '111',
-                'com.xiaohai.plan': 'plan-b',
-                'com.xiaohai.source-container-id':
+                'com.xiaohai.plan': altered && wrongPlan ? 'plan-b' : 'plan-b-fixed-ports-v1',
+                'com.xiaohai.source-container':
                   altered && (missingSourceId || misplacedSourceId) ? '0'.repeat(64) : sourceId,
                 'com.xiaohai.source-volume':
                   altered && (missingSourceVolume || misplacedSourceVolume)
                     ? 'wrong-source-volume'
                     : sourceVolume,
-                ...(altered && misplacedSourceId ? { 'unrelated.source-id': sourceId } : {}),
+                ...(altered && misplacedSourceId
+                  ? { 'com.xiaohai.source-container-id': sourceId }
+                  : {}),
                 ...(altered && misplacedSourceVolume
                   ? { 'unrelated.source-volume': sourceVolume }
                   : {}),
@@ -778,6 +781,7 @@ test('new fixed-port resource identity drift stops before TCP and PostgreSQL/Red
     { wrongContainerId: true },
     { wrongImage: true },
     { wrongVolume: true },
+    { wrongPlan: true },
     { missingSourceId: true },
     { missingSourceVolume: true },
     { misplacedSourceId: true },

@@ -103,12 +103,18 @@ before any Phase A invocation; this table is not a substitute for live proof.
 | Image ID | `sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73` | `sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf` |
 | New dedicated volume | `xiaohai_i111_planb_fixed_pgdata` | `xiaohai_i111_planb_fixed_redisdata` |
 | Persisted and actual binding | `127.0.0.1:52511:5432` | `127.0.0.1:52512:6379` |
+| Observed `com.xiaohai.plan` label | `plan-b-fixed-ports-v1` | `plan-b-fixed-ports-v1` |
+| Observed source container label key | `com.xiaohai.source-container` | `com.xiaohai.source-container` |
 | Original source container | `fdede2cf57f70465a950b0a4ea2d13cb6894cc13bc97b540ecf660b9c1629f24` | `920804ca22010bfe8ae8791e9f6ec88604d870151685ea6a31e66dc23182f031` |
 | Original preserved volume | `xiaohai_i111_planb_pgdata` | `xiaohai_i111_planb_redisdata` |
 
 The new code pins these candidate IDs, immutable image IDs, source provenance
-labels by the **exact** `com.xiaohai.source-container-id` and
-`com.xiaohai.source-volume` keys, and exact dedicated volume mounts. Its local regression suite
+labels by the **Mac-observed exact** `com.xiaohai.source-container` and
+`com.xiaohai.source-volume` keys, the exact `plan-b-fixed-ports-v1` label,
+and exact dedicated volume mounts. The earlier reviewed `source-container-id`
+and `plan-b` names did not match the already-running isolated candidates;
+this change does **not** permit those alternate names to substitute for the
+observed labels. Its local regression suite
 must reject identity drift without opening PostgreSQL or Redis. This is a
 **new unreviewed source revision**: the prior `#237` approval and existing
 local approval JSON **must not** be reused. The new approval verifier accepts
