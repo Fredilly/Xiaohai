@@ -913,7 +913,7 @@ function parseBackendSignature(result) {
     new RegExp(`^Identifier=${EXPECTED.dockerBackendIdentifier}$`, 'm').test(output) &&
     new RegExp(`^TeamIdentifier=${EXPECTED.dockerBackendTeamId}$`, 'm').test(output) &&
     new RegExp(`^CDHash=${EXPECTED.dockerBackendCdHash}$`, 'm').test(output) &&
-    output.includes(`certificate leaf[subject.OU] = ${EXPECTED.dockerBackendTeamId}`)
+    output.includes(`certificate leaf[subject.OU] = "${EXPECTED.dockerBackendTeamId}"`)
   );
 }
 

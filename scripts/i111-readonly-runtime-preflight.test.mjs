@@ -542,6 +542,10 @@ function runtimeResourceHarness({
   multiplePostgresPids = false,
   signatureTeamId = '9BNSXJN65R',
   signatureCdHash = '54c72e39ae7276bc1a096e7494615a690a0d31d8',
+  signatureOuTeamId = '9BNSXJN65R',
+  signatureOuQuoted = true,
+  signatureOuMissing = false,
+  signatureVerifyFailed = false,
   executableUid = 501,
 } = {}) {
   let dockerCalls = 0;
@@ -594,12 +598,17 @@ function runtimeResourceHarness({
     if (command === '/usr/bin/stat') {
       return success(`16777220:3424107:${executableUid}:-rwxr-xr-x\n`);
     }
-    if (command === '/usr/bin/codesign' && args[0] === '--verify') return success();
+    if (command === '/usr/bin/codesign' && args[0] === '--verify') {
+      return signatureVerifyFailed ? { status: 1, stdout: '', stderr: '' } : success();
+    }
     if (command === '/usr/bin/codesign') {
+      const ou = signatureOuMissing
+        ? ''
+        : ` and certificate leaf[subject.OU] = ${signatureOuQuoted ? `"${signatureOuTeamId}"` : signatureOuTeamId}`;
       return {
         status: 0,
         stdout: '',
-        stderr: `Identifier=com.docker.docker\nTeamIdentifier=${signatureTeamId}\nCDHash=${signatureCdHash}\ndesignated => anchor apple generic and certificate leaf[subject.OU] = ${signatureTeamId}\n`,
+        stderr: `Identifier=com.docker.docker\nTeamIdentifier=${signatureTeamId}\nCDHash=${signatureCdHash}\ndesignated => anchor apple generic${ou}\n`,
       };
     }
     assert.equal(command, '/Applications/Docker.app/Contents/Resources/bin/docker');
@@ -1108,6 +1117,10 @@ test('accepts multiple same-root listener PIDs and rejects signature or vnode-ow
   for (const fixture of [
     runtimeResourceHarness({ signatureTeamId: 'WRONGTEAM' }),
     runtimeResourceHarness({ signatureCdHash: '0'.repeat(40) }),
+    runtimeResourceHarness({ signatureOuTeamId: 'WRONGTEAM' }),
+    runtimeResourceHarness({ signatureOuQuoted: false }),
+    runtimeResourceHarness({ signatureOuMissing: true }),
+    runtimeResourceHarness({ signatureVerifyFailed: true }),
     runtimeResourceHarness({ executableUid: 0 }),
   ]) {
     const runtime = await inspectI111RuntimeResources(
