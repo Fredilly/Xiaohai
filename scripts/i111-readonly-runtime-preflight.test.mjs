@@ -528,6 +528,9 @@ function runtimeResourceHarness({
   bindWritablePersisted = false,
   wrongBindPropagation = false,
   wrongPersistedMount = false,
+  persistedBindUsesMacPath = false,
+  persistedVolumeReadOnly = undefined,
+  missingPersistedBindReadOnly = false,
   wrongVolumeMountpoint = false,
   unsafeBindSource = false,
   alteredResource = 'postgres',
@@ -673,7 +676,9 @@ function runtimeResourceHarness({
                   Type: 'volume',
                   Source: volume,
                   Target: destination,
-                  ReadOnly: false,
+                  ...(altered && persistedVolumeReadOnly !== undefined
+                    ? { ReadOnly: persistedVolumeReadOnly }
+                    : {}),
                 },
                 ...(altered && missingBind
                   ? []
@@ -682,13 +687,17 @@ function runtimeResourceHarness({
                         Type: 'bind',
                         Source:
                           altered && (wrongBindSource || wrongPersistedMount)
-                            ? '/Volumes/Data/untrusted-secret'
-                            : hostSource,
+                            ? '/host_mnt/Volumes/Data/untrusted-secret'
+                            : altered && persistedBindUsesMacPath
+                              ? hostSource
+                              : dockerSource,
                         Target:
                           altered && (wrongBindDestination || wrongPersistedMount)
                             ? '/unexpected-secret'
                             : bindDestination,
-                        ReadOnly: altered && bindWritablePersisted ? false : true,
+                        ...(altered && missingPersistedBindReadOnly
+                          ? {}
+                          : { ReadOnly: altered && bindWritablePersisted ? false : true }),
                       },
                     ]),
               ],
@@ -798,6 +807,21 @@ test('pins the local Docker endpoint and binds listeners to published container 
   assert.equal(verified.resourcesVerified, true);
   assert.ok(trusted.dockerCalls() > 0);
 
+  // Match the *observed* Docker Desktop HostConfig.Mounts JSON shape:
+  // persisted bind Source uses /host_mnt, whereas a writable named volume
+  // does not serialize any ReadOnly field at all.
+  for (const name of ['xiaohai-i111-planb-fixed-postgres', 'xiaohai-i111-planb-fixed-redis']) {
+    const inspected = await trusted.dependencies.commandRunner(
+      '/Applications/Docker.app/Contents/Resources/bin/docker',
+      ['--host', 'unix:///Users/li/.docker/run/docker.sock', 'inspect', name],
+    );
+    const [{ HostConfig: host }] = JSON.parse(inspected.stdout);
+    assert.equal(Object.hasOwn(host.Mounts[0], 'ReadOnly'), false);
+    assert.match(host.Mounts[1].Source, /^\/host_mnt\/Volumes\/Data\//);
+    assert.equal(host.Mounts[1].ReadOnly, true);
+    assert.equal(host.Binds, null);
+  }
+
   for (const fixture of [
     runtimeResourceHarness({ dockerContext: 'remote-attacker' }),
     runtimeResourceHarness({ listenerExecutable: 'socat' }),
@@ -868,6 +892,10 @@ test('new fixed-port resource identity drift stops before TCP and PostgreSQL/Red
     { bindWritablePersisted: true },
     { wrongBindPropagation: true },
     { wrongPersistedMount: true },
+    { persistedBindUsesMacPath: true },
+    { persistedVolumeReadOnly: false },
+    { persistedVolumeReadOnly: true },
+    { missingPersistedBindReadOnly: true },
     { wrongVolumeMountpoint: true },
     { unsafeBindSource: true },
     { persistedHostPort: '' },
@@ -907,7 +935,7 @@ test('new fixed-port resource identity drift stops before TCP and PostgreSQL/Red
 test('uses the independently protected approval record, never the older Gate B approval', () => {
   assert.equal(
     I111_READONLY_PATHS.approval,
-    '/Volumes/Data/Xiaohai-i111-pr239-approval/i111-readonly-runtime-approval.json',
+    '/Volumes/Data/Xiaohai-i111-pr239-runtime-v2-approval/i111-readonly-runtime-approval.json',
   );
   assert.ok(!I111_READONLY_PATHS.approval.startsWith(`${I111_READONLY_PATHS.gateRoot}/`));
 });

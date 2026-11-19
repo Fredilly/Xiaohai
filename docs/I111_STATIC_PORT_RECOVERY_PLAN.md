@@ -160,3 +160,36 @@ overwriting prior evidence. The Mac operator must re-check live field identity
 and missing process-level environment prerequisites. No Phase A CLI invocation,
 PostgreSQL/Redis connection, provider/BOS call, paid operation or main merge is
 authorized by this code change. `paidExecutionAuthorized=false`.
+
+### 2026-11-19: subsequent persisted-mount field correction (new review required)
+
+The Mac operator subsequently compared the exact reviewed source with live,
+sanitized Docker Desktop `inspect` output and identified two additional
+**persisted** `HostConfig.Mounts` shape differences. Runtime mounts and the
+other pinned identities already matched:
+
+- The read-only bind's **persisted** `Source` is the exact Docker Desktop
+  `/host_mnt/Volumes/Data/...` form, **not** the `/Volumes/Data/...` Mac path.
+  Its Mac-side regular-file owner/mode/ACL/device/inode checks still use the
+  separately pinned `hostSource`; neither path may be substituted generically.
+- A writable named data volume's persisted declaration **omits** the
+  `ReadOnly` key. It is not `ReadOnly=false`; the runtime volume remains
+  explicitly required to have `RW=true`. A present `ReadOnly` key, whether
+  `true` or `false`, is rejected for these observed fixed containers.
+
+The repaired code compares the persisted bind Source to `bind.dockerSource`
+and requires the volume's persisted `ReadOnly` property to be **absent**.
+Regression tests now use the observed Docker Desktop JSON representation and
+reject both old assumptions, missing bind read-only protection and other
+identity drift **before any TCP or database/Redis connector**.
+
+The independent approval record for `2f0e392...` at
+`/Volumes/Data/Xiaohai-i111-pr239-approval/i111-readonly-runtime-approval.json`
+must remain unchanged. This next source revision pins a **new** independent,
+versioned path:
+`/Volumes/Data/Xiaohai-i111-pr239-runtime-v2-approval/i111-readonly-runtime-approval.json`.
+That file does not yet exist on the Mac and must not be fabricated. Once a
+fresh exact-HEAD Fredilly approval and local source hashes are verified,
+the Mac operator can separately prepare its owner-only `0700` directory and
+`0600` evidence without moving or overwriting any prior approval files.
+Phase A/B remain HOLD, `paidExecutionAuthorized=false`.

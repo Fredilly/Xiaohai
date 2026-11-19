@@ -22,7 +22,8 @@ export const I111_READONLY_PATHS = Object.freeze({
   mimi: '/Volumes/Data/Xiaohai-i111-gate-b/.i111-plan-b/assets/mimi_reference_candidate.png',
   pip: '/Volumes/Data/Xiaohai-i111-gate-b/.i111-plan-b/assets/pip_reference_candidate.png',
   apiMode: '/Volumes/Data/Xiaohai-i111-gate-b/.i111-plan-b/api.mode',
-  approval: '/Volumes/Data/Xiaohai-i111-pr239-approval/i111-readonly-runtime-approval.json',
+  approval:
+    '/Volumes/Data/Xiaohai-i111-pr239-runtime-v2-approval/i111-readonly-runtime-approval.json',
 });
 
 const EXPECTED = Object.freeze({
@@ -843,11 +844,16 @@ async function dockerResource(
     persistedVolume.length === 1 &&
     persistedVolume[0]?.Type === 'volume' &&
     persistedVolume[0]?.Source === volume &&
-    persistedVolume[0]?.ReadOnly === false &&
+    // Docker Desktop omits ReadOnly for a writable named volume in
+    // HostConfig.Mounts; the actual write flag is pinned in runtime Mounts.
+    !Object.hasOwn(persistedVolume[0], 'ReadOnly') &&
     Array.isArray(persistedBind) &&
     persistedBind.length === 1 &&
     persistedBind[0]?.Type === 'bind' &&
-    persistedBind[0]?.Source === bind.hostSource &&
+    // Docker Desktop persists /host_mnt/Volumes/... here as well as in
+    // runtime Mounts. The corresponding Mac path is checked separately,
+    // without opening the secret, by verifyI111BindHostSource().
+    persistedBind[0]?.Source === bind.dockerSource &&
     persistedBind[0]?.ReadOnly === true &&
     storedVolume?.Name === volume &&
     storedVolume?.Driver === 'local' &&
