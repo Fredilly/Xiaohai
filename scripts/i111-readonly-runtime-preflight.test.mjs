@@ -508,6 +508,7 @@ function runtimeResourceHarness({
   dockerContext,
   listenerExecutable,
   publishedPort,
+  persistedHostPort,
   daemonId,
   separateRedisBackend = false,
   gateSha = '6898d09a3fcf76c5006ab271d0168643de2bf1fd',
@@ -609,7 +610,9 @@ function runtimeResourceHarness({
             Config: { Labels: { 'com.xiaohai.issue': '111', 'com.xiaohai.plan': 'plan-b' } },
             HostConfig: {
               PortBindings: {
-                [`${containerPort}/tcp`]: [{ HostIp: '127.0.0.1', HostPort: port }],
+                [`${containerPort}/tcp`]: [
+                  { HostIp: '127.0.0.1', HostPort: persistedHostPort ?? port },
+                ],
               },
             },
             NetworkSettings: {
@@ -693,6 +696,33 @@ test('pins the local Docker endpoint and binds listeners to published container 
     assert.equal(databaseCalls, 0);
     assert.equal(redisCalls, 0);
   }
+});
+
+test('stopped containers created with dynamic host ports cannot satisfy fixed-port provenance', async () => {
+  const fixture = runtimeResourceHarness({ persistedHostPort: '' });
+  const runtime = await inspectI111RuntimeResources(
+    { gateRoot: '/synthetic/gate' },
+    fixture.dependencies,
+  );
+  assert.equal(runtime.resourcesVerified, false);
+  assert.equal(fixture.tcpCalls(), 0);
+
+  let databaseCalls = 0;
+  let redisCalls = 0;
+  const { result } = await run({
+    runtimeResult: runtime,
+    open: () => {
+      databaseCalls += 1;
+      throw new Error('must not connect to PostgreSQL');
+    },
+    redisInspector: () => {
+      redisCalls += 1;
+      throw new Error('must not connect to Redis');
+    },
+  });
+  assert.equal(databaseCalls, 0);
+  assert.equal(redisCalls, 0);
+  assert.ok(result.errorCodes.includes('I111_RUNTIME_NOT_ISOLATED'));
 });
 
 test('stops before TCP probing when the Docker endpoint static identity fails', async () => {
