@@ -510,6 +510,13 @@ function runtimeResourceHarness({
   publishedPort,
   persistedHostPort,
   daemonId,
+  wrongContainerId = false,
+  wrongImage = false,
+  wrongVolume = false,
+  missingSourceId = false,
+  missingSourceVolume = false,
+  extraMount = false,
+  alteredResource = 'postgres',
   separateRedisBackend = false,
   gateSha = '6898d09a3fcf76c5006ab271d0168643de2bf1fd',
   dirty = false,
@@ -594,20 +601,43 @@ function runtimeResourceHarness({
       );
     }
     if (args[2] === 'inspect') {
-      const postgres = args[3] === 'xiaohai-i111-planb-postgres';
+      const postgres = args[3] === 'xiaohai-i111-planb-fixed-postgres';
+      const altered = (postgres ? 'postgres' : 'redis') === alteredResource;
       const port = postgres ? '52511' : '52512';
       const containerPort = postgres ? '5432' : '6379';
-      const volume = postgres ? 'xiaohai_i111_planb_pgdata' : 'xiaohai_i111_planb_redisdata';
+      const volume = postgres
+        ? 'xiaohai_i111_planb_fixed_pgdata'
+        : 'xiaohai_i111_planb_fixed_redisdata';
+      const sourceId = postgres
+        ? 'fdede2cf57f70465a950b0a4ea2d13cb6894cc13bc97b540ecf660b9c1629f24'
+        : '920804ca22010bfe8ae8791e9f6ec88604d870151685ea6a31e66dc23182f031';
+      const sourceVolume = postgres ? 'xiaohai_i111_planb_pgdata' : 'xiaohai_i111_planb_redisdata';
+      const image = postgres
+        ? 'sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73'
+        : 'sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf';
       const destination = postgres ? '/var/lib/postgresql/data' : '/data';
       return success(
         JSON.stringify([
           {
-            Id: postgres
-              ? 'fdede2cf57f70465a950b0a4ea2d13cb6894cc13bc97b540ecf660b9c1629f24'
-              : '920804ca22010bfe8ae8791e9f6ec88604d870151685ea6a31e66dc23182f031',
+            Id:
+              altered && wrongContainerId
+                ? '0'.repeat(64)
+                : postgres
+                  ? '3fdfd302d45de4f487197bdc0e335f8f3f6dec8a38cd6eb16b1ead883fe3b87f'
+                  : '9a57c5bd1e310f47880c5fba3e7be21c76441359eeda82d3f897f34937be02e1',
             Name: `/${args[3]}`,
             State: { Running: true },
-            Config: { Labels: { 'com.xiaohai.issue': '111', 'com.xiaohai.plan': 'plan-b' } },
+            Image: altered && wrongImage ? `sha256:${'0'.repeat(64)}` : image,
+            Config: {
+              Labels: {
+                'com.xiaohai.issue': '111',
+                'com.xiaohai.plan': 'plan-b',
+                'com.xiaohai.source-container-id':
+                  altered && missingSourceId ? '0'.repeat(64) : sourceId,
+                'com.xiaohai.source-volume':
+                  altered && missingSourceVolume ? 'wrong-source-volume' : sourceVolume,
+              },
+            },
             HostConfig: {
               PortBindings: {
                 [`${containerPort}/tcp`]: [
@@ -622,7 +652,17 @@ function runtimeResourceHarness({
                 ],
               },
             },
-            Mounts: [{ Destination: destination, Type: 'volume', Name: volume, RW: true }],
+            Mounts: [
+              {
+                Destination: destination,
+                Type: 'volume',
+                Name: altered && wrongVolume ? 'untrusted-volume' : volume,
+                RW: true,
+              },
+              ...(altered && extraMount
+                ? [{ Destination: '/unexpected', Type: 'volume', Name: sourceVolume, RW: true }]
+                : []),
+            ],
           },
         ]),
       );
@@ -631,7 +671,7 @@ function runtimeResourceHarness({
       return success(JSON.stringify([{ Name: args[4], Driver: 'local', Scope: 'local' }]));
     }
     if (args[2] === 'port') {
-      const port = args[3] === 'xiaohai-i111-planb-postgres' ? '52511' : '52512';
+      const port = args[3] === 'xiaohai-i111-planb-fixed-postgres' ? '52511' : '52512';
       return success(`127.0.0.1:${port}\n`);
     }
     throw new Error('unexpected synthetic command');
@@ -723,6 +763,48 @@ test('stopped containers created with dynamic host ports cannot satisfy fixed-po
   assert.equal(databaseCalls, 0);
   assert.equal(redisCalls, 0);
   assert.ok(result.errorCodes.includes('I111_RUNTIME_NOT_ISOLATED'));
+});
+
+test('new fixed-port resource identity drift stops before TCP and PostgreSQL/Redis connectors', async () => {
+  const cases = [
+    { wrongContainerId: true },
+    { wrongImage: true },
+    { wrongVolume: true },
+    { missingSourceId: true },
+    { missingSourceVolume: true },
+    { extraMount: true },
+    { persistedHostPort: '' },
+    { persistedHostPort: '59999' },
+    { publishedPort: '59999' },
+  ];
+  for (const alteredResource of ['postgres', 'redis']) {
+    for (const alteration of cases) {
+      const fixture = runtimeResourceHarness({ alteredResource, ...alteration });
+      const runtime = await inspectI111RuntimeResources(
+        { gateRoot: '/synthetic/gate' },
+        fixture.dependencies,
+      );
+      const reason = `${alteredResource}:${Object.keys(alteration).join(',')}`;
+      assert.equal(runtime.resourcesVerified, false, reason);
+      assert.equal(fixture.tcpCalls(), 0, reason);
+      let databaseCalls = 0;
+      let redisCalls = 0;
+      const { result } = await run({
+        runtimeResult: runtime,
+        open: () => {
+          databaseCalls += 1;
+          throw new Error('must not connect to PostgreSQL');
+        },
+        redisInspector: () => {
+          redisCalls += 1;
+          throw new Error('must not connect to Redis');
+        },
+      });
+      assert.equal(databaseCalls, 0, reason);
+      assert.equal(redisCalls, 0, reason);
+      assert.ok(result.errorCodes.includes('I111_RUNTIME_NOT_ISOLATED'), reason);
+    }
+  }
 });
 
 test('stops before TCP probing when the Docker endpoint static identity fails', async () => {
@@ -949,7 +1031,7 @@ test('verifies the exact GitHub review identity, state, URL and commit through t
   const approval = {
     approvedBy: 'Fredilly',
     approvedCommit: sha,
-    approvalUrl: 'https://github.com/Fredilly/Xiaohai/pull/237#pullrequestreview-12345',
+    approvalUrl: 'https://github.com/Fredilly/Xiaohai/pull/239#pullrequestreview-12345',
   };
   const valid = {
     id: 12345,
@@ -966,7 +1048,7 @@ test('verifies the exact GitHub review identity, state, URL and commit through t
       'github.com',
       '--method',
       'GET',
-      'repos/Fredilly/Xiaohai/pulls/237/reviews/12345',
+      'repos/Fredilly/Xiaohai/pulls/239/reviews/12345',
     ]);
     return { status: 0, stdout: JSON.stringify(valid), stderr: '' };
   };
@@ -1001,6 +1083,25 @@ test('verifies the exact GitHub review identity, state, URL and commit through t
     }),
     false,
   );
+  for (const alteredApproval of [
+    { approvedCommit: '2'.repeat(40) },
+    { approvedBy: 'unknown' },
+    { approvalUrl: 'https://attacker.example/Fredilly/Xiaohai/pull/239#pullrequestreview-12345' },
+    { approvalUrl: 'https://github.com/Other/Xiaohai/pull/239#pullrequestreview-12345' },
+    { approvalUrl: 'https://github.com/Fredilly/Xiaohai/pull/0#pullrequestreview-12345' },
+  ]) {
+    let reviewQueries = 0;
+    assert.equal(
+      await verifyGitHubApproval({ ...approval, ...alteredApproval }, sha, {
+        commandRunner: async () => {
+          reviewQueries += 1;
+          throw new Error('invalid approval should not query GitHub');
+        },
+      }),
+      false,
+    );
+    assert.equal(reviewQueries, 0);
+  }
 });
 
 test('real source inspection separates local consistency from independent review proof', async () => {
@@ -1024,7 +1125,7 @@ test('real source inspection separates local consistency from independent review
   const approval = {
     schemaVersion: 1,
     approvedBy: 'Fredilly',
-    approvalUrl: 'https://github.com/Fredilly/Xiaohai/pull/237#pullrequestreview-12345',
+    approvalUrl: 'https://github.com/Fredilly/Xiaohai/pull/239#pullrequestreview-12345',
     approvedCommit: sha,
     migrationDigest: unsigned.migrationDigest,
     sourceSha256: unsigned.sourceHashes,

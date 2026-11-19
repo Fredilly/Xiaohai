@@ -31,12 +31,18 @@ const EXPECTED = Object.freeze({
   databaseUser: 'xiaohai_i111_app',
   databasePort: '52511',
   redisPort: '52512',
-  postgresContainer: 'xiaohai-i111-planb-postgres',
-  postgresContainerId: 'fdede2cf57f70465a950b0a4ea2d13cb6894cc13bc97b540ecf660b9c1629f24',
-  postgresVolume: 'xiaohai_i111_planb_pgdata',
-  redisContainer: 'xiaohai-i111-planb-redis',
-  redisContainerId: '920804ca22010bfe8ae8791e9f6ec88604d870151685ea6a31e66dc23182f031',
-  redisVolume: 'xiaohai_i111_planb_redisdata',
+  postgresContainer: 'xiaohai-i111-planb-fixed-postgres',
+  postgresContainerId: '3fdfd302d45de4f487197bdc0e335f8f3f6dec8a38cd6eb16b1ead883fe3b87f',
+  postgresImage: 'sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73',
+  postgresVolume: 'xiaohai_i111_planb_fixed_pgdata',
+  postgresSourceId: 'fdede2cf57f70465a950b0a4ea2d13cb6894cc13bc97b540ecf660b9c1629f24',
+  postgresSourceVolume: 'xiaohai_i111_planb_pgdata',
+  redisContainer: 'xiaohai-i111-planb-fixed-redis',
+  redisContainerId: '9a57c5bd1e310f47880c5fba3e7be21c76441359eeda82d3f897f34937be02e1',
+  redisImage: 'sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf',
+  redisVolume: 'xiaohai_i111_planb_fixed_redisdata',
+  redisSourceId: '920804ca22010bfe8ae8791e9f6ec88604d870151685ea6a31e66dc23182f031',
+  redisSourceVolume: 'xiaohai_i111_planb_redisdata',
   dockerEndpoint: 'unix:///Users/li/.docker/run/docker.sock',
   dockerSocketPath: '/Users/li/.docker/run/docker.sock',
   dockerDaemonId: '85a4eb36-df0b-474f-854d-52a141733ea8',
@@ -430,7 +436,7 @@ function runCommand(command, args, cwd) {
 
 export async function verifyGitHubApproval(approval, checkedOutSha, dependencies = {}) {
   const match =
-    /^https:\/\/github\.com\/Fredilly\/Xiaohai\/pull\/237#pullrequestreview-(\d+)$/.exec(
+    /^https:\/\/github\.com\/Fredilly\/Xiaohai\/pull\/([1-9]\d*)#pullrequestreview-([1-9]\d*)$/.exec(
       approval?.approvalUrl ?? '',
     );
   if (
@@ -451,14 +457,14 @@ export async function verifyGitHubApproval(approval, checkedOutSha, dependencies
         'github.com',
         '--method',
         'GET',
-        `repos/Fredilly/Xiaohai/pulls/237/reviews/${match[1]}`,
+        `repos/Fredilly/Xiaohai/pulls/${match[1]}/reviews/${match[2]}`,
       ],
       dependencies.root,
     );
     if (response.status !== 0 || response.stderr.trim()) return false;
     const review = JSON.parse(response.stdout);
     return (
-      String(review?.id) === match[1] &&
+      String(review?.id) === match[2] &&
       review?.user?.login === 'Fredilly' &&
       review?.state === 'APPROVED' &&
       review?.commit_id === checkedOutSha &&
@@ -638,9 +644,12 @@ async function trustedDockerEndpoint(dependencies) {
 async function dockerResource(
   name,
   expected,
+  image,
   port,
   containerPort,
   volume,
+  sourceId,
+  sourceVolume,
   destination,
   commandRunner,
 ) {
@@ -668,12 +677,16 @@ async function dockerResource(
   const binding = container?.HostConfig?.PortBindings?.[`${containerPort}/tcp`];
   const actualBinding = container?.NetworkSettings?.Ports?.[`${containerPort}/tcp`];
   const mount = container?.Mounts?.filter((item) => item.Destination === destination);
+  const labels = container?.Config?.Labels;
   return (
     container?.Id === expected &&
     container?.Name === `/${name}` &&
     container?.State?.Running === true &&
-    container?.Config?.Labels?.['com.xiaohai.issue'] === '111' &&
-    container?.Config?.Labels?.['com.xiaohai.plan'] === 'plan-b' &&
+    container?.Image === image &&
+    labels?.['com.xiaohai.issue'] === '111' &&
+    labels?.['com.xiaohai.plan'] === 'plan-b' &&
+    Object.values(labels).includes(sourceId) &&
+    Object.values(labels).includes(sourceVolume) &&
     Array.isArray(binding) &&
     binding.length === 1 &&
     binding[0]?.HostIp === '127.0.0.1' &&
@@ -683,10 +696,13 @@ async function dockerResource(
     actualBinding[0]?.HostIp === '127.0.0.1' &&
     actualBinding[0]?.HostPort === port &&
     published.stdout.trim() === `127.0.0.1:${port}` &&
+    Array.isArray(container?.Mounts) &&
+    container.Mounts.length === 1 &&
     Array.isArray(mount) &&
     mount.length === 1 &&
     mount[0]?.Type === 'volume' &&
     mount[0]?.Name === volume &&
+    mount[0]?.Name !== sourceVolume &&
     mount[0]?.RW === true &&
     storedVolume?.Name === volume &&
     storedVolume?.Driver === 'local' &&
@@ -1013,18 +1029,24 @@ export async function inspectI111RuntimeResources(paths, dependencies = {}) {
   const postgresResourceVerified = await dockerResource(
     EXPECTED.postgresContainer,
     EXPECTED.postgresContainerId,
+    EXPECTED.postgresImage,
     EXPECTED.databasePort,
     '5432',
     EXPECTED.postgresVolume,
+    EXPECTED.postgresSourceId,
+    EXPECTED.postgresSourceVolume,
     '/var/lib/postgresql/data',
     commandRunner,
   );
   const redisResourceVerified = await dockerResource(
     EXPECTED.redisContainer,
     EXPECTED.redisContainerId,
+    EXPECTED.redisImage,
     EXPECTED.redisPort,
     '6379',
     EXPECTED.redisVolume,
+    EXPECTED.redisSourceId,
+    EXPECTED.redisSourceVolume,
     '/data',
     commandRunner,
   );
@@ -1122,7 +1144,7 @@ export async function loadI111SourceState(root, approval, dependencies) {
   const localApprovalRecordConsistent =
     approval?.schemaVersion === 1 &&
     approval?.approvedBy === 'Fredilly' &&
-    /^https:\/\/github\.com\/Fredilly\/Xiaohai\/pull\/237#pullrequestreview-\d+$/.test(
+    /^https:\/\/github\.com\/Fredilly\/Xiaohai\/pull\/[1-9]\d*#pullrequestreview-[1-9]\d*$/.test(
       approval?.approvalUrl ?? '',
     ) &&
     approval?.approvedCommit === checkedOutSha &&

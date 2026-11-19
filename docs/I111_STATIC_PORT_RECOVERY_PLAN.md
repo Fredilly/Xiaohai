@@ -69,18 +69,48 @@ before any operation. Stop on any missing, conflicting, or changed fact.
   on every failing gate). Never invoke `preflight:i111-readonly` while any gate
   is unresolved.
 
-## Status as of 2026-11-19 (operator-reported)
+## Status as of 2026-11-19 (Mac operator report, pending new code review)
 
 | Check | Status |
 | --- | --- |
 | Original stopped containers/volumes preserved | PASS, last Mac report |
 | Original Docker daemon and container IDs | PASS, last Mac report |
 | Original HostPort static mappings | STOP: both blank/dynamic |
-| New Mac disk/inode/immutable image and copy evidence | NOT_VERIFIED |
-| New isolated volumes/containers and exact IDs | NOT_CREATED |
+| APFS capacity/inodes, backup, reference images and 42 migrations | PASS, last Mac operator report; ~358 GiB available |
+| Offline original-source volume archive digest | PASS, last Mac operator report; source mounts read-only |
+| New isolated volumes/containers and exact IDs | CREATED and RUNNING, last Mac operator report; see below |
+| New fixed-port mappings and signed listener provenance | PASS, last Mac operator report |
 | New code revision and independent approval | NOT_READY |
 | Read-only Phase A invocations | 0 / 1 reported |
 | Phase B, BOS, provider or paid generation | HOLD / 0 |
 
 `paidExecutionAuthorized=false` remains mandatory. This plan does **not** renew
 or extend an earlier time-bounded invocation authorization.
+
+### Observed candidate identities (reported by the trusted Mac operator)
+
+The fixed-port candidates are **additional** Docker resources. They do not
+replace, reuse, modify, or delete the original stopped containers and original
+volumes. The Mac operator separately confirmed the new resources have labels
+referring to the old full container IDs and old volume names. Exact labels,
+runtime provenance and source-copy evidence must still be verified on the Mac
+before any Phase A invocation; this table is not a substitute for live proof.
+
+| Resource | PostgreSQL | Redis |
+| --- | --- | --- |
+| New container name | `xiaohai-i111-planb-fixed-postgres` | `xiaohai-i111-planb-fixed-redis` |
+| Full container ID | `3fdfd302d45de4f487197bdc0e335f8f3f6dec8a38cd6eb16b1ead883fe3b87f` | `9a57c5bd1e310f47880c5fba3e7be21c76441359eeda82d3f897f34937be02e1` |
+| Image ID | `sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73` | `sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf` |
+| New dedicated volume | `xiaohai_i111_planb_fixed_pgdata` | `xiaohai_i111_planb_fixed_redisdata` |
+| Persisted and actual binding | `127.0.0.1:52511:5432` | `127.0.0.1:52512:6379` |
+| Original source container | `fdede2cf57f70465a950b0a4ea2d13cb6894cc13bc97b540ecf660b9c1629f24` | `920804ca22010bfe8ae8791e9f6ec88604d870151685ea6a31e66dc23182f031` |
+| Original preserved volume | `xiaohai_i111_planb_pgdata` | `xiaohai_i111_planb_redisdata` |
+
+The new code pins these candidate IDs, immutable image IDs, source provenance
+label values and exact dedicated volume mounts. Its local regression suite
+must reject identity drift without opening PostgreSQL or Redis. This is a
+**new unreviewed source revision**: the prior `#237` approval and existing
+local approval JSON **must not** be reused. The new approval verifier derives
+the GitHub PR/review API path only from a canonical `Fredilly/Xiaohai` review
+URL and still requires a live Fredilly `APPROVED` review for the exact checked-out
+SHA, matching review ID and canonical URL. No Phase A CLI invocation occurred.
