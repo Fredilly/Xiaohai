@@ -22,8 +22,7 @@ export const I111_READONLY_PATHS = Object.freeze({
   mimi: '/Volumes/Data/Xiaohai-i111-gate-b/.i111-plan-b/assets/mimi_reference_candidate.png',
   pip: '/Volumes/Data/Xiaohai-i111-gate-b/.i111-plan-b/assets/pip_reference_candidate.png',
   apiMode: '/Volumes/Data/Xiaohai-i111-gate-b/.i111-plan-b/api.mode',
-  approval:
-    '/Volumes/Data/Xiaohai-i111-gate-b/.i111-plan-b/evidence/i111-readonly-runtime-approval.json',
+  approval: '/Volumes/Data/Xiaohai-i111-pr239-approval/i111-readonly-runtime-approval.json',
 });
 
 const EXPECTED = Object.freeze({
@@ -43,6 +42,22 @@ const EXPECTED = Object.freeze({
   redisVolume: 'xiaohai_i111_planb_fixed_redisdata',
   redisSourceId: '920804ca22010bfe8ae8791e9f6ec88604d870151685ea6a31e66dc23182f031',
   redisSourceVolume: 'xiaohai_i111_planb_redisdata',
+  postgresBind: Object.freeze({
+    hostSource:
+      '/Volumes/Data/Xiaohai-i111-gate-b/.i111-plan-b/secrets/postgres_bootstrap_password',
+    dockerSource:
+      '/host_mnt/Volumes/Data/Xiaohai-i111-gate-b/.i111-plan-b/secrets/postgres_bootstrap_password',
+    destination: '/run/secrets/postgres_bootstrap_password',
+    dev: 16777224,
+    ino: 576874,
+  }),
+  redisBind: Object.freeze({
+    hostSource: '/Volumes/Data/Xiaohai-i111-gate-b/.i111-plan-b/secrets/redis.conf',
+    dockerSource: '/host_mnt/Volumes/Data/Xiaohai-i111-gate-b/.i111-plan-b/secrets/redis.conf',
+    destination: '/usr/local/etc/redis/redis.conf',
+    dev: 16777224,
+    ino: 576877,
+  }),
   dockerEndpoint: 'unix:///Users/li/.docker/run/docker.sock',
   dockerSocketPath: '/Users/li/.docker/run/docker.sock',
   dockerDaemonId: '85a4eb36-df0b-474f-854d-52a141733ea8',
@@ -284,7 +299,9 @@ async function trustedParents(path, dependencies) {
   for (const part of parts) {
     current = join(current, part);
     const info = await dependencies.lstat(current);
-    const allowedOwners = [0, process.getuid?.()].filter((value) => value !== undefined);
+    const allowedOwners = [0, dependencies.expectedUid ?? process.getuid?.()].filter(
+      (value) => value !== undefined,
+    );
     if (
       info.isSymbolicLink() ||
       !info.isDirectory() ||
@@ -641,6 +658,105 @@ async function trustedDockerEndpoint(dependencies) {
   }
 }
 
+// Metadata-only: never open a bind source or hash its secret contents.
+// The Docker Desktop VM path and the host path are separately pinned above.
+async function exactMacLsMetadata(path, expectedMode, commandRunner) {
+  const metadata = await commandRunner('/bin/ls', ['-ldeO@', path]);
+  if (metadata.status !== 0 || metadata.stderr.trim()) return false;
+  const lines = metadata.stdout.trimEnd().split(/\r?\n/);
+  const fields = lines[0]?.trim().split(/\s+/) ?? [];
+  return (
+    lines.length === 1 &&
+    fields[0] === expectedMode &&
+    fields[1] === '1' &&
+    fields[2] === 'li' &&
+    fields[3] === 'staff' &&
+    fields[4] === '-'
+  );
+}
+
+export async function verifyI111BindHostSource(expected, dependencies = {}) {
+  const adapter = {
+    lstat: dependencies.lstat ?? lstat,
+    realpath: dependencies.realpath ?? realpath,
+  };
+  const commandRunner = dependencies.commandRunner ?? runCommand;
+  try {
+    if (
+      !isAbsolute(expected.hostSource) ||
+      (await adapter.realpath(expected.hostSource)) !== expected.hostSource
+    ) {
+      return false;
+    }
+    const parents = await trustedParents(expected.hostSource, { ...adapter, expectedUid: 501 });
+    for (const [parentPath, expectedMode] of [
+      [I111_READONLY_PATHS.gateRoot, 'drwxr-xr-x'],
+      [`${I111_READONLY_PATHS.gateRoot}/.i111-plan-b`, 'drwx------'],
+      [`${I111_READONLY_PATHS.gateRoot}/.i111-plan-b/secrets`, 'drwx------'],
+    ]) {
+      const parent = parents.find((entry) => entry.path === parentPath);
+      if (
+        !parent ||
+        parent.uid !== 501 ||
+        (parent.mode & 0o777) !== (expectedMode === 'drwxr-xr-x' ? 0o755 : 0o700)
+      ) {
+        return false;
+      }
+      const metadata = await commandRunner('/bin/ls', ['-ldeO@', parentPath]);
+      if (metadata.status !== 0 || metadata.stderr.trim()) return false;
+      const lines = metadata.stdout.trimEnd().split(/\r?\n/);
+      const fields = lines[0]?.trim().split(/\s+/) ?? [];
+      // Directories may have more than one link, so do not pin that column.
+      if (
+        lines.length !== 1 ||
+        fields[0] !== expectedMode ||
+        !/^[1-9]\d*$/.test(fields[1] ?? '') ||
+        fields[2] !== 'li' ||
+        fields[3] !== 'staff' ||
+        fields[4] !== '-'
+      ) {
+        return false;
+      }
+    }
+    const before = await adapter.lstat(expected.hostSource);
+    if (
+      !before.isFile() ||
+      before.isSymbolicLink() ||
+      before.uid !== 501 ||
+      before.gid !== 20 ||
+      (before.mode & 0o777) !== 0o600 ||
+      before.nlink !== 1 ||
+      before.dev !== expected.dev ||
+      before.ino !== expected.ino
+    ) {
+      return false;
+    }
+
+    // macOS ls -e/-O/-@ expose ACL, flags and xattrs without reading file data.
+    if (!(await exactMacLsMetadata(expected.hostSource, '-rw-------', commandRunner))) {
+      return false;
+    }
+    const after = await adapter.lstat(expected.hostSource);
+    await parentsUnchanged(parents, adapter);
+    return (
+      (await adapter.realpath(expected.hostSource)) === expected.hostSource &&
+      after.isFile() &&
+      !after.isSymbolicLink() &&
+      after.uid === before.uid &&
+      after.gid === before.gid &&
+      after.mode === before.mode &&
+      after.nlink === before.nlink &&
+      after.dev === before.dev &&
+      after.ino === before.ino &&
+      after.size === before.size &&
+      after.mtimeMs === before.mtimeMs &&
+      after.ctimeMs === before.ctimeMs
+    );
+  } catch {
+    return false;
+  }
+}
+
 async function dockerResource(
   name,
   expected,
@@ -651,7 +767,9 @@ async function dockerResource(
   sourceId,
   sourceVolume,
   destination,
+  bind,
   commandRunner,
+  bindInspector,
 ) {
   const inspected = await commandRunner(EXPECTED.dockerCli, dockerArgs(['inspect', name]));
   const volumeInfo = await commandRunner(
@@ -676,9 +794,14 @@ async function dockerResource(
   const [storedVolume] = JSON.parse(volumeInfo.stdout);
   const binding = container?.HostConfig?.PortBindings?.[`${containerPort}/tcp`];
   const actualBinding = container?.NetworkSettings?.Ports?.[`${containerPort}/tcp`];
-  const mount = container?.Mounts?.filter((item) => item.Destination === destination);
+  const runtimeMounts = container?.Mounts;
+  const persistedMounts = container?.HostConfig?.Mounts;
+  const volumeMount = runtimeMounts?.filter((item) => item.Destination === destination);
+  const bindMount = runtimeMounts?.filter((item) => item.Destination === bind.destination);
+  const persistedVolume = persistedMounts?.filter((item) => item.Target === destination);
+  const persistedBind = persistedMounts?.filter((item) => item.Target === bind.destination);
   const labels = container?.Config?.Labels;
-  return (
+  const dockerIdentityVerified =
     container?.Id === expected &&
     container?.Name === `/${name}` &&
     container?.State?.Running === true &&
@@ -696,18 +819,40 @@ async function dockerResource(
     actualBinding[0]?.HostIp === '127.0.0.1' &&
     actualBinding[0]?.HostPort === port &&
     published.stdout.trim() === `127.0.0.1:${port}` &&
-    Array.isArray(container?.Mounts) &&
-    container.Mounts.length === 1 &&
-    Array.isArray(mount) &&
-    mount.length === 1 &&
-    mount[0]?.Type === 'volume' &&
-    mount[0]?.Name === volume &&
-    mount[0]?.Name !== sourceVolume &&
-    mount[0]?.RW === true &&
+    container?.HostConfig?.Binds == null &&
+    Array.isArray(runtimeMounts) &&
+    runtimeMounts.length === 2 &&
+    Array.isArray(persistedMounts) &&
+    persistedMounts.length === 2 &&
+    Array.isArray(volumeMount) &&
+    volumeMount.length === 1 &&
+    volumeMount[0]?.Type === 'volume' &&
+    volumeMount[0]?.Name === volume &&
+    volumeMount[0]?.Name !== sourceVolume &&
+    volumeMount[0]?.RW === true &&
+    volumeMount[0]?.Destination === destination &&
+    volumeMount[0]?.Source === storedVolume?.Mountpoint &&
+    Array.isArray(bindMount) &&
+    bindMount.length === 1 &&
+    bindMount[0]?.Type === 'bind' &&
+    bindMount[0]?.Name == null &&
+    bindMount[0]?.Source === bind.dockerSource &&
+    bindMount[0]?.RW === false &&
+    bindMount[0]?.Propagation === 'rprivate' &&
+    Array.isArray(persistedVolume) &&
+    persistedVolume.length === 1 &&
+    persistedVolume[0]?.Type === 'volume' &&
+    persistedVolume[0]?.Source === volume &&
+    persistedVolume[0]?.ReadOnly === false &&
+    Array.isArray(persistedBind) &&
+    persistedBind.length === 1 &&
+    persistedBind[0]?.Type === 'bind' &&
+    persistedBind[0]?.Source === bind.hostSource &&
+    persistedBind[0]?.ReadOnly === true &&
     storedVolume?.Name === volume &&
     storedVolume?.Driver === 'local' &&
-    storedVolume?.Scope === 'local'
-  );
+    storedVolume?.Scope === 'local';
+  return dockerIdentityVerified && (await bindInspector(bind));
 }
 
 async function listener(port, expectedPresent, commandRunner) {
@@ -1036,7 +1181,9 @@ export async function inspectI111RuntimeResources(paths, dependencies = {}) {
     EXPECTED.postgresSourceId,
     EXPECTED.postgresSourceVolume,
     '/var/lib/postgresql/data',
+    EXPECTED.postgresBind,
     commandRunner,
+    dependencies.bindInspector ?? ((bind) => verifyI111BindHostSource(bind, dependencies)),
   );
   const redisResourceVerified = await dockerResource(
     EXPECTED.redisContainer,
@@ -1048,7 +1195,9 @@ export async function inspectI111RuntimeResources(paths, dependencies = {}) {
     EXPECTED.redisSourceId,
     EXPECTED.redisSourceVolume,
     '/data',
+    EXPECTED.redisBind,
     commandRunner,
+    dependencies.bindInspector ?? ((bind) => verifyI111BindHostSource(bind, dependencies)),
   );
   if (!postgresResourceVerified || !redisResourceVerified) {
     return stopped({

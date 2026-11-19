@@ -80,7 +80,8 @@ before any operation. Stop on any missing, conflicting, or changed fact.
 | Offline original-source volume archive digest | PASS, last Mac operator report; source mounts read-only |
 | New isolated volumes/containers and exact IDs | CREATED and RUNNING, last Mac operator report; see below |
 | New fixed-port mappings and signed listener provenance | PASS, last Mac operator report |
-| New code revision and independent approval | NOT_READY |
+| Previous adapter HEAD `2f0e392...` and independent code review | PASS, Fredilly review `5970618164` |
+| Proposed two-mount / external approval-path code revision | PENDING new exact-head CI and independent review |
 | Read-only Phase A invocations | 0 / 1 reported |
 | Phase B, BOS, provider or paid generation | HOLD / 0 |
 
@@ -121,3 +122,41 @@ local approval JSON **must not** be reused. The new approval verifier accepts
 **only PR #239** approval URLs and queries that exact GitHub PR's Review API;
 it still requires a live Fredilly `APPROVED` review for the exact checked-out
 SHA, matching review ID and canonical URL. No Phase A CLI invocation occurred.
+
+### 2026-11-19: additional Mac field evidence and bounded follow-up
+
+Mac operator's **metadata-only** inspection found that each new container has
+**exactly two** mounts. This differs from the former source assumption of a
+single named volume. Both runtime bind mounts have `RW=false` and
+`Propagation=rprivate`; their persisted declarations are in
+`HostConfig.Mounts` (`HostConfig.Binds=null`) with `ReadOnly=true`:
+
+| Container | Independently named data volume | Read-only bind destination | Host source (Mac) |
+| --- | --- | --- | --- |
+| PostgreSQL | `xiaohai_i111_planb_fixed_pgdata` → `/var/lib/postgresql/data` | `/run/secrets/postgres_bootstrap_password` | `/Volumes/Data/Xiaohai-i111-gate-b/.i111-plan-b/secrets/postgres_bootstrap_password` |
+| Redis | `xiaohai_i111_planb_fixed_redisdata` → `/data` | `/usr/local/etc/redis/redis.conf` | `/Volumes/Data/Xiaohai-i111-gate-b/.i111-plan-b/secrets/redis.conf` |
+
+Docker Desktop reports each bind runtime `Source` with an exact `/host_mnt`
+prefix. The corresponding Mac files were verified without reading their
+contents: regular files, canonical paths, UID/GID `501/20`, mode `0600`, no
+ACL/flags, device `16777224`, inodes `576874` (PostgreSQL) and `576877`
+(Redis). The trusted parent chain is owner/root-owned and group/world
+non-writable; the dedicated secrets directory is `0700`. The original stopped
+containers and their volumes are still preserved and never mounted into the
+new containers.
+
+The independent, newly verified approval evidence is now located at
+`/Volumes/Data/Xiaohai-i111-pr239-approval/i111-readonly-runtime-approval.json`
+in a `0700` directory with `0600` file mode. The original Gate B approval
+remains **unchanged**. The previous reviewed runtime still defaulted to that
+old Gate B evidence path. The proposed source revision instead pins the new
+independent path and strictly allows one named writable data volume **plus**
+one pinned read-only bind, with metadata-only source checks and negative tests.
+
+**HOLD:** The new revision changes one of the eight approval-hashed files. The
+existing approval for `2f0e392...` must **not** be recycled for the new HEAD;
+once reviewed, a separate 0600 exact-head record must be prepared without
+overwriting prior evidence. The Mac operator must re-check live field identity
+and missing process-level environment prerequisites. No Phase A CLI invocation,
+PostgreSQL/Redis connection, provider/BOS call, paid operation or main merge is
+authorized by this code change. `paidExecutionAuthorized=false`.

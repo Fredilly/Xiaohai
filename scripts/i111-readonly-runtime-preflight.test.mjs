@@ -3,12 +3,14 @@ import assert from 'node:assert/strict';
 import { lstat, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
+  I111_READONLY_PATHS,
   inspectI111RuntimeResources,
   loadI111SourceState,
   runI111ReadonlyRuntimePreflight,
   secureReadFile,
   validateDockerBackendProvenance,
   validateDockerSocketEvidence,
+  verifyI111BindHostSource,
   verifyGitHubApproval,
 } from './i111-readonly-runtime-preflight.mjs';
 import { I111_ONE_SHOT_SCOPE as scope } from './i111-one-shot-policy.mjs';
@@ -519,6 +521,15 @@ function runtimeResourceHarness({
   misplacedSourceId = false,
   misplacedSourceVolume = false,
   extraMount = false,
+  missingBind = false,
+  wrongBindSource = false,
+  wrongBindDestination = false,
+  bindWritableRuntime = false,
+  bindWritablePersisted = false,
+  wrongBindPropagation = false,
+  wrongPersistedMount = false,
+  wrongVolumeMountpoint = false,
+  unsafeBindSource = false,
   alteredResource = 'postgres',
   separateRedisBackend = false,
   gateSha = '6898d09a3fcf76c5006ab271d0168643de2bf1fd',
@@ -619,6 +630,12 @@ function runtimeResourceHarness({
         ? 'sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73'
         : 'sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf';
       const destination = postgres ? '/var/lib/postgresql/data' : '/data';
+      const hostSource = `/Volumes/Data/Xiaohai-i111-gate-b/.i111-plan-b/secrets/${postgres ? 'postgres_bootstrap_password' : 'redis.conf'}`;
+      const dockerSource = `/host_mnt${hostSource}`;
+      const bindDestination = postgres
+        ? '/run/secrets/postgres_bootstrap_password'
+        : '/usr/local/etc/redis/redis.conf';
+      const volumeMountpoint = `/var/lib/docker/volumes/${volume}/_data`;
       return success(
         JSON.stringify([
           {
@@ -650,6 +667,31 @@ function runtimeResourceHarness({
               },
             },
             HostConfig: {
+              Binds: null,
+              Mounts: [
+                {
+                  Type: 'volume',
+                  Source: volume,
+                  Target: destination,
+                  ReadOnly: false,
+                },
+                ...(altered && missingBind
+                  ? []
+                  : [
+                      {
+                        Type: 'bind',
+                        Source:
+                          altered && (wrongBindSource || wrongPersistedMount)
+                            ? '/Volumes/Data/untrusted-secret'
+                            : hostSource,
+                        Target:
+                          altered && (wrongBindDestination || wrongPersistedMount)
+                            ? '/unexpected-secret'
+                            : bindDestination,
+                        ReadOnly: altered && bindWritablePersisted ? false : true,
+                      },
+                    ]),
+              ],
               PortBindings: {
                 [`${containerPort}/tcp`]: [
                   { HostIp: '127.0.0.1', HostPort: persistedHostPort ?? port },
@@ -669,7 +711,25 @@ function runtimeResourceHarness({
                 Type: 'volume',
                 Name: altered && wrongVolume ? 'untrusted-volume' : volume,
                 RW: true,
+                Source:
+                  altered && wrongVolumeMountpoint
+                    ? '/var/lib/docker/volumes/other/_data'
+                    : volumeMountpoint,
               },
+              ...(altered && missingBind
+                ? []
+                : [
+                    {
+                      Destination:
+                        altered && wrongBindDestination ? '/unexpected-secret' : bindDestination,
+                      Type: 'bind',
+                      Name: null,
+                      Source:
+                        altered && wrongBindSource ? '/host_mnt/Volumes/Data/other' : dockerSource,
+                      RW: altered && bindWritableRuntime ? true : false,
+                      Propagation: altered && wrongBindPropagation ? 'rshared' : 'rprivate',
+                    },
+                  ]),
               ...(altered && extraMount
                 ? [{ Destination: '/unexpected', Type: 'volume', Name: sourceVolume, RW: true }]
                 : []),
@@ -679,7 +739,16 @@ function runtimeResourceHarness({
       );
     }
     if (args[2] === 'volume') {
-      return success(JSON.stringify([{ Name: args[4], Driver: 'local', Scope: 'local' }]));
+      return success(
+        JSON.stringify([
+          {
+            Name: args[4],
+            Driver: 'local',
+            Scope: 'local',
+            Mountpoint: `/var/lib/docker/volumes/${args[4]}/_data`,
+          },
+        ]),
+      );
     }
     if (args[2] === 'port') {
       const port = args[3] === 'xiaohai-i111-planb-fixed-postgres' ? '52511' : '52512';
@@ -692,6 +761,11 @@ function runtimeResourceHarness({
       commandRunner,
       env: dockerContext ? { DOCKER_CONTEXT: dockerContext } : {},
       uid: 501,
+      bindInspector: async (bind) =>
+        !(
+          unsafeBindSource &&
+          (bind.destination.startsWith('/run/secrets') ? 'postgres' : 'redis') === alteredResource
+        ),
       socketInspector: async () => ({
         verified: true,
         identity: {
@@ -787,6 +861,15 @@ test('new fixed-port resource identity drift stops before TCP and PostgreSQL/Red
     { misplacedSourceId: true },
     { misplacedSourceVolume: true },
     { extraMount: true },
+    { missingBind: true },
+    { wrongBindSource: true },
+    { wrongBindDestination: true },
+    { bindWritableRuntime: true },
+    { bindWritablePersisted: true },
+    { wrongBindPropagation: true },
+    { wrongPersistedMount: true },
+    { wrongVolumeMountpoint: true },
+    { unsafeBindSource: true },
     { persistedHostPort: '' },
     { persistedHostPort: '59999' },
     { publishedPort: '59999' },
@@ -818,6 +901,97 @@ test('new fixed-port resource identity drift stops before TCP and PostgreSQL/Red
       assert.equal(redisCalls, 0, reason);
       assert.ok(result.errorCodes.includes('I111_RUNTIME_NOT_ISOLATED'), reason);
     }
+  }
+});
+
+test('uses the independently protected approval record, never the older Gate B approval', () => {
+  assert.equal(
+    I111_READONLY_PATHS.approval,
+    '/Volumes/Data/Xiaohai-i111-pr239-approval/i111-readonly-runtime-approval.json',
+  );
+  assert.ok(!I111_READONLY_PATHS.approval.startsWith(`${I111_READONLY_PATHS.gateRoot}/`));
+});
+
+test('bind source inspection is metadata-only and fails closed on ownership, ACL, flags or drift', async () => {
+  const expected = {
+    hostSource: '/Volumes/Data/Xiaohai-i111-gate-b/.i111-plan-b/secrets/redis.conf',
+    dev: 16777224,
+    ino: 576877,
+  };
+  const cases = [
+    {},
+    { uid: 0 },
+    { gid: 0 },
+    { mode: 0o100660 },
+    { nlink: 2 },
+    { dev: 8 },
+    { ino: 5 },
+    { symlink: true },
+    { replaced: true },
+    { parentWritable: true },
+    { parentAcl: true },
+    { parentFlag: true },
+    { ls: '-rw-------+ 1 li staff - 20 Nov 19 12:00 redis.conf\n' },
+    { ls: '-rw------- 1 li staff uchg 20 Nov 19 12:00 redis.conf\n' },
+    { ls: '-rw-------@ 1 li staff - 20 Nov 19 12:00 redis.conf\n' },
+    { ls: '-rw------- 1 li staff - 20 Nov 19 12:00 redis.conf\n 0: allow everyone read\n' },
+    { lsFailed: true },
+  ];
+  for (const [index, alteration] of cases.entries()) {
+    let fileChecks = 0;
+    let calls = 0;
+    const result = await verifyI111BindHostSource(expected, {
+      realpath: async (path) =>
+        alteration.symlink && path === expected.hostSource ? '/unexpected' : path,
+      lstat: async (path) => {
+        if (path !== expected.hostSource) {
+          const protectedDirectory = path.endsWith('/.i111-plan-b') || path.endsWith('/secrets');
+          return {
+            isDirectory: () => true,
+            isSymbolicLink: () => false,
+            uid: path === '/' || path === '/Volumes' ? 0 : 501,
+            mode:
+              alteration.parentWritable && path.endsWith('/secrets')
+                ? 0o40777
+                : protectedDirectory
+                  ? 0o40700
+                  : 0o40755,
+            dev: 1,
+            ino: 2,
+          };
+        }
+        fileChecks += 1;
+        return {
+          isFile: () => true,
+          isSymbolicLink: () => Boolean(alteration.symlink),
+          uid: alteration.uid ?? 501,
+          gid: alteration.gid ?? 20,
+          mode: alteration.mode ?? 0o100600,
+          nlink: alteration.nlink ?? 1,
+          dev: alteration.dev ?? 16777224,
+          ino: alteration.replaced && fileChecks > 1 ? 6 : (alteration.ino ?? 576877),
+          size: 20,
+          mtimeMs: 1,
+          ctimeMs: 1,
+        };
+      },
+      commandRunner: async (command, args) => {
+        calls += 1;
+        assert.equal(command, '/bin/ls');
+        assert.equal(args[0], '-ldeO@');
+        const file = args[1] === expected.hostSource;
+        const parentMode = args[1] === I111_READONLY_PATHS.gateRoot ? 'drwxr-xr-x' : 'drwx------';
+        return {
+          status: alteration.lsFailed ? 1 : 0,
+          stderr: '',
+          stdout: file
+            ? (alteration.ls ?? '-rw------- 1 li staff - 20 Nov 19 12:00 redis.conf\n')
+            : `${parentMode}${alteration.parentAcl ? '+' : alteration.parentFlag ? '@' : ''} 3 li staff - 96 Nov 19 12:00 secrets\n`,
+        };
+      },
+    });
+    assert.equal(result, index === 0, `case ${index}`);
+    assert.ok(calls <= 4, `case ${index}: unexpected metadata calls`);
   }
 });
 
