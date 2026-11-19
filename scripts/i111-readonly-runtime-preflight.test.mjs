@@ -3,12 +3,14 @@ import assert from 'node:assert/strict';
 import { lstat, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
+  I111_READONLY_PATHS,
   inspectI111RuntimeResources,
   loadI111SourceState,
   runI111ReadonlyRuntimePreflight,
   secureReadFile,
   validateDockerBackendProvenance,
   validateDockerSocketEvidence,
+  verifyI111BindHostSource,
   verifyGitHubApproval,
 } from './i111-readonly-runtime-preflight.mjs';
 import { I111_ONE_SHOT_SCOPE as scope } from './i111-one-shot-policy.mjs';
@@ -508,7 +510,30 @@ function runtimeResourceHarness({
   dockerContext,
   listenerExecutable,
   publishedPort,
+  persistedHostPort,
   daemonId,
+  wrongContainerId = false,
+  wrongImage = false,
+  wrongVolume = false,
+  wrongPlan = false,
+  missingSourceId = false,
+  missingSourceVolume = false,
+  misplacedSourceId = false,
+  misplacedSourceVolume = false,
+  extraMount = false,
+  missingBind = false,
+  wrongBindSource = false,
+  wrongBindDestination = false,
+  bindWritableRuntime = false,
+  bindWritablePersisted = false,
+  wrongBindPropagation = false,
+  wrongPersistedMount = false,
+  persistedBindUsesMacPath = false,
+  persistedVolumeReadOnly = undefined,
+  missingPersistedBindReadOnly = false,
+  wrongVolumeMountpoint = false,
+  unsafeBindSource = false,
+  alteredResource = 'postgres',
   separateRedisBackend = false,
   gateSha = '6898d09a3fcf76c5006ab271d0168643de2bf1fd',
   dirty = false,
@@ -517,6 +542,10 @@ function runtimeResourceHarness({
   multiplePostgresPids = false,
   signatureTeamId = '9BNSXJN65R',
   signatureCdHash = '54c72e39ae7276bc1a096e7494615a690a0d31d8',
+  signatureOuTeamId = '9BNSXJN65R',
+  signatureOuQuoted = true,
+  signatureOuMissing = false,
+  signatureVerifyFailed = false,
   executableUid = 501,
 } = {}) {
   let dockerCalls = 0;
@@ -569,12 +598,17 @@ function runtimeResourceHarness({
     if (command === '/usr/bin/stat') {
       return success(`16777220:3424107:${executableUid}:-rwxr-xr-x\n`);
     }
-    if (command === '/usr/bin/codesign' && args[0] === '--verify') return success();
+    if (command === '/usr/bin/codesign' && args[0] === '--verify') {
+      return signatureVerifyFailed ? { status: 1, stdout: '', stderr: '' } : success();
+    }
     if (command === '/usr/bin/codesign') {
+      const ou = signatureOuMissing
+        ? ''
+        : ` and certificate leaf[subject.OU] = ${signatureOuQuoted ? `"${signatureOuTeamId}"` : signatureOuTeamId}`;
       return {
         status: 0,
         stdout: '',
-        stderr: `Identifier=com.docker.docker\nTeamIdentifier=${signatureTeamId}\nCDHash=${signatureCdHash}\ndesignated => anchor apple generic and certificate leaf[subject.OU] = ${signatureTeamId}\n`,
+        stderr: `Identifier=com.docker.docker\nTeamIdentifier=${signatureTeamId}\nCDHash=${signatureCdHash}\ndesignated => anchor apple generic${ou}\n`,
       };
     }
     assert.equal(command, '/Applications/Docker.app/Contents/Resources/bin/docker');
@@ -593,23 +627,93 @@ function runtimeResourceHarness({
       );
     }
     if (args[2] === 'inspect') {
-      const postgres = args[3] === 'xiaohai-i111-planb-postgres';
+      const postgres = args[3] === 'xiaohai-i111-planb-fixed-postgres';
+      const altered = (postgres ? 'postgres' : 'redis') === alteredResource;
       const port = postgres ? '52511' : '52512';
       const containerPort = postgres ? '5432' : '6379';
-      const volume = postgres ? 'xiaohai_i111_planb_pgdata' : 'xiaohai_i111_planb_redisdata';
+      const volume = postgres
+        ? 'xiaohai_i111_planb_fixed_pgdata'
+        : 'xiaohai_i111_planb_fixed_redisdata';
+      const sourceId = postgres
+        ? 'fdede2cf57f70465a950b0a4ea2d13cb6894cc13bc97b540ecf660b9c1629f24'
+        : '920804ca22010bfe8ae8791e9f6ec88604d870151685ea6a31e66dc23182f031';
+      const sourceVolume = postgres ? 'xiaohai_i111_planb_pgdata' : 'xiaohai_i111_planb_redisdata';
+      const image = postgres
+        ? 'sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73'
+        : 'sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf';
       const destination = postgres ? '/var/lib/postgresql/data' : '/data';
+      const hostSource = `/Volumes/Data/Xiaohai-i111-gate-b/.i111-plan-b/secrets/${postgres ? 'postgres_bootstrap_password' : 'redis.conf'}`;
+      const dockerSource = `/host_mnt${hostSource}`;
+      const bindDestination = postgres
+        ? '/run/secrets/postgres_bootstrap_password'
+        : '/usr/local/etc/redis/redis.conf';
+      const volumeMountpoint = `/var/lib/docker/volumes/${volume}/_data`;
       return success(
         JSON.stringify([
           {
-            Id: postgres
-              ? 'fdede2cf57f70465a950b0a4ea2d13cb6894cc13bc97b540ecf660b9c1629f24'
-              : '920804ca22010bfe8ae8791e9f6ec88604d870151685ea6a31e66dc23182f031',
+            Id:
+              altered && wrongContainerId
+                ? '0'.repeat(64)
+                : postgres
+                  ? '3fdfd302d45de4f487197bdc0e335f8f3f6dec8a38cd6eb16b1ead883fe3b87f'
+                  : '9a57c5bd1e310f47880c5fba3e7be21c76441359eeda82d3f897f34937be02e1',
             Name: `/${args[3]}`,
             State: { Running: true },
-            Config: { Labels: { 'com.xiaohai.issue': '111', 'com.xiaohai.plan': 'plan-b' } },
+            Image: altered && wrongImage ? `sha256:${'0'.repeat(64)}` : image,
+            Config: {
+              Labels: {
+                'com.xiaohai.issue': '111',
+                'com.xiaohai.plan': altered && wrongPlan ? 'plan-b' : 'plan-b-fixed-ports-v1',
+                'com.xiaohai.source-container':
+                  altered && (missingSourceId || misplacedSourceId) ? '0'.repeat(64) : sourceId,
+                'com.xiaohai.source-volume':
+                  altered && (missingSourceVolume || misplacedSourceVolume)
+                    ? 'wrong-source-volume'
+                    : sourceVolume,
+                ...(altered && misplacedSourceId
+                  ? { 'com.xiaohai.source-container-id': sourceId }
+                  : {}),
+                ...(altered && misplacedSourceVolume
+                  ? { 'unrelated.source-volume': sourceVolume }
+                  : {}),
+              },
+            },
             HostConfig: {
+              Binds: null,
+              Mounts: [
+                {
+                  Type: 'volume',
+                  Source: volume,
+                  Target: destination,
+                  ...(altered && persistedVolumeReadOnly !== undefined
+                    ? { ReadOnly: persistedVolumeReadOnly }
+                    : {}),
+                },
+                ...(altered && missingBind
+                  ? []
+                  : [
+                      {
+                        Type: 'bind',
+                        Source:
+                          altered && (wrongBindSource || wrongPersistedMount)
+                            ? '/host_mnt/Volumes/Data/untrusted-secret'
+                            : altered && persistedBindUsesMacPath
+                              ? hostSource
+                              : dockerSource,
+                        Target:
+                          altered && (wrongBindDestination || wrongPersistedMount)
+                            ? '/unexpected-secret'
+                            : bindDestination,
+                        ...(altered && missingPersistedBindReadOnly
+                          ? {}
+                          : { ReadOnly: altered && bindWritablePersisted ? false : true }),
+                      },
+                    ]),
+              ],
               PortBindings: {
-                [`${containerPort}/tcp`]: [{ HostIp: '127.0.0.1', HostPort: port }],
+                [`${containerPort}/tcp`]: [
+                  { HostIp: '127.0.0.1', HostPort: persistedHostPort ?? port },
+                ],
               },
             },
             NetworkSettings: {
@@ -619,16 +723,53 @@ function runtimeResourceHarness({
                 ],
               },
             },
-            Mounts: [{ Destination: destination, Type: 'volume', Name: volume, RW: true }],
+            Mounts: [
+              {
+                Destination: destination,
+                Type: 'volume',
+                Name: altered && wrongVolume ? 'untrusted-volume' : volume,
+                RW: true,
+                Source:
+                  altered && wrongVolumeMountpoint
+                    ? '/var/lib/docker/volumes/other/_data'
+                    : volumeMountpoint,
+              },
+              ...(altered && missingBind
+                ? []
+                : [
+                    {
+                      Destination:
+                        altered && wrongBindDestination ? '/unexpected-secret' : bindDestination,
+                      Type: 'bind',
+                      Name: null,
+                      Source:
+                        altered && wrongBindSource ? '/host_mnt/Volumes/Data/other' : dockerSource,
+                      RW: altered && bindWritableRuntime ? true : false,
+                      Propagation: altered && wrongBindPropagation ? 'rshared' : 'rprivate',
+                    },
+                  ]),
+              ...(altered && extraMount
+                ? [{ Destination: '/unexpected', Type: 'volume', Name: sourceVolume, RW: true }]
+                : []),
+            ],
           },
         ]),
       );
     }
     if (args[2] === 'volume') {
-      return success(JSON.stringify([{ Name: args[4], Driver: 'local', Scope: 'local' }]));
+      return success(
+        JSON.stringify([
+          {
+            Name: args[4],
+            Driver: 'local',
+            Scope: 'local',
+            Mountpoint: `/var/lib/docker/volumes/${args[4]}/_data`,
+          },
+        ]),
+      );
     }
     if (args[2] === 'port') {
-      const port = args[3] === 'xiaohai-i111-planb-postgres' ? '52511' : '52512';
+      const port = args[3] === 'xiaohai-i111-planb-fixed-postgres' ? '52511' : '52512';
       return success(`127.0.0.1:${port}\n`);
     }
     throw new Error('unexpected synthetic command');
@@ -638,6 +779,11 @@ function runtimeResourceHarness({
       commandRunner,
       env: dockerContext ? { DOCKER_CONTEXT: dockerContext } : {},
       uid: 501,
+      bindInspector: async (bind) =>
+        !(
+          unsafeBindSource &&
+          (bind.destination.startsWith('/run/secrets') ? 'postgres' : 'redis') === alteredResource
+        ),
       socketInspector: async () => ({
         verified: true,
         identity: {
@@ -670,6 +816,21 @@ test('pins the local Docker endpoint and binds listeners to published container 
   assert.equal(verified.resourcesVerified, true);
   assert.ok(trusted.dockerCalls() > 0);
 
+  // Match the *observed* Docker Desktop HostConfig.Mounts JSON shape:
+  // persisted bind Source uses /host_mnt, whereas a writable named volume
+  // does not serialize any ReadOnly field at all.
+  for (const name of ['xiaohai-i111-planb-fixed-postgres', 'xiaohai-i111-planb-fixed-redis']) {
+    const inspected = await trusted.dependencies.commandRunner(
+      '/Applications/Docker.app/Contents/Resources/bin/docker',
+      ['--host', 'unix:///Users/li/.docker/run/docker.sock', 'inspect', name],
+    );
+    const [{ HostConfig: host }] = JSON.parse(inspected.stdout);
+    assert.equal(Object.hasOwn(host.Mounts[0], 'ReadOnly'), false);
+    assert.match(host.Mounts[1].Source, /^\/host_mnt\/Volumes\/Data\//);
+    assert.equal(host.Mounts[1].ReadOnly, true);
+    assert.equal(host.Binds, null);
+  }
+
   for (const fixture of [
     runtimeResourceHarness({ dockerContext: 'remote-attacker' }),
     runtimeResourceHarness({ listenerExecutable: 'socat' }),
@@ -692,6 +853,182 @@ test('pins the local Docker endpoint and binds listeners to published container 
     });
     assert.equal(databaseCalls, 0);
     assert.equal(redisCalls, 0);
+  }
+});
+
+test('stopped containers created with dynamic host ports cannot satisfy fixed-port provenance', async () => {
+  const fixture = runtimeResourceHarness({ persistedHostPort: '' });
+  const runtime = await inspectI111RuntimeResources(
+    { gateRoot: '/synthetic/gate' },
+    fixture.dependencies,
+  );
+  assert.equal(runtime.resourcesVerified, false);
+  assert.equal(fixture.tcpCalls(), 0);
+
+  let databaseCalls = 0;
+  let redisCalls = 0;
+  const { result } = await run({
+    runtimeResult: runtime,
+    open: () => {
+      databaseCalls += 1;
+      throw new Error('must not connect to PostgreSQL');
+    },
+    redisInspector: () => {
+      redisCalls += 1;
+      throw new Error('must not connect to Redis');
+    },
+  });
+  assert.equal(databaseCalls, 0);
+  assert.equal(redisCalls, 0);
+  assert.ok(result.errorCodes.includes('I111_RUNTIME_NOT_ISOLATED'));
+});
+
+test('new fixed-port resource identity drift stops before TCP and PostgreSQL/Redis connectors', async () => {
+  const cases = [
+    { wrongContainerId: true },
+    { wrongImage: true },
+    { wrongVolume: true },
+    { wrongPlan: true },
+    { missingSourceId: true },
+    { missingSourceVolume: true },
+    { misplacedSourceId: true },
+    { misplacedSourceVolume: true },
+    { extraMount: true },
+    { missingBind: true },
+    { wrongBindSource: true },
+    { wrongBindDestination: true },
+    { bindWritableRuntime: true },
+    { bindWritablePersisted: true },
+    { wrongBindPropagation: true },
+    { wrongPersistedMount: true },
+    { persistedBindUsesMacPath: true },
+    { persistedVolumeReadOnly: false },
+    { persistedVolumeReadOnly: true },
+    { missingPersistedBindReadOnly: true },
+    { wrongVolumeMountpoint: true },
+    { unsafeBindSource: true },
+    { persistedHostPort: '' },
+    { persistedHostPort: '59999' },
+    { publishedPort: '59999' },
+  ];
+  for (const alteredResource of ['postgres', 'redis']) {
+    for (const alteration of cases) {
+      const fixture = runtimeResourceHarness({ alteredResource, ...alteration });
+      const runtime = await inspectI111RuntimeResources(
+        { gateRoot: '/synthetic/gate' },
+        fixture.dependencies,
+      );
+      const reason = `${alteredResource}:${Object.keys(alteration).join(',')}`;
+      assert.equal(runtime.resourcesVerified, false, reason);
+      assert.equal(fixture.tcpCalls(), 0, reason);
+      let databaseCalls = 0;
+      let redisCalls = 0;
+      const { result } = await run({
+        runtimeResult: runtime,
+        open: () => {
+          databaseCalls += 1;
+          throw new Error('must not connect to PostgreSQL');
+        },
+        redisInspector: () => {
+          redisCalls += 1;
+          throw new Error('must not connect to Redis');
+        },
+      });
+      assert.equal(databaseCalls, 0, reason);
+      assert.equal(redisCalls, 0, reason);
+      assert.ok(result.errorCodes.includes('I111_RUNTIME_NOT_ISOLATED'), reason);
+    }
+  }
+});
+
+test('uses the independently protected approval record, never the older Gate B approval', () => {
+  assert.equal(
+    I111_READONLY_PATHS.approval,
+    '/Volumes/Data/Xiaohai-i111-pr239-runtime-v2-approval/i111-readonly-runtime-approval.json',
+  );
+  assert.ok(!I111_READONLY_PATHS.approval.startsWith(`${I111_READONLY_PATHS.gateRoot}/`));
+});
+
+test('bind source inspection is metadata-only and fails closed on ownership, ACL, flags or drift', async () => {
+  const expected = {
+    hostSource: '/Volumes/Data/Xiaohai-i111-gate-b/.i111-plan-b/secrets/redis.conf',
+    dev: 16777224,
+    ino: 576877,
+  };
+  const cases = [
+    {},
+    { uid: 0 },
+    { gid: 0 },
+    { mode: 0o100660 },
+    { nlink: 2 },
+    { dev: 8 },
+    { ino: 5 },
+    { symlink: true },
+    { replaced: true },
+    { parentWritable: true },
+    { parentAcl: true },
+    { parentFlag: true },
+    { ls: '-rw-------+ 1 li staff - 20 Nov 19 12:00 redis.conf\n' },
+    { ls: '-rw------- 1 li staff uchg 20 Nov 19 12:00 redis.conf\n' },
+    { ls: '-rw-------@ 1 li staff - 20 Nov 19 12:00 redis.conf\n' },
+    { ls: '-rw------- 1 li staff - 20 Nov 19 12:00 redis.conf\n 0: allow everyone read\n' },
+    { lsFailed: true },
+  ];
+  for (const [index, alteration] of cases.entries()) {
+    let fileChecks = 0;
+    let calls = 0;
+    const result = await verifyI111BindHostSource(expected, {
+      realpath: async (path) =>
+        alteration.symlink && path === expected.hostSource ? '/unexpected' : path,
+      lstat: async (path) => {
+        if (path !== expected.hostSource) {
+          const protectedDirectory = path.endsWith('/.i111-plan-b') || path.endsWith('/secrets');
+          return {
+            isDirectory: () => true,
+            isSymbolicLink: () => false,
+            uid: path === '/' || path === '/Volumes' ? 0 : 501,
+            mode:
+              alteration.parentWritable && path.endsWith('/secrets')
+                ? 0o40777
+                : protectedDirectory
+                  ? 0o40700
+                  : 0o40755,
+            dev: 1,
+            ino: 2,
+          };
+        }
+        fileChecks += 1;
+        return {
+          isFile: () => true,
+          isSymbolicLink: () => Boolean(alteration.symlink),
+          uid: alteration.uid ?? 501,
+          gid: alteration.gid ?? 20,
+          mode: alteration.mode ?? 0o100600,
+          nlink: alteration.nlink ?? 1,
+          dev: alteration.dev ?? 16777224,
+          ino: alteration.replaced && fileChecks > 1 ? 6 : (alteration.ino ?? 576877),
+          size: 20,
+          mtimeMs: 1,
+          ctimeMs: 1,
+        };
+      },
+      commandRunner: async (command, args) => {
+        calls += 1;
+        assert.equal(command, '/bin/ls');
+        assert.equal(args[0], '-ldeO@');
+        const file = args[1] === expected.hostSource;
+        const parentMode = args[1] === I111_READONLY_PATHS.gateRoot ? 'drwxr-xr-x' : 'drwx------';
+        return {
+          status: alteration.lsFailed ? 1 : 0,
+          stderr: '',
+          stdout: file
+            ? (alteration.ls ?? '-rw------- 1 li staff - 20 Nov 19 12:00 redis.conf\n')
+            : `${parentMode}${alteration.parentAcl ? '+' : alteration.parentFlag ? '@' : ''} 3 li staff - 96 Nov 19 12:00 secrets\n`,
+        };
+      },
+    });
+    assert.equal(result, index === 0, `case ${index}`);
+    assert.ok(calls <= 4, `case ${index}: unexpected metadata calls`);
   }
 });
 
@@ -780,6 +1117,10 @@ test('accepts multiple same-root listener PIDs and rejects signature or vnode-ow
   for (const fixture of [
     runtimeResourceHarness({ signatureTeamId: 'WRONGTEAM' }),
     runtimeResourceHarness({ signatureCdHash: '0'.repeat(40) }),
+    runtimeResourceHarness({ signatureOuTeamId: 'WRONGTEAM' }),
+    runtimeResourceHarness({ signatureOuQuoted: false }),
+    runtimeResourceHarness({ signatureOuMissing: true }),
+    runtimeResourceHarness({ signatureVerifyFailed: true }),
     runtimeResourceHarness({ executableUid: 0 }),
   ]) {
     const runtime = await inspectI111RuntimeResources(
@@ -919,7 +1260,7 @@ test('verifies the exact GitHub review identity, state, URL and commit through t
   const approval = {
     approvedBy: 'Fredilly',
     approvedCommit: sha,
-    approvalUrl: 'https://github.com/Fredilly/Xiaohai/pull/237#pullrequestreview-12345',
+    approvalUrl: 'https://github.com/Fredilly/Xiaohai/pull/239#pullrequestreview-12345',
   };
   const valid = {
     id: 12345,
@@ -936,7 +1277,7 @@ test('verifies the exact GitHub review identity, state, URL and commit through t
       'github.com',
       '--method',
       'GET',
-      'repos/Fredilly/Xiaohai/pulls/237/reviews/12345',
+      'repos/Fredilly/Xiaohai/pulls/239/reviews/12345',
     ]);
     return { status: 0, stdout: JSON.stringify(valid), stderr: '' };
   };
@@ -948,6 +1289,7 @@ test('verifies the exact GitHub review identity, state, URL and commit through t
     true,
   );
   for (const mutation of [
+    { id: 54321 },
     { user: { login: 'someone-else' } },
     { state: 'COMMENTED' },
     { commit_id: '2'.repeat(40) },
@@ -971,6 +1313,26 @@ test('verifies the exact GitHub review identity, state, URL and commit through t
     }),
     false,
   );
+  for (const alteredApproval of [
+    { approvedCommit: '2'.repeat(40) },
+    { approvedBy: 'unknown' },
+    { approvalUrl: 'https://attacker.example/Fredilly/Xiaohai/pull/239#pullrequestreview-12345' },
+    { approvalUrl: 'https://github.com/Other/Xiaohai/pull/239#pullrequestreview-12345' },
+    { approvalUrl: 'https://github.com/Fredilly/Xiaohai/pull/238#pullrequestreview-12345' },
+    { approvalUrl: 'https://github.com/Fredilly/Xiaohai/pull/0#pullrequestreview-12345' },
+  ]) {
+    let reviewQueries = 0;
+    assert.equal(
+      await verifyGitHubApproval({ ...approval, ...alteredApproval }, sha, {
+        commandRunner: async () => {
+          reviewQueries += 1;
+          throw new Error('invalid approval should not query GitHub');
+        },
+      }),
+      false,
+    );
+    assert.equal(reviewQueries, 0);
+  }
 });
 
 test('real source inspection separates local consistency from independent review proof', async () => {
@@ -994,7 +1356,7 @@ test('real source inspection separates local consistency from independent review
   const approval = {
     schemaVersion: 1,
     approvedBy: 'Fredilly',
-    approvalUrl: 'https://github.com/Fredilly/Xiaohai/pull/237#pullrequestreview-12345',
+    approvalUrl: 'https://github.com/Fredilly/Xiaohai/pull/239#pullrequestreview-12345',
     approvedCommit: sha,
     migrationDigest: unsigned.migrationDigest,
     sourceSha256: unsigned.sourceHashes,
@@ -1008,6 +1370,24 @@ test('real source inspection separates local consistency from independent review
   assert.equal(verified.independentReviewVerified, true);
   assert.equal(verified.signedTtlSeconds, 900);
   assert.deepEqual(verified.errors, []);
+
+  const wrongPrApproval = {
+    ...approval,
+    approvalUrl: 'https://github.com/Fredilly/Xiaohai/pull/238#pullrequestreview-12345',
+  };
+  let wrongPrReviewQueries = 0;
+  const wrongPr = await loadI111SourceState(root, wrongPrApproval, {
+    secureRead: readFile,
+    commandRunner,
+    reviewVerifier: async () => {
+      wrongPrReviewQueries += 1;
+      return true;
+    },
+  });
+  assert.equal(wrongPr.localApprovalRecordConsistent, false);
+  assert.equal(wrongPr.independentReviewVerified, false);
+  assert.equal(wrongPrReviewQueries, 0);
+  assert.ok(wrongPr.errors.includes('I111_CODE_NOT_REVIEWED'));
 
   const drifted = structuredClone(approval);
   drifted.sourceSha256['apps/worker/src/image-processor.ts'] = '0'.repeat(64);

@@ -23,7 +23,7 @@ export const I111_READONLY_PATHS = Object.freeze({
   pip: '/Volumes/Data/Xiaohai-i111-gate-b/.i111-plan-b/assets/pip_reference_candidate.png',
   apiMode: '/Volumes/Data/Xiaohai-i111-gate-b/.i111-plan-b/api.mode',
   approval:
-    '/Volumes/Data/Xiaohai-i111-gate-b/.i111-plan-b/evidence/i111-readonly-runtime-approval.json',
+    '/Volumes/Data/Xiaohai-i111-pr239-runtime-v2-approval/i111-readonly-runtime-approval.json',
 });
 
 const EXPECTED = Object.freeze({
@@ -31,12 +31,34 @@ const EXPECTED = Object.freeze({
   databaseUser: 'xiaohai_i111_app',
   databasePort: '52511',
   redisPort: '52512',
-  postgresContainer: 'xiaohai-i111-planb-postgres',
-  postgresContainerId: 'fdede2cf57f70465a950b0a4ea2d13cb6894cc13bc97b540ecf660b9c1629f24',
-  postgresVolume: 'xiaohai_i111_planb_pgdata',
-  redisContainer: 'xiaohai-i111-planb-redis',
-  redisContainerId: '920804ca22010bfe8ae8791e9f6ec88604d870151685ea6a31e66dc23182f031',
-  redisVolume: 'xiaohai_i111_planb_redisdata',
+  postgresContainer: 'xiaohai-i111-planb-fixed-postgres',
+  postgresContainerId: '3fdfd302d45de4f487197bdc0e335f8f3f6dec8a38cd6eb16b1ead883fe3b87f',
+  postgresImage: 'sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73',
+  postgresVolume: 'xiaohai_i111_planb_fixed_pgdata',
+  postgresSourceId: 'fdede2cf57f70465a950b0a4ea2d13cb6894cc13bc97b540ecf660b9c1629f24',
+  postgresSourceVolume: 'xiaohai_i111_planb_pgdata',
+  redisContainer: 'xiaohai-i111-planb-fixed-redis',
+  redisContainerId: '9a57c5bd1e310f47880c5fba3e7be21c76441359eeda82d3f897f34937be02e1',
+  redisImage: 'sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf',
+  redisVolume: 'xiaohai_i111_planb_fixed_redisdata',
+  redisSourceId: '920804ca22010bfe8ae8791e9f6ec88604d870151685ea6a31e66dc23182f031',
+  redisSourceVolume: 'xiaohai_i111_planb_redisdata',
+  postgresBind: Object.freeze({
+    hostSource:
+      '/Volumes/Data/Xiaohai-i111-gate-b/.i111-plan-b/secrets/postgres_bootstrap_password',
+    dockerSource:
+      '/host_mnt/Volumes/Data/Xiaohai-i111-gate-b/.i111-plan-b/secrets/postgres_bootstrap_password',
+    destination: '/run/secrets/postgres_bootstrap_password',
+    dev: 16777224,
+    ino: 576874,
+  }),
+  redisBind: Object.freeze({
+    hostSource: '/Volumes/Data/Xiaohai-i111-gate-b/.i111-plan-b/secrets/redis.conf',
+    dockerSource: '/host_mnt/Volumes/Data/Xiaohai-i111-gate-b/.i111-plan-b/secrets/redis.conf',
+    destination: '/usr/local/etc/redis/redis.conf',
+    dev: 16777224,
+    ino: 576877,
+  }),
   dockerEndpoint: 'unix:///Users/li/.docker/run/docker.sock',
   dockerSocketPath: '/Users/li/.docker/run/docker.sock',
   dockerDaemonId: '85a4eb36-df0b-474f-854d-52a141733ea8',
@@ -278,7 +300,9 @@ async function trustedParents(path, dependencies) {
   for (const part of parts) {
     current = join(current, part);
     const info = await dependencies.lstat(current);
-    const allowedOwners = [0, process.getuid?.()].filter((value) => value !== undefined);
+    const allowedOwners = [0, dependencies.expectedUid ?? process.getuid?.()].filter(
+      (value) => value !== undefined,
+    );
     if (
       info.isSymbolicLink() ||
       !info.isDirectory() ||
@@ -430,7 +454,7 @@ function runCommand(command, args, cwd) {
 
 export async function verifyGitHubApproval(approval, checkedOutSha, dependencies = {}) {
   const match =
-    /^https:\/\/github\.com\/Fredilly\/Xiaohai\/pull\/237#pullrequestreview-(\d+)$/.exec(
+    /^https:\/\/github\.com\/Fredilly\/Xiaohai\/pull\/239#pullrequestreview-([1-9]\d*)$/.exec(
       approval?.approvalUrl ?? '',
     );
   if (
@@ -451,7 +475,7 @@ export async function verifyGitHubApproval(approval, checkedOutSha, dependencies
         'github.com',
         '--method',
         'GET',
-        `repos/Fredilly/Xiaohai/pulls/237/reviews/${match[1]}`,
+        `repos/Fredilly/Xiaohai/pulls/239/reviews/${match[1]}`,
       ],
       dependencies.root,
     );
@@ -635,14 +659,118 @@ async function trustedDockerEndpoint(dependencies) {
   }
 }
 
+// Metadata-only: never open a bind source or hash its secret contents.
+// The Docker Desktop VM path and the host path are separately pinned above.
+async function exactMacLsMetadata(path, expectedMode, commandRunner) {
+  const metadata = await commandRunner('/bin/ls', ['-ldeO@', path]);
+  if (metadata.status !== 0 || metadata.stderr.trim()) return false;
+  const lines = metadata.stdout.trimEnd().split(/\r?\n/);
+  const fields = lines[0]?.trim().split(/\s+/) ?? [];
+  return (
+    lines.length === 1 &&
+    fields[0] === expectedMode &&
+    fields[1] === '1' &&
+    fields[2] === 'li' &&
+    fields[3] === 'staff' &&
+    fields[4] === '-'
+  );
+}
+
+export async function verifyI111BindHostSource(expected, dependencies = {}) {
+  const adapter = {
+    lstat: dependencies.lstat ?? lstat,
+    realpath: dependencies.realpath ?? realpath,
+  };
+  const commandRunner = dependencies.commandRunner ?? runCommand;
+  try {
+    if (
+      !isAbsolute(expected.hostSource) ||
+      (await adapter.realpath(expected.hostSource)) !== expected.hostSource
+    ) {
+      return false;
+    }
+    const parents = await trustedParents(expected.hostSource, { ...adapter, expectedUid: 501 });
+    for (const [parentPath, expectedMode] of [
+      [I111_READONLY_PATHS.gateRoot, 'drwxr-xr-x'],
+      [`${I111_READONLY_PATHS.gateRoot}/.i111-plan-b`, 'drwx------'],
+      [`${I111_READONLY_PATHS.gateRoot}/.i111-plan-b/secrets`, 'drwx------'],
+    ]) {
+      const parent = parents.find((entry) => entry.path === parentPath);
+      if (
+        !parent ||
+        parent.uid !== 501 ||
+        (parent.mode & 0o777) !== (expectedMode === 'drwxr-xr-x' ? 0o755 : 0o700)
+      ) {
+        return false;
+      }
+      const metadata = await commandRunner('/bin/ls', ['-ldeO@', parentPath]);
+      if (metadata.status !== 0 || metadata.stderr.trim()) return false;
+      const lines = metadata.stdout.trimEnd().split(/\r?\n/);
+      const fields = lines[0]?.trim().split(/\s+/) ?? [];
+      // Directories may have more than one link, so do not pin that column.
+      if (
+        lines.length !== 1 ||
+        fields[0] !== expectedMode ||
+        !/^[1-9]\d*$/.test(fields[1] ?? '') ||
+        fields[2] !== 'li' ||
+        fields[3] !== 'staff' ||
+        fields[4] !== '-'
+      ) {
+        return false;
+      }
+    }
+    const before = await adapter.lstat(expected.hostSource);
+    if (
+      !before.isFile() ||
+      before.isSymbolicLink() ||
+      before.uid !== 501 ||
+      before.gid !== 20 ||
+      (before.mode & 0o777) !== 0o600 ||
+      before.nlink !== 1 ||
+      before.dev !== expected.dev ||
+      before.ino !== expected.ino
+    ) {
+      return false;
+    }
+
+    // macOS ls -e/-O/-@ expose ACL, flags and xattrs without reading file data.
+    if (!(await exactMacLsMetadata(expected.hostSource, '-rw-------', commandRunner))) {
+      return false;
+    }
+    const after = await adapter.lstat(expected.hostSource);
+    await parentsUnchanged(parents, adapter);
+    return (
+      (await adapter.realpath(expected.hostSource)) === expected.hostSource &&
+      after.isFile() &&
+      !after.isSymbolicLink() &&
+      after.uid === before.uid &&
+      after.gid === before.gid &&
+      after.mode === before.mode &&
+      after.nlink === before.nlink &&
+      after.dev === before.dev &&
+      after.ino === before.ino &&
+      after.size === before.size &&
+      after.mtimeMs === before.mtimeMs &&
+      after.ctimeMs === before.ctimeMs
+    );
+  } catch {
+    return false;
+  }
+}
+
 async function dockerResource(
   name,
   expected,
+  image,
   port,
   containerPort,
   volume,
+  sourceId,
+  sourceVolume,
   destination,
+  bind,
   commandRunner,
+  bindInspector,
 ) {
   const inspected = await commandRunner(EXPECTED.dockerCli, dockerArgs(['inspect', name]));
   const volumeInfo = await commandRunner(
@@ -667,13 +795,22 @@ async function dockerResource(
   const [storedVolume] = JSON.parse(volumeInfo.stdout);
   const binding = container?.HostConfig?.PortBindings?.[`${containerPort}/tcp`];
   const actualBinding = container?.NetworkSettings?.Ports?.[`${containerPort}/tcp`];
-  const mount = container?.Mounts?.filter((item) => item.Destination === destination);
-  return (
+  const runtimeMounts = container?.Mounts;
+  const persistedMounts = container?.HostConfig?.Mounts;
+  const volumeMount = runtimeMounts?.filter((item) => item.Destination === destination);
+  const bindMount = runtimeMounts?.filter((item) => item.Destination === bind.destination);
+  const persistedVolume = persistedMounts?.filter((item) => item.Target === destination);
+  const persistedBind = persistedMounts?.filter((item) => item.Target === bind.destination);
+  const labels = container?.Config?.Labels;
+  const dockerIdentityVerified =
     container?.Id === expected &&
     container?.Name === `/${name}` &&
     container?.State?.Running === true &&
-    container?.Config?.Labels?.['com.xiaohai.issue'] === '111' &&
-    container?.Config?.Labels?.['com.xiaohai.plan'] === 'plan-b' &&
+    container?.Image === image &&
+    labels?.['com.xiaohai.issue'] === '111' &&
+    labels?.['com.xiaohai.plan'] === 'plan-b-fixed-ports-v1' &&
+    labels?.['com.xiaohai.source-container'] === sourceId &&
+    labels?.['com.xiaohai.source-volume'] === sourceVolume &&
     Array.isArray(binding) &&
     binding.length === 1 &&
     binding[0]?.HostIp === '127.0.0.1' &&
@@ -683,15 +820,45 @@ async function dockerResource(
     actualBinding[0]?.HostIp === '127.0.0.1' &&
     actualBinding[0]?.HostPort === port &&
     published.stdout.trim() === `127.0.0.1:${port}` &&
-    Array.isArray(mount) &&
-    mount.length === 1 &&
-    mount[0]?.Type === 'volume' &&
-    mount[0]?.Name === volume &&
-    mount[0]?.RW === true &&
+    container?.HostConfig?.Binds == null &&
+    Array.isArray(runtimeMounts) &&
+    runtimeMounts.length === 2 &&
+    Array.isArray(persistedMounts) &&
+    persistedMounts.length === 2 &&
+    Array.isArray(volumeMount) &&
+    volumeMount.length === 1 &&
+    volumeMount[0]?.Type === 'volume' &&
+    volumeMount[0]?.Name === volume &&
+    volumeMount[0]?.Name !== sourceVolume &&
+    volumeMount[0]?.RW === true &&
+    volumeMount[0]?.Destination === destination &&
+    volumeMount[0]?.Source === storedVolume?.Mountpoint &&
+    Array.isArray(bindMount) &&
+    bindMount.length === 1 &&
+    bindMount[0]?.Type === 'bind' &&
+    bindMount[0]?.Name == null &&
+    bindMount[0]?.Source === bind.dockerSource &&
+    bindMount[0]?.RW === false &&
+    bindMount[0]?.Propagation === 'rprivate' &&
+    Array.isArray(persistedVolume) &&
+    persistedVolume.length === 1 &&
+    persistedVolume[0]?.Type === 'volume' &&
+    persistedVolume[0]?.Source === volume &&
+    // Docker Desktop omits ReadOnly for a writable named volume in
+    // HostConfig.Mounts; the actual write flag is pinned in runtime Mounts.
+    !Object.hasOwn(persistedVolume[0], 'ReadOnly') &&
+    Array.isArray(persistedBind) &&
+    persistedBind.length === 1 &&
+    persistedBind[0]?.Type === 'bind' &&
+    // Docker Desktop persists /host_mnt/Volumes/... here as well as in
+    // runtime Mounts. The corresponding Mac path is checked separately,
+    // without opening the secret, by verifyI111BindHostSource().
+    persistedBind[0]?.Source === bind.dockerSource &&
+    persistedBind[0]?.ReadOnly === true &&
     storedVolume?.Name === volume &&
     storedVolume?.Driver === 'local' &&
-    storedVolume?.Scope === 'local'
-  );
+    storedVolume?.Scope === 'local';
+  return dockerIdentityVerified && (await bindInspector(bind));
 }
 
 async function listener(port, expectedPresent, commandRunner) {
@@ -746,7 +913,7 @@ function parseBackendSignature(result) {
     new RegExp(`^Identifier=${EXPECTED.dockerBackendIdentifier}$`, 'm').test(output) &&
     new RegExp(`^TeamIdentifier=${EXPECTED.dockerBackendTeamId}$`, 'm').test(output) &&
     new RegExp(`^CDHash=${EXPECTED.dockerBackendCdHash}$`, 'm').test(output) &&
-    output.includes(`certificate leaf[subject.OU] = ${EXPECTED.dockerBackendTeamId}`)
+    output.includes(`certificate leaf[subject.OU] = "${EXPECTED.dockerBackendTeamId}"`)
   );
 }
 
@@ -1013,20 +1180,30 @@ export async function inspectI111RuntimeResources(paths, dependencies = {}) {
   const postgresResourceVerified = await dockerResource(
     EXPECTED.postgresContainer,
     EXPECTED.postgresContainerId,
+    EXPECTED.postgresImage,
     EXPECTED.databasePort,
     '5432',
     EXPECTED.postgresVolume,
+    EXPECTED.postgresSourceId,
+    EXPECTED.postgresSourceVolume,
     '/var/lib/postgresql/data',
+    EXPECTED.postgresBind,
     commandRunner,
+    dependencies.bindInspector ?? ((bind) => verifyI111BindHostSource(bind, dependencies)),
   );
   const redisResourceVerified = await dockerResource(
     EXPECTED.redisContainer,
     EXPECTED.redisContainerId,
+    EXPECTED.redisImage,
     EXPECTED.redisPort,
     '6379',
     EXPECTED.redisVolume,
+    EXPECTED.redisSourceId,
+    EXPECTED.redisSourceVolume,
     '/data',
+    EXPECTED.redisBind,
     commandRunner,
+    dependencies.bindInspector ?? ((bind) => verifyI111BindHostSource(bind, dependencies)),
   );
   if (!postgresResourceVerified || !redisResourceVerified) {
     return stopped({
@@ -1122,7 +1299,7 @@ export async function loadI111SourceState(root, approval, dependencies) {
   const localApprovalRecordConsistent =
     approval?.schemaVersion === 1 &&
     approval?.approvedBy === 'Fredilly' &&
-    /^https:\/\/github\.com\/Fredilly\/Xiaohai\/pull\/237#pullrequestreview-\d+$/.test(
+    /^https:\/\/github\.com\/Fredilly\/Xiaohai\/pull\/239#pullrequestreview-[1-9]\d*$/.test(
       approval?.approvalUrl ?? '',
     ) &&
     approval?.approvedCommit === checkedOutSha &&
