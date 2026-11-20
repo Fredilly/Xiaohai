@@ -6,6 +6,14 @@ runnable paid CLI, does not contain an actual PostgreSQL/Redis/Docker/BOS/
 Bailian adapter, and does not authorize a paid operation. The issue's live
 validation and quality acceptance remain blocked.
 
+The previous general-purpose `scripts/i111-formal-api-worker-ports.mjs` adapter
+was removed from the runtime source tree: its caller-injected `apiService` and
+`createTargetWorker` could be invoked independently of the owner grant and
+exclusive-lock coordinator. Its synthetic tests were retired with it. The
+source-bound API and Worker keep their dedicated negative tests; a future
+composition root must not revive the generic adapter or expose independently
+callable paid operation ports. No executable coordinator has been added.
+
 ## Why this separate change
 
 PR #237 merged the independent read-only Mac preflight. The previous one-shot

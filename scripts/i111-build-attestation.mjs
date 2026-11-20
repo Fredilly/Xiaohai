@@ -43,7 +43,6 @@ export const I111_BUILD_SOURCE_FILES = Object.freeze([
   'scripts/i111-exclusive-pg-lock.mjs',
   'scripts/i111-paid-operation-grant.mjs',
   'scripts/i111-db-evidence-ports.mjs',
-  'scripts/i111-formal-api-worker-ports.mjs',
   'apps/api/src/picture-book/i111-source-bound-service.ts',
   'apps/api/src/picture-book/picture-book-service.ts',
   'apps/api/src/picture-book/image-queue.ts',
