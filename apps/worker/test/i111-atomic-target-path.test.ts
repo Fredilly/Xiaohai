@@ -35,6 +35,7 @@ function workerOptions(db: unknown) {
   return {
     db: db as never,
     targetIllustrationId: targetId,
+    expectedSlot: atomicInput.slot,
     workspaceId: 'ws-31e71dbr72cfr5th',
     apiKey: 'dummy-key-for-local-test',
     imageTimeoutMs: 600_000,

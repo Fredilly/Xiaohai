@@ -27,6 +27,8 @@ type Db = ReturnType<typeof createDatabase>['db'];
 export type I111TargetWorkerOptions = {
   db: Db;
   targetIllustrationId: string;
+  /** The coordinator's already verified slot, pinned at construction time. */
+  expectedSlot: Readonly<I111AtomicTarget['slot']>;
   workspaceId: string;
   apiKey: string;
   imageTimeoutMs: number;
@@ -50,12 +52,32 @@ export type I111TargetWorkerOptions = {
  * holding the actual exclusive DB/runtime boundary and fresh owner grant.
  */
 export function createI111SourceBoundTargetWorker(options: I111TargetWorkerOptions) {
-  const { db, targetIllustrationId, workspaceId, apiKey, imageTimeoutMs, bos, logger } = options;
+  const {
+    db,
+    targetIllustrationId,
+    expectedSlot,
+    workspaceId,
+    apiKey,
+    imageTimeoutMs,
+    bos,
+    logger,
+  } = options;
+  const validSlot =
+    expectedSlot &&
+    typeof expectedSlot === 'object' &&
+    Object.keys(expectedSlot).length === 3 &&
+    ALLOWED_SLOTS.some(
+      (slot) =>
+        slot.pageId === expectedSlot.pageId &&
+        slot.revisionNumber === expectedSlot.revisionNumber &&
+        slot.regenerate === expectedSlot.regenerate,
+    );
   if (
     process.env.APP_ENV !== 'dev' ||
     !db ||
     typeof db.transaction !== 'function' ||
     !UUID.test(targetIllustrationId) ||
+    !validSlot ||
     !Number.isSafeInteger(imageTimeoutMs) ||
     imageTimeoutMs < 600_000 ||
     imageTimeoutMs > 780_000 ||
@@ -71,6 +93,15 @@ export function createI111SourceBoundTargetWorker(options: I111TargetWorkerOptio
     )
   )
     throw new Error(TARGET_STOP);
+
+  // Copy the values so a caller cannot mutate an object reference after
+  // constructing the exact-ID worker. The DB atomic gate independently checks
+  // that this pinned slot matches the real illustration and next ordinal.
+  const pinnedSlot = Object.freeze({
+    pageId: expectedSlot.pageId,
+    revisionNumber: expectedSlot.revisionNumber,
+    regenerate: expectedSlot.regenerate,
+  });
 
   // Constructing these classes is side-effect-free. Their real methods remain
   // unusable until the separate DB/approval/atomic gates grant exactly one call.
@@ -108,12 +139,9 @@ export function createI111SourceBoundTargetWorker(options: I111TargetWorkerOptio
         input.targetId !== targetIllustrationId ||
         !input.slot ||
         Object.keys(input.slot).length !== 3 ||
-        !ALLOWED_SLOTS.some(
-          (slot) =>
-            slot.pageId === input.slot.pageId &&
-            slot.revisionNumber === input.slot.revisionNumber &&
-            slot.regenerate === input.slot.regenerate,
-        )
+        input.slot.pageId !== pinnedSlot.pageId ||
+        input.slot.revisionNumber !== pinnedSlot.revisionNumber ||
+        input.slot.regenerate !== pinnedSlot.regenerate
       )
         throw new Error(TARGET_STOP);
       // An unknown DB/provider result consumes the only attempt; no fallback.

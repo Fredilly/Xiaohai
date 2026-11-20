@@ -12,6 +12,7 @@ const atomicInput = () => ({ targetId: targetIllustrationId, slot });
 const options = () => ({
   db: { transaction: () => Promise.resolve(null) } as never,
   targetIllustrationId,
+  expectedSlot: slot,
   workspaceId: 'ws-31e71dbr72cfr5th',
   apiKey: 'dummy-key-for-local-test',
   imageTimeoutMs: 600_000,
@@ -95,6 +96,14 @@ describe('I111 source-bound exact-target Worker construction', () => {
       { ...atomicInput(), targetId: crypto.randomUUID() },
       { ...atomicInput(), slot: { ...slot, pageId: '00000000-1111-4222-8333-444444444446' } },
       { ...atomicInput(), slot: { ...slot, revisionNumber: 2 } },
+      {
+        ...atomicInput(),
+        slot: {
+          pageId: 'eae00ed5-6026-4a41-b95a-6c9eea09d076',
+          revisionNumber: 1,
+          regenerate: false,
+        },
+      },
       { ...atomicInput(), extra: true },
     ]) {
       await expect(worker.processTargetIdWithAtomicGateOnce(input)).rejects.toThrow(
@@ -104,9 +113,30 @@ describe('I111 source-bound exact-target Worker construction', () => {
     expect(processOne).not.toHaveBeenCalled();
   });
 
+  it('pins the expected slot even if the constructor input is mutated later', async () => {
+    const processOne = vi
+      .spyOn(ImageJobProcessor.prototype, 'processOne')
+      .mockResolvedValue(targetIllustrationId);
+    const expectedSlot = { ...slot };
+    const worker = createI111SourceBoundTargetWorker({ ...options(), expectedSlot });
+    expectedSlot.pageId = 'eae00ed5-6026-4a41-b95a-6c9eea09d076';
+    await expect(
+      worker.processTargetIdWithAtomicGateOnce({
+        targetId: targetIllustrationId,
+        slot: expectedSlot,
+      }),
+    ).rejects.toThrow('I111_SOURCE_BOUND_TARGET_STOP');
+    await expect(worker.processTargetIdWithAtomicGateOnce(atomicInput())).resolves.toBe(
+      targetIllustrationId,
+    );
+    expect(processOne).toHaveBeenCalledOnce();
+  });
+
   it('rejects any production env, wrong fixed BOS identity, timeout or illustration ID', () => {
     for (const invalid of [
       { targetIllustrationId: 'bad-id' },
+      { expectedSlot: { ...slot, revisionNumber: 2 } },
+      { expectedSlot: null as never },
       { imageTimeoutMs: 10_000 },
       { imageTimeoutMs: 780_001 },
       { apiKey: 'INJECT_UNSAFE_KEY' },
