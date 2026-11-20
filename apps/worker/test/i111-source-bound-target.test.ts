@@ -3,6 +3,12 @@ import { ImageJobProcessor } from '../src/image-processor.js';
 import { createI111SourceBoundTargetWorker } from '../src/i111-source-bound-target.js';
 
 const targetIllustrationId = '00000000-1111-4222-8333-444444444444';
+const slot = {
+  pageId: '6fe359ee-71b0-43f5-b49b-08fe2b48a9cb',
+  revisionNumber: 1,
+  regenerate: false,
+};
+const atomicInput = () => ({ targetId: targetIllustrationId, slot });
 const options = () => ({
   db: { transaction: () => Promise.resolve(null) } as never,
   targetIllustrationId,
@@ -27,7 +33,7 @@ describe('I111 source-bound exact-target Worker construction', () => {
     vi.unstubAllEnvs();
   });
 
-  it('constructs real Worker/provider dependencies without network and permits processOne once', async () => {
+  it('constructs real Worker/provider dependencies without network and permits exact atomic target once', async () => {
     const processOne = vi
       .spyOn(ImageJobProcessor.prototype, 'processOne')
       .mockResolvedValue(targetIllustrationId);
@@ -42,8 +48,12 @@ describe('I111 source-bound exact-target Worker construction', () => {
         imageDownloadConsumed: false,
         paidExecutionAuthorized: false,
       });
-      await expect(worker.processOne()).resolves.toBe(targetIllustrationId);
-      await expect(worker.processOne()).rejects.toThrow('I111_SOURCE_BOUND_TARGET_STOP');
+      await expect(worker.processTargetIdWithAtomicGateOnce(atomicInput())).resolves.toBe(
+        targetIllustrationId,
+      );
+      await expect(worker.processTargetIdWithAtomicGateOnce(atomicInput())).rejects.toThrow(
+        'I111_SOURCE_BOUND_TARGET_STOP',
+      );
       expect(processOne).toHaveBeenCalledOnce();
       expect(network).not.toHaveBeenCalled();
     } finally {
@@ -56,17 +66,42 @@ describe('I111 source-bound exact-target Worker construction', () => {
       .spyOn(ImageJobProcessor.prototype, 'processOne')
       .mockRejectedValue(new Error('do not expose details'));
     const worker = createI111SourceBoundTargetWorker(options());
-    await expect(worker.processOne()).rejects.toThrow('I111_SOURCE_BOUND_TARGET_STOP');
-    await expect(worker.processOne()).rejects.toThrow('I111_SOURCE_BOUND_TARGET_STOP');
+    await expect(worker.processTargetIdWithAtomicGateOnce(atomicInput())).rejects.toThrow(
+      'I111_SOURCE_BOUND_TARGET_STOP',
+    );
+    await expect(worker.processTargetIdWithAtomicGateOnce(atomicInput())).rejects.toThrow(
+      'I111_SOURCE_BOUND_TARGET_STOP',
+    );
     expect(processOne).toHaveBeenCalledOnce();
   });
 
   it('rejects an absent or wrong exact target without trying a second DB claim', async () => {
     const processOne = vi.spyOn(ImageJobProcessor.prototype, 'processOne').mockResolvedValue(null);
     const worker = createI111SourceBoundTargetWorker(options());
-    await expect(worker.processOne()).rejects.toThrow('I111_SOURCE_BOUND_TARGET_STOP');
-    await expect(worker.processOne()).rejects.toThrow('I111_SOURCE_BOUND_TARGET_STOP');
+    await expect(worker.processTargetIdWithAtomicGateOnce(atomicInput())).rejects.toThrow(
+      'I111_SOURCE_BOUND_TARGET_STOP',
+    );
+    await expect(worker.processTargetIdWithAtomicGateOnce(atomicInput())).rejects.toThrow(
+      'I111_SOURCE_BOUND_TARGET_STOP',
+    );
     expect(processOne).toHaveBeenCalledOnce();
+  });
+
+  it('rejects a wrong target, invalid slot, extra fields and legacy direct processOne', async () => {
+    const processOne = vi.spyOn(ImageJobProcessor.prototype, 'processOne');
+    const worker = createI111SourceBoundTargetWorker(options());
+    expect('processOne' in worker).toBe(false);
+    for (const input of [
+      { ...atomicInput(), targetId: crypto.randomUUID() },
+      { ...atomicInput(), slot: { ...slot, pageId: '00000000-1111-4222-8333-444444444446' } },
+      { ...atomicInput(), slot: { ...slot, revisionNumber: 2 } },
+      { ...atomicInput(), extra: true },
+    ]) {
+      await expect(worker.processTargetIdWithAtomicGateOnce(input)).rejects.toThrow(
+        'I111_SOURCE_BOUND_TARGET_STOP',
+      );
+    }
+    expect(processOne).not.toHaveBeenCalled();
   });
 
   it('rejects any production env, wrong fixed BOS identity, timeout or illustration ID', () => {

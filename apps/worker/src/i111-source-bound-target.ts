@@ -4,12 +4,23 @@ import { ImageJobProcessor } from './image-processor.js';
 import { createBaiduBosStorage } from './bos-storage.js';
 import { createPrivateBosReferenceResolver } from './private-bos-reference.js';
 import { createI111SinglePaidFetch } from './i111-single-paid-fetch.js';
+import { I111_PAID_RUN } from './i111-paid-attempt-gate.js';
 
 const TARGET_STOP = 'I111_SOURCE_BOUND_TARGET_STOP';
 const BOS_BUCKET = 'xiaohai-i111-work-2ec3900280';
 const BOS_ENDPOINT = 'https://cd.bcebos.com/';
 const BOS_ORIGIN = `https://${BOS_BUCKET}.cd.bcebos.com/`;
 const UUID = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/u;
+const ALLOWED_SLOTS = Object.freeze([
+  Object.freeze({ pageId: I111_PAID_RUN.page1Id, revisionNumber: 1, regenerate: false }),
+  Object.freeze({ pageId: I111_PAID_RUN.page2Id, revisionNumber: 1, regenerate: false }),
+  Object.freeze({ pageId: I111_PAID_RUN.page2Id, revisionNumber: 2, regenerate: true }),
+]);
+
+type I111AtomicTarget = {
+  targetId: string;
+  slot: { pageId: string; revisionNumber: number; regenerate: boolean };
+};
 
 type Db = ReturnType<typeof createDatabase>['db'];
 
@@ -89,11 +100,29 @@ export function createI111SourceBoundTargetWorker(options: I111TargetWorkerOptio
   let consumed = false;
 
   return Object.freeze({
-    async processOne(): Promise<string | null> {
-      if (consumed) throw new Error(TARGET_STOP);
+    async processTargetIdWithAtomicGateOnce(input: I111AtomicTarget): Promise<string> {
+      if (
+        consumed ||
+        !input ||
+        Object.keys(input).length !== 2 ||
+        input.targetId !== targetIllustrationId ||
+        !input.slot ||
+        Object.keys(input.slot).length !== 3 ||
+        !ALLOWED_SLOTS.some(
+          (slot) =>
+            slot.pageId === input.slot.pageId &&
+            slot.revisionNumber === input.slot.revisionNumber &&
+            slot.regenerate === input.slot.regenerate,
+        )
+      )
+        throw new Error(TARGET_STOP);
       // An unknown DB/provider result consumes the only attempt; no fallback.
       consumed = true;
       try {
+        // The concrete ImageJobProcessor always claims this exact target ID,
+        // then invokes consumeI111ProviderSlot within processOne, before
+        // calling BailianImageProvider.generate. This is not a preflight
+        // boolean; the durable DB marker is the actual provider boundary.
         const id = await processor.processOne();
         if (id !== targetIllustrationId) throw new Error(TARGET_STOP);
         return id;
