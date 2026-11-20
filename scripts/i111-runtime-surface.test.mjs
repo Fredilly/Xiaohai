@@ -41,3 +41,23 @@ test('reviewed real control ports still cannot execute the paid sequence', async
     paidExecutionAuthorized: false,
   });
 });
+
+test('the reverted caller-branded Drizzle session cannot silently reappear', async () => {
+  // Narrow regression for the independently reproduced fake Pool.query wrapper
+  // flaw. This source check is NOT a proof of future session ownership.
+  const files = [
+    '../packages/db/src/client.ts',
+    '../packages/db/src/index.ts',
+    '../apps/api/src/picture-book/i111-source-bound-service.ts',
+    '../apps/worker/src/i111-source-bound-target.ts',
+    '../apps/worker/src/i111-paid-attempt-gate.ts',
+  ];
+  for (const path of files) {
+    const source = await readFile(new URL(path, import.meta.url), 'utf8');
+    assert.doesNotMatch(
+      source,
+      /createI111SessionBoundDatabase|assertI111SessionBoundDatabase|I111_SESSION_DB_STOP|i111Sessions/u,
+      path,
+    );
+  }
+});

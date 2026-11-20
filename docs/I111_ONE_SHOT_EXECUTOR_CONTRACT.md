@@ -14,6 +14,12 @@ source-bound API and Worker keep their dedicated negative tests; a future
 composition root must not revive the generic adapter or expose independently
 callable paid operation ports. No executable coordinator has been added.
 
+The subsequently rejected caller-branded session-binding attempt has also
+been reverted. The required single-owner checkout, Drizzle binding and release
+lifecycle are specified in
+[`I111_TRUSTED_SESSION_OWNERSHIP_CONTRACT.md`](./I111_TRUSTED_SESSION_OWNERSHIP_CONTRACT.md).
+That document is design-only and does not change this NO-GO status.
+
 ## Why this separate change
 
 PR #237 merged the independent read-only Mac preflight. The previous one-shot
