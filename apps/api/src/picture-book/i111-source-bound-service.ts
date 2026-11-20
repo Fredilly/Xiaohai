@@ -1,4 +1,4 @@
-import { assertI111SessionBoundDatabase, type DatabaseHandle } from '@xiaohai/db';
+import type { createDatabase } from '@xiaohai/db';
 import type { AiQueue } from '../ai/ai-queue.js';
 import type { ImageQueue } from './image-queue.js';
 import { PictureBookService, type PictureBookAiConfig } from './picture-book-service.js';
@@ -15,7 +15,7 @@ const scope = Object.freeze({
   model: 'qwen-image-3.0',
 });
 
-type Db = DatabaseHandle;
+type Db = ReturnType<typeof createDatabase>['db'];
 
 function stop(): never {
   throw new Error(STOP_CODE);
@@ -55,11 +55,6 @@ const config: PictureBookAiConfig = Object.freeze({
  */
 export function createI111SourceBoundFormalApiService(db: Db) {
   if (process.env.APP_ENV !== 'dev' || !db || typeof db.transaction !== 'function') stop();
-  try {
-    assertI111SessionBoundDatabase(db);
-  } catch {
-    stop();
-  }
   let notifiedId: string | null = null;
   let notificationViolation = false;
   let prepareConsumed = false;
@@ -85,11 +80,6 @@ export function createI111SourceBoundFormalApiService(db: Db) {
       pageId: string;
       regenerate: boolean;
     }) {
-      try {
-        assertI111SessionBoundDatabase(db);
-      } catch {
-        stop();
-      }
       if (
         prepareConsumed ||
         !input ||

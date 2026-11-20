@@ -32,15 +32,7 @@ that sequence, without changing the normal API, Worker or schema.
    `pg_backend_pid()` after acquisition and before release. This detects
    mistaken connection-pool use and backend changes, but does **not** prove
    independent process isolation or bind API/Worker Drizzle operations to the
-   same client. The new `createI111SessionBoundDatabase` builds Drizzle directly
-   on a previously checked-out `pg.PoolClient` without creating a Pool or
-   connecting. The two I111 source-bound factories now reject handles that
-   were not constructed by that function, and recheck the pinned PID before
-   their one-use operations. A future coordinator must give this **same**
-   Drizzle instance to the API and exact-ID Worker while holding the lock;
-   merely exporting the constructor does not establish or authorize that
-   composition, prove the client is never released mid-call, or authenticate
-   an arbitrary object supplied as the PoolClient.
+   same client. A future coordinator must establish those properties.
 2. Collect an independently authenticated fresh snapshot. Apply the existing
    `assessI111OneShotSnapshot` fail-closed policy. Its best result is
    `STATIC_REVIEW_ONLY`, never a spending permission.

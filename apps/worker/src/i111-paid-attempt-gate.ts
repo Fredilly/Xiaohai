@@ -6,10 +6,10 @@ import {
   pictureBooks,
   workPageIllustrations,
   workPages,
-  type DatabaseHandle,
+  type createDatabase,
 } from '@xiaohai/db';
 
-type Db = DatabaseHandle;
+type Db = ReturnType<typeof createDatabase>['db'];
 
 /**
  * This is an exact, single-purpose DEV gate for the original Mac Plan B fixture.

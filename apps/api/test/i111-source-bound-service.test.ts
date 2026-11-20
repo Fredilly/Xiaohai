@@ -1,19 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createI111SourceBoundFormalApiService } from '../src/picture-book/i111-source-bound-service.js';
 import { PictureBookService } from '../src/picture-book/picture-book-service.js';
-import { createI111SessionBoundDatabase } from '@xiaohai/db';
 
 const ownerId = '11111111-1111-4111-8111-111111111111';
 const bookId = '90d7f77e-ae23-40ef-90b6-a672412c6318';
 const page1Id = '6fe359ee-71b0-43f5-b49b-08fe2b48a9cb';
 const page2Id = 'eae00ed5-6026-4a41-b95a-6c9eea09d076';
 const illustrationId = '00000000-1111-4222-8333-444444444444';
-const db = () =>
-  createI111SessionBoundDatabase({
-    processID: 4321,
-    release() {},
-    query: () => Promise.reject(new Error('no database access permitted in this test')),
-  } as unknown as Parameters<typeof createI111SessionBoundDatabase>[0]);
+const db = { transaction: () => Promise.resolve(null) } as never;
 
 const input = (pageId = page1Id, regenerate = false) => ({
   consumerUserId: ownerId,
@@ -62,7 +56,7 @@ describe('I111 real PictureBookService with no Redis broadcast', () => {
             status: 'QUEUED' as const,
           };
         });
-      const prepare = createI111SourceBoundFormalApiService(db());
+      const prepare = createI111SourceBoundFormalApiService(db);
       expect(await prepare.prepareViaFormalApi(input(pageId, regenerate))).toMatchObject({
         illustrationId,
         revisionNumber: revision,
@@ -84,43 +78,21 @@ describe('I111 real PictureBookService with no Redis broadcast', () => {
       { regenerate: 'false' },
       { extra: 'unexpected' },
     ]) {
-      const prepare = createI111SourceBoundFormalApiService(db());
+      const prepare = createI111SourceBoundFormalApiService(db);
       await expect(
         prepare.prepareViaFormalApi({ ...input(), ...invalid } as never),
       ).rejects.toThrow('I111_SOURCE_BOUND_API_STOP');
     }
     expect(invoked).not.toHaveBeenCalled();
-    const trustedDb = db();
     vi.stubEnv('APP_ENV', 'production');
-    expect(() => createI111SourceBoundFormalApiService(trustedDb)).toThrow(
-      'I111_SOURCE_BOUND_API_STOP',
-    );
-  });
-
-  it('rejects a pooled or arbitrary Drizzle handle before invoking the formal API', () => {
-    const invoked = vi.spyOn(PictureBookService.prototype, 'generateIllustration');
-    expect(() =>
-      createI111SourceBoundFormalApiService({ transaction: () => Promise.resolve(null) } as never),
-    ).toThrow('I111_SOURCE_BOUND_API_STOP');
-    expect(invoked).not.toHaveBeenCalled();
-  });
-
-  it('stops before the formal API when the pinned client PID changes', async () => {
-    const invoked = vi.spyOn(PictureBookService.prototype, 'generateIllustration');
-    const sessionDb = db();
-    const prepare = createI111SourceBoundFormalApiService(sessionDb);
-    Reflect.set(sessionDb.$client, 'processID', 7654);
-    await expect(prepare.prepareViaFormalApi(input())).rejects.toThrow(
-      'I111_SOURCE_BOUND_API_STOP',
-    );
-    expect(invoked).not.toHaveBeenCalled();
+    expect(() => createI111SourceBoundFormalApiService(db)).toThrow('I111_SOURCE_BOUND_API_STOP');
   });
 
   it('does not retry after an uncertain formal API error or a missing notification', async () => {
     const invoked = vi
       .spyOn(PictureBookService.prototype, 'generateIllustration')
       .mockRejectedValue(new Error('uncertain commit; secret detail'));
-    const prepare = createI111SourceBoundFormalApiService(db());
+    const prepare = createI111SourceBoundFormalApiService(db);
     await expect(prepare.prepareViaFormalApi(input())).rejects.toThrow(
       'I111_SOURCE_BOUND_API_STOP',
     );
@@ -136,7 +108,7 @@ describe('I111 real PictureBookService with no Redis broadcast', () => {
       illustrationId,
       status: 'QUEUED',
     });
-    const noNotification = createI111SourceBoundFormalApiService(db());
+    const noNotification = createI111SourceBoundFormalApiService(db);
     await expect(noNotification.prepareViaFormalApi(input())).rejects.toThrow(
       'I111_SOURCE_BOUND_API_STOP',
     );
@@ -163,7 +135,7 @@ describe('I111 real PictureBookService with no Redis broadcast', () => {
         };
       },
     );
-    const prepare = createI111SourceBoundFormalApiService(db());
+    const prepare = createI111SourceBoundFormalApiService(db);
     await expect(prepare.prepareViaFormalApi(input())).rejects.toThrow(
       'I111_SOURCE_BOUND_API_STOP',
     );

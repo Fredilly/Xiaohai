@@ -8,7 +8,7 @@ import {
   aiCostReservations,
   mediaAssets,
   workPageIllustrations,
-  type DatabaseHandle,
+  type createDatabase,
 } from '@xiaohai/db';
 import type { ImageProvider } from './image-provider.js';
 import { ImageProviderError } from './image-provider.js';
@@ -19,7 +19,7 @@ import {
 } from './i111-paid-attempt-gate.js';
 import type { PrivateBosReferenceResolver } from './private-bos-reference.js';
 
-type Db = DatabaseHandle;
+type Db = ReturnType<typeof createDatabase>['db'];
 type ImageLogger = { error: (fields: Record<string, unknown>, message: string) => void };
 type IllustrationInputRow = {
   id: string;

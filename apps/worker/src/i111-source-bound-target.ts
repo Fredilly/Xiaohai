@@ -1,4 +1,4 @@
-import { assertI111SessionBoundDatabase, type DatabaseHandle } from '@xiaohai/db';
+import type { createDatabase } from '@xiaohai/db';
 import { BailianImageProvider } from './image-provider.js';
 import { ImageJobProcessor } from './image-processor.js';
 import { createBaiduBosStorage } from './bos-storage.js';
@@ -22,7 +22,7 @@ type I111AtomicTarget = {
   slot: { pageId: string; revisionNumber: number; regenerate: boolean };
 };
 
-type Db = DatabaseHandle;
+type Db = ReturnType<typeof createDatabase>['db'];
 
 export type I111TargetWorkerOptions = {
   db: Db;
@@ -93,11 +93,6 @@ export function createI111SourceBoundTargetWorker(options: I111TargetWorkerOptio
     )
   )
     throw new Error(TARGET_STOP);
-  try {
-    assertI111SessionBoundDatabase(db);
-  } catch {
-    throw new Error(TARGET_STOP);
-  }
 
   // Copy the values so a caller cannot mutate an object reference after
   // constructing the exact-ID worker. The DB atomic gate independently checks
@@ -137,11 +132,6 @@ export function createI111SourceBoundTargetWorker(options: I111TargetWorkerOptio
 
   return Object.freeze({
     async processTargetIdWithAtomicGateOnce(input: I111AtomicTarget): Promise<string> {
-      try {
-        assertI111SessionBoundDatabase(db);
-      } catch {
-        throw new Error(TARGET_STOP);
-      }
       if (
         consumed ||
         !input ||

@@ -54,8 +54,6 @@ export const I111_BUILD_SOURCE_FILES = Object.freeze([
   'apps/worker/src/bos-storage.ts',
   'apps/worker/src/private-bos-reference.ts',
   'packages/config/src/image-runtime-safety.ts',
-  'packages/db/src/client.ts',
-  'packages/db/src/index.ts',
 ]);
 
 const DIST_DIRS = Object.freeze(['apps/api/dist', 'apps/worker/dist']);
