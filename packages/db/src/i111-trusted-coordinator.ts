@@ -23,6 +23,8 @@ const DISABLED = 'I111_TRUSTED_COORDINATOR_NOT_ENABLED';
 const PORTS_NOT_WIRED = 'I111_TRUSTED_COORDINATOR_PORTS_NOT_WIRED';
 const LOCK_KEY = Object.freeze([111, 20261119]);
 const POOL_END_TIMEOUT_MS = 1_000;
+const CONNECT_TIMEOUT_MS = 5_000;
+const QUERY_TIMEOUT_MS = 5_000;
 
 /**
  * This is the first, non-operational ownership kernel for a future
@@ -90,14 +92,71 @@ type LockState = {
   acquired: boolean;
   lockAttempted: boolean;
   lockConfirmedNotAcquired: boolean;
+  queryUnsettled: boolean;
   pinnedPid?: number;
 };
+
+async function withBoundedOperation<T>(
+  operation: () => Promise<T>,
+  timeoutMs: number,
+  onLateSuccess?: (value: T) => void,
+): Promise<T> {
+  let timedOut = false;
+  let timer: NodeJS.Timeout | undefined;
+  const operationPromise = Promise.resolve().then(operation).then(
+    (value) => {
+      if (timedOut && onLateSuccess) {
+        try {
+          onLateSuccess(value);
+        } catch {
+          // The invocation is already STOP; late cleanup cannot authorize anything.
+        }
+      }
+      return value;
+    },
+    (error) => {
+      // This handler prevents an unhandled late rejection while preserving the
+      // original rejection for the bounded race when it wins in time.
+      throw error;
+    },
+  );
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      timedOut = true;
+      reject(new CoordinatorStop(STOP));
+    }, timeoutMs);
+  });
+  try {
+    return await Promise.race([operationPromise, timeout]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+async function queryOwned(
+  client: PoolClient,
+  state: LockState,
+  text: string,
+  values?: readonly unknown[],
+): Promise<unknown> {
+  try {
+    return await withBoundedOperation(
+      () => client.query(text, values ? [...values] : undefined),
+      QUERY_TIMEOUT_MS,
+    );
+  } catch (error) {
+    if (error instanceof CoordinatorStop && error.code === STOP) {
+      state.queryUnsettled = true;
+    }
+    throw error;
+  }
+}
 
 async function acquireOwnedLock(client: PoolClient, state: LockState): Promise<void> {
   const pinnedPid = requireBackendPid(client);
   state.pinnedPid = pinnedPid;
   state.lockAttempted = true;
-  const locked = rowsOf(await client.query(
+  const locked = rowsOf(await queryOwned(client, state,
     'select pg_try_advisory_lock($1::int4, $2::int4) as locked',
     [...LOCK_KEY],
   ));
@@ -108,18 +167,22 @@ async function acquireOwnedLock(client: PoolClient, state: LockState): Promise<v
     throw new CoordinatorStop(STOP);
   }
   state.acquired = true;
-  const backend = rowsOf(await client.query('select pg_backend_pid()::int4 as backend_pid'));
+  const backend = rowsOf(await queryOwned(client, state, 'select pg_backend_pid()::int4 as backend_pid'));
   if (backend.length !== 1 || backend[0]?.backend_pid !== pinnedPid) {
     throw new CoordinatorStop(STOP);
   }
 }
 
-async function releaseOwnedLock(client: PoolClient, pinnedPid: number): Promise<void> {
-  const backend = rowsOf(await client.query('select pg_backend_pid()::int4 as backend_pid'));
+async function releaseOwnedLock(
+  client: PoolClient,
+  state: LockState,
+  pinnedPid: number,
+): Promise<void> {
+  const backend = rowsOf(await queryOwned(client, state, 'select pg_backend_pid()::int4 as backend_pid'));
   if (backend.length !== 1 || backend[0]?.backend_pid !== pinnedPid) {
     throw new CoordinatorStop(STOP);
   }
-  const unlocked = rowsOf(await client.query(
+  const unlocked = rowsOf(await queryOwned(client, state,
     'select pg_advisory_unlock($1::int4, $2::int4) as unlocked',
     [...LOCK_KEY],
   ));
@@ -165,12 +228,28 @@ async function executeOwnedLifecycle(connectionString: string): Promise<never> {
     acquired: false,
     lockAttempted: false,
     lockConfirmedNotAcquired: false,
+    queryUnsettled: false,
   };
   let primaryFailure: unknown;
   let cleanupFailure: unknown;
   try {
-    pool = new pg.Pool({ connectionString });
-    client = await pool.connect();
+    pool = new pg.Pool({
+      connectionString,
+      connectionTimeoutMillis: CONNECT_TIMEOUT_MS,
+      statement_timeout: QUERY_TIMEOUT_MS,
+      query_timeout: QUERY_TIMEOUT_MS,
+    });
+    client = await withBoundedOperation(
+      () => pool!.connect(),
+      CONNECT_TIMEOUT_MS,
+      (lateClient) => {
+        try {
+          lateClient.release(new Error(STOP));
+        } catch {
+          // The late client is untrusted; the invocation remains STOP.
+        }
+      },
+    );
     const db = drizzle(client, { schema });
     await acquireOwnedLock(client, lockState);
 
@@ -183,9 +262,14 @@ async function executeOwnedLifecycle(connectionString: string): Promise<never> {
     primaryFailure = error;
   } finally {
     let safeToRelease = !lockState.lockAttempted || lockState.lockConfirmedNotAcquired;
-    if (client && lockState.acquired && lockState.pinnedPid !== undefined) {
+    if (
+      client &&
+      lockState.acquired &&
+      !lockState.queryUnsettled &&
+      lockState.pinnedPid !== undefined
+    ) {
       try {
-        await releaseOwnedLock(client, lockState.pinnedPid);
+        await releaseOwnedLock(client, lockState, lockState.pinnedPid);
         safeToRelease = true;
       } catch (error) {
         cleanupFailure = error;
