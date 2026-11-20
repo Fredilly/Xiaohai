@@ -170,10 +170,14 @@ test('no-broadcast queue rejects duplicate, malformed and unrelated notification
   const queue = createI111NoBroadcastImageQueue();
   assert.equal(queue.notificationSummary(), 'NONE');
   await assert.rejects(queue.notify('bad'));
-  assert.equal(queue.notificationSummary(), 'NONE');
-  await queue.notify(targetId);
+  assert.equal(queue.notificationSummary(), 'VIOLATION');
   await assert.rejects(queue.notify(targetId));
-  assert.equal(queue.confirmedNotificationId(), targetId);
+  const accepted = createI111NoBroadcastImageQueue();
+  await accepted.notify(targetId);
+  await assert.rejects(accepted.notify(targetId));
+  assert.equal(accepted.notificationSummary(), 'VIOLATION');
+  assert.equal(queue.notificationSummary(), 'VIOLATION');
+  assert.equal(accepted.confirmedNotificationId(), targetId);
   assert.throws(
     () => createI111DisabledTextQueue().enqueue('other'),
     /I111_FORMAL_API_WORKER_STOP/u,

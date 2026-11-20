@@ -45,14 +45,18 @@ function allowedInput(input) {
  */
 export function createI111NoBroadcastImageQueue() {
   let notifiedId = null;
+  let violated = false;
   return Object.freeze({
     async notify(illustrationId) {
-      if (!UUID.test(illustrationId ?? '') || notifiedId !== null) throw new Stop();
+      if (violated || !UUID.test(illustrationId ?? '') || notifiedId !== null) {
+        violated = true;
+        throw new Stop();
+      }
       notifiedId = illustrationId;
     },
     async close() {},
     notificationSummary() {
-      return notifiedId === null ? 'NONE' : 'SINGLE_NO_BROADCAST';
+      return violated ? 'VIOLATION' : notifiedId === null ? 'NONE' : 'SINGLE_NO_BROADCAST';
     },
     confirmedNotificationId() {
       return notifiedId;
