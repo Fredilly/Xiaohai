@@ -1,8 +1,17 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import type { StoreCatalogEditRequest, StoreCatalogItem } from '@xiaohai/contracts/commerce';
-import { listStoreCatalog, updateStoreCatalog } from './store-catalog-api';
+import { listStoreCatalog, previewStoreCatalogEdit, updateStoreCatalog } from './store-catalog-api';
 
 const limit = 30;
+
+// Keep price parsing lossless and consistent with the HQ editor.
+// Invalid, negative, fractional-fen and overflow values never reach the API.
+export function parseStorePriceToMinor(value: string): number | null {
+  if (!/^(?:0|[1-9]\d*)(?:\.\d{1,2})?$/.test(value)) return null;
+  const [yuan = '', fraction = ''] = value.split('.');
+  const minor = BigInt(yuan) * 100n + BigInt((fraction + '00').slice(0, 2));
+  return minor <= 2147483647n ? Number(minor) : null;
+}
 
 export function StoreCatalogPanel({
   token,
@@ -71,8 +80,8 @@ export function StoreCatalogPanel({
         。仅显示与本店库存记录关联的商品及其基础资料。库存数量仍须通过库存盘点或调整流程变更。
       </p>
       <p>
-        本店员工仅能直接编辑本店货架、备注和陈列信息。 书名、作者、ISBN、出版社及 SKU
-        价格属于总部共享主数据，请通过商品纠错申请或联系总部处理。
+        可编辑本店关联商品的名称、售价及本店陈列信息。若商品资料还影响其他门店，
+        系统会拒绝直接修改，避免未经确认覆盖其他门店的共享数据。
       </p>
       <form className="book-search-form" onSubmit={search}>
         <input
@@ -226,16 +235,48 @@ function StoreCatalogEditForm({
   onSaved: () => void;
 }) {
   const [draft, setDraft] = useState(() => draftFor(item));
-  const [status, setStatus] = useState('仅编辑本店的货架、备注与陈列信息。');
+  const [name, setName] = useState(item.productName);
+  const [priceYuan, setPriceYuan] = useState(() => (item.priceMinor / 100).toFixed(2));
+  const [saving, setSaving] = useState(false);
+  const [status, setStatus] = useState(
+    '本店独立商品可修改名称和价格；跨店共享商品需先明确跨店编辑规则。',
+  );
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setStatus('正在保存本店资料…');
+    if (saving) return;
+    const priceMinor = parseStorePriceToMinor(priceYuan);
+    if (priceMinor === null || !name.trim()) {
+      setStatus('请填写有效的商品名称及价格（最多两位小数）。');
+      return;
+    }
+    const input: StoreCatalogEditRequest = {
+      ...draft,
+      ...(name.trim() !== item.productName ? { productName: name.trim() } : {}),
+      ...(priceMinor !== item.priceMinor ? { priceMinor } : {}),
+    };
+    const editsShared = input.productName !== undefined || input.priceMinor !== undefined;
+    setSaving(true);
+    setStatus(editsShared ? '正在核对商品对其他门店的影响…' : '正在保存本店资料…');
     try {
-      await updateStoreCatalog(token, storeId, item.skuId, draft);
+      const preview = editsShared
+        ? await previewStoreCatalogEdit(token, storeId, item.skuId, input)
+        : null;
+      if (editsShared && !preview?.previewToken) {
+        throw new Error('商品变更未获得有效的影响确认，请重新加载。');
+      }
+      await updateStoreCatalog(
+        token,
+        storeId,
+        item.skuId,
+        input,
+        preview?.previewToken ?? undefined,
+      );
       onSaved();
     } catch (error) {
       setStatus(error instanceof Error ? error.message : '保存失败');
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -258,7 +299,29 @@ function StoreCatalogEditForm({
   return (
     <form className="catalog-correction-form" onSubmit={(event) => void save(event)}>
       <h3>编辑商品资料：{item.bookTitle ?? item.productName}</h3>
-      <p>共享书目和价格仅供查看，修改需总部审核；本页不提供共享字段写入。</p>
+      <p>
+        名称与售价变更需经过服务端影响范围核对；如涉及其他门店，本次保存将被拒绝，原数据不会变更。
+      </p>
+      <label>
+        商品名称
+        <input
+          required
+          maxLength={160}
+          value={name}
+          disabled={saving}
+          onChange={(event) => setName(event.target.value)}
+        />
+      </label>
+      <label>
+        售价（元）
+        <input
+          required
+          inputMode="decimal"
+          value={priceYuan}
+          disabled={saving}
+          onChange={(event) => setPriceYuan(event.target.value)}
+        />
+      </label>
       {textField('货架位置', 'shelfLocation', item.shelfLocation)}
       {textField('本店备注', 'storeNote', item.storeNote)}
       {textField('陈列信息', 'displayInfo', item.displayInfo)}
@@ -266,7 +329,9 @@ function StoreCatalogEditForm({
         {status}
       </p>
       <div className="meiping-store-actions">
-        <button type="submit">保存本店资料</button>
+        <button type="submit" disabled={saving}>
+          {saving ? '核对并保存中…' : '保存商品资料'}
+        </button>
         <button type="button" onClick={onCancel}>
           取消
         </button>
