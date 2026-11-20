@@ -11,7 +11,7 @@ import {
   workPages,
   workVersions,
   works,
-  type createDatabase,
+  type DatabaseHandle,
 } from '@xiaohai/db';
 import {
   pictureBookCharacterPlanSchema,
@@ -32,7 +32,7 @@ import {
   type ReferenceImageStorage,
 } from './reference-image-import.js';
 
-type Db = ReturnType<typeof createDatabase>['db'];
+type Db = DatabaseHandle;
 
 export type PictureBookAiConfig = {
   enabled: boolean;

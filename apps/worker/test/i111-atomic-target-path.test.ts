@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BailianImageProvider } from '../src/image-provider.js';
 import { createI111SourceBoundTargetWorker } from '../src/i111-source-bound-target.js';
+import { createI111SessionBoundDatabase } from '@xiaohai/db';
 import type * as I111Gate from '../src/i111-paid-attempt-gate.js';
 
 // Keep the real source-bound factory and ImageJobProcessor. Only replace the
@@ -66,26 +67,34 @@ function offlineDb() {
         }),
       }),
     });
-  const db = {
-    transaction,
-    select: () => ({
-      from: () => ({
-        where: () => ({
-          orderBy: () => ({
-            limit: () => Promise.resolve([{ status: 'RESERVED', uncertainty: 'NONE', budgetKey }]),
+  const db = Object.assign(
+    createI111SessionBoundDatabase({
+      processID: 4321,
+      release() {},
+      query: () => Promise.reject(new Error('real SQL is forbidden in this test')),
+    } as unknown as Parameters<typeof createI111SessionBoundDatabase>[0]),
+    {
+      transaction,
+      select: () => ({
+        from: () => ({
+          where: () => ({
+            orderBy: () => ({
+              limit: () =>
+                Promise.resolve([{ status: 'RESERVED', uncertainty: 'NONE', budgetKey }]),
+            }),
           }),
         }),
       }),
-    }),
-    update: () => ({
-      set: (values: Record<string, unknown>) => ({
-        where: () => {
-          updates.push(values);
-          return Promise.resolve();
-        },
+      update: () => ({
+        set: (values: Record<string, unknown>) => ({
+          where: () => {
+            updates.push(values);
+            return Promise.resolve();
+          },
+        }),
       }),
-    }),
-  };
+    },
+  );
   return { db, updates };
 }
 

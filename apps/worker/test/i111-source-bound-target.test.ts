@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ImageJobProcessor } from '../src/image-processor.js';
 import { createI111SourceBoundTargetWorker } from '../src/i111-source-bound-target.js';
+import { createI111SessionBoundDatabase } from '@xiaohai/db';
 
 const targetIllustrationId = '00000000-1111-4222-8333-444444444444';
 const slot = {
@@ -20,7 +21,11 @@ const slotSwaps = validSlots.flatMap((expectedSlot, index) =>
 );
 const atomicInput = () => ({ targetId: targetIllustrationId, slot });
 const options = () => ({
-  db: { transaction: () => Promise.resolve(null) } as never,
+  db: createI111SessionBoundDatabase({
+    processID: 4321,
+    release() {},
+    query: () => Promise.reject(new Error('no database access permitted in this test')),
+  } as unknown as Parameters<typeof createI111SessionBoundDatabase>[0]),
   targetIllustrationId,
   expectedSlot: slot,
   workspaceId: 'ws-31e71dbr72cfr5th',
@@ -173,9 +178,32 @@ describe('I111 source-bound exact-target Worker construction', () => {
         'I111_SOURCE_BOUND_TARGET_STOP',
       );
     }
+    const trustedOptions = options();
     vi.stubEnv('APP_ENV', 'production');
-    expect(() => createI111SourceBoundTargetWorker(options())).toThrow(
+    expect(() => createI111SourceBoundTargetWorker(trustedOptions)).toThrow(
       'I111_SOURCE_BOUND_TARGET_STOP',
     );
+  });
+
+  it('refuses an unbranded pooled database before constructing the provider', () => {
+    const processOne = vi.spyOn(ImageJobProcessor.prototype, 'processOne');
+    expect(() =>
+      createI111SourceBoundTargetWorker({
+        ...options(),
+        db: { transaction: () => Promise.resolve(null) } as never,
+      }),
+    ).toThrow('I111_SOURCE_BOUND_TARGET_STOP');
+    expect(processOne).not.toHaveBeenCalled();
+  });
+
+  it('stops before claiming the target if the pinned client PID changes', async () => {
+    const processOne = vi.spyOn(ImageJobProcessor.prototype, 'processOne');
+    const workerOptions = options();
+    const worker = createI111SourceBoundTargetWorker(workerOptions);
+    Reflect.set(workerOptions.db.$client, 'processID', 7654);
+    await expect(worker.processTargetIdWithAtomicGateOnce(atomicInput())).rejects.toThrow(
+      'I111_SOURCE_BOUND_TARGET_STOP',
+    );
+    expect(processOne).not.toHaveBeenCalled();
   });
 });

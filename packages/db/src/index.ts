@@ -1,4 +1,10 @@
-export { assertTestDatabaseUrl, createDatabase } from './client.js';
+export {
+  assertTestDatabaseUrl,
+  createDatabase,
+  createI111SessionBoundDatabase,
+  assertI111SessionBoundDatabase,
+} from './client.js';
+export type { DatabaseHandle } from './client.js';
 export { aiProjects, aiJobs, aiJobAttempts } from './ai-schema.js';
 export { aiBudgetWindows, aiCostReservations, aiCostLedger } from './ai-budget-schema.js';
 export { resetAiJobAttemptBudget } from './ai-job-state.js';
