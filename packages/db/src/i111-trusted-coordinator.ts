@@ -145,9 +145,9 @@ async function queryOwned(
       QUERY_TIMEOUT_MS,
     );
   } catch (error) {
-    if (error instanceof CoordinatorStop && error.code === STOP) {
-      state.queryUnsettled = true;
-    }
+    // Any query rejection is ambiguous: pg's query_timeout can report an
+    // ordinary Error before the server-side operation has actually ended.
+    state.queryUnsettled = true;
     throw error;
   }
 }

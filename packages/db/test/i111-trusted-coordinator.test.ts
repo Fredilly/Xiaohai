@@ -21,13 +21,16 @@ type HarnessOptions = {
   lockNever?: boolean;
   lockDelayMs?: number;
   lockRejectDelayMs?: number;
+  lockQueryTimeoutError?: boolean;
   backendThrows?: boolean;
   backendNever?: boolean;
   backendDelayMs?: number;
+  backendQueryTimeoutError?: boolean;
   unlockResult?: boolean;
   unlockThrows?: boolean;
   unlockNever?: boolean;
   unlockDelayMs?: number;
+  unlockQueryTimeoutError?: boolean;
   releaseThrows?: boolean;
   endNever?: boolean;
   endThrows?: boolean;
@@ -70,6 +73,11 @@ async function loadPrivateKernel(options: HarnessOptions = {}) {
         events.push('lock');
         if (options.lockThrows) throw failure('lock transport failure');
         if (options.lockNever) return new Promise(() => {});
+        if (options.lockQueryTimeoutError) {
+          events.push('lock-underlying-pending');
+          setTimeout(() => events.push('lock-underlying-complete'), 80);
+          return new Promise((_, reject) => setTimeout(() => reject(failure('Query read timeout')), 5));
+        }
         if (options.lockRejectDelayMs) {
           return new Promise((_, reject) => setTimeout(() => reject(failure('late lock failure')), options.lockRejectDelayMs));
         }
@@ -83,6 +91,11 @@ async function loadPrivateKernel(options: HarnessOptions = {}) {
         events.push('backend');
         if (options.backendThrows) throw failure('pid transport failure');
         if (options.backendNever) return new Promise(() => {});
+        if (options.backendQueryTimeoutError) {
+          events.push('backend-underlying-pending');
+          setTimeout(() => events.push('backend-underlying-complete'), 80);
+          return new Promise((_, reject) => setTimeout(() => reject(failure('Query read timeout')), 5));
+        }
         const backendPid = backendPids.shift() ?? pid;
         if (options.backendDelayMs) {
           return new Promise((resolve) => setTimeout(() => resolve({ rows: [{ backend_pid: backendPid }] }), options.backendDelayMs));
@@ -93,6 +106,11 @@ async function loadPrivateKernel(options: HarnessOptions = {}) {
         events.push('unlock');
         if (options.unlockThrows) throw failure('unlock transport failure');
         if (options.unlockNever) return new Promise(() => {});
+        if (options.unlockQueryTimeoutError) {
+          events.push('unlock-underlying-pending');
+          setTimeout(() => events.push('unlock-underlying-complete'), 80);
+          return new Promise((_, reject) => setTimeout(() => reject(failure('Query read timeout')), 5));
+        }
         if (options.unlockDelayMs) {
           return new Promise((resolve) => setTimeout(() => resolve({ rows: [{ unlocked: options.unlockResult ?? true }] }), options.unlockDelayMs));
         }
@@ -283,7 +301,7 @@ describe('I111 Trusted Coordinator ownership kernel', () => {
     const pidFailure = await loadPrivateKernel({ backendThrows: true, sameRealmErrors: true });
     await expect(pidFailure.executeOwnedLifecycle('offline-test'))
       .rejects.toThrow('I111_TRUSTED_COORDINATOR_STOP');
-    expect(pidFailure.events).toEqual(['connect', 'lock', 'backend', 'backend', 'release-destroy', 'end']);
+    expect(pidFailure.events).toEqual(['connect', 'lock', 'backend', 'release-destroy', 'end']);
   });
 
   it('redacts same-realm unlock and pool-end failures', async () => {
@@ -327,6 +345,62 @@ describe('I111 Trusted Coordinator ownership kernel', () => {
       .rejects.toThrow('I111_TRUSTED_COORDINATOR_STOP');
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(lateReject.events).toEqual(['connect', 'lock', 'release-destroy', 'end']);
+  });
+
+  it('treats an ordinary driver timeout error during lock as unknown and never continues SQL', async () => {
+    const harness = await loadPrivateKernel({ lockQueryTimeoutError: true, sameRealmErrors: true });
+    await expect(harness.executeOwnedLifecycle('offline-test'))
+      .rejects.toThrow('I111_TRUSTED_COORDINATOR_STOP');
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(harness.events).toEqual([
+      'connect',
+      'lock',
+      'lock-underlying-pending',
+      'release-destroy',
+      'end',
+      'lock-underlying-complete',
+    ]);
+    expect(harness.events).not.toContain('backend');
+    expect(harness.events).not.toContain('unlock');
+    expect(harness.releaseErrors).toHaveLength(1);
+  });
+
+  it('treats an ordinary driver timeout during backend PID query as unknown', async () => {
+    const harness = await loadPrivateKernel({ backendQueryTimeoutError: true, sameRealmErrors: true });
+    await expect(harness.executeOwnedLifecycle('offline-test'))
+      .rejects.toThrow('I111_TRUSTED_COORDINATOR_STOP');
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(harness.events).toEqual([
+      'connect',
+      'lock',
+      'backend',
+      'backend-underlying-pending',
+      'release-destroy',
+      'end',
+      'backend-underlying-complete',
+    ]);
+    expect(harness.events.filter((event) => event === 'backend')).toHaveLength(1);
+    expect(harness.events).not.toContain('unlock');
+    expect(harness.releaseErrors).toHaveLength(1);
+  });
+
+  it('treats an ordinary driver timeout during unlock as unknown', async () => {
+    const harness = await loadPrivateKernel({ unlockQueryTimeoutError: true, sameRealmErrors: true });
+    await expect(harness.executeOwnedLifecycle('offline-test'))
+      .rejects.toThrow('I111_TRUSTED_COORDINATOR_STOP');
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(harness.events).toEqual([
+      'connect',
+      'lock',
+      'backend',
+      'backend',
+      'unlock',
+      'unlock-underlying-pending',
+      'release-destroy',
+      'end',
+      'unlock-underlying-complete',
+    ]);
+    expect(harness.releaseErrors).toHaveLength(1);
   });
 
   it('destroys on backend and unlock query timeouts without retrying queries', async () => {
