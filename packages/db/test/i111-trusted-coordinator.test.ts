@@ -36,6 +36,7 @@ type HarnessOptions = {
   endThrows?: boolean;
   endDelayMs?: number;
   endRejectDelayMs?: number;
+  poolEndTimeoutMs?: number;
   sameRealmErrors?: boolean;
   timeoutMs?: number;
 };
@@ -43,10 +44,12 @@ type HarnessOptions = {
 async function loadPrivateKernel(options: HarnessOptions = {}) {
   const source = await readFile(sourcePath, 'utf8');
   const timeoutMs = options.timeoutMs ?? 5_000;
+  const poolEndTimeoutMs = options.poolEndTimeoutMs ?? 1_000;
   const body = source
     .slice(source.indexOf('const STOP ='))
     .replace('const CONNECT_TIMEOUT_MS = 5_000;', `const CONNECT_TIMEOUT_MS = ${timeoutMs};`)
     .replace('const QUERY_TIMEOUT_MS = 5_000;', `const QUERY_TIMEOUT_MS = ${timeoutMs};`)
+    .replace('const POOL_END_TIMEOUT_MS = 1_000;', `const POOL_END_TIMEOUT_MS = ${poolEndTimeoutMs};`)
     .replace(/^export\s+/gmu, '');
   const program = `
     const pg = globalThis.__pg;
@@ -348,6 +351,43 @@ describe('I111 Trusted Coordinator ownership kernel', () => {
     expect(late.endCalls).toBe(1);
   });
 
+  it('keeps a late client fail-closed when destroy-release throws', async () => {
+    const late = await loadPrivateKernel({
+      connectDelayMs: 40,
+      releaseThrows: true,
+      poolEndTimeoutMs: 20,
+      timeoutMs: 10,
+      sameRealmErrors: true,
+    });
+    await expect(late.executeOwnedLifecycle('offline-test')).rejects.toThrow(
+      'I111_TRUSTED_COORDINATOR_STOP',
+    );
+    await new Promise((resolve) => setTimeout(resolve, 70));
+    expect(late.events).toEqual(['connect', 'end', 'release-destroy']);
+    expect(late.releaseErrors).toHaveLength(1);
+    expect(late.endCalls).toBe(1);
+    expect(late.calls).toHaveLength(0);
+  });
+
+  it('handles late connect, release failure and pending pool shutdown without follow-up SQL', async () => {
+    const interleaved = await loadPrivateKernel({
+      connectDelayMs: 45,
+      releaseThrows: true,
+      endNever: true,
+      poolEndTimeoutMs: 20,
+      timeoutMs: 10,
+      sameRealmErrors: true,
+    });
+    await expect(interleaved.executeOwnedLifecycle('offline-test')).rejects.toThrow(
+      'I111_TRUSTED_COORDINATOR_STOP',
+    );
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    expect(interleaved.events).toEqual(['connect', 'end', 'release-destroy']);
+    expect(interleaved.releaseErrors).toHaveLength(1);
+    expect(interleaved.endCalls).toBe(1);
+    expect(interleaved.calls).toHaveLength(0);
+  });
+
   it('destroys on advisory-lock timeout and handles late resolve/reject safely', async () => {
     const lateResolve = await loadPrivateKernel({ lockDelayMs: 40, timeoutMs: 20 });
     await expect(lateResolve.executeOwnedLifecycle('offline-test')).rejects.toThrow(
@@ -481,14 +521,18 @@ describe('I111 Trusted Coordinator ownership kernel', () => {
   });
 
   it('distinguishes delayed pool shutdown completion from a timeout', async () => {
-    const delayed = await loadPrivateKernel({ endDelayMs: 40 });
+    const delayed = await loadPrivateKernel({ endDelayMs: 40, poolEndTimeoutMs: 20 });
     await expect(delayed.executeOwnedLifecycle('offline-test')).rejects.toThrow(
-      'I111_TRUSTED_COORDINATOR_PORTS_NOT_WIRED',
+      'I111_TRUSTED_COORDINATOR_STOP',
     );
     expect(delayed.events).toEqual(['connect', 'lock', 'backend', 'backend', 'unlock', 'release', 'end']);
     expect(delayed.endCalls).toBe(1);
 
-    const lateReject = await loadPrivateKernel({ endRejectDelayMs: 40, sameRealmErrors: true });
+    const lateReject = await loadPrivateKernel({
+      endRejectDelayMs: 40,
+      poolEndTimeoutMs: 20,
+      sameRealmErrors: true,
+    });
     await expect(lateReject.executeOwnedLifecycle('offline-test')).rejects.toThrow(
       'I111_TRUSTED_COORDINATOR_STOP',
     );
