@@ -30,7 +30,7 @@
     "preflight:image": "node --env-file-if-exists .env scripts/image-preflight.mjs",
     "preflight:i111-readonly": "node scripts/i111-readonly-runtime-preflight.mjs",
     "test:i111-readonly-integration": "node --test scripts/i111-readonly-runtime-preflight.integration.test.mjs",
-    "test:preflight": "node --test scripts/local-startup.test.mjs scripts/image-preflight.test.mjs scripts/i111-db-evidence-ports.test.mjs scripts/i111-exclusive-pg-lock.test.mjs scripts/i111-one-shot-policy.test.mjs scripts/i111-one-shot-orchestration.test.mjs scripts/i111-paid-operation-grant.test.mjs scripts/i111-readonly-runtime-preflight.test.mjs scripts/release-preflight.test.mjs scripts/private-bos-staging-smoke.test.mjs",
+    "test:preflight": "node --test scripts/local-startup.test.mjs scripts/image-preflight.test.mjs scripts/i111-db-evidence-ports.test.mjs scripts/i111-exclusive-pg-lock.test.mjs scripts/i111-formal-api-worker-ports.test.mjs scripts/i111-one-shot-policy.test.mjs scripts/i111-one-shot-orchestration.test.mjs scripts/i111-paid-operation-grant.test.mjs scripts/i111-readonly-runtime-preflight.test.mjs scripts/release-preflight.test.mjs scripts/private-bos-staging-smoke.test.mjs",
     "preflight:private-bos": "node --env-file-if-exists .env scripts/private-bos-staging-smoke.mjs",
     "test:picture-book-quality": "node --test benchmarks/picture-book-quality/review.test.mjs",
     "preflight:release": "node --env-file-if-exists .env scripts/release-preflight.mjs"
