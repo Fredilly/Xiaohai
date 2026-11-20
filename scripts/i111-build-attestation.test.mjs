@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
@@ -26,8 +26,9 @@ async function write(root, path, contents) {
 }
 
 async function fixture(t) {
-  const root = await mkdtemp(join(tmpdir(), 'i111-build-observation-'));
-  t.after(async () => rm(root, { recursive: true, force: true }));
+  const temp = await mkdtemp(join(tmpdir(), 'i111-build-observation-'));
+  t.after(async () => rm(temp, { recursive: true, force: true }));
+  const root = await realpath(temp);
   git(root, ['init', '-q']);
   for (const path of I111_BUILD_SOURCE_FILES) {
     await write(root, path, `fixture source: ${path}\n`);
@@ -48,6 +49,14 @@ async function fixture(t) {
   return root;
 }
 
+function expected(root) {
+  return { head: git(root, ['rev-parse', 'HEAD']), tree: git(root, ['rev-parse', 'HEAD^{tree}']) };
+}
+
+async function observe(root) {
+  return observeI111BuildArtifacts(root, expected(root));
+}
+
 function assertStopped(result) {
   assert.deepEqual(result, {
     verdict: 'STOP',
@@ -59,8 +68,8 @@ function assertStopped(result) {
 
 test('records checked-out source tree and every dist byte without claiming provenance', async (t) => {
   const root = await fixture(t);
-  const first = await observeI111BuildArtifacts(root);
-  const second = await observeI111BuildArtifacts(root);
+  const first = await observe(root);
+  const second = await observe(root);
   assert.equal(first.verdict, 'OBSERVED_ONLY');
   assert.equal(first.tree, git(root, ['rev-parse', 'HEAD^{tree}']));
   assert.equal(first.head, git(root, ['rev-parse', 'HEAD']));
@@ -81,9 +90,9 @@ test('records checked-out source tree and every dist byte without claiming prove
 
 test('detects changed build output despite unchanged commit/tree', async (t) => {
   const root = await fixture(t);
-  const original = await observeI111BuildArtifacts(root);
+  const original = await observe(root);
   await write(root, WORKER_ENTRY, 'export const worker = false;\n');
-  const changed = await observeI111BuildArtifacts(root);
+  const changed = await observe(root);
   assert.equal(changed.verdict, 'OBSERVED_ONLY');
   assert.equal(changed.tree, original.tree);
   assert.notEqual(changed.observationSha256, original.observationSha256);
@@ -93,29 +102,29 @@ test('detects changed build output despite unchanged commit/tree', async (t) => 
 test('fails closed on dirty tracked source, missing artifact and substituted symlink', async (t) => {
   const root = await fixture(t);
   await write(root, I111_BUILD_SOURCE_FILES[1], 'dirty lockfile\n');
-  assertStopped(await observeI111BuildArtifacts(root));
+  assertStopped(await observe(root));
   git(root, ['restore', '--', I111_BUILD_SOURCE_FILES[1]]);
   await rm(join(root, API_ENTRY));
-  assertStopped(await observeI111BuildArtifacts(root));
+  assertStopped(await observe(root));
   await write(root, API_ENTRY, 'restored\n');
   await rm(join(root, WORKER_ENTRY));
   await symlink(API_ENTRY, join(root, WORKER_ENTRY));
-  assertStopped(await observeI111BuildArtifacts(root));
+  assertStopped(await observe(root));
 });
 
 test('fails closed on missing tracked file, unknown directory and relative paths', async (t) => {
   const root = await fixture(t);
   const source = I111_BUILD_SOURCE_FILES.at(-1);
   await rm(join(root, source));
-  assertStopped(await observeI111BuildArtifacts(root));
-  assertStopped(await observeI111BuildArtifacts('relative/path'));
+  assertStopped(await observe(root));
+  assertStopped(await observeI111BuildArtifacts('relative/path', expected(root)));
   const nonexistent = join(root, 'nonexistent');
-  assertStopped(await observeI111BuildArtifacts(nonexistent));
+  assertStopped(await observeI111BuildArtifacts(nonexistent, expected(root)));
 });
 
 test('rejects forged, incomplete or stopped observations for approval', async (t) => {
   const root = await fixture(t);
-  const observed = await observeI111BuildArtifacts(root);
+  const observed = await observe(root);
   assert.equal(compareI111BuildObservations({}, observed).verdict, 'STOP');
   assert.equal(
     compareI111BuildObservations(observed, { ...observed, tree: '0'.repeat(40) }).verdict,
@@ -125,4 +134,42 @@ test('rejects forged, incomplete or stopped observations for approval', async (t
   assert.equal(observed.verifiedBuildProvenance, false);
   assert.equal(observed.paidExecutionAuthorized, false);
   assert.equal((await readFile(join(root, WORKER_ENTRY), 'utf8')).length > 0, true);
+});
+
+test('pins the exact reviewed HEAD/tree and refuses missing or wrong expectations', async (t) => {
+  const root = await fixture(t);
+  const pinned = expected(root);
+  assert.equal((await observeI111BuildArtifacts(root, pinned)).verdict, 'OBSERVED_ONLY');
+  assertStopped(await observeI111BuildArtifacts(root));
+  assertStopped(await observeI111BuildArtifacts(root, { ...pinned, head: '0'.repeat(40) }));
+  assertStopped(await observeI111BuildArtifacts(root, { ...pinned, tree: '0'.repeat(40) }));
+  assertStopped(await observeI111BuildArtifacts(root, { ...pinned, extra: 'forged' }));
+});
+
+test('rejects source or dist changes hidden behind copied observationSha256', async (t) => {
+  const root = await fixture(t);
+  const observed = await observe(root);
+  const forgedSource = {
+    ...observed,
+    source: observed.source.map(([path, hash], i) => [path, i === 0 ? '0'.repeat(64) : hash]),
+  };
+  const forgedDist = {
+    ...observed,
+    dist: observed.dist.map(([path, hash], i) => [path, i === 0 ? '0'.repeat(64) : hash]),
+  };
+  assert.equal(compareI111BuildObservations(observed, forgedSource).verdict, 'STOP');
+  assert.equal(compareI111BuildObservations(observed, forgedDist).verdict, 'STOP');
+  assert.equal(compareI111BuildObservations(forgedSource, forgedSource).verdict, 'STOP');
+  assert.equal(compareI111BuildObservations(forgedDist, forgedDist).verdict, 'STOP');
+  assert.equal(
+    compareI111BuildObservations(observed, { ...observed, extra: true }).verdict,
+    'STOP',
+  );
+  assert.equal(
+    compareI111BuildObservations(
+      observed,
+      Object.defineProperty({ ...observed }, 'source', { get: () => observed.source }),
+    ).verdict,
+    'STOP',
+  );
 });

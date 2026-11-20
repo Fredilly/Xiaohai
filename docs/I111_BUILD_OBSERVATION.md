@@ -11,8 +11,12 @@ I111 coordinator, provider call or runtime admission port.
 
 To obtain two observations, use separate, clean, isolated worktrees built by
 independently controlled offline procedures. After each build, import
-`observeI111BuildArtifacts(absoluteRootPath)` and retain its returned JSON
-outside the worktree. Then compare the results using
+`observeI111BuildArtifacts(canonicalAbsoluteRootPath, { head, tree })`, where
+`head` and `tree` are the **externally reviewed, immutable** expected Git
+identities, not values derived from the candidate checkout. Pass a canonical
+`realpath()` for the root (on macOS the temp directory may resolve from `/var`
+to `/private/var`). Retain each returned JSON outside the worktree. Then
+compare the results using
 `compareI111BuildObservations(first, second)`.
 
 Both returned verdicts are deliberately limited:
@@ -28,7 +32,12 @@ allowlist is not a complete dependency graph; untracked/ignored inputs,
 dependency cache, build-time environment, and a compromised observer are not
 independently ruled out. The `pnpm` version is only declared in tracked
 `package.json`, not independently measured here. An attacker can forge
-observations or tamper with compiled code after observation. A second
+two internally self-consistent observations or tamper with compiled code after
+observation. The comparator validates the JSON schema and recomputes its
+digest, but does not authenticate who created the JSON. Both source and dist
+are sampled twice with Git identity/clean-status checks before and after;
+these are *not* an atomic filesystem snapshot and cannot eliminate a brief
+substitution that is restored between samples. A second
 independent reviewer must check immutable input/lockfile provenance, offline
 clean builds, trusted toolchain and artifact custody, and exact runtime
 artifact identity separately.
