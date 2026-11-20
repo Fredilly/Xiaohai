@@ -11,12 +11,18 @@ const sourcePath = new URL('../src/i111-trusted-coordinator.ts', import.meta.url
 
 type HarnessOptions = {
   backendPids?: number[];
+  poolCtorThrows?: boolean;
+  connectThrows?: boolean;
   lockResult?: boolean;
   lockThrows?: boolean;
   malformedLock?: boolean;
+  backendThrows?: boolean;
   unlockResult?: boolean;
+  unlockThrows?: boolean;
   releaseThrows?: boolean;
   endNever?: boolean;
+  endThrows?: boolean;
+  sameRealmErrors?: boolean;
 };
 
 async function loadPrivateKernel(options: HarnessOptions = {}) {
@@ -27,6 +33,7 @@ async function loadPrivateKernel(options: HarnessOptions = {}) {
     const drizzle = globalThis.__drizzle;
     const schema = {};
     ${body}
+    globalThis.__makeRealmError = () => new Error('REALM_SECRET');
     globalThis.__kernel = { executeOwnedLifecycle };
   `;
   const output = typescript.transpileModule(program, {
@@ -35,6 +42,9 @@ async function loadPrivateKernel(options: HarnessOptions = {}) {
   const calls: Array<{ owner: object; sql: string }> = [];
   const events: string[] = [];
   const releaseErrors: Array<unknown> = [];
+  let makeRealmError: (() => Error) | undefined;
+  const failure = (message: string) =>
+    options.sameRealmErrors && makeRealmError ? makeRealmError() : new Error(message);
   const pid = 4321;
   const backendPids = [...(options.backendPids ?? [pid, pid])];
   const client = {
@@ -43,17 +53,19 @@ async function loadPrivateKernel(options: HarnessOptions = {}) {
       calls.push({ owner: client, sql });
       if (sql.includes('pg_try_advisory_lock')) {
         events.push('lock');
-        if (options.lockThrows) throw new Error('lock transport failure');
+        if (options.lockThrows) throw failure('lock transport failure');
         if (options.malformedLock) return { rows: [{}] };
         return { rows: [{ locked: options.lockResult ?? true }] };
       }
       if (sql.includes('pg_backend_pid')) {
         events.push('backend');
+        if (options.backendThrows) throw failure('pid transport failure');
         const backendPid = backendPids.shift() ?? pid;
         return { rows: [{ backend_pid: backendPid }] };
       }
       if (sql.includes('pg_advisory_unlock')) {
         events.push('unlock');
+        if (options.unlockThrows) throw failure('unlock transport failure');
         return { rows: [{ unlocked: options.unlockResult ?? true }] };
       }
       throw new Error('unexpected SQL');
@@ -67,15 +79,18 @@ async function loadPrivateKernel(options: HarnessOptions = {}) {
   const pool = {
     async connect() {
       events.push('connect');
+      if (options.connectThrows) throw failure('connect failure');
       return client;
     },
     end() {
       events.push('end');
+      if (options.endThrows) return Promise.reject(failure('pool end failure'));
       return options.endNever ? new Promise<void>(() => {}) : Promise.resolve();
     },
   };
   class FakePool {
     constructor() {
+      if (options.poolCtorThrows) throw failure('pool constructor failure');
       return pool;
     }
   }
@@ -89,6 +104,7 @@ async function loadPrivateKernel(options: HarnessOptions = {}) {
   };
   context.globalThis = context;
   vm.runInNewContext(output, context);
+  makeRealmError = context.__makeRealmError as () => Error;
   return {
     executeOwnedLifecycle: (context.__kernel as { executeOwnedLifecycle: typeof Function })
       .executeOwnedLifecycle,
@@ -142,6 +158,9 @@ describe('I111 Trusted Coordinator ownership kernel', () => {
     expect(source).toContain('POOL_END_TIMEOUT_MS');
     expect(source).toContain('await Promise.race([ending, timeout])');
     expect(source).not.toContain('timer.unref()');
+    expect(source).toContain('function safeCoordinatorFailure(error: unknown)');
+    expect(source).not.toContain('primaryFailure instanceof Error');
+    expect(source).toContain('pool = new pg.Pool({ connectionString })');
     expect(source.indexOf('await releaseOwnedLock(client, lockState.pinnedPid)')).toBeLessThan(
       source.indexOf('client.release()'),
     );
@@ -201,6 +220,45 @@ describe('I111 Trusted Coordinator ownership kernel', () => {
     );
     expect(harness.events).toEqual(['connect', 'lock', 'release', 'end']);
     expect(harness.releaseErrors).toEqual([undefined]);
+  });
+
+  it('redacts same-realm pool-constructor and connect failures', async () => {
+    const constructorFailure = await loadPrivateKernel({ poolCtorThrows: true, sameRealmErrors: true });
+    await expect(constructorFailure.executeOwnedLifecycle('offline-test'))
+      .rejects.toThrow('I111_TRUSTED_COORDINATOR_STOP');
+    await expect(constructorFailure.executeOwnedLifecycle('offline-test'))
+      .rejects.not.toThrow('REALM_SECRET');
+
+    const connectFailure = await loadPrivateKernel({ connectThrows: true, sameRealmErrors: true });
+    await expect(connectFailure.executeOwnedLifecycle('offline-test'))
+      .rejects.toThrow('I111_TRUSTED_COORDINATOR_STOP');
+    expect(connectFailure.events).toEqual(['connect', 'end']);
+  });
+
+  it('redacts same-realm lock and PID query failures', async () => {
+    const lockFailure = await loadPrivateKernel({ lockThrows: true, sameRealmErrors: true });
+    await expect(lockFailure.executeOwnedLifecycle('offline-test'))
+      .rejects.toThrow('I111_TRUSTED_COORDINATOR_STOP');
+    await expect(lockFailure.executeOwnedLifecycle('offline-test'))
+      .rejects.not.toThrow('REALM_SECRET');
+    expect(lockFailure.events).toEqual(['connect', 'lock', 'release-destroy', 'end', 'connect', 'lock', 'release-destroy', 'end']);
+
+    const pidFailure = await loadPrivateKernel({ backendThrows: true, sameRealmErrors: true });
+    await expect(pidFailure.executeOwnedLifecycle('offline-test'))
+      .rejects.toThrow('I111_TRUSTED_COORDINATOR_STOP');
+    expect(pidFailure.events).toEqual(['connect', 'lock', 'backend', 'backend', 'release-destroy', 'end']);
+  });
+
+  it('redacts same-realm unlock and pool-end failures', async () => {
+    const unlockFailure = await loadPrivateKernel({ unlockThrows: true, sameRealmErrors: true });
+    await expect(unlockFailure.executeOwnedLifecycle('offline-test'))
+      .rejects.toThrow('I111_TRUSTED_COORDINATOR_STOP');
+    expect(unlockFailure.events).toEqual(['connect', 'lock', 'backend', 'backend', 'unlock', 'release-destroy', 'end']);
+
+    const endFailure = await loadPrivateKernel({ endThrows: true, sameRealmErrors: true });
+    await expect(endFailure.executeOwnedLifecycle('offline-test'))
+      .rejects.toThrow('I111_TRUSTED_COORDINATOR_STOP');
+    expect(endFailure.events).toEqual(['connect', 'lock', 'backend', 'backend', 'unlock', 'release', 'end']);
   });
 
   it('stops without release when unlock returns false', async () => {

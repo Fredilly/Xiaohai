@@ -57,6 +57,15 @@ class CoordinatorStop extends Error {
   }
 }
 
+function safeCoordinatorFailure(error: unknown): CoordinatorStop {
+  if (error instanceof CoordinatorStop) {
+    if (error.code === STOP || error.code === DISABLED || error.code === PORTS_NOT_WIRED) {
+      return error;
+    }
+  }
+  return new CoordinatorStop(STOP);
+}
+
 type QueryRow = Record<string, unknown>;
 
 function rowsOf(result: unknown): QueryRow[] {
@@ -150,7 +159,7 @@ async function executeOwnedLifecycle(connectionString: string): Promise<never> {
   if (typeof connectionString !== 'string' || connectionString.length === 0) {
     throw new CoordinatorStop(STOP);
   }
-  const pool = new pg.Pool({ connectionString });
+  let pool: pg.Pool | undefined;
   let client: PoolClient | undefined;
   const lockState: LockState = {
     acquired: false,
@@ -160,6 +169,7 @@ async function executeOwnedLifecycle(connectionString: string): Promise<never> {
   let primaryFailure: unknown;
   let cleanupFailure: unknown;
   try {
+    pool = new pg.Pool({ connectionString });
     client = await pool.connect();
     const db = drizzle(client, { schema });
     await acquireOwnedLock(client, lockState);
@@ -197,16 +207,16 @@ async function executeOwnedLifecycle(connectionString: string): Promise<never> {
         cleanupFailure ??= error;
       }
     }
-    try {
-      await endOwnedPool(pool);
-    } catch (error) {
-      cleanupFailure ??= error;
+    if (pool) {
+      try {
+        await endOwnedPool(pool);
+      } catch (error) {
+        cleanupFailure ??= error;
+      }
     }
   }
-  if (cleanupFailure) throw new CoordinatorStop(STOP);
-  if (primaryFailure) {
-    throw primaryFailure instanceof Error ? primaryFailure : new CoordinatorStop(STOP);
-  }
+  if (cleanupFailure) throw safeCoordinatorFailure(cleanupFailure);
+  if (primaryFailure) throw safeCoordinatorFailure(primaryFailure);
   throw new CoordinatorStop(STOP);
 }
 
