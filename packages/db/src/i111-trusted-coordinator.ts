@@ -77,16 +77,25 @@ function requireBackendPid(client: PoolClient): number {
 }
 
 /** Defense in depth only: server-side pg_backend_pid remains authoritative. */
-type LockState = { acquired: boolean; pinnedPid?: number };
+type LockState = {
+  acquired: boolean;
+  lockAttempted: boolean;
+  lockConfirmedNotAcquired: boolean;
+  pinnedPid?: number;
+};
 
 async function acquireOwnedLock(client: PoolClient, state: LockState): Promise<void> {
   const pinnedPid = requireBackendPid(client);
   state.pinnedPid = pinnedPid;
+  state.lockAttempted = true;
   const locked = rowsOf(await client.query(
     'select pg_try_advisory_lock($1::int4, $2::int4) as locked',
     [...LOCK_KEY],
   ));
   if (locked.length !== 1 || locked[0]?.locked !== true) {
+    if (locked.length === 1 && locked[0]?.locked === false) {
+      state.lockConfirmedNotAcquired = true;
+    }
     throw new CoordinatorStop(STOP);
   }
   state.acquired = true;
@@ -143,7 +152,11 @@ async function executeOwnedLifecycle(connectionString: string): Promise<never> {
   }
   const pool = new pg.Pool({ connectionString });
   let client: PoolClient | undefined;
-  const lockState: LockState = { acquired: false };
+  const lockState: LockState = {
+    acquired: false,
+    lockAttempted: false,
+    lockConfirmedNotAcquired: false,
+  };
   let primaryFailure: unknown;
   let cleanupFailure: unknown;
   try {
@@ -159,7 +172,7 @@ async function executeOwnedLifecycle(connectionString: string): Promise<never> {
   } catch (error) {
     primaryFailure = error;
   } finally {
-    let safeToRelease = !lockState.acquired;
+    let safeToRelease = !lockState.lockAttempted || lockState.lockConfirmedNotAcquired;
     if (client && lockState.acquired && lockState.pinnedPid !== undefined) {
       try {
         await releaseOwnedLock(client, lockState.pinnedPid);
@@ -174,7 +187,7 @@ async function executeOwnedLifecycle(connectionString: string): Promise<never> {
       } catch (error) {
         cleanupFailure ??= error;
       }
-    } else if (client && lockState.acquired) {
+    } else if (client && lockState.lockAttempted) {
       // An unknown lock state must not return a possibly-held session to the pool.
       // pg treats release(error) as a destroy request; either way this invocation
       // remains STOP and never claims that the lock or connection was released.

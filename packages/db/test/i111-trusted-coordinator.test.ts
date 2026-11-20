@@ -11,6 +11,9 @@ const sourcePath = new URL('../src/i111-trusted-coordinator.ts', import.meta.url
 
 type HarnessOptions = {
   backendPids?: number[];
+  lockResult?: boolean;
+  lockThrows?: boolean;
+  malformedLock?: boolean;
   unlockResult?: boolean;
   releaseThrows?: boolean;
   endNever?: boolean;
@@ -40,7 +43,9 @@ async function loadPrivateKernel(options: HarnessOptions = {}) {
       calls.push({ owner: client, sql });
       if (sql.includes('pg_try_advisory_lock')) {
         events.push('lock');
-        return { rows: [{ locked: true }] };
+        if (options.lockThrows) throw new Error('lock transport failure');
+        if (options.malformedLock) return { rows: [{}] };
+        return { rows: [{ locked: options.lockResult ?? true }] };
       }
       if (sql.includes('pg_backend_pid')) {
         events.push('backend');
@@ -130,7 +135,9 @@ describe('I111 Trusted Coordinator ownership kernel', () => {
     expect(source).toContain('drizzle(client, { schema })');
     expect(source).toContain('await releaseOwnedLock(client, lockState.pinnedPid)');
     expect(source).toContain('client.release()');
-    expect(source).toContain('let safeToRelease = !lockState.acquired');
+    expect(source).toContain(
+      'let safeToRelease = !lockState.lockAttempted || lockState.lockConfirmedNotAcquired',
+    );
     expect(source).toContain('if (client && safeToRelease)');
     expect(source).toContain('POOL_END_TIMEOUT_MS');
     expect(source).toContain('await Promise.race([ending, timeout])');
@@ -167,6 +174,33 @@ describe('I111 Trusted Coordinator ownership kernel', () => {
     expect(harness.events).toEqual(['connect', 'lock', 'backend', 'backend', 'release-destroy', 'end']);
     expect(harness.releaseErrors).toHaveLength(1);
     expect(harness.releaseErrors[0]).toMatchObject({ message: 'I111_TRUSTED_COORDINATOR_STOP' });
+  });
+
+  it('destroys rather than releases when the lock request throws after being sent', async () => {
+    const harness = await loadPrivateKernel({ lockThrows: true });
+    await expect(harness.executeOwnedLifecycle('offline-test')).rejects.toThrow(
+      'I111_TRUSTED_COORDINATOR_STOP',
+    );
+    expect(harness.events).toEqual(['connect', 'lock', 'release-destroy', 'end']);
+    expect(harness.releaseErrors).toHaveLength(1);
+  });
+
+  it('destroys rather than releases when the lock response is malformed', async () => {
+    const harness = await loadPrivateKernel({ malformedLock: true });
+    await expect(harness.executeOwnedLifecycle('offline-test')).rejects.toThrow(
+      'I111_TRUSTED_COORDINATOR_STOP',
+    );
+    expect(harness.events).toEqual(['connect', 'lock', 'release-destroy', 'end']);
+    expect(harness.releaseErrors).toHaveLength(1);
+  });
+
+  it('allows ordinary release only for an explicit false lock result', async () => {
+    const harness = await loadPrivateKernel({ lockResult: false });
+    await expect(harness.executeOwnedLifecycle('offline-test')).rejects.toThrow(
+      'I111_TRUSTED_COORDINATOR_STOP',
+    );
+    expect(harness.events).toEqual(['connect', 'lock', 'release', 'end']);
+    expect(harness.releaseErrors).toEqual([undefined]);
   });
 
   it('stops without release when unlock returns false', async () => {
