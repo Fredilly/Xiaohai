@@ -24,7 +24,6 @@ const CODES = Object.freeze({
   APPROVAL: 'I111_OPERATION_APPROVAL_REQUIRED',
   SLOT: 'I111_EXECUTOR_SLOT_MISMATCH',
   RESERVATION: 'I111_EXECUTOR_RESERVATION_UNVERIFIED',
-  RUNTIME: 'I111_EXECUTOR_RUNTIME_UNVERIFIED',
   PROCESS: 'I111_EXECUTOR_PROCESS_UNVERIFIED',
   RESULT: 'I111_EXECUTOR_RESULT_UNVERIFIED',
   UNKNOWN: 'I111_EXECUTOR_OUTCOME_UNCERTAIN',
@@ -74,7 +73,9 @@ export function previewI111OneShot(snapshot) {
  *    this slot before the formal API transaction,
  *  - call the formal PictureBookService.generateIllustration transaction,
  *  - validate its one newly created reservation and the final target-ID Worker,
- *  - perform a fresh atomic isolation/authorization check at the paid boundary.
+ *  - consume the atomic provider-attempt marker INSIDE the exact-ID Worker,
+ *    immediately before its one guarded paid transport. A separate boolean
+ *    pre-check cannot authorize a later network request (TOCTOU).
  *
  * Ports are purposely injected instead of wired to real services: this PR
  * cannot start an API, a Worker, a BOS GET or a paid POST from a CLI.
@@ -89,8 +90,7 @@ export async function coordinateI111OneShot(ports) {
     'verifySlotFreshBeforePrepare',
     'prepareViaFormalApi',
     'verifyExactlyOneReservation',
-    'verifyPaidBoundaryAtomically',
-    'processTargetIdOnce',
+    'processTargetIdWithAtomicGateOnce',
     'readFinalEvidence',
   ];
   if (!ports || required.some((key) => typeof ports[key] !== 'function')) {
@@ -151,14 +151,12 @@ export async function coordinateI111OneShot(ports) {
         (await ports.verifyExactlyOneReservation({ targetId, slot })) === true,
         CODES.RESERVATION,
       );
-      assert(
-        (await ports.verifyPaidBoundaryAtomically({ targetId, slot })) === true,
-        CODES.RUNTIME,
-      );
-
-      // At most one call to processOne per invocation. Never retry on an
-      // exception, timeout, null or unknown provider outcome.
-      const processedId = await ports.processTargetIdOnce(targetId);
+      // This MUST be a source-bound, inseparable exact-ID Worker operation:
+      // claim targetId -> consumeI111ProviderSlot (atomic AT_RISK marker) ->
+      // one guarded provider POST. An independently supplied boolean result
+      // cannot grant permission to perform the POST in a later operation.
+      // Never retry on an exception, timeout, null or unknown outcome.
+      const processedId = await ports.processTargetIdWithAtomicGateOnce({ targetId, slot });
       assert(processedId === targetId, CODES.PROCESS);
       const final = await ports.readFinalEvidence(targetId);
       assert(

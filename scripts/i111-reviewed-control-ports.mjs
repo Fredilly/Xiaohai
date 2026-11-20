@@ -8,9 +8,11 @@ import { verifyI111OwnerGrantPort } from './i111-paid-operation-grant.mjs';
  * boolean can replace the owner-grant verifier or the DB evidence readers.
  *
  * This is NOT an executable one-shot runner: it intentionally exposes no
- * readTrustedSnapshot, prepareViaFormalApi, verifyPaidBoundaryAtomically or
- * processTargetIdOnce port. Those must be independently source-bound and
- * checked in a separate reviewed Mac runtime before any paid invocation.
+ * readTrustedSnapshot, prepareViaFormalApi or
+ * processTargetIdWithAtomicGateOnce port. That last operation must execute
+ * the atomic AT_RISK marker within the exact-ID Worker before transport;
+ * it may not be replaced by a separate boolean pre-check. All three ports
+ * must be independently source-bound in a separately reviewed Mac runtime.
  */
 export function createI111ReviewedControlPorts(pg) {
   if (!pg || typeof pg.query !== 'function') {
