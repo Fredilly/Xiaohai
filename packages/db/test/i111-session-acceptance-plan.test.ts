@@ -11,7 +11,7 @@ describe('I111 disposable PostgreSQL acceptance plan', () => {
       'DESIGN ONLY / NO-GO',
       'dedicated, disposable PostgreSQL',
       'must not use production',
-      'shared\nstaging',
+      /shared\s+staging/,
       'must not run migrations',
       'independent observer',
       'pg_stat_activity',
@@ -24,8 +24,12 @@ describe('I111 disposable PostgreSQL acceptance plan', () => {
       'I111_REMOTE_BOS_UNVERIFIED',
       'I111_PRICE_BASIS_UNVERIFIED',
       '`paidExecutionAuthorized=false`',
-    ]) {
-      expect(plan).toContain(required);
+    ] as const) {
+      if (required instanceof RegExp) {
+        expect(plan).toMatch(required);
+      } else {
+        expect(plan).toContain(required);
+      }
     }
   });
 
