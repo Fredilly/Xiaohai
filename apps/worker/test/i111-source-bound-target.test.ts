@@ -8,6 +8,16 @@ const slot = {
   revisionNumber: 1,
   regenerate: false,
 };
+const validSlots = [
+  slot,
+  { pageId: 'eae00ed5-6026-4a41-b95a-6c9eea09d076', revisionNumber: 1, regenerate: false },
+  { pageId: 'eae00ed5-6026-4a41-b95a-6c9eea09d076', revisionNumber: 2, regenerate: true },
+] as const;
+const slotSwaps = validSlots.flatMap((expectedSlot, index) =>
+  validSlots
+    .filter((_, suppliedIndex) => index !== suppliedIndex)
+    .map((suppliedSlot) => ({ expectedSlot, suppliedSlot })),
+);
 const atomicInput = () => ({ targetId: targetIllustrationId, slot });
 const options = () => ({
   db: { transaction: () => Promise.resolve(null) } as never,
@@ -112,6 +122,21 @@ describe('I111 source-bound exact-target Worker construction', () => {
     }
     expect(processOne).not.toHaveBeenCalled();
   });
+
+  it.each(slotSwaps)(
+    'rejects an otherwise legal slot swap %# before the exact worker can claim DB work',
+    async ({ expectedSlot, suppliedSlot }) => {
+      const processOne = vi.spyOn(ImageJobProcessor.prototype, 'processOne');
+      const worker = createI111SourceBoundTargetWorker({ ...options(), expectedSlot });
+      await expect(
+        worker.processTargetIdWithAtomicGateOnce({
+          targetId: targetIllustrationId,
+          slot: suppliedSlot,
+        }),
+      ).rejects.toThrow('I111_SOURCE_BOUND_TARGET_STOP');
+      expect(processOne).not.toHaveBeenCalled();
+    },
+  );
 
   it('pins the expected slot even if the constructor input is mutated later', async () => {
     const processOne = vi
