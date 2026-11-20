@@ -123,7 +123,6 @@ async function endOwnedPool(pool: pg.Pool): Promise<void> {
   let timer: NodeJS.Timeout | undefined;
   const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(() => reject(new CoordinatorStop(STOP)), POOL_END_TIMEOUT_MS);
-    timer.unref();
   });
   try {
     await Promise.race([ending, timeout]);
@@ -172,6 +171,15 @@ async function executeOwnedLifecycle(connectionString: string): Promise<never> {
     if (client && safeToRelease) {
       try {
         client.release();
+      } catch (error) {
+        cleanupFailure ??= error;
+      }
+    } else if (client && lockState.acquired) {
+      // An unknown lock state must not return a possibly-held session to the pool.
+      // pg treats release(error) as a destroy request; either way this invocation
+      // remains STOP and never claims that the lock or connection was released.
+      try {
+        client.release(new Error(STOP));
       } catch (error) {
         cleanupFailure ??= error;
       }

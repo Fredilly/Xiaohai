@@ -31,6 +31,7 @@ async function loadPrivateKernel(options: HarnessOptions = {}) {
   }).outputText;
   const calls: Array<{ owner: object; sql: string }> = [];
   const events: string[] = [];
+  const releaseErrors: Array<unknown> = [];
   const pid = 4321;
   const backendPids = [...(options.backendPids ?? [pid, pid])];
   const client = {
@@ -52,8 +53,9 @@ async function loadPrivateKernel(options: HarnessOptions = {}) {
       }
       throw new Error('unexpected SQL');
     },
-    release() {
-      events.push('release');
+    release(error?: unknown) {
+      releaseErrors.push(error);
+      events.push(error ? 'release-destroy' : 'release');
       if (options.releaseThrows) throw new Error('release failure');
     },
   };
@@ -88,6 +90,7 @@ async function loadPrivateKernel(options: HarnessOptions = {}) {
     client,
     calls,
     events,
+    releaseErrors,
   };
 }
 
@@ -131,7 +134,7 @@ describe('I111 Trusted Coordinator ownership kernel', () => {
     expect(source).toContain('if (client && safeToRelease)');
     expect(source).toContain('POOL_END_TIMEOUT_MS');
     expect(source).toContain('await Promise.race([ending, timeout])');
-    expect(source).toContain('timer.unref()');
+    expect(source).not.toContain('timer.unref()');
     expect(source.indexOf('await releaseOwnedLock(client, lockState.pinnedPid)')).toBeLessThan(
       source.indexOf('client.release()'),
     );
@@ -149,6 +152,7 @@ describe('I111 Trusted Coordinator ownership kernel', () => {
       'I111_TRUSTED_COORDINATOR_PORTS_NOT_WIRED',
     );
     expect(harness.events).toEqual(['connect', 'lock', 'backend', 'backend', 'unlock', 'release', 'end']);
+    expect(harness.releaseErrors).toEqual([undefined]);
     expect(new Set(harness.calls.map((call) => call.owner)).size).toBe(1);
     expect(harness.calls.map((call) => call.owner)).toEqual(
       harness.calls.map(() => harness.client),
@@ -160,7 +164,9 @@ describe('I111 Trusted Coordinator ownership kernel', () => {
     await expect(harness.executeOwnedLifecycle('offline-test')).rejects.toThrow(
       'I111_TRUSTED_COORDINATOR_STOP',
     );
-    expect(harness.events).toEqual(['connect', 'lock', 'backend', 'backend', 'end']);
+    expect(harness.events).toEqual(['connect', 'lock', 'backend', 'backend', 'release-destroy', 'end']);
+    expect(harness.releaseErrors).toHaveLength(1);
+    expect(harness.releaseErrors[0]).toMatchObject({ message: 'I111_TRUSTED_COORDINATOR_STOP' });
   });
 
   it('stops without release when unlock returns false', async () => {
@@ -168,7 +174,8 @@ describe('I111 Trusted Coordinator ownership kernel', () => {
     await expect(harness.executeOwnedLifecycle('offline-test')).rejects.toThrow(
       'I111_TRUSTED_COORDINATOR_STOP',
     );
-    expect(harness.events).toEqual(['connect', 'lock', 'backend', 'backend', 'unlock', 'end']);
+    expect(harness.events).toEqual(['connect', 'lock', 'backend', 'backend', 'unlock', 'release-destroy', 'end']);
+    expect(harness.releaseErrors).toHaveLength(1);
   });
 
   it('reports release failure and never treats it as success', async () => {
@@ -177,6 +184,7 @@ describe('I111 Trusted Coordinator ownership kernel', () => {
       'I111_TRUSTED_COORDINATOR_STOP',
     );
     expect(harness.events).toEqual(['connect', 'lock', 'backend', 'backend', 'unlock', 'release', 'end']);
+    expect(harness.releaseErrors).toEqual([undefined]);
   });
 
   it('bounds a pool.end that never resolves after a safe release', async () => {
@@ -187,6 +195,7 @@ describe('I111 Trusted Coordinator ownership kernel', () => {
     );
     expect(Date.now() - started).toBeLessThan(2_000);
     expect(harness.events).toEqual(['connect', 'lock', 'backend', 'backend', 'unlock', 'release', 'end']);
+    expect(harness.releaseErrors).toEqual([undefined]);
   });
 
   it('bounds pool.end when unlock fails and the client must remain unreleased', async () => {
@@ -196,6 +205,7 @@ describe('I111 Trusted Coordinator ownership kernel', () => {
       'I111_TRUSTED_COORDINATOR_STOP',
     );
     expect(Date.now() - started).toBeLessThan(2_000);
-    expect(harness.events).toEqual(['connect', 'lock', 'backend', 'backend', 'unlock', 'end']);
+    expect(harness.events).toEqual(['connect', 'lock', 'backend', 'backend', 'unlock', 'release-destroy', 'end']);
+    expect(harness.releaseErrors).toHaveLength(1);
   });
 });
