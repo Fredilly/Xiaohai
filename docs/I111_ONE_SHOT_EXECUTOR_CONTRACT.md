@@ -26,7 +26,13 @@ that sequence, without changing the normal API, Worker or schema.
 ## Fixed contract for one invocation
 
 1. Acquire and hold an **actual exclusive runtime/DB lease** for the entire
-   invocation. A callback mock is **not** proof of exclusivity.
+   invocation. A callback mock is **not** proof of exclusivity. The lock helper
+   now rejects a bare `pg.Pool`-style query object and requires an already
+   checked-out session with a positive PostgreSQL backend PID; it samples
+   `pg_backend_pid()` after acquisition and before release. This detects
+   mistaken connection-pool use and backend changes, but does **not** prove
+   independent process isolation or bind API/Worker Drizzle operations to the
+   same client. A future coordinator must establish those properties.
 2. Collect an independently authenticated fresh snapshot. Apply the existing
    `assessI111OneShotSnapshot` fail-closed policy. Its best result is
    `STATIC_REVIEW_ONLY`, never a spending permission.

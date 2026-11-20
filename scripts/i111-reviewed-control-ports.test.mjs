@@ -26,22 +26,27 @@ test('source-bound control ports do not accept flags or provide a paid executor'
 test('holds one real session lock through the callback, then releases it', async () => {
   const calls = [];
   const client = {
+    processID: 1234,
+    release() {},
     async query(sql) {
       calls.push(sql);
+      if (sql.includes('pg_backend_pid')) return { rows: [{ backend_pid: 1234 }] };
       return { rows: [{ [sql.includes('unlock') ? 'unlocked' : 'locked']: true }] };
     },
   };
   const ports = createI111ReviewedControlPorts(client);
   assert.equal(
     await ports.withExclusiveIsolation(async () => {
-      assert.equal(calls.length, 1);
+      assert.equal(calls.length, 2);
       return 'safe-preview';
     }),
     'safe-preview',
   );
-  assert.equal(calls.length, 2);
+  assert.equal(calls.length, 4);
   assert.match(calls[0], /pg_try_advisory_lock/u);
-  assert.match(calls[1], /pg_advisory_unlock/u);
+  assert.match(calls[1], /pg_backend_pid/u);
+  assert.match(calls[2], /pg_backend_pid/u);
+  assert.match(calls[3], /pg_advisory_unlock/u);
 });
 
 test('owner grant port rejects a mismatched request without any external fetch', async () => {
