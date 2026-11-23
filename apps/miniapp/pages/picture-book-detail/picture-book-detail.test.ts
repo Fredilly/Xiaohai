@@ -1,10 +1,23 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { PictureBookDetail } from '@xiaohai/contracts/picture-book';
-import { getPictureBook, listCharacterReferences } from '../../services/picture-book';
+import {
+  generateCharacterReference,
+  generateIllustration,
+  getPictureBook,
+  listCharacterReferences,
+  PictureBookApiError,
+} from '../../services/picture-book';
 
 vi.mock('../../services/picture-book', () => ({
   getPictureBook: vi.fn(),
   listCharacterReferences: vi.fn(),
+  generateCharacterReference: vi.fn(),
+  generateIllustration: vi.fn(),
+  PictureBookApiError: class PictureBookApiError extends Error {
+    constructor(readonly status: number) {
+      super(`Picture Book API ${status}`);
+    }
+  },
 }));
 
 type DetailPage = {
@@ -28,10 +41,14 @@ type DetailPage = {
   onShow: () => void;
   onUnload: () => void;
   onImageError: (event: WechatMiniprogram.CustomEvent<{ errMsg?: string }>) => void;
+  reference: (event: WechatMiniprogram.TouchEvent) => Promise<void>;
+  illustrate: (event: WechatMiniprogram.TouchEvent) => Promise<void>;
 };
 
 const readDetail = vi.mocked(getPictureBook);
 const readReferences = vi.mocked(listCharacterReferences);
+const submitReference = vi.mocked(generateCharacterReference);
+const submitIllustration = vi.mocked(generateIllustration);
 const oldUrl = 'https://private.invalid/cover.png?authorization=old-secret';
 const newUrl = 'https://private.invalid/cover.png?authorization=new-secret';
 let definition: DetailPage;
@@ -72,6 +89,10 @@ function instance(): DetailPage {
     },
   } as DetailPage;
   return page;
+}
+
+function touch(dataset: Record<string, string>) {
+  return { currentTarget: { dataset } } as unknown as WechatMiniprogram.TouchEvent;
 }
 
 beforeAll(async () => {
@@ -183,6 +204,136 @@ describe('picture-book detail owner-scoped media refresh (#189)', () => {
     resolveRead(book(newUrl, false));
     await pending;
     expect(page.data.detail).toBeNull();
+    expect(page.pageClosed).toBe(true);
+  });
+});
+
+describe('picture-book background image job recovery (#112)', () => {
+  it('reports an illustration polling timeout without submitting another paid job', async () => {
+    vi.spyOn(Date, 'now').mockReturnValueOnce(0).mockReturnValue(620_001);
+    submitIllustration.mockResolvedValue({
+      pictureBookId: 'owned-book',
+      pageId: 'page-1',
+      illustrationId: 'revision-1',
+      revisionNumber: 1,
+      status: 'QUEUED',
+    });
+    const page = instance();
+
+    await page.illustrate(touch({ pageId: 'page-1', regenerate: 'false' }));
+
+    expect(submitIllustration).toHaveBeenCalledExactlyOnceWith('owned-book', 'page-1', false);
+    expect(readDetail).not.toHaveBeenCalled();
+    expect(page.data.error).toContain('仍在后台处理中');
+    expect(page.data.busy).toBe(false);
+    expect(page.data.polling).toBe(false);
+
+    readDetail.mockResolvedValueOnce(book(oldUrl, false));
+    await page.load(); // The visible refresh button uses this owner-scoped read only.
+    expect(page.data.error).toBe('');
+    expect(readDetail).toHaveBeenCalledExactlyOnceWith('owned-book');
+    expect(submitIllustration).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows failed revision status without automatically regenerating a page', async () => {
+    submitIllustration.mockResolvedValue({
+      pictureBookId: 'owned-book',
+      pageId: 'page-1',
+      illustrationId: 'revision-2',
+      revisionNumber: 2,
+      status: 'QUEUED',
+    });
+    readDetail.mockResolvedValueOnce({
+      ...book(oldUrl, false),
+      pages: [
+        {
+          ...book(oldUrl, false).pages[0]!,
+          illustrations: [
+            {
+              id: 'revision-2',
+              status: 'FAILED',
+              errorCode: 'IMAGE_PROVIDER_UNAVAILABLE',
+            },
+          ],
+        },
+      ],
+    } as PictureBookDetail);
+    const page = instance();
+
+    await page.illustrate(touch({ pageId: 'page-1', regenerate: 'true' }));
+
+    expect(submitIllustration).toHaveBeenCalledExactlyOnceWith('owned-book', 'page-1', true);
+    expect(readDetail).toHaveBeenCalledTimes(1);
+    expect(page.data.error).toBe('插画生成失败（IMAGE_PROVIDER_UNAVAILABLE）');
+    expect(page.data.polling).toBe(false);
+  });
+
+  it('distinguishes a blocked submission from an accepted job with a failed status read', async () => {
+    submitIllustration.mockRejectedValueOnce(new PictureBookApiError(503));
+    const blocked = instance();
+    await blocked.illustrate(touch({ pageId: 'page-1' }));
+    expect(blocked.data.error).toBe('图片生成未开启（安全关闭）');
+    expect(readDetail).not.toHaveBeenCalled();
+
+    submitIllustration.mockResolvedValueOnce({
+      pictureBookId: 'owned-book',
+      pageId: 'page-1',
+      illustrationId: 'revision-2',
+      revisionNumber: 2,
+      status: 'QUEUED',
+    });
+    readDetail.mockRejectedValueOnce(new PictureBookApiError(503));
+    const accepted = instance();
+    await accepted.illustrate(touch({ pageId: 'page-1', regenerate: 'true' }));
+    expect(accepted.data.error).toBe('插画状态查询失败，请稍后查看任务结果。');
+    expect(submitIllustration).toHaveBeenCalledTimes(2);
+    expect(readDetail).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports reference-image polling timeout without resubmitting the job', async () => {
+    vi.spyOn(Date, 'now').mockReturnValueOnce(0).mockReturnValue(620_001);
+    submitReference.mockResolvedValue({
+      pictureBookId: 'owned-book',
+      characterId: 'character-1',
+      referenceRevisionId: 'reference-1',
+      revisionNumber: 1,
+      status: 'QUEUED',
+    });
+    const page = instance();
+
+    await page.reference(touch({ characterId: 'character-1' }));
+
+    expect(submitReference).toHaveBeenCalledExactlyOnceWith('owned-book', 'character-1');
+    expect(readReferences).not.toHaveBeenCalled();
+    expect(page.data.error).toContain('仍在后台处理中');
+    expect(page.data.busy).toBe(false);
+    expect(page.data.polling).toBe(false);
+  });
+
+  it('discards an accepted image job after page unload without polling or resubmitting', async () => {
+    let accept: (value: Awaited<ReturnType<typeof generateIllustration>>) => void = () => {};
+    submitIllustration.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          accept = resolve;
+        }),
+    );
+    const page = instance();
+    const pending = page.illustrate(touch({ pageId: 'page-1', regenerate: 'false' }));
+    page.onUnload();
+    accept({
+      pictureBookId: 'owned-book',
+      pageId: 'page-1',
+      illustrationId: 'revision-1',
+      revisionNumber: 1,
+      status: 'QUEUED',
+    });
+    await pending;
+
+    expect(submitIllustration).toHaveBeenCalledTimes(1);
+    expect(readDetail).not.toHaveBeenCalled();
+    expect(page.data.error).toBe('');
+    expect(page.data.polling).toBe(false);
     expect(page.pageClosed).toBe(true);
   });
 });
