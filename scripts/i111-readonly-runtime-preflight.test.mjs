@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { generateKeyPairSync, sign } from 'node:crypto';
 import { lstat, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
@@ -15,6 +16,8 @@ import {
   verifyGitHubApproval,
   validateI111PriceEvidence,
   validateI111RemoteBosEvidence,
+  canonicalizeI111Evidence,
+  loadI111SignedEvidence,
 } from './i111-readonly-runtime-preflight.mjs';
 import { I111_ONE_SHOT_SCOPE as scope } from './i111-one-shot-policy.mjs';
 
@@ -26,6 +29,8 @@ const pipReferenceId = 'bed51270-3add-4d10-93fb-8ffa085ff7a7';
 const mimiHash = 'a50abb6b7195a2be7886b47351f259c930aca36ebacec500b6fbfab65136f304';
 const pipHash = 'af3845b30a28a82c7cbcc491b76c1291355009c347274437ff23968ee144c06d';
 const bucket = 'xiaohai-i111-work-2ec3900280';
+const evidenceObservedAt = Date.now() - 1_000;
+const evidenceExpiresAt = Date.now() + 600_000;
 const slotMarker = JSON.stringify({
   benchmark: 'I111_MAC_PLAN_B',
   marker: 'PROVIDER_POST_SLOT_CONSUMED',
@@ -396,8 +401,8 @@ test('independent BOS and price evidence can clear only those preflight gates', 
         ownerId: scope.ownerId,
         bucket,
         endpoint: 'https://cd.bcebos.com',
-        observedAt: 1,
-        expiresAt: 2,
+        observedAt: evidenceObservedAt,
+        expiresAt: evidenceExpiresAt,
         objects: [
           {
             name: 'Mimi',
@@ -428,8 +433,8 @@ test('independent BOS and price evidence can clear only those preflight gates', 
         reservationMinor: 25,
         maxSpendMinor: 200,
         expectedChargeMinor: 22,
-        observedAt: 1,
-        expiresAt: 2,
+        observedAt: evidenceObservedAt,
+        expiresAt: evidenceExpiresAt,
       }),
     },
   });
@@ -455,8 +460,8 @@ test('evidence validators reject booleans, wrong scope, stale hashes and malform
     ownerId: scope.ownerId,
     bucket,
     endpoint: environment.BAIDU_BOS_ENDPOINT,
-    observedAt: 1,
-    expiresAt: 2,
+    observedAt: evidenceObservedAt,
+    expiresAt: evidenceExpiresAt,
     objects: [
       {
         name: 'Mimi',
@@ -502,11 +507,88 @@ test('evidence validators reject booleans, wrong scope, stale hashes and malform
     reservationMinor: 25,
     maxSpendMinor: 200,
     expectedChargeMinor: 22,
-    observedAt: 1,
-    expiresAt: 2,
+    observedAt: evidenceObservedAt,
+    expiresAt: evidenceExpiresAt,
   };
   assert.equal(validateI111PriceEvidence(price, { source }), true);
   assert.equal(validateI111PriceEvidence({ ...price, model: 'other' }, { source }), false);
+});
+
+test('signed evidence loader binds the pinned source and rejects missing, stale or forged records', async () => {
+  const { publicKey, privateKey } = generateKeyPairSync('ed25519');
+  const testPublicKey = publicKey.export({ type: 'spki', format: 'pem' });
+  const testPrivateKey = privateKey.export({ type: 'pkcs8', format: 'pem' });
+  const source = { checkedOutSha: reviewedSha };
+  const environment = { BAIDU_BOS_BUCKET: bucket, BAIDU_BOS_ENDPOINT: 'https://cd.bcebos.com' };
+  const payload = {
+    kind: 'I111_PRICE_EVIDENCE',
+    authenticated: true,
+    checkedOutSha: reviewedSha,
+    provider: scope.provider,
+    model: scope.model,
+    currency: 'CNY',
+    inputImages: 2,
+    outputImages: 1,
+    maxCalls: 3,
+    reservationMinor: 25,
+    maxSpendMinor: 200,
+    expectedChargeMinor: 22,
+    observedAt: evidenceObservedAt,
+    expiresAt: evidenceExpiresAt,
+  };
+  const signed = {
+    schemaVersion: 1,
+    keyId: 'fredilly-i111-pr242-evidence-v1',
+    payload,
+    signature: sign(null, Buffer.from(canonicalizeI111Evidence(payload)), testPrivateKey).toString(
+      'base64',
+    ),
+  };
+  const dependencies = {
+    secureRead: async () => Buffer.from(JSON.stringify(signed)),
+    evidencePublicKey: testPublicKey,
+  };
+  assert.deepEqual(
+    await loadI111SignedEvidence('price', '/sealed/price.json', {
+      env: environment,
+      source,
+      dependencies,
+    }),
+    payload,
+  );
+  assert.equal(
+    await loadI111SignedEvidence('price', '/sealed/missing.json', {
+      env: environment,
+      source,
+      dependencies: {
+        secureRead: async () => {
+          throw new Error('missing');
+        },
+      },
+    }),
+    null,
+  );
+  const stale = { ...signed, payload: { ...payload, expiresAt: 0 } };
+  assert.equal(
+    await loadI111SignedEvidence('price', '/sealed/stale.json', {
+      env: environment,
+      source,
+      dependencies: { secureRead: async () => Buffer.from(JSON.stringify(stale)) },
+    }),
+    null,
+  );
+  const forged = {
+    ...signed,
+    payload: { ...payload, checkedOutSha: 'f'.repeat(40) },
+  };
+  assert.equal(
+    await loadI111SignedEvidence('price', '/sealed/forged.json', {
+      env: environment,
+      source,
+      dependencies: { secureRead: async () => Buffer.from(JSON.stringify(forged)) },
+    }),
+    null,
+  );
 });
 
 test('rejects wrong database identity and restricted-role privilege drift before scoped reads', async () => {

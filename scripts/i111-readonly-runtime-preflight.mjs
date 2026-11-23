@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, verify as verifySignature } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { constants as fsConstants } from 'node:fs';
 import { lstat, open, realpath } from 'node:fs/promises';
@@ -23,7 +23,14 @@ export const I111_READONLY_PATHS = Object.freeze({
   pip: '/Volumes/Data/Xiaohai-i111-gate-b/.i111-plan-b/assets/pip_reference_candidate.png',
   apiMode: '/Volumes/Data/Xiaohai-i111-gate-b/.i111-plan-b/api.mode',
   approval: '/Volumes/Data/Xiaohai-i111-pr242-runtime-approval/i111-readonly-runtime-approval.json',
+  bosEvidence: '/Volumes/Data/Xiaohai-i111-pr242-runtime-approval/i111-bos-evidence.json',
+  priceEvidence: '/Volumes/Data/Xiaohai-i111-pr242-runtime-approval/i111-price-evidence.json',
 });
+
+const I111_EVIDENCE_KEY_ID = 'fredilly-i111-pr242-evidence-v1';
+const I111_EVIDENCE_PUBLIC_KEY = `-----BEGIN PUBLIC KEY-----
+MCowBQYDK2VwAyEANRcJJgc9KZYzpQ8qPoQLN0swFDNPIzlSQh1nknJq43A=
+-----END PUBLIC KEY-----`;
 
 // Only the trusted runner may invoke a preflight as an internal library call.
 // Direct CLI invocations still inspect their real argv and reject extras.
@@ -159,6 +166,17 @@ function sha256(bytes) {
   return createHash('sha256').update(bytes).digest('hex');
 }
 
+export function canonicalizeI111Evidence(value) {
+  if (Array.isArray(value)) return `[${value.map(canonicalizeI111Evidence).join(',')}]`;
+  if (value && typeof value === 'object') {
+    return `{${Object.keys(value)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${canonicalizeI111Evidence(value[key])}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(value);
+}
+
 function integer(value) {
   if (typeof value === 'number') return Number.isSafeInteger(value) ? value : null;
   if (typeof value !== 'string' || !/^(0|[1-9][0-9]*)$/.test(value)) return null;
@@ -177,10 +195,15 @@ function secretPresent(value) {
 }
 
 function validEvidenceWindow(evidence) {
+  const now = Date.now();
   if (!Number.isSafeInteger(evidence?.observedAt) || !Number.isSafeInteger(evidence?.expiresAt)) {
     return false;
   }
-  return evidence.expiresAt > evidence.observedAt;
+  return (
+    evidence.observedAt <= now &&
+    now < evidence.expiresAt &&
+    evidence.expiresAt - evidence.observedAt <= 86_400_000
+  );
 }
 
 /**
@@ -249,6 +272,40 @@ export function validateI111PriceEvidence(evidence, { source } = {}) {
     evidence.expectedChargeMinor === 22 &&
     validEvidenceWindow(evidence)
   );
+}
+
+export async function loadI111SignedEvidence(kind, path, { env, source, dependencies }) {
+  try {
+    const bytes = await dependencies.secureRead(path, { mode: 0o600, maxBytes: 64_000 });
+    const envelope = JSON.parse(bytes.toString('utf8'));
+    if (
+      !envelope ||
+      envelope.schemaVersion !== 1 ||
+      envelope.keyId !== I111_EVIDENCE_KEY_ID ||
+      typeof envelope.signature !== 'string' ||
+      !envelope.payload ||
+      typeof envelope.payload !== 'object'
+    )
+      return null;
+    const signature = Buffer.from(envelope.signature, 'base64');
+    if (
+      signature.length !== 64 ||
+      !verifySignature(
+        null,
+        Buffer.from(canonicalizeI111Evidence(envelope.payload)),
+        dependencies.evidencePublicKey ?? I111_EVIDENCE_PUBLIC_KEY,
+        signature,
+      )
+    )
+      return null;
+    const valid =
+      kind === 'bos'
+        ? validateI111RemoteBosEvidence(envelope.payload, { env, source })
+        : validateI111PriceEvidence(envelope.payload, { source });
+    return valid ? envelope.payload : null;
+  } catch {
+    return null;
+  }
 }
 
 function safeCodes(codes) {
@@ -1947,8 +2004,20 @@ export async function runI111ReadonlyRuntimePreflight(options = {}) {
     redisInspector: options.dependencies?.redisInspector ?? defaultRedisInspector,
     fileInspector: options.dependencies?.fileInspector ?? inspectFiles,
     sourceInspector: options.dependencies?.sourceInspector ?? loadI111SourceState,
-    remoteBosVerifier: options.dependencies?.remoteBosVerifier,
-    priceVerifier: options.dependencies?.priceVerifier,
+    remoteBosVerifier:
+      options.dependencies?.remoteBosVerifier ??
+      ((context) =>
+        loadI111SignedEvidence('bos', paths.bosEvidence, {
+          ...context,
+          dependencies,
+        })),
+    priceVerifier:
+      options.dependencies?.priceVerifier ??
+      ((context) =>
+        loadI111SignedEvidence('price', paths.priceEvidence, {
+          ...context,
+          dependencies,
+        })),
   };
   const errors = [];
   try {
