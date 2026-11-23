@@ -2151,6 +2151,10 @@ export async function runI111ReadonlyRuntimePreflight(options = {}) {
       result: errorCodes.length === 0 && policy.verdict === 'STATIC_REVIEW_ONLY' ? 'PASS' : 'STOP',
       errorCodes,
       paidExecutionAuthorized: false,
+      // The trusted one-shot runner consumes this independently collected,
+      // redacted snapshot after all read-only checks pass. It contains no
+      // credentials, DSNs, signed URLs, prompts or provider response bodies.
+      snapshot,
       checks: {
         code:
           source.versionMatch && !errorCodes.includes('I111_CODE_NOT_REVIEWED') ? 'PASS' : 'STOP',

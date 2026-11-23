@@ -1,10 +1,12 @@
-# Issue #111 — isolated one-shot orchestration contract (code-only)
+# Issue #111 — isolated one-shot orchestration contract
 
-**Status: NOT_RUN / NO-GO.** This change is a deterministic orchestration
-contract for a **future** trusted Mac-specific executor. It is **not** a
-runnable paid CLI, does not contain an actual PostgreSQL/Redis/Docker/BOS/
-Bailian adapter, and does not authorize a paid operation. The issue's live
-validation and quality acceptance remain blocked.
+**Status: IMPLEMENTED / NOT_RUN.** The repository now contains a trusted
+Mac-specific runner at `scripts/i111-trusted-one-shot-runner.mjs`. Its default
+entrypoint is an offline dry-run. The live path owns its PostgreSQL pool and
+session, but remains fail-closed behind the read-only preflight and an
+independent, exact-scope GitHub owner operation grant. It does not authorize a
+paid operation by itself; live validation and quality acceptance remain blocked
+until those external conditions are satisfied.
 
 The previous general-purpose `scripts/i111-formal-api-worker-ports.mjs` adapter
 was removed from the runtime source tree: its caller-injected `apiService` and
@@ -66,11 +68,11 @@ that sequence, without changing the normal API, Worker or schema.
    `AT_RISK` marker. Even then the coordinator returns **STOP** pending
    independent provider charge/invoice reconciliation and next-slot approval.
 
-The coordinator cannot prove steps 1, 2, 3, 4, 5 or 6 itself: these are
-contracts for a future explicitly reviewed adapter, **not** built-in
-authentication. To prevent accidentally presenting a mock as safe execution,
-there is **no CLI execute mode, no live port implementation and no production
-invocation** in this PR. The source can only be used in synthetic tests today.
+The trusted runner now owns the live Pool/PoolClient lifecycle and wires the
+formal API and exact-ID Worker only after the independent preflight and owner
+grant gates. Provider, BOS and database failures remain redacted and
+conservative; no retry or second provider POST is possible. Dry-run is the
+only mode available without those gates.
 
 ## Fail-closed behavior
 
@@ -88,9 +90,9 @@ invocation** in this PR. The source can only be used in synthetic tests today.
 
 ## Still required before any real invocation
 
-- Fred's independent code review and merge of this **code-only** change.
-- Live adapter implementation and independent review: real Docker backend
-  identity, read-only preflight, verified one-time owner grant, exclusive
+- Fred's independent code review and merge of this runner change.
+- A fresh live preflight and independent review of the exact runtime resources:
+  real Docker backend identity, verified one-time owner grant, exclusive
   runtime/DB lock, formal API transaction, locked fresh paid-boundary proof,
   exactly-one reservation, targeted Worker and final read-only verification.
 - Explicit approval for original Mac credentials/environment access before
@@ -103,14 +105,16 @@ invocation** in this PR. The source can only be used in synthetic tests today.
   one invocation. A code `APPROVED` or a green CI does not grant it.
 - On success, invoice reconciliation and independent human quality review.
 
-**Forbidden here:** launching API/Worker, real Mac DB/Redis/BOS reads or writes,
-provider POST, cost settlement, protected fixture mutation, staging deployment,
-automatic retry or merging without applicable human review.
+**Forbidden here unless every live gate passes:** launching API/Worker, real Mac
+DB/Redis/BOS reads or writes, provider POST, cost settlement, protected fixture
+mutation, staging deployment, automatic retry or merging without applicable
+human review.
 
 ## Test commands
 
 ```bash
-node --test scripts/i111-one-shot-orchestration.test.mjs scripts/i111-one-shot-policy.test.mjs
+pnpm i111:trusted-runner
+pnpm test:i111-trusted-runner
 pnpm test:preflight
 ```
 
