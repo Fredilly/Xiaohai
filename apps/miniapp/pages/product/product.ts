@@ -2,7 +2,22 @@ import { addCartItem, getProduct, type Product } from '../../services/commerce';
 import { detailAccessMessage } from '../../utils/detail-read-error';
 import { resolveEditorialBookCover } from '../../utils/real-visuals';
 
-type DisplayProduct = Product & { displayCoverUrl: string };
+type DisplayProduct = Product & {
+  displayCoverUrl: string;
+  gallery: Array<{ key: number; url: string }>;
+};
+
+function detailGallery(product: Product): DisplayProduct['gallery'] {
+  const seen = new Set<string>(product.coverUrl ? [product.coverUrl] : []);
+  const gallery: DisplayProduct['gallery'] = [];
+  for (const url of product.mediaUrls ?? []) {
+    if (typeof url !== 'string' || !url.startsWith('https://') || seen.has(url)) continue;
+    seen.add(url);
+    gallery.push({ key: gallery.length, url });
+    if (gallery.length === 12) break;
+  }
+  return gallery;
+}
 
 Page({
   data: {
@@ -30,6 +45,7 @@ Page({
             product.title ?? product.name,
             product.coverUrl,
           ),
+          gallery: detailGallery(product),
         },
         loading: false,
         error: false,
@@ -58,6 +74,26 @@ Page({
   coverError() {
     if (!this.data.product) return;
     this.setData({ 'product.displayCoverUrl': '' });
+  },
+  galleryError(event: WechatMiniprogram.TouchEvent) {
+    const product = this.data.product;
+    const id = String(event.currentTarget.dataset.id ?? '');
+    const index = Number(event.currentTarget.dataset.index);
+    const failedUrl = String(event.currentTarget.dataset.src ?? '');
+    if (
+      !product ||
+      product.id !== id ||
+      !Number.isInteger(index) ||
+      index < 0 ||
+      !failedUrl ||
+      product.gallery[index]?.url !== failedUrl
+    )
+      return;
+    this.setData({
+      'product.gallery': product.gallery.map((image, current) =>
+        current === index ? { ...image, url: '' } : image,
+      ),
+    });
   },
   openCart() {
     void wx.navigateTo({ url: '/pages/cart/cart' });

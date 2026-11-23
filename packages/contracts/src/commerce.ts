@@ -54,6 +54,8 @@ export const catalogProductSchema = z.object({
   name: z.string(),
   description: z.string().nullable(),
   coverUrl: z.string().nullable(),
+  /** Ordered, public product detail images; omitted by older catalog APIs. */
+  mediaUrls: z.array(z.url().max(2048)).max(12).optional(),
   title: z.string().nullable(),
   author: z.string().nullable(),
   isbn: z.string().nullable(),

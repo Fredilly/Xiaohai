@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { isIP } from 'node:net';
 import { and, asc, desc, eq, ilike, inArray, or, sql } from 'drizzle-orm';
 import type {
   AddressInput,
@@ -17,6 +18,7 @@ import {
   orderItems,
   orders,
   pickupCodes,
+  productMedia,
   products,
   skus,
   storeInventory,
@@ -32,6 +34,27 @@ import {
 
 type Db = ReturnType<typeof createDatabase>['db'];
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
+
+export function isPublicProductImageUrl(value: string): boolean {
+  if (value.length > 2048) return false;
+  try {
+    const url = new URL(value);
+    return (
+      url.protocol === 'https:' &&
+      !url.username &&
+      !url.password &&
+      !url.search &&
+      !url.hash &&
+      Boolean(url.hostname) &&
+      isIP(url.hostname.replace(/^\[|\]$/g, '')) === 0 &&
+      url.hostname !== 'localhost' &&
+      !url.hostname.endsWith('.invalid') &&
+      !url.hostname.endsWith('.local')
+    );
+  } catch {
+    return false;
+  }
+}
 function isBookEditionUniqueViolation(error: unknown) {
   const candidate =
     error && typeof error === 'object' && 'cause' in error
@@ -94,10 +117,29 @@ export class CommerceService {
   }
 
   async getProduct(id: string) {
-    const result = await this.listCatalog();
-    const product = result.products.find((item) => item.id === id);
+    // Resolve only the requested ACTIVE product. A detail read must not scan
+    // every product (or accidentally return an unpublished draft).
+    const rows = await this.db
+      .select({ product: products, sku: skus, book: books, edition: bookEditions })
+      .from(products)
+      .innerJoin(skus, eq(skus.productId, products.id))
+      .leftJoin(bookEditions, eq(products.bookEditionId, bookEditions.id))
+      .leftJoin(books, eq(bookEditions.bookId, books.id))
+      .where(and(eq(products.id, id), eq(products.status, 'ACTIVE'), eq(skus.status, 'ACTIVE')));
+    const product = groupCatalog(rows)[0];
     if (!product) throw new CommerceError('NOT_FOUND', 'Product not found');
-    return product;
+    const media = await this.db
+      .select({ url: productMedia.url })
+      .from(productMedia)
+      .where(eq(productMedia.productId, product.id))
+      .orderBy(asc(productMedia.displayOrder), asc(productMedia.id));
+    // Never emit staff-entered private URLs, HTTP links or signed query strings
+    // as public Mini Program image sources. WeChat's domain allowlist remains
+    // an additional independent boundary.
+    const mediaUrls = [
+      ...new Set(media.map((row) => row.url).filter(isPublicProductImageUrl)),
+    ].slice(0, 12);
+    return { ...product, mediaUrls };
   }
 
   private async getCartId(consumerUserId: string) {

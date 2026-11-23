@@ -31,6 +31,31 @@
   display: block;
   margin-top: 12rpx;
 }
+.product-gallery-section {
+  margin: 24rpx 0 32rpx;
+}
+.product-gallery-scroll {
+  margin-top: 14rpx;
+  width: 100%;
+}
+.product-gallery-list {
+  display: flex;
+  gap: 16rpx;
+}
+.product-gallery-frame {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 240rpx;
+  height: 210rpx;
+  border-radius: 14rpx;
+  background: #f0f2f5;
+}
+.product-gallery-image {
+  width: 100%;
+  height: 100%;
+}
 .sku-row {
   display: flex;
   align-items: center;
