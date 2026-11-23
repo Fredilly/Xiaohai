@@ -23,7 +23,7 @@ export const I111_READONLY_PATHS = Object.freeze({
   pip: '/Volumes/Data/Xiaohai-i111-gate-b/.i111-plan-b/assets/pip_reference_candidate.png',
   apiMode: '/Volumes/Data/Xiaohai-i111-gate-b/.i111-plan-b/api.mode',
   approval:
-    '/Volumes/Data/Xiaohai-i111-pr239-runtime-v2-approval/i111-readonly-runtime-approval.json',
+    '/Volumes/Data/Xiaohai-i111-pr241-runtime-approval/i111-readonly-runtime-approval.json',
 });
 
 const EXPECTED = Object.freeze({
@@ -463,7 +463,7 @@ function runCommand(command, args, cwd) {
 
 export async function verifyGitHubApproval(approval, checkedOutSha, dependencies = {}) {
   const match =
-    /^https:\/\/github\.com\/Fredilly\/Xiaohai\/pull\/239#pullrequestreview-([1-9]\d*)$/.exec(
+    /^https:\/\/github\.com\/Fredilly\/Xiaohai\/pull\/241#pullrequestreview-([1-9]\d*)$/.exec(
       approval?.approvalUrl ?? '',
     );
   if (
@@ -484,7 +484,7 @@ export async function verifyGitHubApproval(approval, checkedOutSha, dependencies
         'github.com',
         '--method',
         'GET',
-        `repos/Fredilly/Xiaohai/pulls/239/reviews/${match[1]}`,
+        `repos/Fredilly/Xiaohai/pulls/241/reviews/${match[1]}`,
       ],
       dependencies.root,
     );
@@ -1351,7 +1351,7 @@ export async function loadI111SourceState(root, approval, dependencies) {
   const localApprovalRecordConsistent =
     approval?.schemaVersion === 1 &&
     approval?.approvedBy === 'Fredilly' &&
-    /^https:\/\/github\.com\/Fredilly\/Xiaohai\/pull\/239#pullrequestreview-[1-9]\d*$/.test(
+    /^https:\/\/github\.com\/Fredilly\/Xiaohai\/pull\/241#pullrequestreview-[1-9]\d*$/.test(
       approval?.approvalUrl ?? '',
     ) &&
     approval?.approvedCommit === checkedOutSha &&

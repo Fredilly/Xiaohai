@@ -944,7 +944,7 @@ test('new fixed-port resource identity drift stops before TCP and PostgreSQL/Red
 test('uses the independently protected approval record, never the older Gate B approval', () => {
   assert.equal(
     I111_READONLY_PATHS.approval,
-    '/Volumes/Data/Xiaohai-i111-pr239-runtime-v2-approval/i111-readonly-runtime-approval.json',
+    '/Volumes/Data/Xiaohai-i111-pr241-runtime-approval/i111-readonly-runtime-approval.json',
   );
   assert.ok(!I111_READONLY_PATHS.approval.startsWith(`${I111_READONLY_PATHS.gateRoot}/`));
 });
@@ -1284,7 +1284,7 @@ test('verifies the exact GitHub review identity, state, URL and commit through t
   const approval = {
     approvedBy: 'Fredilly',
     approvedCommit: sha,
-    approvalUrl: 'https://github.com/Fredilly/Xiaohai/pull/239#pullrequestreview-12345',
+    approvalUrl: 'https://github.com/Fredilly/Xiaohai/pull/241#pullrequestreview-12345',
   };
   const valid = {
     id: 12345,
@@ -1301,7 +1301,7 @@ test('verifies the exact GitHub review identity, state, URL and commit through t
       'github.com',
       '--method',
       'GET',
-      'repos/Fredilly/Xiaohai/pulls/239/reviews/12345',
+      'repos/Fredilly/Xiaohai/pulls/241/reviews/12345',
     ]);
     return { status: 0, stdout: JSON.stringify(valid), stderr: '' };
   };
@@ -1342,7 +1342,7 @@ test('verifies the exact GitHub review identity, state, URL and commit through t
     { approvedBy: 'unknown' },
     { approvalUrl: 'https://attacker.example/Fredilly/Xiaohai/pull/239#pullrequestreview-12345' },
     { approvalUrl: 'https://github.com/Other/Xiaohai/pull/239#pullrequestreview-12345' },
-    { approvalUrl: 'https://github.com/Fredilly/Xiaohai/pull/238#pullrequestreview-12345' },
+    { approvalUrl: 'https://github.com/Fredilly/Xiaohai/pull/239#pullrequestreview-12345' },
     { approvalUrl: 'https://github.com/Fredilly/Xiaohai/pull/0#pullrequestreview-12345' },
   ]) {
     let reviewQueries = 0;
@@ -1380,7 +1380,7 @@ test('real source inspection separates local consistency from independent review
   const approval = {
     schemaVersion: 1,
     approvedBy: 'Fredilly',
-    approvalUrl: 'https://github.com/Fredilly/Xiaohai/pull/239#pullrequestreview-12345',
+    approvalUrl: 'https://github.com/Fredilly/Xiaohai/pull/241#pullrequestreview-12345',
     approvedCommit: sha,
     migrationDigest: unsigned.migrationDigest,
     sourceSha256: unsigned.sourceHashes,
@@ -1397,7 +1397,7 @@ test('real source inspection separates local consistency from independent review
 
   const wrongPrApproval = {
     ...approval,
-    approvalUrl: 'https://github.com/Fredilly/Xiaohai/pull/238#pullrequestreview-12345',
+    approvalUrl: 'https://github.com/Fredilly/Xiaohai/pull/239#pullrequestreview-12345',
   };
   let wrongPrReviewQueries = 0;
   const wrongPr = await loadI111SourceState(root, wrongPrApproval, {
