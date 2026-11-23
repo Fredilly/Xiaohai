@@ -44,19 +44,22 @@ const EXPECTED = Object.freeze({
   redisSourceId: '920804ca22010bfe8ae8791e9f6ec88604d870151685ea6a31e66dc23182f031',
   redisSourceVolume: 'xiaohai_i111_planb_redisdata',
   postgresBind: Object.freeze({
+    // APFS device numbers can change after a volume remount. The bind must
+    // remain on this trusted volume, so its device is sampled and checked at
+    // runtime rather than pinned to a stale mount-specific number.
+    volumeRoot: '/Volumes/Data',
     hostSource:
       '/Volumes/Data/Xiaohai-i111-gate-b/.i111-plan-b/secrets/postgres_bootstrap_password',
     dockerSource:
       '/host_mnt/Volumes/Data/Xiaohai-i111-gate-b/.i111-plan-b/secrets/postgres_bootstrap_password',
     destination: '/run/secrets/postgres_bootstrap_password',
-    dev: 16777224,
     ino: 576874,
   }),
   redisBind: Object.freeze({
+    volumeRoot: '/Volumes/Data',
     hostSource: '/Volumes/Data/Xiaohai-i111-gate-b/.i111-plan-b/secrets/redis.conf',
     dockerSource: '/host_mnt/Volumes/Data/Xiaohai-i111-gate-b/.i111-plan-b/secrets/redis.conf',
     destination: '/usr/local/etc/redis/redis.conf',
-    dev: 16777224,
     ino: 576877,
   }),
   dockerEndpoint: 'unix:///Users/li/.docker/run/docker.sock',
@@ -690,6 +693,22 @@ export async function verifyI111BindHostSource(expected, dependencies = {}) {
       return false;
     }
     const parents = await trustedParents(expected.hostSource, { ...adapter, expectedUid: 501 });
+    const volumeRoot = expected.volumeRoot;
+    if (!isAbsolute(volumeRoot) || (await adapter.realpath(volumeRoot)) !== volumeRoot) {
+      return false;
+    }
+    // trustedParents() snapshots the volume root together with every
+    // directory in the path. This binds the file to the current APFS volume
+    // while parentsUnchanged() below rejects a replacement during the read.
+    const volume = parents.find((entry) => entry.path === volumeRoot);
+    if (
+      !volume ||
+      volume.uid !== 501 ||
+      (volume.mode & 0o777) !== 0o755 ||
+      (volume.mode & 0o022) !== 0
+    ) {
+      return false;
+    }
     for (const [parentPath, expectedMode] of [
       [I111_READONLY_PATHS.gateRoot, 'drwxr-xr-x'],
       [`${I111_READONLY_PATHS.gateRoot}/.i111-plan-b`, 'drwx------'],
@@ -727,7 +746,7 @@ export async function verifyI111BindHostSource(expected, dependencies = {}) {
       before.gid !== 20 ||
       (before.mode & 0o777) !== 0o600 ||
       before.nlink !== 1 ||
-      before.dev !== expected.dev ||
+      before.dev !== volume.dev ||
       before.ino !== expected.ino
     ) {
       return false;

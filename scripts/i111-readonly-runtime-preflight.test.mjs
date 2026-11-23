@@ -951,8 +951,8 @@ test('uses the independently protected approval record, never the older Gate B a
 
 test('bind source inspection is metadata-only and fails closed on ownership, ACL, flags or drift', async () => {
   const expected = {
+    volumeRoot: '/Volumes/Data',
     hostSource: '/Volumes/Data/Xiaohai-i111-gate-b/.i111-plan-b/secrets/redis.conf',
-    dev: 16777224,
     ino: 576877,
   };
   const cases = [
@@ -962,9 +962,11 @@ test('bind source inspection is metadata-only and fails closed on ownership, ACL
     { mode: 0o100660 },
     { nlink: 2 },
     { dev: 8 },
+    { volumeDevice: 8 },
     { ino: 5 },
     { symlink: true },
     { replaced: true },
+    { parentReplaced: true },
     { parentWritable: true },
     { parentAcl: true },
     { parentFlag: true },
@@ -993,8 +995,8 @@ test('bind source inspection is metadata-only and fails closed on ownership, ACL
                 : protectedDirectory
                   ? 0o40700
                   : 0o40755,
-            dev: 1,
-            ino: 2,
+            dev: alteration.volumeDevice && path === '/Volumes/Data' ? 8 : 1,
+            ino: alteration.parentReplaced && fileChecks > 0 && path === '/Volumes/Data' ? 3 : 2,
           };
         }
         fileChecks += 1;
@@ -1005,7 +1007,7 @@ test('bind source inspection is metadata-only and fails closed on ownership, ACL
           gid: alteration.gid ?? 20,
           mode: alteration.mode ?? 0o100600,
           nlink: alteration.nlink ?? 1,
-          dev: alteration.dev ?? 16777224,
+          dev: alteration.dev ?? 1,
           ino: alteration.replaced && fileChecks > 1 ? 6 : (alteration.ino ?? 576877),
           size: 20,
           mtimeMs: 1,
