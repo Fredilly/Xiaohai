@@ -1,9 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { generateKeyPairSync, sign } from 'node:crypto';
 import { lstat, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
   I111_READONLY_PATHS,
+  I111_PREFLIGHT_INTERNAL_TOKEN,
   inspectI111RuntimeResources,
   loadI111SourceState,
   runI111ReadonlyRuntimePreflight,
@@ -12,6 +14,10 @@ import {
   validateDockerSocketEvidence,
   verifyI111BindHostSource,
   verifyGitHubApproval,
+  validateI111PriceEvidence,
+  validateI111RemoteBosEvidence,
+  canonicalizeI111Evidence,
+  loadI111SignedEvidence,
 } from './i111-readonly-runtime-preflight.mjs';
 import { I111_ONE_SHOT_SCOPE as scope } from './i111-one-shot-policy.mjs';
 
@@ -23,6 +29,8 @@ const pipReferenceId = 'bed51270-3add-4d10-93fb-8ffa085ff7a7';
 const mimiHash = 'a50abb6b7195a2be7886b47351f259c930aca36ebacec500b6fbfab65136f304';
 const pipHash = 'af3845b30a28a82c7cbcc491b76c1291355009c347274437ff23968ee144c06d';
 const bucket = 'xiaohai-i111-work-2ec3900280';
+const evidenceObservedAt = Date.now() - 1_000;
+const evidenceExpiresAt = Date.now() + 600_000;
 const slotMarker = JSON.stringify({
   benchmark: 'I111_MAC_PLAN_B',
   marker: 'PROVIDER_POST_SLOT_CONSUMED',
@@ -271,17 +279,19 @@ async function run({
   redisResult = { verified: true, queuedJobs: 0 },
   open,
   redisInspector,
+  dependencies: dependencyOverrides = {},
 } = {}) {
   const database = fakeDatabase(rows);
   const result = await runI111ReadonlyRuntimePreflight({
     env: environment,
-    argv: [],
+    internalToken: I111_PREFLIGHT_INTERNAL_TOKEN,
     dependencies: {
       runtimeInspector: () => runtimeResult,
       fileInspector: () => fileResult,
       sourceInspector: () => sourceResult,
       redisInspector: redisInspector ?? (() => redisResult),
       openDatabase: open ?? (() => database.client),
+      ...dependencyOverrides,
     },
   });
   return { result, statements: database.statements };
@@ -326,7 +336,7 @@ test('rejects failed local prerequisites before runtime, TCP, Redis or PostgreSQ
     let redisCalls = 0;
     let postgresCalls = 0;
     const result = await runI111ReadonlyRuntimePreflight({
-      argv: [],
+      internalToken: I111_PREFLIGHT_INTERNAL_TOKEN,
       env: scenario.environment ?? env(),
       dependencies: {
         fileInspector: () => scenario.files ?? validFiles(),
@@ -349,12 +359,7 @@ test('rejects failed local prerequisites before runtime, TCP, Redis or PostgreSQ
     assert.equal(result.result, 'STOP', scenario.name);
     assert.equal(result.paidExecutionAuthorized, false, scenario.name);
     assert.ok(result.errorCodes.includes(scenario.expectedCode), scenario.name);
-    for (const code of [
-      'I111_REMOTE_BOS_UNVERIFIED',
-      'I111_PRICE_BASIS_UNVERIFIED',
-      'I111_ATOMIC_ISOLATION_UNVERIFIED',
-      'I111_RETRY_SEMANTICS_UNVERIFIED',
-    ]) {
+    for (const code of ['I111_REMOTE_BOS_UNVERIFIED', 'I111_PRICE_BASIS_UNVERIFIED']) {
       assert.ok(result.errorCodes.includes(code), `${scenario.name}: ${code}`);
     }
     assert.deepEqual(
@@ -382,6 +387,207 @@ test('uses only a read-only transaction, separates remote proof, and never autho
     statements.every(
       (sql) => !/\b(?:INSERT|UPDATE|DELETE|TRUNCATE|ALTER|CREATE|DROP|COMMIT)\b/i.test(sql),
     ),
+  );
+});
+
+test('independent BOS and price evidence can clear only those preflight gates', async () => {
+  const { result } = await run({
+    dependencies: {
+      remoteBosVerifier: async ({ source }) => ({
+        kind: 'I111_REMOTE_BOS_EVIDENCE',
+        authenticated: true,
+        checkedOutSha: source.checkedOutSha,
+        bookId: scope.bookId,
+        ownerId: scope.ownerId,
+        bucket,
+        endpoint: 'https://cd.bcebos.com',
+        observedAt: evidenceObservedAt,
+        expiresAt: evidenceExpiresAt,
+        objects: [
+          {
+            name: 'Mimi',
+            statusCode: 200,
+            private: true,
+            objectKey: `picture-books/character-references/i111/${scope.ownerId}/${scope.bookId}/mimi.png`,
+            sha256: 'a'.repeat(64),
+          },
+          {
+            name: 'Pip',
+            statusCode: 200,
+            private: true,
+            objectKey: `picture-books/character-references/i111/${scope.ownerId}/${scope.bookId}/pip.png`,
+            sha256: 'b'.repeat(64),
+          },
+        ],
+      }),
+      priceVerifier: async ({ source }) => ({
+        kind: 'I111_PRICE_EVIDENCE',
+        authenticated: true,
+        checkedOutSha: source.checkedOutSha,
+        provider: scope.provider,
+        model: scope.model,
+        currency: 'CNY',
+        inputImages: 2,
+        outputImages: 1,
+        maxCalls: 3,
+        reservationMinor: 25,
+        maxSpendMinor: 200,
+        expectedChargeMinor: 22,
+        observedAt: evidenceObservedAt,
+        expiresAt: evidenceExpiresAt,
+      }),
+    },
+  });
+  assert.equal(result.result, 'STOP');
+  assert.deepEqual(result.errorCodes, ['I111_BUDGET_INVALID', 'I111_RUNTIME_NOT_ISOLATED']);
+  assert.equal(result.checks.remoteBos, 'PASS');
+  assert.equal(result.checks.budget, 'STOP');
+  assert.equal(result.checks.atomicIsolation, 'DEFERRED_TO_TRUSTED_COORDINATOR');
+  assert.equal(result.checks.retrySemantics, 'DEFERRED_TO_TRUSTED_COORDINATOR');
+  assert.equal(result.paidExecutionAuthorized, false);
+});
+
+test('evidence validators reject booleans, wrong scope, stale hashes and malformed manifests', () => {
+  const source = { checkedOutSha: reviewedSha };
+  const environment = { BAIDU_BOS_BUCKET: bucket, BAIDU_BOS_ENDPOINT: 'https://cd.bcebos.com' };
+  assert.equal(validateI111RemoteBosEvidence(true, { env: environment, source }), false);
+  assert.equal(validateI111PriceEvidence(true, { source }), false);
+  const remote = {
+    kind: 'I111_REMOTE_BOS_EVIDENCE',
+    authenticated: true,
+    checkedOutSha: reviewedSha,
+    bookId: scope.bookId,
+    ownerId: scope.ownerId,
+    bucket,
+    endpoint: environment.BAIDU_BOS_ENDPOINT,
+    observedAt: evidenceObservedAt,
+    expiresAt: evidenceExpiresAt,
+    objects: [
+      {
+        name: 'Mimi',
+        statusCode: 200,
+        private: true,
+        objectKey: `picture-books/character-references/i111/${scope.ownerId}/${scope.bookId}/mimi`,
+        sha256: 'a'.repeat(64),
+      },
+      {
+        name: 'Pip',
+        statusCode: 200,
+        private: true,
+        objectKey: `picture-books/character-references/i111/${scope.ownerId}/${scope.bookId}/pip`,
+        sha256: 'b'.repeat(64),
+      },
+    ],
+  };
+  assert.equal(validateI111RemoteBosEvidence(remote, { env: environment, source }), true);
+  assert.equal(
+    validateI111RemoteBosEvidence(
+      { ...remote, checkedOutSha: 'f'.repeat(40) },
+      { env: environment, source },
+    ),
+    false,
+  );
+  assert.equal(
+    validateI111RemoteBosEvidence(
+      { ...remote, objects: remote.objects.slice(0, 1) },
+      { env: environment, source },
+    ),
+    false,
+  );
+  const price = {
+    kind: 'I111_PRICE_EVIDENCE',
+    authenticated: true,
+    checkedOutSha: reviewedSha,
+    provider: scope.provider,
+    model: scope.model,
+    currency: 'CNY',
+    inputImages: 2,
+    outputImages: 1,
+    maxCalls: 3,
+    reservationMinor: 25,
+    maxSpendMinor: 200,
+    expectedChargeMinor: 22,
+    observedAt: evidenceObservedAt,
+    expiresAt: evidenceExpiresAt,
+  };
+  assert.equal(validateI111PriceEvidence(price, { source }), true);
+  assert.equal(validateI111PriceEvidence({ ...price, model: 'other' }, { source }), false);
+});
+
+test('signed evidence loader binds the pinned source and rejects missing, stale or forged records', async () => {
+  const { publicKey, privateKey } = generateKeyPairSync('ed25519');
+  const testPublicKey = publicKey.export({ type: 'spki', format: 'pem' });
+  const testPrivateKey = privateKey.export({ type: 'pkcs8', format: 'pem' });
+  const source = { checkedOutSha: reviewedSha };
+  const environment = { BAIDU_BOS_BUCKET: bucket, BAIDU_BOS_ENDPOINT: 'https://cd.bcebos.com' };
+  const payload = {
+    kind: 'I111_PRICE_EVIDENCE',
+    authenticated: true,
+    checkedOutSha: reviewedSha,
+    provider: scope.provider,
+    model: scope.model,
+    currency: 'CNY',
+    inputImages: 2,
+    outputImages: 1,
+    maxCalls: 3,
+    reservationMinor: 25,
+    maxSpendMinor: 200,
+    expectedChargeMinor: 22,
+    observedAt: evidenceObservedAt,
+    expiresAt: evidenceExpiresAt,
+  };
+  const signed = {
+    schemaVersion: 1,
+    keyId: 'fredilly-i111-pr242-evidence-v1',
+    payload,
+    signature: sign(null, Buffer.from(canonicalizeI111Evidence(payload)), testPrivateKey).toString(
+      'base64',
+    ),
+  };
+  const dependencies = {
+    secureRead: async () => Buffer.from(JSON.stringify(signed)),
+    evidencePublicKey: testPublicKey,
+  };
+  assert.deepEqual(
+    await loadI111SignedEvidence('price', '/sealed/price.json', {
+      env: environment,
+      source,
+      dependencies,
+    }),
+    payload,
+  );
+  assert.equal(
+    await loadI111SignedEvidence('price', '/sealed/missing.json', {
+      env: environment,
+      source,
+      dependencies: {
+        secureRead: async () => {
+          throw new Error('missing');
+        },
+      },
+    }),
+    null,
+  );
+  const stale = { ...signed, payload: { ...payload, expiresAt: 0 } };
+  assert.equal(
+    await loadI111SignedEvidence('price', '/sealed/stale.json', {
+      env: environment,
+      source,
+      dependencies: { secureRead: async () => Buffer.from(JSON.stringify(stale)) },
+    }),
+    null,
+  );
+  const forged = {
+    ...signed,
+    payload: { ...payload, checkedOutSha: 'f'.repeat(40) },
+  };
+  assert.equal(
+    await loadI111SignedEvidence('price', '/sealed/forged.json', {
+      env: environment,
+      source,
+      dependencies: { secureRead: async () => Buffer.from(JSON.stringify(forged)) },
+    }),
+    null,
   );
 });
 
@@ -944,7 +1150,7 @@ test('new fixed-port resource identity drift stops before TCP and PostgreSQL/Red
 test('uses the independently protected approval record, never the older Gate B approval', () => {
   assert.equal(
     I111_READONLY_PATHS.approval,
-    '/Volumes/Data/Xiaohai-i111-pr241-runtime-approval/i111-readonly-runtime-approval.json',
+    '/Volumes/Data/Xiaohai-i111-pr242-runtime-approval/i111-readonly-runtime-approval.json',
   );
   assert.ok(!I111_READONLY_PATHS.approval.startsWith(`${I111_READONLY_PATHS.gateRoot}/`));
 });
@@ -1235,7 +1441,7 @@ test('detects a Worker or Redis task appearing between the two non-atomic sample
   let runtimeCalls = 0;
   const workerRace = await runI111ReadonlyRuntimePreflight({
     env: env(),
-    argv: [],
+    internalToken: I111_PREFLIGHT_INTERNAL_TOKEN,
     dependencies: {
       fileInspector: () => validFiles(),
       sourceInspector: () => validSource(),
@@ -1254,7 +1460,7 @@ test('detects a Worker or Redis task appearing between the two non-atomic sample
   let redisCalls = 0;
   const queueRace = await runI111ReadonlyRuntimePreflight({
     env: env(),
-    argv: [],
+    internalToken: I111_PREFLIGHT_INTERNAL_TOKEN,
     dependencies: {
       fileInspector: () => validFiles(),
       sourceInspector: () => validSource(),
@@ -1273,9 +1479,9 @@ test('detects a Worker or Redis task appearing between the two non-atomic sample
 
 test('never treats source regexes as proof that provider retry semantics are disabled', async () => {
   const { result } = await run();
-  assert.ok(result.errorCodes.includes('I111_RETRY_SEMANTICS_UNVERIFIED'));
-  assert.equal(result.checks.retrySemantics, 'STOP');
-  assert.equal(result.checks.atomicIsolation, 'STOP');
+  assert.ok(!result.errorCodes.includes('I111_RETRY_SEMANTICS_UNVERIFIED'));
+  assert.equal(result.checks.retrySemantics, 'DEFERRED_TO_TRUSTED_COORDINATOR');
+  assert.equal(result.checks.atomicIsolation, 'DEFERRED_TO_TRUSTED_COORDINATOR');
   assert.equal(result.checks.processAndRedisSampling, 'PASS');
 });
 
@@ -1284,7 +1490,7 @@ test('verifies the exact GitHub review identity, state, URL and commit through t
   const approval = {
     approvedBy: 'Fredilly',
     approvedCommit: sha,
-    approvalUrl: 'https://github.com/Fredilly/Xiaohai/pull/241#pullrequestreview-12345',
+    approvalUrl: 'https://github.com/Fredilly/Xiaohai/pull/242#pullrequestreview-12345',
   };
   const valid = {
     id: 12345,
@@ -1301,7 +1507,7 @@ test('verifies the exact GitHub review identity, state, URL and commit through t
       'github.com',
       '--method',
       'GET',
-      'repos/Fredilly/Xiaohai/pulls/241/reviews/12345',
+      'repos/Fredilly/Xiaohai/pulls/242/reviews/12345',
     ]);
     return { status: 0, stdout: JSON.stringify(valid), stderr: '' };
   };
@@ -1380,7 +1586,7 @@ test('real source inspection separates local consistency from independent review
   const approval = {
     schemaVersion: 1,
     approvedBy: 'Fredilly',
-    approvalUrl: 'https://github.com/Fredilly/Xiaohai/pull/241#pullrequestreview-12345',
+    approvalUrl: 'https://github.com/Fredilly/Xiaohai/pull/242#pullrequestreview-12345',
     approvedCommit: sha,
     migrationDigest: unsigned.migrationDigest,
     sourceSha256: unsigned.sourceHashes,
@@ -1606,6 +1812,13 @@ test('rejects CLI arguments before any filesystem, runtime, Redis or database in
   });
   assert.equal(touched, false);
   assert.deepEqual(result, {
+    result: 'STOP',
+    errorCodes: ['I111_ARGUMENTS_FORBIDDEN'],
+    paidExecutionAuthorized: false,
+    checks: {},
+  });
+  const emptyOverride = await runI111ReadonlyRuntimePreflight({ argv: [] });
+  assert.deepEqual(emptyOverride, {
     result: 'STOP',
     errorCodes: ['I111_ARGUMENTS_FORBIDDEN'],
     paidExecutionAuthorized: false,

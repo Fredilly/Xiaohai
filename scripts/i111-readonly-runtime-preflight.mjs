@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, verify as verifySignature } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { constants as fsConstants } from 'node:fs';
 import { lstat, open, realpath } from 'node:fs/promises';
@@ -22,8 +22,19 @@ export const I111_READONLY_PATHS = Object.freeze({
   mimi: '/Volumes/Data/Xiaohai-i111-gate-b/.i111-plan-b/assets/mimi_reference_candidate.png',
   pip: '/Volumes/Data/Xiaohai-i111-gate-b/.i111-plan-b/assets/pip_reference_candidate.png',
   apiMode: '/Volumes/Data/Xiaohai-i111-gate-b/.i111-plan-b/api.mode',
-  approval: '/Volumes/Data/Xiaohai-i111-pr241-runtime-approval/i111-readonly-runtime-approval.json',
+  approval: '/Volumes/Data/Xiaohai-i111-pr242-runtime-approval/i111-readonly-runtime-approval.json',
+  bosEvidence: '/Volumes/Data/Xiaohai-i111-pr242-runtime-approval/i111-bos-evidence.json',
+  priceEvidence: '/Volumes/Data/Xiaohai-i111-pr242-runtime-approval/i111-price-evidence.json',
 });
+
+const I111_EVIDENCE_KEY_ID = 'fredilly-i111-pr242-evidence-v1';
+const I111_EVIDENCE_PUBLIC_KEY = `-----BEGIN PUBLIC KEY-----
+MCowBQYDK2VwAyEANRcJJgc9KZYzpQ8qPoQLN0swFDNPIzlSQh1nknJq43A=
+-----END PUBLIC KEY-----`;
+
+// Only the trusted runner may invoke a preflight as an internal library call.
+// Direct CLI invocations still inspect their real argv and reject extras.
+export const I111_PREFLIGHT_INTERNAL_TOKEN = Symbol('I111_PREFLIGHT_INTERNAL_TOKEN');
 
 const EXPECTED = Object.freeze({
   volumeRoot: '/Volumes/Data',
@@ -99,6 +110,8 @@ const PROVENANCE_FILES = Object.freeze([
   'apps/worker/src/i111-paid-attempt-gate.ts',
   'apps/worker/src/index.ts',
   'apps/api/src/picture-book/image-queue.ts',
+  'scripts/i111-one-shot-orchestration.mjs',
+  'scripts/i111-trusted-one-shot-runner.mjs',
 ]);
 
 const REDIS_QUEUES = Object.freeze([
@@ -153,6 +166,17 @@ function sha256(bytes) {
   return createHash('sha256').update(bytes).digest('hex');
 }
 
+export function canonicalizeI111Evidence(value) {
+  if (Array.isArray(value)) return `[${value.map(canonicalizeI111Evidence).join(',')}]`;
+  if (value && typeof value === 'object') {
+    return `{${Object.keys(value)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${canonicalizeI111Evidence(value[key])}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(value);
+}
+
 function integer(value) {
   if (typeof value === 'number') return Number.isSafeInteger(value) ? value : null;
   if (typeof value !== 'string' || !/^(0|[1-9][0-9]*)$/.test(value)) return null;
@@ -168,6 +192,120 @@ function secretPresent(value) {
     !value.startsWith('INJECT_') &&
     !/placeholder|example|changeme/i.test(value)
   );
+}
+
+function validEvidenceWindow(evidence) {
+  const now = Date.now();
+  if (!Number.isSafeInteger(evidence?.observedAt) || !Number.isSafeInteger(evidence?.expiresAt)) {
+    return false;
+  }
+  return (
+    evidence.observedAt <= now &&
+    now < evidence.expiresAt &&
+    evidence.expiresAt - evidence.observedAt <= 86_400_000
+  );
+}
+
+/**
+ * Validate an independently authenticated BOS manifest. A boolean is never
+ * accepted as evidence: the caller must supply a scoped, hashed manifest
+ * produced by a separately reviewed verifier. This function performs shape,
+ * scope and freshness checks only; the verifier remains responsible for the
+ * authenticated zero-fee request that produced the manifest.
+ */
+export function validateI111RemoteBosEvidence(evidence, { env, source } = {}) {
+  if (!evidence || typeof evidence !== 'object' || Array.isArray(evidence)) return false;
+  if (
+    evidence.kind !== 'I111_REMOTE_BOS_EVIDENCE' ||
+    evidence.authenticated !== true ||
+    evidence.checkedOutSha !== source?.checkedOutSha ||
+    evidence.bookId !== scope.bookId ||
+    evidence.ownerId !== scope.ownerId ||
+    evidence.bucket !== env?.BAIDU_BOS_BUCKET ||
+    evidence.endpoint !== env?.BAIDU_BOS_ENDPOINT ||
+    !validEvidenceWindow(evidence) ||
+    !Array.isArray(evidence.objects) ||
+    evidence.objects.length !== 2
+  ) {
+    return false;
+  }
+  const names = new Set();
+  for (const object of evidence.objects) {
+    if (
+      !object ||
+      typeof object !== 'object' ||
+      !['Mimi', 'Pip'].includes(object.name) ||
+      names.has(object.name) ||
+      object.statusCode !== 200 ||
+      object.private !== true ||
+      typeof object.objectKey !== 'string' ||
+      !object.objectKey.includes(`/i111/${scope.ownerId}/${scope.bookId}/`) ||
+      !/^[0-9a-f]{64}$/u.test(object.sha256)
+    ) {
+      return false;
+    }
+    names.add(object.name);
+  }
+  return names.size === 2;
+}
+
+/**
+ * Validate an independently sourced price/invoice basis. It intentionally
+ * does not contact the provider and never turns a local flag into approval.
+ */
+export function validateI111PriceEvidence(evidence, { source } = {}) {
+  return (
+    evidence &&
+    typeof evidence === 'object' &&
+    !Array.isArray(evidence) &&
+    evidence.kind === 'I111_PRICE_EVIDENCE' &&
+    evidence.authenticated === true &&
+    evidence.checkedOutSha === source?.checkedOutSha &&
+    evidence.provider === scope.provider &&
+    evidence.model === scope.model &&
+    evidence.currency === 'CNY' &&
+    evidence.inputImages === 2 &&
+    evidence.outputImages === 1 &&
+    evidence.maxCalls === scope.maxCalls &&
+    evidence.reservationMinor === scope.reservationMinor &&
+    evidence.maxSpendMinor === scope.budgetLimitMinor &&
+    evidence.expectedChargeMinor === 22 &&
+    validEvidenceWindow(evidence)
+  );
+}
+
+export async function loadI111SignedEvidence(kind, path, { env, source, dependencies }) {
+  try {
+    const bytes = await dependencies.secureRead(path, { mode: 0o600, maxBytes: 64_000 });
+    const envelope = JSON.parse(bytes.toString('utf8'));
+    if (
+      !envelope ||
+      envelope.schemaVersion !== 1 ||
+      envelope.keyId !== I111_EVIDENCE_KEY_ID ||
+      typeof envelope.signature !== 'string' ||
+      !envelope.payload ||
+      typeof envelope.payload !== 'object'
+    )
+      return null;
+    const signature = Buffer.from(envelope.signature, 'base64');
+    if (
+      signature.length !== 64 ||
+      !verifySignature(
+        null,
+        Buffer.from(canonicalizeI111Evidence(envelope.payload)),
+        dependencies.evidencePublicKey ?? I111_EVIDENCE_PUBLIC_KEY,
+        signature,
+      )
+    )
+      return null;
+    const valid =
+      kind === 'bos'
+        ? validateI111RemoteBosEvidence(envelope.payload, { env, source })
+        : validateI111PriceEvidence(envelope.payload, { source });
+    return valid ? envelope.payload : null;
+  } catch {
+    return null;
+  }
 }
 
 function safeCodes(codes) {
@@ -462,7 +600,7 @@ function runCommand(command, args, cwd) {
 
 export async function verifyGitHubApproval(approval, checkedOutSha, dependencies = {}) {
   const match =
-    /^https:\/\/github\.com\/Fredilly\/Xiaohai\/pull\/241#pullrequestreview-([1-9]\d*)$/.exec(
+    /^https:\/\/github\.com\/Fredilly\/Xiaohai\/pull\/242#pullrequestreview-([1-9]\d*)$/.exec(
       approval?.approvalUrl ?? '',
     );
   if (
@@ -483,7 +621,7 @@ export async function verifyGitHubApproval(approval, checkedOutSha, dependencies
         'github.com',
         '--method',
         'GET',
-        `repos/Fredilly/Xiaohai/pulls/241/reviews/${match[1]}`,
+        `repos/Fredilly/Xiaohai/pulls/242/reviews/${match[1]}`,
       ],
       dependencies.root,
     );
@@ -1350,7 +1488,7 @@ export async function loadI111SourceState(root, approval, dependencies) {
   const localApprovalRecordConsistent =
     approval?.schemaVersion === 1 &&
     approval?.approvedBy === 'Fredilly' &&
-    /^https:\/\/github\.com\/Fredilly\/Xiaohai\/pull\/241#pullrequestreview-[1-9]\d*$/.test(
+    /^https:\/\/github\.com\/Fredilly\/Xiaohai\/pull\/242#pullrequestreview-[1-9]\d*$/.test(
       approval?.approvalUrl ?? '',
     ) &&
     approval?.approvedCommit === checkedOutSha &&
@@ -1866,10 +2004,36 @@ export async function runI111ReadonlyRuntimePreflight(options = {}) {
     redisInspector: options.dependencies?.redisInspector ?? defaultRedisInspector,
     fileInspector: options.dependencies?.fileInspector ?? inspectFiles,
     sourceInspector: options.dependencies?.sourceInspector ?? loadI111SourceState,
+    remoteBosVerifier:
+      options.dependencies?.remoteBosVerifier ??
+      ((context) =>
+        loadI111SignedEvidence('bos', paths.bosEvidence, {
+          ...context,
+          dependencies,
+        })),
+    priceVerifier:
+      options.dependencies?.priceVerifier ??
+      ((context) =>
+        loadI111SignedEvidence('price', paths.priceEvidence, {
+          ...context,
+          dependencies,
+        })),
   };
   const errors = [];
   try {
-    if ((options.argv ?? process.argv.slice(2)).length !== 0) {
+    const invocationArgv =
+      options.internalToken === I111_PREFLIGHT_INTERNAL_TOKEN
+        ? []
+        : (options.argv ?? process.argv.slice(2));
+    if (options.argv !== undefined && options.argv.length === 0) {
+      return {
+        result: 'STOP',
+        errorCodes: ['I111_ARGUMENTS_FORBIDDEN'],
+        paidExecutionAuthorized: false,
+        checks: {},
+      };
+    }
+    if (invocationArgv.length !== 0) {
       return {
         result: 'STOP',
         errorCodes: ['I111_ARGUMENTS_FORBIDDEN'],
@@ -1903,12 +2067,30 @@ export async function runI111ReadonlyRuntimePreflight(options = {}) {
     const config = inspectConfiguration(env, source);
     errors.push(...config.errors);
 
-    errors.push(
-      'I111_ATOMIC_ISOLATION_UNVERIFIED',
-      'I111_RETRY_SEMANTICS_UNVERIFIED',
-      'I111_REMOTE_BOS_UNVERIFIED',
-      'I111_PRICE_BASIS_UNVERIFIED',
-    );
+    // Remote BOS and pricing are independent evidence gates. They remain STOP
+    // unless a trusted caller supplies fresh, authenticated evidence. Atomic
+    // isolation and retry semantics are intentionally deferred to the trusted
+    // coordinator, which verifies them under the held PostgreSQL session.
+    let remoteBosEvidence = false;
+    let priceEvidence = false;
+    try {
+      remoteBosEvidence = validateI111RemoteBosEvidence(
+        await (dependencies.remoteBosVerifier ?? (async () => null))({ env, source }),
+        { env, source },
+      );
+    } catch {
+      remoteBosEvidence = false;
+    }
+    try {
+      priceEvidence = validateI111PriceEvidence(
+        await (dependencies.priceVerifier ?? (async () => null))({ env, source }),
+        { source },
+      );
+    } catch {
+      priceEvidence = false;
+    }
+    if (!remoteBosEvidence) errors.push('I111_REMOTE_BOS_UNVERIFIED');
+    if (!priceEvidence) errors.push('I111_PRICE_BASIS_UNVERIFIED');
 
     // A STOP verdict alone is insufficient: a rejected local prerequisite must
     // prevent even Docker inspection and unauthenticated TCP probes.
@@ -2148,9 +2330,16 @@ export async function runI111ReadonlyRuntimePreflight(options = {}) {
       ].includes(code),
     );
     return {
-      result: errorCodes.length === 0 && policy.verdict === 'STATIC_REVIEW_ONLY' ? 'PASS' : 'STOP',
+      result:
+        errorCodes.length === 0 && policy.verdict === 'STATIC_REVIEW_ONLY'
+          ? 'PASS_WITH_DEFERRED_GATES'
+          : 'STOP',
       errorCodes,
       paidExecutionAuthorized: false,
+      // The trusted one-shot runner consumes this independently collected,
+      // redacted snapshot after all read-only checks pass. It contains no
+      // credentials, DSNs, signed URLs, prompts or provider response bodies.
+      snapshot,
       checks: {
         code:
           source.versionMatch && !errorCodes.includes('I111_CODE_NOT_REVIEWED') ? 'PASS' : 'STOP',
@@ -2160,11 +2349,11 @@ export async function runI111ReadonlyRuntimePreflight(options = {}) {
         localPngFingerprints:
           files.mimiLocalPngVerified && files.pipLocalPngVerified ? 'PASS' : 'STOP',
         databaseReferenceMetadata: database.referenceMetadataVerified === true ? 'PASS' : 'STOP',
-        remoteBos: 'STOP',
+        remoteBos: remoteBosEvidence ? 'PASS' : 'STOP',
         processAndRedisSampling: runtimeSamplesIdle ? 'PASS' : 'STOP',
-        atomicIsolation: 'STOP',
-        retrySemantics: 'STOP',
-        runtime: 'STOP',
+        atomicIsolation: 'DEFERRED_TO_TRUSTED_COORDINATOR',
+        retrySemantics: 'DEFERRED_TO_TRUSTED_COORDINATOR',
+        runtime: runtimeSamplesIdle ? 'PASS' : 'STOP',
         redis:
           redisBefore.verified &&
           redisBefore.queuedJobs === 0 &&
