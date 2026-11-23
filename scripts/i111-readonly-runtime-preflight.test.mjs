@@ -944,15 +944,16 @@ test('new fixed-port resource identity drift stops before TCP and PostgreSQL/Red
 test('uses the independently protected approval record, never the older Gate B approval', () => {
   assert.equal(
     I111_READONLY_PATHS.approval,
-    '/Volumes/Data/Xiaohai-i111-pr239-runtime-v2-approval/i111-readonly-runtime-approval.json',
+    '/Volumes/Data/Xiaohai-i111-pr241-runtime-approval/i111-readonly-runtime-approval.json',
   );
   assert.ok(!I111_READONLY_PATHS.approval.startsWith(`${I111_READONLY_PATHS.gateRoot}/`));
 });
 
 test('bind source inspection is metadata-only and fails closed on ownership, ACL, flags or drift', async () => {
   const expected = {
+    volumeRoot: '/Volumes/Data',
+    volumeUuid: '512BF66D-91B9-4789-93A8-42BB83B1E0B9',
     hostSource: '/Volumes/Data/Xiaohai-i111-gate-b/.i111-plan-b/secrets/redis.conf',
-    dev: 16777224,
     ino: 576877,
   };
   const cases = [
@@ -962,9 +963,16 @@ test('bind source inspection is metadata-only and fails closed on ownership, ACL
     { mode: 0o100660 },
     { nlink: 2 },
     { dev: 8 },
+    { volumeDevice: 8 },
+    { volumeUuid: '00000000-0000-0000-0000-000000000000' },
+    { filesystem: 'HFS+' },
+    { mountPoint: '/Volumes/Other' },
+    { diskutilFailed: true },
+    { volumeChanged: true },
     { ino: 5 },
     { symlink: true },
     { replaced: true },
+    { parentReplaced: true },
     { parentWritable: true },
     { parentAcl: true },
     { parentFlag: true },
@@ -977,6 +985,7 @@ test('bind source inspection is metadata-only and fails closed on ownership, ACL
   for (const [index, alteration] of cases.entries()) {
     let fileChecks = 0;
     let calls = 0;
+    let diskutilCalls = 0;
     const result = await verifyI111BindHostSource(expected, {
       realpath: async (path) =>
         alteration.symlink && path === expected.hostSource ? '/unexpected' : path,
@@ -993,8 +1002,8 @@ test('bind source inspection is metadata-only and fails closed on ownership, ACL
                 : protectedDirectory
                   ? 0o40700
                   : 0o40755,
-            dev: 1,
-            ino: 2,
+            dev: alteration.volumeDevice && path === '/Volumes/Data' ? 8 : 1,
+            ino: alteration.parentReplaced && fileChecks > 0 && path === '/Volumes/Data' ? 3 : 2,
           };
         }
         fileChecks += 1;
@@ -1005,7 +1014,7 @@ test('bind source inspection is metadata-only and fails closed on ownership, ACL
           gid: alteration.gid ?? 20,
           mode: alteration.mode ?? 0o100600,
           nlink: alteration.nlink ?? 1,
-          dev: alteration.dev ?? 16777224,
+          dev: alteration.dev ?? 1,
           ino: alteration.replaced && fileChecks > 1 ? 6 : (alteration.ino ?? 576877),
           size: 20,
           mtimeMs: 1,
@@ -1014,6 +1023,18 @@ test('bind source inspection is metadata-only and fails closed on ownership, ACL
       },
       commandRunner: async (command, args) => {
         calls += 1;
+        if (command === '/usr/sbin/diskutil') {
+          diskutilCalls += 1;
+          assert.deepEqual(args, ['info', expected.volumeRoot]);
+          return {
+            status: alteration.diskutilFailed ? 1 : 0,
+            stderr: '',
+            stdout:
+              `   File System Personality: ${alteration.filesystem ?? 'APFS'}\n` +
+              `   Mount Point: ${alteration.mountPoint ?? expected.volumeRoot}\n` +
+              `   Volume UUID: ${alteration.volumeChanged && diskutilCalls > 1 ? '00000000-0000-0000-0000-000000000000' : (alteration.volumeUuid ?? expected.volumeUuid)}\n`,
+          };
+        }
         assert.equal(command, '/bin/ls');
         assert.equal(args[0], '-ldeO@');
         const file = args[1] === expected.hostSource;
@@ -1027,8 +1048,11 @@ test('bind source inspection is metadata-only and fails closed on ownership, ACL
         };
       },
     });
+    if (alteration.volumeChanged) {
+      assert.equal(diskutilCalls, 2, `case ${index}`);
+    }
     assert.equal(result, index === 0, `case ${index}`);
-    assert.ok(calls <= 4, `case ${index}: unexpected metadata calls`);
+    assert.ok(calls <= 6, `case ${index}: unexpected metadata calls`);
   }
 });
 
@@ -1260,7 +1284,7 @@ test('verifies the exact GitHub review identity, state, URL and commit through t
   const approval = {
     approvedBy: 'Fredilly',
     approvedCommit: sha,
-    approvalUrl: 'https://github.com/Fredilly/Xiaohai/pull/239#pullrequestreview-12345',
+    approvalUrl: 'https://github.com/Fredilly/Xiaohai/pull/241#pullrequestreview-12345',
   };
   const valid = {
     id: 12345,
@@ -1277,7 +1301,7 @@ test('verifies the exact GitHub review identity, state, URL and commit through t
       'github.com',
       '--method',
       'GET',
-      'repos/Fredilly/Xiaohai/pulls/239/reviews/12345',
+      'repos/Fredilly/Xiaohai/pulls/241/reviews/12345',
     ]);
     return { status: 0, stdout: JSON.stringify(valid), stderr: '' };
   };
@@ -1318,7 +1342,7 @@ test('verifies the exact GitHub review identity, state, URL and commit through t
     { approvedBy: 'unknown' },
     { approvalUrl: 'https://attacker.example/Fredilly/Xiaohai/pull/239#pullrequestreview-12345' },
     { approvalUrl: 'https://github.com/Other/Xiaohai/pull/239#pullrequestreview-12345' },
-    { approvalUrl: 'https://github.com/Fredilly/Xiaohai/pull/238#pullrequestreview-12345' },
+    { approvalUrl: 'https://github.com/Fredilly/Xiaohai/pull/239#pullrequestreview-12345' },
     { approvalUrl: 'https://github.com/Fredilly/Xiaohai/pull/0#pullrequestreview-12345' },
   ]) {
     let reviewQueries = 0;
@@ -1356,7 +1380,7 @@ test('real source inspection separates local consistency from independent review
   const approval = {
     schemaVersion: 1,
     approvedBy: 'Fredilly',
-    approvalUrl: 'https://github.com/Fredilly/Xiaohai/pull/239#pullrequestreview-12345',
+    approvalUrl: 'https://github.com/Fredilly/Xiaohai/pull/241#pullrequestreview-12345',
     approvedCommit: sha,
     migrationDigest: unsigned.migrationDigest,
     sourceSha256: unsigned.sourceHashes,
@@ -1373,7 +1397,7 @@ test('real source inspection separates local consistency from independent review
 
   const wrongPrApproval = {
     ...approval,
-    approvalUrl: 'https://github.com/Fredilly/Xiaohai/pull/238#pullrequestreview-12345',
+    approvalUrl: 'https://github.com/Fredilly/Xiaohai/pull/239#pullrequestreview-12345',
   };
   let wrongPrReviewQueries = 0;
   const wrongPr = await loadI111SourceState(root, wrongPrApproval, {

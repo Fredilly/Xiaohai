@@ -22,11 +22,12 @@ export const I111_READONLY_PATHS = Object.freeze({
   mimi: '/Volumes/Data/Xiaohai-i111-gate-b/.i111-plan-b/assets/mimi_reference_candidate.png',
   pip: '/Volumes/Data/Xiaohai-i111-gate-b/.i111-plan-b/assets/pip_reference_candidate.png',
   apiMode: '/Volumes/Data/Xiaohai-i111-gate-b/.i111-plan-b/api.mode',
-  approval:
-    '/Volumes/Data/Xiaohai-i111-pr239-runtime-v2-approval/i111-readonly-runtime-approval.json',
+  approval: '/Volumes/Data/Xiaohai-i111-pr241-runtime-approval/i111-readonly-runtime-approval.json',
 });
 
 const EXPECTED = Object.freeze({
+  volumeRoot: '/Volumes/Data',
+  volumeUuid: '512BF66D-91B9-4789-93A8-42BB83B1E0B9',
   gateSha: '6898d09a3fcf76c5006ab271d0168643de2bf1fd',
   databaseUser: 'xiaohai_i111_app',
   databasePort: '52511',
@@ -44,19 +45,24 @@ const EXPECTED = Object.freeze({
   redisSourceId: '920804ca22010bfe8ae8791e9f6ec88604d870151685ea6a31e66dc23182f031',
   redisSourceVolume: 'xiaohai_i111_planb_redisdata',
   postgresBind: Object.freeze({
+    // APFS device numbers can change after a volume remount. The bind must
+    // remain on this trusted volume, so its device is sampled and checked at
+    // runtime rather than pinned to a stale mount-specific number.
+    volumeRoot: '/Volumes/Data',
+    volumeUuid: '512BF66D-91B9-4789-93A8-42BB83B1E0B9',
     hostSource:
       '/Volumes/Data/Xiaohai-i111-gate-b/.i111-plan-b/secrets/postgres_bootstrap_password',
     dockerSource:
       '/host_mnt/Volumes/Data/Xiaohai-i111-gate-b/.i111-plan-b/secrets/postgres_bootstrap_password',
     destination: '/run/secrets/postgres_bootstrap_password',
-    dev: 16777224,
     ino: 576874,
   }),
   redisBind: Object.freeze({
+    volumeRoot: '/Volumes/Data',
+    volumeUuid: '512BF66D-91B9-4789-93A8-42BB83B1E0B9',
     hostSource: '/Volumes/Data/Xiaohai-i111-gate-b/.i111-plan-b/secrets/redis.conf',
     dockerSource: '/host_mnt/Volumes/Data/Xiaohai-i111-gate-b/.i111-plan-b/secrets/redis.conf',
     destination: '/usr/local/etc/redis/redis.conf',
-    dev: 16777224,
     ino: 576877,
   }),
   dockerEndpoint: 'unix:///Users/li/.docker/run/docker.sock',
@@ -81,6 +87,8 @@ const EXPECTED = Object.freeze({
   pipBytes: 738_959,
   migrationCount: 42,
 });
+
+const DISKUTIL = '/usr/sbin/diskutil';
 
 const PROVENANCE_FILES = Object.freeze([
   'scripts/i111-readonly-runtime-preflight.mjs',
@@ -454,7 +462,7 @@ function runCommand(command, args, cwd) {
 
 export async function verifyGitHubApproval(approval, checkedOutSha, dependencies = {}) {
   const match =
-    /^https:\/\/github\.com\/Fredilly\/Xiaohai\/pull\/239#pullrequestreview-([1-9]\d*)$/.exec(
+    /^https:\/\/github\.com\/Fredilly\/Xiaohai\/pull\/241#pullrequestreview-([1-9]\d*)$/.exec(
       approval?.approvalUrl ?? '',
     );
   if (
@@ -475,7 +483,7 @@ export async function verifyGitHubApproval(approval, checkedOutSha, dependencies
         'github.com',
         '--method',
         'GET',
-        `repos/Fredilly/Xiaohai/pulls/239/reviews/${match[1]}`,
+        `repos/Fredilly/Xiaohai/pulls/241/reviews/${match[1]}`,
       ],
       dependencies.root,
     );
@@ -676,6 +684,22 @@ async function exactMacLsMetadata(path, expectedMode, commandRunner) {
   );
 }
 
+function parseTrustedVolumeIdentity(result, expected) {
+  if (result.status !== 0 || result.stderr.trim()) return null;
+  const output = result.stdout;
+  const fileSystem = /^\s*File System Personality:\s*(.+?)\s*$/mu.exec(output)?.[1];
+  const mountPoint = /^\s*Mount Point:\s*(.+?)\s*$/mu.exec(output)?.[1];
+  const volumeUuid = /^\s*Volume UUID:\s*([0-9A-F-]+)\s*$/mu.exec(output)?.[1];
+  if (
+    fileSystem !== 'APFS' ||
+    mountPoint !== expected.volumeRoot ||
+    volumeUuid !== expected.volumeUuid
+  ) {
+    return null;
+  }
+  return { fileSystem, mountPoint, volumeUuid };
+}
+
 export async function verifyI111BindHostSource(expected, dependencies = {}) {
   const adapter = {
     lstat: dependencies.lstat ?? lstat,
@@ -690,6 +714,27 @@ export async function verifyI111BindHostSource(expected, dependencies = {}) {
       return false;
     }
     const parents = await trustedParents(expected.hostSource, { ...adapter, expectedUid: 501 });
+    const volumeRoot = expected.volumeRoot;
+    if (!isAbsolute(volumeRoot) || (await adapter.realpath(volumeRoot)) !== volumeRoot) {
+      return false;
+    }
+    const volumeIdentityBefore = parseTrustedVolumeIdentity(
+      await commandRunner(DISKUTIL, ['info', volumeRoot]),
+      expected,
+    );
+    if (!volumeIdentityBefore) return false;
+    // trustedParents() snapshots the volume root together with every
+    // directory in the path. This binds the file to the current APFS volume
+    // while parentsUnchanged() below rejects a replacement during the read.
+    const volume = parents.find((entry) => entry.path === volumeRoot);
+    if (
+      !volume ||
+      volume.uid !== 501 ||
+      (volume.mode & 0o777) !== 0o755 ||
+      (volume.mode & 0o022) !== 0
+    ) {
+      return false;
+    }
     for (const [parentPath, expectedMode] of [
       [I111_READONLY_PATHS.gateRoot, 'drwxr-xr-x'],
       [`${I111_READONLY_PATHS.gateRoot}/.i111-plan-b`, 'drwx------'],
@@ -727,7 +772,7 @@ export async function verifyI111BindHostSource(expected, dependencies = {}) {
       before.gid !== 20 ||
       (before.mode & 0o777) !== 0o600 ||
       before.nlink !== 1 ||
-      before.dev !== expected.dev ||
+      before.dev !== volume.dev ||
       before.ino !== expected.ino
     ) {
       return false;
@@ -739,7 +784,13 @@ export async function verifyI111BindHostSource(expected, dependencies = {}) {
     }
     const after = await adapter.lstat(expected.hostSource);
     await parentsUnchanged(parents, adapter);
+    const volumeIdentityAfter = parseTrustedVolumeIdentity(
+      await commandRunner(DISKUTIL, ['info', volumeRoot]),
+      expected,
+    );
     return (
+      volumeIdentityAfter !== null &&
+      JSON.stringify(volumeIdentityAfter) === JSON.stringify(volumeIdentityBefore) &&
       (await adapter.realpath(expected.hostSource)) === expected.hostSource &&
       after.isFile() &&
       !after.isSymbolicLink() &&
@@ -1299,7 +1350,7 @@ export async function loadI111SourceState(root, approval, dependencies) {
   const localApprovalRecordConsistent =
     approval?.schemaVersion === 1 &&
     approval?.approvedBy === 'Fredilly' &&
-    /^https:\/\/github\.com\/Fredilly\/Xiaohai\/pull\/239#pullrequestreview-[1-9]\d*$/.test(
+    /^https:\/\/github\.com\/Fredilly\/Xiaohai\/pull\/241#pullrequestreview-[1-9]\d*$/.test(
       approval?.approvalUrl ?? '',
     ) &&
     approval?.approvedCommit === checkedOutSha &&
