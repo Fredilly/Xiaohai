@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { readFile } from 'node:fs/promises';
 
-const planUrl = new URL('../../../docs/I111_DISPOSABLE_POSTGRES_SESSION_ACCEPTANCE_PLAN.md', import.meta.url);
+const planUrl = new URL(
+  '../../../docs/I111_DISPOSABLE_POSTGRES_SESSION_ACCEPTANCE_PLAN.md',
+  import.meta.url,
+);
 const coordinatorUrl = new URL('../src/i111-trusted-coordinator.ts', import.meta.url);
 
 describe('I111 disposable PostgreSQL acceptance plan', () => {
@@ -35,7 +38,7 @@ describe('I111 disposable PostgreSQL acceptance plan', () => {
 
   it('does not turn the private kernel into a public execution entry', async () => {
     const source = await readFile(coordinatorUrl, 'utf8');
-    expect(source).toContain("errorCode: DISABLED");
+    expect(source).toContain('errorCode: DISABLED');
     expect(source).toContain('paidExecutionAuthorized: false');
     expect(source).not.toContain('provider.generate(');
     expect(source).not.toContain('processOne(');

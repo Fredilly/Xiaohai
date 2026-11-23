@@ -74,9 +74,7 @@ function rowsOf(result: unknown): QueryRow[] {
   if (!result || typeof result !== 'object') return [];
   const rows = (result as { rows?: unknown }).rows;
   if (!Array.isArray(rows)) return [];
-  return rows.filter(
-    (row): row is QueryRow => row !== null && typeof row === 'object',
-  );
+  return rows.filter((row): row is QueryRow => row !== null && typeof row === 'object');
 }
 
 function requireBackendPid(client: PoolClient): number {
@@ -103,23 +101,25 @@ async function withBoundedOperation<T>(
 ): Promise<T> {
   let timedOut = false;
   let timer: NodeJS.Timeout | undefined;
-  const operationPromise = Promise.resolve().then(operation).then(
-    (value) => {
-      if (timedOut && onLateSuccess) {
-        try {
-          onLateSuccess(value);
-        } catch {
-          // The invocation is already STOP; late cleanup cannot authorize anything.
+  const operationPromise = Promise.resolve()
+    .then(operation)
+    .then(
+      (value) => {
+        if (timedOut && onLateSuccess) {
+          try {
+            onLateSuccess(value);
+          } catch {
+            // The invocation is already STOP; late cleanup cannot authorize anything.
+          }
         }
-      }
-      return value;
-    },
-    (error) => {
-      // This handler prevents an unhandled late rejection while preserving the
-      // original rejection for the bounded race when it wins in time.
-      throw error;
-    },
-  );
+        return value;
+      },
+      (error) => {
+        // This handler prevents an unhandled late rejection while preserving the
+        // original rejection for the bounded race when it wins in time.
+        throw error;
+      },
+    );
   const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(() => {
       timedOut = true;
@@ -156,10 +156,11 @@ async function acquireOwnedLock(client: PoolClient, state: LockState): Promise<v
   const pinnedPid = requireBackendPid(client);
   state.pinnedPid = pinnedPid;
   state.lockAttempted = true;
-  const locked = rowsOf(await queryOwned(client, state,
-    'select pg_try_advisory_lock($1::int4, $2::int4) as locked',
-    [...LOCK_KEY],
-  ));
+  const locked = rowsOf(
+    await queryOwned(client, state, 'select pg_try_advisory_lock($1::int4, $2::int4) as locked', [
+      ...LOCK_KEY,
+    ]),
+  );
   if (locked.length !== 1 || locked[0]?.locked !== true) {
     if (locked.length === 1 && locked[0]?.locked === false) {
       state.lockConfirmedNotAcquired = true;
@@ -167,7 +168,9 @@ async function acquireOwnedLock(client: PoolClient, state: LockState): Promise<v
     throw new CoordinatorStop(STOP);
   }
   state.acquired = true;
-  const backend = rowsOf(await queryOwned(client, state, 'select pg_backend_pid()::int4 as backend_pid'));
+  const backend = rowsOf(
+    await queryOwned(client, state, 'select pg_backend_pid()::int4 as backend_pid'),
+  );
   if (backend.length !== 1 || backend[0]?.backend_pid !== pinnedPid) {
     throw new CoordinatorStop(STOP);
   }
@@ -178,14 +181,17 @@ async function releaseOwnedLock(
   state: LockState,
   pinnedPid: number,
 ): Promise<void> {
-  const backend = rowsOf(await queryOwned(client, state, 'select pg_backend_pid()::int4 as backend_pid'));
+  const backend = rowsOf(
+    await queryOwned(client, state, 'select pg_backend_pid()::int4 as backend_pid'),
+  );
   if (backend.length !== 1 || backend[0]?.backend_pid !== pinnedPid) {
     throw new CoordinatorStop(STOP);
   }
-  const unlocked = rowsOf(await queryOwned(client, state,
-    'select pg_advisory_unlock($1::int4, $2::int4) as unlocked',
-    [...LOCK_KEY],
-  ));
+  const unlocked = rowsOf(
+    await queryOwned(client, state, 'select pg_advisory_unlock($1::int4, $2::int4) as unlocked', [
+      ...LOCK_KEY,
+    ]),
+  );
   if (unlocked.length !== 1 || unlocked[0]?.unlocked !== true) {
     throw new CoordinatorStop(STOP);
   }

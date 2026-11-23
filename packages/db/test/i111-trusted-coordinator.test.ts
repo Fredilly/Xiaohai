@@ -49,7 +49,10 @@ async function loadPrivateKernel(options: HarnessOptions = {}) {
     .slice(source.indexOf('const STOP ='))
     .replace('const CONNECT_TIMEOUT_MS = 5_000;', `const CONNECT_TIMEOUT_MS = ${timeoutMs};`)
     .replace('const QUERY_TIMEOUT_MS = 5_000;', `const QUERY_TIMEOUT_MS = ${timeoutMs};`)
-    .replace('const POOL_END_TIMEOUT_MS = 1_000;', `const POOL_END_TIMEOUT_MS = ${poolEndTimeoutMs};`)
+    .replace(
+      'const POOL_END_TIMEOUT_MS = 1_000;',
+      `const POOL_END_TIMEOUT_MS = ${poolEndTimeoutMs};`,
+    )
     .replace(/^export\s+/gmu, '');
   const program = `
     const pg = globalThis.__pg;
@@ -82,14 +85,23 @@ async function loadPrivateKernel(options: HarnessOptions = {}) {
         if (options.lockQueryTimeoutError) {
           events.push('lock-underlying-pending');
           setTimeout(() => events.push('lock-underlying-complete'), 80);
-          return new Promise((_, reject) => setTimeout(() => reject(failure('Query read timeout')), 5));
+          return new Promise((_, reject) =>
+            setTimeout(() => reject(failure('Query read timeout')), 5),
+          );
         }
         if (options.lockRejectDelayMs) {
-          return new Promise((_, reject) => setTimeout(() => reject(failure('late lock failure')), options.lockRejectDelayMs));
+          return new Promise((_, reject) =>
+            setTimeout(() => reject(failure('late lock failure')), options.lockRejectDelayMs),
+          );
         }
         if (options.malformedLock) return { rows: [{}] };
         if (options.lockDelayMs) {
-          return new Promise((resolve) => setTimeout(() => resolve({ rows: [{ locked: options.lockResult ?? true }] }), options.lockDelayMs));
+          return new Promise((resolve) =>
+            setTimeout(
+              () => resolve({ rows: [{ locked: options.lockResult ?? true }] }),
+              options.lockDelayMs,
+            ),
+          );
         }
         return { rows: [{ locked: options.lockResult ?? true }] };
       }
@@ -100,11 +112,18 @@ async function loadPrivateKernel(options: HarnessOptions = {}) {
         if (options.backendQueryTimeoutError) {
           events.push('backend-underlying-pending');
           setTimeout(() => events.push('backend-underlying-complete'), 80);
-          return new Promise((_, reject) => setTimeout(() => reject(failure('Query read timeout')), 5));
+          return new Promise((_, reject) =>
+            setTimeout(() => reject(failure('Query read timeout')), 5),
+          );
         }
         const backendPid = backendPids.shift() ?? pid;
         if (options.backendDelayMs) {
-          return new Promise((resolve) => setTimeout(() => resolve({ rows: [{ backend_pid: backendPid }] }), options.backendDelayMs));
+          return new Promise((resolve) =>
+            setTimeout(
+              () => resolve({ rows: [{ backend_pid: backendPid }] }),
+              options.backendDelayMs,
+            ),
+          );
         }
         return { rows: [{ backend_pid: backendPid }] };
       }
@@ -115,10 +134,17 @@ async function loadPrivateKernel(options: HarnessOptions = {}) {
         if (options.unlockQueryTimeoutError) {
           events.push('unlock-underlying-pending');
           setTimeout(() => events.push('unlock-underlying-complete'), 80);
-          return new Promise((_, reject) => setTimeout(() => reject(failure('Query read timeout')), 5));
+          return new Promise((_, reject) =>
+            setTimeout(() => reject(failure('Query read timeout')), 5),
+          );
         }
         if (options.unlockDelayMs) {
-          return new Promise((resolve) => setTimeout(() => resolve({ rows: [{ unlocked: options.unlockResult ?? true }] }), options.unlockDelayMs));
+          return new Promise((resolve) =>
+            setTimeout(
+              () => resolve({ rows: [{ unlocked: options.unlockResult ?? true }] }),
+              options.unlockDelayMs,
+            ),
+          );
         }
         return { rows: [{ unlocked: options.unlockResult ?? true }] };
       }
@@ -234,9 +260,9 @@ describe('I111 Trusted Coordinator ownership kernel', () => {
     expect(source).toContain('connectionTimeoutMillis: CONNECT_TIMEOUT_MS');
     expect(source).toContain('statement_timeout: QUERY_TIMEOUT_MS');
     expect(source).toContain('query_timeout: QUERY_TIMEOUT_MS');
-    expect(source.indexOf('await releaseOwnedLock(client, lockState, lockState.pinnedPid)')).toBeLessThan(
-      source.indexOf('client.release()'),
-    );
+    expect(
+      source.indexOf('await releaseOwnedLock(client, lockState, lockState.pinnedPid)'),
+    ).toBeLessThan(source.indexOf('client.release()'));
     expect(source).not.toContain('pool.query(');
     expect(source).not.toContain('WeakMap');
     expect(source).not.toContain('provider.generate');
@@ -250,7 +276,15 @@ describe('I111 Trusted Coordinator ownership kernel', () => {
     await expect(harness.executeOwnedLifecycle('offline-test')).rejects.toThrow(
       'I111_TRUSTED_COORDINATOR_PORTS_NOT_WIRED',
     );
-    expect(harness.events).toEqual(['connect', 'lock', 'backend', 'backend', 'unlock', 'release', 'end']);
+    expect(harness.events).toEqual([
+      'connect',
+      'lock',
+      'backend',
+      'backend',
+      'unlock',
+      'release',
+      'end',
+    ]);
     expect(harness.releaseErrors).toEqual([undefined]);
     expect(new Set(harness.calls.map((call) => call.owner)).size).toBe(1);
     expect(harness.calls.map((call) => call.owner)).toEqual(
@@ -263,7 +297,14 @@ describe('I111 Trusted Coordinator ownership kernel', () => {
     await expect(harness.executeOwnedLifecycle('offline-test')).rejects.toThrow(
       'I111_TRUSTED_COORDINATOR_STOP',
     );
-    expect(harness.events).toEqual(['connect', 'lock', 'backend', 'backend', 'release-destroy', 'end']);
+    expect(harness.events).toEqual([
+      'connect',
+      'lock',
+      'backend',
+      'backend',
+      'release-destroy',
+      'end',
+    ]);
     expect(harness.releaseErrors).toHaveLength(1);
     expect(harness.releaseErrors[0]).toMatchObject({ message: 'I111_TRUSTED_COORDINATOR_STOP' });
   });
@@ -296,42 +337,78 @@ describe('I111 Trusted Coordinator ownership kernel', () => {
   });
 
   it('redacts same-realm pool-constructor and connect failures', async () => {
-    const constructorFailure = await loadPrivateKernel({ poolCtorThrows: true, sameRealmErrors: true });
-    await expect(constructorFailure.executeOwnedLifecycle('offline-test'))
-      .rejects.toThrow('I111_TRUSTED_COORDINATOR_STOP');
-    await expect(constructorFailure.executeOwnedLifecycle('offline-test'))
-      .rejects.not.toThrow('REALM_SECRET');
+    const constructorFailure = await loadPrivateKernel({
+      poolCtorThrows: true,
+      sameRealmErrors: true,
+    });
+    await expect(constructorFailure.executeOwnedLifecycle('offline-test')).rejects.toThrow(
+      'I111_TRUSTED_COORDINATOR_STOP',
+    );
+    await expect(constructorFailure.executeOwnedLifecycle('offline-test')).rejects.not.toThrow(
+      'REALM_SECRET',
+    );
 
     const connectFailure = await loadPrivateKernel({ connectThrows: true, sameRealmErrors: true });
-    await expect(connectFailure.executeOwnedLifecycle('offline-test'))
-      .rejects.toThrow('I111_TRUSTED_COORDINATOR_STOP');
+    await expect(connectFailure.executeOwnedLifecycle('offline-test')).rejects.toThrow(
+      'I111_TRUSTED_COORDINATOR_STOP',
+    );
     expect(connectFailure.events).toEqual(['connect', 'end']);
   });
 
   it('redacts same-realm lock and PID query failures', async () => {
     const lockFailure = await loadPrivateKernel({ lockThrows: true, sameRealmErrors: true });
-    await expect(lockFailure.executeOwnedLifecycle('offline-test'))
-      .rejects.toThrow('I111_TRUSTED_COORDINATOR_STOP');
-    await expect(lockFailure.executeOwnedLifecycle('offline-test'))
-      .rejects.not.toThrow('REALM_SECRET');
-    expect(lockFailure.events).toEqual(['connect', 'lock', 'release-destroy', 'end', 'connect', 'lock', 'release-destroy', 'end']);
+    await expect(lockFailure.executeOwnedLifecycle('offline-test')).rejects.toThrow(
+      'I111_TRUSTED_COORDINATOR_STOP',
+    );
+    await expect(lockFailure.executeOwnedLifecycle('offline-test')).rejects.not.toThrow(
+      'REALM_SECRET',
+    );
+    expect(lockFailure.events).toEqual([
+      'connect',
+      'lock',
+      'release-destroy',
+      'end',
+      'connect',
+      'lock',
+      'release-destroy',
+      'end',
+    ]);
 
     const pidFailure = await loadPrivateKernel({ backendThrows: true, sameRealmErrors: true });
-    await expect(pidFailure.executeOwnedLifecycle('offline-test'))
-      .rejects.toThrow('I111_TRUSTED_COORDINATOR_STOP');
+    await expect(pidFailure.executeOwnedLifecycle('offline-test')).rejects.toThrow(
+      'I111_TRUSTED_COORDINATOR_STOP',
+    );
     expect(pidFailure.events).toEqual(['connect', 'lock', 'backend', 'release-destroy', 'end']);
   });
 
   it('redacts same-realm unlock and pool-end failures', async () => {
     const unlockFailure = await loadPrivateKernel({ unlockThrows: true, sameRealmErrors: true });
-    await expect(unlockFailure.executeOwnedLifecycle('offline-test'))
-      .rejects.toThrow('I111_TRUSTED_COORDINATOR_STOP');
-    expect(unlockFailure.events).toEqual(['connect', 'lock', 'backend', 'backend', 'unlock', 'release-destroy', 'end']);
+    await expect(unlockFailure.executeOwnedLifecycle('offline-test')).rejects.toThrow(
+      'I111_TRUSTED_COORDINATOR_STOP',
+    );
+    expect(unlockFailure.events).toEqual([
+      'connect',
+      'lock',
+      'backend',
+      'backend',
+      'unlock',
+      'release-destroy',
+      'end',
+    ]);
 
     const endFailure = await loadPrivateKernel({ endThrows: true, sameRealmErrors: true });
-    await expect(endFailure.executeOwnedLifecycle('offline-test'))
-      .rejects.toThrow('I111_TRUSTED_COORDINATOR_STOP');
-    expect(endFailure.events).toEqual(['connect', 'lock', 'backend', 'backend', 'unlock', 'release', 'end']);
+    await expect(endFailure.executeOwnedLifecycle('offline-test')).rejects.toThrow(
+      'I111_TRUSTED_COORDINATOR_STOP',
+    );
+    expect(endFailure.events).toEqual([
+      'connect',
+      'lock',
+      'backend',
+      'backend',
+      'unlock',
+      'release',
+      'end',
+    ]);
   });
 
   it('bounds a connection wait and destroys a client that arrives late', async () => {
@@ -397,16 +474,18 @@ describe('I111 Trusted Coordinator ownership kernel', () => {
     expect(lateResolve.events).toEqual(['connect', 'lock', 'release-destroy', 'end']);
 
     const lateReject = await loadPrivateKernel({ lockRejectDelayMs: 40, timeoutMs: 20 });
-    await expect(lateReject.executeOwnedLifecycle('offline-test'))
-      .rejects.toThrow('I111_TRUSTED_COORDINATOR_STOP');
+    await expect(lateReject.executeOwnedLifecycle('offline-test')).rejects.toThrow(
+      'I111_TRUSTED_COORDINATOR_STOP',
+    );
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(lateReject.events).toEqual(['connect', 'lock', 'release-destroy', 'end']);
   });
 
   it('treats an ordinary driver timeout error during lock as unknown and never continues SQL', async () => {
     const harness = await loadPrivateKernel({ lockQueryTimeoutError: true, sameRealmErrors: true });
-    await expect(harness.executeOwnedLifecycle('offline-test'))
-      .rejects.toThrow('I111_TRUSTED_COORDINATOR_STOP');
+    await expect(harness.executeOwnedLifecycle('offline-test')).rejects.toThrow(
+      'I111_TRUSTED_COORDINATOR_STOP',
+    );
     await new Promise((resolve) => setTimeout(resolve, 100));
     expect(harness.events).toEqual([
       'connect',
@@ -422,9 +501,13 @@ describe('I111 Trusted Coordinator ownership kernel', () => {
   });
 
   it('treats an ordinary driver timeout during backend PID query as unknown', async () => {
-    const harness = await loadPrivateKernel({ backendQueryTimeoutError: true, sameRealmErrors: true });
-    await expect(harness.executeOwnedLifecycle('offline-test'))
-      .rejects.toThrow('I111_TRUSTED_COORDINATOR_STOP');
+    const harness = await loadPrivateKernel({
+      backendQueryTimeoutError: true,
+      sameRealmErrors: true,
+    });
+    await expect(harness.executeOwnedLifecycle('offline-test')).rejects.toThrow(
+      'I111_TRUSTED_COORDINATOR_STOP',
+    );
     await new Promise((resolve) => setTimeout(resolve, 100));
     expect(harness.events).toEqual([
       'connect',
@@ -441,9 +524,13 @@ describe('I111 Trusted Coordinator ownership kernel', () => {
   });
 
   it('treats an ordinary driver timeout during unlock as unknown', async () => {
-    const harness = await loadPrivateKernel({ unlockQueryTimeoutError: true, sameRealmErrors: true });
-    await expect(harness.executeOwnedLifecycle('offline-test'))
-      .rejects.toThrow('I111_TRUSTED_COORDINATOR_STOP');
+    const harness = await loadPrivateKernel({
+      unlockQueryTimeoutError: true,
+      sameRealmErrors: true,
+    });
+    await expect(harness.executeOwnedLifecycle('offline-test')).rejects.toThrow(
+      'I111_TRUSTED_COORDINATOR_STOP',
+    );
     await new Promise((resolve) => setTimeout(resolve, 100));
     expect(harness.events).toEqual([
       'connect',
@@ -470,7 +557,15 @@ describe('I111 Trusted Coordinator ownership kernel', () => {
     await expect(unlock.executeOwnedLifecycle('offline-test')).rejects.toThrow(
       'I111_TRUSTED_COORDINATOR_STOP',
     );
-    expect(unlock.events).toEqual(['connect', 'lock', 'backend', 'backend', 'unlock', 'release-destroy', 'end']);
+    expect(unlock.events).toEqual([
+      'connect',
+      'lock',
+      'backend',
+      'backend',
+      'unlock',
+      'release-destroy',
+      'end',
+    ]);
   });
 
   it('keeps every combined timeout and cleanup failure redacted and fail-closed', async () => {
@@ -481,13 +576,18 @@ describe('I111 Trusted Coordinator ownership kernel', () => {
       timeoutMs: 20,
       sameRealmErrors: true,
     });
-    await expect(harness.executeOwnedLifecycle('offline-test'))
-      .rejects.toThrow('I111_TRUSTED_COORDINATOR_STOP');
-    await expect(harness.executeOwnedLifecycle('offline-test'))
-      .rejects.not.toThrow('REALM_SECRET');
-    expect(harness.events.slice(0, 6)).toEqual(
-      ['connect', 'lock', 'backend', 'backend', 'unlock', 'release-destroy'],
+    await expect(harness.executeOwnedLifecycle('offline-test')).rejects.toThrow(
+      'I111_TRUSTED_COORDINATOR_STOP',
     );
+    await expect(harness.executeOwnedLifecycle('offline-test')).rejects.not.toThrow('REALM_SECRET');
+    expect(harness.events.slice(0, 6)).toEqual([
+      'connect',
+      'lock',
+      'backend',
+      'backend',
+      'unlock',
+      'release-destroy',
+    ]);
   });
 
   it('stops without release when unlock returns false', async () => {
@@ -495,7 +595,15 @@ describe('I111 Trusted Coordinator ownership kernel', () => {
     await expect(harness.executeOwnedLifecycle('offline-test')).rejects.toThrow(
       'I111_TRUSTED_COORDINATOR_STOP',
     );
-    expect(harness.events).toEqual(['connect', 'lock', 'backend', 'backend', 'unlock', 'release-destroy', 'end']);
+    expect(harness.events).toEqual([
+      'connect',
+      'lock',
+      'backend',
+      'backend',
+      'unlock',
+      'release-destroy',
+      'end',
+    ]);
     expect(harness.releaseErrors).toHaveLength(1);
   });
 
@@ -504,7 +612,15 @@ describe('I111 Trusted Coordinator ownership kernel', () => {
     await expect(harness.executeOwnedLifecycle('offline-test')).rejects.toThrow(
       'I111_TRUSTED_COORDINATOR_STOP',
     );
-    expect(harness.events).toEqual(['connect', 'lock', 'backend', 'backend', 'unlock', 'release', 'end']);
+    expect(harness.events).toEqual([
+      'connect',
+      'lock',
+      'backend',
+      'backend',
+      'unlock',
+      'release',
+      'end',
+    ]);
     expect(harness.releaseErrors).toEqual([undefined]);
   });
 
@@ -515,7 +631,15 @@ describe('I111 Trusted Coordinator ownership kernel', () => {
       'I111_TRUSTED_COORDINATOR_STOP',
     );
     expect(Date.now() - started).toBeLessThan(2_000);
-    expect(harness.events).toEqual(['connect', 'lock', 'backend', 'backend', 'unlock', 'release', 'end']);
+    expect(harness.events).toEqual([
+      'connect',
+      'lock',
+      'backend',
+      'backend',
+      'unlock',
+      'release',
+      'end',
+    ]);
     expect(harness.releaseErrors).toEqual([undefined]);
     expect(harness.endCalls).toBe(1);
   });
@@ -525,7 +649,15 @@ describe('I111 Trusted Coordinator ownership kernel', () => {
     await expect(delayed.executeOwnedLifecycle('offline-test')).rejects.toThrow(
       'I111_TRUSTED_COORDINATOR_STOP',
     );
-    expect(delayed.events).toEqual(['connect', 'lock', 'backend', 'backend', 'unlock', 'release', 'end']);
+    expect(delayed.events).toEqual([
+      'connect',
+      'lock',
+      'backend',
+      'backend',
+      'unlock',
+      'release',
+      'end',
+    ]);
     expect(delayed.endCalls).toBe(1);
 
     const lateReject = await loadPrivateKernel({
@@ -537,7 +669,15 @@ describe('I111 Trusted Coordinator ownership kernel', () => {
       'I111_TRUSTED_COORDINATOR_STOP',
     );
     await new Promise((resolve) => setTimeout(resolve, 60));
-    expect(lateReject.events).toEqual(['connect', 'lock', 'backend', 'backend', 'unlock', 'release', 'end']);
+    expect(lateReject.events).toEqual([
+      'connect',
+      'lock',
+      'backend',
+      'backend',
+      'unlock',
+      'release',
+      'end',
+    ]);
     expect(lateReject.endCalls).toBe(1);
   });
 
@@ -548,7 +688,15 @@ describe('I111 Trusted Coordinator ownership kernel', () => {
       'I111_TRUSTED_COORDINATOR_STOP',
     );
     expect(Date.now() - started).toBeLessThan(2_000);
-    expect(harness.events).toEqual(['connect', 'lock', 'backend', 'backend', 'unlock', 'release-destroy', 'end']);
+    expect(harness.events).toEqual([
+      'connect',
+      'lock',
+      'backend',
+      'backend',
+      'unlock',
+      'release-destroy',
+      'end',
+    ]);
     expect(harness.releaseErrors).toHaveLength(1);
   });
 });
