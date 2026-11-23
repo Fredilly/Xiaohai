@@ -270,9 +270,13 @@ function transactionOutcomeDb(db: Db, outcome: 'ROLLBACK' | 'UNKNOWN_COMMIT') {
 }
 
 suite('I111 REQUIRE_NEW real PostgreSQL transaction behavior', () => {
-  const { db, pool } = database!;
+  if (!database || !guardConfig) {
+    it.skip('requires the dedicated disposable PostgreSQL identity', () => {});
+    return;
+  }
+  const { db, pool } = database;
 
-  beforeAll(async () => verifyDisposableIdentity(guardConfig!, pool));
+  beforeAll(async () => verifyDisposableIdentity(guardConfig, pool));
   afterAll(async () => pool.end());
 
   it('serializes creation, rejects active reuse, rolls back atomically and preserves unknown commits', async () => {
