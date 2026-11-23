@@ -27,6 +27,8 @@ export const I111_READONLY_PATHS = Object.freeze({
 });
 
 const EXPECTED = Object.freeze({
+  volumeRoot: '/Volumes/Data',
+  volumeUuid: '512BF66D-91B9-4789-93A8-42BB83B1E0B9',
   gateSha: '6898d09a3fcf76c5006ab271d0168643de2bf1fd',
   databaseUser: 'xiaohai_i111_app',
   databasePort: '52511',
@@ -48,6 +50,7 @@ const EXPECTED = Object.freeze({
     // remain on this trusted volume, so its device is sampled and checked at
     // runtime rather than pinned to a stale mount-specific number.
     volumeRoot: '/Volumes/Data',
+    volumeUuid: '512BF66D-91B9-4789-93A8-42BB83B1E0B9',
     hostSource:
       '/Volumes/Data/Xiaohai-i111-gate-b/.i111-plan-b/secrets/postgres_bootstrap_password',
     dockerSource:
@@ -57,6 +60,7 @@ const EXPECTED = Object.freeze({
   }),
   redisBind: Object.freeze({
     volumeRoot: '/Volumes/Data',
+    volumeUuid: '512BF66D-91B9-4789-93A8-42BB83B1E0B9',
     hostSource: '/Volumes/Data/Xiaohai-i111-gate-b/.i111-plan-b/secrets/redis.conf',
     dockerSource: '/host_mnt/Volumes/Data/Xiaohai-i111-gate-b/.i111-plan-b/secrets/redis.conf',
     destination: '/usr/local/etc/redis/redis.conf',
@@ -84,6 +88,8 @@ const EXPECTED = Object.freeze({
   pipBytes: 738_959,
   migrationCount: 42,
 });
+
+const DISKUTIL = '/usr/sbin/diskutil';
 
 const PROVENANCE_FILES = Object.freeze([
   'scripts/i111-readonly-runtime-preflight.mjs',
@@ -679,6 +685,22 @@ async function exactMacLsMetadata(path, expectedMode, commandRunner) {
   );
 }
 
+function parseTrustedVolumeIdentity(result, expected) {
+  if (result.status !== 0 || result.stderr.trim()) return null;
+  const output = result.stdout;
+  const fileSystem = /^\s*File System Personality:\s*(.+?)\s*$/mu.exec(output)?.[1];
+  const mountPoint = /^\s*Mount Point:\s*(.+?)\s*$/mu.exec(output)?.[1];
+  const volumeUuid = /^\s*Volume UUID:\s*([0-9A-F-]+)\s*$/mu.exec(output)?.[1];
+  if (
+    fileSystem !== 'APFS' ||
+    mountPoint !== expected.volumeRoot ||
+    volumeUuid !== expected.volumeUuid
+  ) {
+    return null;
+  }
+  return { fileSystem, mountPoint, volumeUuid };
+}
+
 export async function verifyI111BindHostSource(expected, dependencies = {}) {
   const adapter = {
     lstat: dependencies.lstat ?? lstat,
@@ -697,6 +719,11 @@ export async function verifyI111BindHostSource(expected, dependencies = {}) {
     if (!isAbsolute(volumeRoot) || (await adapter.realpath(volumeRoot)) !== volumeRoot) {
       return false;
     }
+    const volumeIdentityBefore = parseTrustedVolumeIdentity(
+      await commandRunner(DISKUTIL, ['info', volumeRoot]),
+      expected,
+    );
+    if (!volumeIdentityBefore) return false;
     // trustedParents() snapshots the volume root together with every
     // directory in the path. This binds the file to the current APFS volume
     // while parentsUnchanged() below rejects a replacement during the read.
@@ -758,7 +785,13 @@ export async function verifyI111BindHostSource(expected, dependencies = {}) {
     }
     const after = await adapter.lstat(expected.hostSource);
     await parentsUnchanged(parents, adapter);
+    const volumeIdentityAfter = parseTrustedVolumeIdentity(
+      await commandRunner(DISKUTIL, ['info', volumeRoot]),
+      expected,
+    );
     return (
+      volumeIdentityAfter !== null &&
+      JSON.stringify(volumeIdentityAfter) === JSON.stringify(volumeIdentityBefore) &&
       (await adapter.realpath(expected.hostSource)) === expected.hostSource &&
       after.isFile() &&
       !after.isSymbolicLink() &&

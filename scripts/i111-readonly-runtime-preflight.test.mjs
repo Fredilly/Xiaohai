@@ -952,6 +952,7 @@ test('uses the independently protected approval record, never the older Gate B a
 test('bind source inspection is metadata-only and fails closed on ownership, ACL, flags or drift', async () => {
   const expected = {
     volumeRoot: '/Volumes/Data',
+    volumeUuid: '512BF66D-91B9-4789-93A8-42BB83B1E0B9',
     hostSource: '/Volumes/Data/Xiaohai-i111-gate-b/.i111-plan-b/secrets/redis.conf',
     ino: 576877,
   };
@@ -963,6 +964,11 @@ test('bind source inspection is metadata-only and fails closed on ownership, ACL
     { nlink: 2 },
     { dev: 8 },
     { volumeDevice: 8 },
+    { volumeUuid: '00000000-0000-0000-0000-000000000000' },
+    { filesystem: 'HFS+' },
+    { mountPoint: '/Volumes/Other' },
+    { diskutilFailed: true },
+    { volumeChanged: true },
     { ino: 5 },
     { symlink: true },
     { replaced: true },
@@ -979,6 +985,7 @@ test('bind source inspection is metadata-only and fails closed on ownership, ACL
   for (const [index, alteration] of cases.entries()) {
     let fileChecks = 0;
     let calls = 0;
+    let diskutilCalls = 0;
     const result = await verifyI111BindHostSource(expected, {
       realpath: async (path) =>
         alteration.symlink && path === expected.hostSource ? '/unexpected' : path,
@@ -1016,6 +1023,18 @@ test('bind source inspection is metadata-only and fails closed on ownership, ACL
       },
       commandRunner: async (command, args) => {
         calls += 1;
+        if (command === '/usr/sbin/diskutil') {
+          diskutilCalls += 1;
+          assert.deepEqual(args, ['info', expected.volumeRoot]);
+          return {
+            status: alteration.diskutilFailed ? 1 : 0,
+            stderr: '',
+            stdout:
+              `   File System Personality: ${alteration.filesystem ?? 'APFS'}\n` +
+              `   Mount Point: ${alteration.mountPoint ?? expected.volumeRoot}\n` +
+              `   Volume UUID: ${alteration.volumeChanged && diskutilCalls > 1 ? '00000000-0000-0000-0000-000000000000' : alteration.volumeUuid ?? expected.volumeUuid}\n`,
+          };
+        }
         assert.equal(command, '/bin/ls');
         assert.equal(args[0], '-ldeO@');
         const file = args[1] === expected.hostSource;
@@ -1029,8 +1048,11 @@ test('bind source inspection is metadata-only and fails closed on ownership, ACL
         };
       },
     });
+    if (alteration.volumeChanged) {
+      assert.equal(diskutilCalls, 2, `case ${index}`);
+    }
     assert.equal(result, index === 0, `case ${index}`);
-    assert.ok(calls <= 4, `case ${index}: unexpected metadata calls`);
+    assert.ok(calls <= 6, `case ${index}: unexpected metadata calls`);
   }
 });
 
