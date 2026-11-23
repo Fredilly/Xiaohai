@@ -1032,7 +1032,7 @@ test('bind source inspection is metadata-only and fails closed on ownership, ACL
             stdout:
               `   File System Personality: ${alteration.filesystem ?? 'APFS'}\n` +
               `   Mount Point: ${alteration.mountPoint ?? expected.volumeRoot}\n` +
-              `   Volume UUID: ${alteration.volumeChanged && diskutilCalls > 1 ? '00000000-0000-0000-0000-000000000000' : alteration.volumeUuid ?? expected.volumeUuid}\n`,
+              `   Volume UUID: ${alteration.volumeChanged && diskutilCalls > 1 ? '00000000-0000-0000-0000-000000000000' : (alteration.volumeUuid ?? expected.volumeUuid)}\n`,
           };
         }
         assert.equal(command, '/bin/ls');
