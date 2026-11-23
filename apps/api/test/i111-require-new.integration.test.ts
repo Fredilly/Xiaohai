@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { asc, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
@@ -37,6 +38,17 @@ const bodyVersionId = '70000000-1111-4111-8111-111111111111';
 const mediaId = '80000000-1111-4111-8111-111111111111';
 const characterId = '90000000-1111-4111-8111-111111111111';
 const budgetKey = 'I111_MAC_PLAN_B_THREE_PAID_IMAGE_CALLS';
+const migrationBaseline = Object.freeze({ count: 42, minimumId: '1', maximumId: '42' });
+const seededBaselines = Object.freeze({
+  cms_pages: Object.freeze({
+    count: 1,
+    sha256: '4add97eeeb7458e0daebe07ace34182c1712fe9d804bedc286d5df4f494cb8be',
+  }),
+  permissions: Object.freeze({
+    count: 26,
+    sha256: '391cbf2bb9d2e3f7995f66ed24a540c3cf5e23af0fd970e49d98fb9fca16e441',
+  }),
+});
 
 const guardConfig = assertI111RequireNewDisposableDatabase(process.env);
 const database = guardConfig ? createDatabase(process.env) : null;
@@ -64,7 +76,7 @@ async function verifyDisposableIdentity(
     select
       current_database() as "databaseName",
       current_user as "roleName",
-      inet_server_addr()::text as "serverAddress",
+      host(inet_server_addr()) as "serverAddress",
       inet_server_port()::int as "serverPort",
       current_setting('server_version') as "serverVersion",
       database.oid::int as "databaseOid",
@@ -86,6 +98,17 @@ async function verifyDisposableIdentity(
     row.serverPort !== config.expectedServerPort ||
     row.serverVersion !== config.expectedServerVersion ||
     row.systemIdentifier !== config.expectedSystemIdentifier
+  ) {
+    identityStop();
+  }
+
+  const migrations = await pool.query<{ count: number; maximumId: string; minimumId: string }>(`
+    select count(*)::int as count, min(id)::text as "minimumId", max(id)::text as "maximumId"
+    from drizzle.__drizzle_migrations
+  `);
+  if (
+    migrations.rows.length !== 1 ||
+    JSON.stringify(migrations.rows[0]) !== JSON.stringify(migrationBaseline)
   ) {
     identityStop();
   }
@@ -115,6 +138,32 @@ async function verifyDisposableIdentity(
 
   for (const { schemaname, tablename } of tables.rows) {
     if (!/^[a-z_][a-z0-9_]*$/u.test(tablename) || schemaname !== 'public') identityStop();
+    if (tablename === 'permissions') {
+      const rows = await pool.query(
+        'select key, display_name, description from permissions order by key',
+      );
+      const baseline = seededBaselines.permissions;
+      if (
+        rows.rows.length !== baseline.count ||
+        createHash('sha256').update(JSON.stringify(rows.rows)).digest('hex') !== baseline.sha256
+      ) {
+        identityStop();
+      }
+      continue;
+    }
+    if (tablename === 'cms_pages') {
+      const rows = await pool.query(
+        'select key, title, publication_state, version from cms_pages order by key',
+      );
+      const baseline = seededBaselines.cms_pages;
+      if (
+        rows.rows.length !== baseline.count ||
+        createHash('sha256').update(JSON.stringify(rows.rows)).digest('hex') !== baseline.sha256
+      ) {
+        identityStop();
+      }
+      continue;
+    }
     const count = await pool.query<{ count: string }>(
       `select count(*)::text as count from "${tablename}"`,
     );

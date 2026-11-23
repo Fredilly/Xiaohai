@@ -5,8 +5,10 @@
  * ordinary API/Worker processes and unrelated jobs are stopped.
  *
  * It never connects, opens a transaction, creates a job or invokes a provider
- * by itself. The caller owns client lifetime and must not return it to a pool
- * while this callback is running.
+ * by itself. The caller owns normal client lifetime and must not return it to
+ * a pool while this callback is running. If lock/session state becomes
+ * uncertain, this helper calls `release(error)` exactly once to destroy the
+ * checked-out connection; callers must not release that stopped lease again.
  */
 const KEY = Object.freeze([111, 20261119]);
 const LOCK = 'select pg_try_advisory_lock($1::int4, $2::int4) as locked';
@@ -36,20 +38,40 @@ export async function withI111ExclusivePgLock(client, callback) {
   }
   const pinnedBackendPid = client.processID;
   let acquired = false;
+  let destroyUncertainClient = false;
   let result;
   let failure;
   try {
-    const lock = await client.query(LOCK, KEY);
-    if (lock?.rows?.length !== 1 || lock.rows[0]?.locked !== true) {
+    let lock;
+    try {
+      lock = await client.query(LOCK, KEY);
+    } catch {
+      // PostgreSQL may have acquired the session lock before the client lost
+      // the response. The only safe unlock is to terminate this session.
+      destroyUncertainClient = true;
+      throw new I111ExclusiveLockStop();
+    }
+    if (lock?.rows?.length !== 1 || typeof lock.rows[0]?.locked !== 'boolean') {
+      destroyUncertainClient = true;
+      throw new I111ExclusiveLockStop();
+    }
+    if (lock.rows[0].locked !== true) {
       throw new I111ExclusiveLockStop();
     }
     acquired = true;
-    const observed = await client.query(BACKEND);
+    let observed;
+    try {
+      observed = await client.query(BACKEND);
+    } catch {
+      destroyUncertainClient = true;
+      throw new I111ExclusiveLockStop();
+    }
     if (
       observed?.rows?.length !== 1 ||
       observed.rows[0]?.backend_pid !== pinnedBackendPid ||
       client.processID !== pinnedBackendPid
     ) {
+      destroyUncertainClient = true;
       throw new I111ExclusiveLockStop();
     }
     result = await callback();
@@ -57,7 +79,7 @@ export async function withI111ExclusivePgLock(client, callback) {
     // The orchestrator must stop with a fixed code on unknown side effects.
     failure = new I111ExclusiveLockStop();
   } finally {
-    if (acquired) {
+    if (acquired && !destroyUncertainClient) {
       try {
         const observed = await client.query(BACKEND);
         if (
@@ -65,14 +87,24 @@ export async function withI111ExclusivePgLock(client, callback) {
           observed.rows[0]?.backend_pid !== pinnedBackendPid ||
           client.processID !== pinnedBackendPid
         ) {
-          failure = new I111ExclusiveLockStop();
-        }
-        const unlocked = await client.query(UNLOCK, KEY);
-        if (unlocked?.rows?.length !== 1 || unlocked.rows[0]?.unlocked !== true) {
-          failure = new I111ExclusiveLockStop();
+          destroyUncertainClient = true;
+        } else {
+          const unlocked = await client.query(UNLOCK, KEY);
+          if (unlocked?.rows?.length !== 1 || unlocked.rows[0]?.unlocked !== true) {
+            destroyUncertainClient = true;
+          }
         }
       } catch {
-        failure = new I111ExclusiveLockStop();
+        destroyUncertainClient = true;
+      }
+      if (destroyUncertainClient) failure = new I111ExclusiveLockStop();
+    }
+    if (destroyUncertainClient) {
+      try {
+        client.release(new Error('I111_EXCLUSIVE_LOCK_REQUIRED'));
+      } catch {
+        // The session is already unusable or its owner rejected destruction.
+        // Either state remains the same fixed STOP and is never retried.
       }
     }
   }
