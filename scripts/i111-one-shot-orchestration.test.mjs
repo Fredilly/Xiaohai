@@ -123,13 +123,11 @@ function setup(snapshot = fixture()) {
       assert.equal(id, targetId);
       return true;
     },
-    verifyPaidBoundaryAtomically: async ({ targetId: id }) => {
-      events.push('boundary');
-      assert.equal(id, targetId);
-      return true;
-    },
-    processTargetIdOnce: async (id) => {
+    processTargetIdWithAtomicGateOnce: async ({ targetId: id, slot }) => {
       events.push('worker');
+      assert.equal(id, targetId);
+      assert.equal(slot.pageId, snapshot.requestedPageId);
+      assert.equal(slot.revisionNumber, snapshot.requestedRevisionNumber);
       return id;
     },
     readFinalEvidence: async (id) => {
@@ -196,7 +194,6 @@ test('one invocation prepares one target-ID through formal API and never auto-ad
       'fresh',
       'api',
       'reservation',
-      'boundary',
       'worker',
       'final',
     ]);
@@ -255,34 +252,29 @@ test('wrong API page, revision, reused/invalid target ID aborts before Worker', 
   }
 });
 
-test('reservation or atomic boundary failure causes zero targeted Worker calls', async () => {
-  for (const [portName, expectedCode, expectedEvents] of [
-    [
-      'verifyExactlyOneReservation',
-      'I111_EXECUTOR_RESERVATION_UNVERIFIED',
-      ['lock', 'preflight', 'approval', 'fresh', 'api', 'reservation'],
-    ],
-    [
-      'verifyPaidBoundaryAtomically',
-      'I111_EXECUTOR_RUNTIME_UNVERIFIED',
-      ['lock', 'preflight', 'approval', 'fresh', 'api', 'reservation', 'boundary'],
-    ],
-  ]) {
-    const { ports, events } = setup();
-    const original = ports[portName];
-    ports[portName] = async (args) => {
-      await original(args);
-      return false;
-    };
-    expectStop(await coordinateI111OneShot(ports), expectedCode);
-    assert.deepEqual(events, expectedEvents);
-  }
+test('unverified reservation causes zero targeted Worker calls', async () => {
+  const { ports, events } = setup();
+  ports.verifyExactlyOneReservation = async () => {
+    events.push('reservation');
+    return false;
+  };
+  expectStop(await coordinateI111OneShot(ports), 'I111_EXECUTOR_RESERVATION_UNVERIFIED');
+  assert.deepEqual(events, ['lock', 'preflight', 'approval', 'fresh', 'api', 'reservation']);
+});
+
+test('legacy separable paid-boundary boolean and Worker are not accepted', async () => {
+  const { ports, events } = setup();
+  delete ports.processTargetIdWithAtomicGateOnce;
+  ports.verifyPaidBoundaryAtomically = async () => true;
+  ports.processTargetIdOnce = async () => targetId;
+  expectStop(await coordinateI111OneShot(ports), 'I111_EXECUTOR_PORTS_UNAVAILABLE');
+  assert.deepEqual(events, []);
 });
 
 test('null/wrong Worker target and failed final media cannot count as success', async () => {
   for (const result of [null, 'different-id']) {
     const { ports, events } = setup();
-    ports.processTargetIdOnce = async () => {
+    ports.processTargetIdWithAtomicGateOnce = async () => {
       events.push('worker');
       return result;
     };
@@ -301,7 +293,7 @@ test('null/wrong Worker target and failed final media cannot count as success', 
 
 test('unexpected error and provider secret never escape; do not retry', async () => {
   const { ports, events } = setup();
-  ports.processTargetIdOnce = async () => {
+  ports.processTargetIdWithAtomicGateOnce = async () => {
     events.push('worker');
     throw new Error('secret-provider-body-DO-NOT-LOG');
   };

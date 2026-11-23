@@ -6,6 +6,20 @@ runnable paid CLI, does not contain an actual PostgreSQL/Redis/Docker/BOS/
 Bailian adapter, and does not authorize a paid operation. The issue's live
 validation and quality acceptance remain blocked.
 
+The previous general-purpose `scripts/i111-formal-api-worker-ports.mjs` adapter
+was removed from the runtime source tree: its caller-injected `apiService` and
+`createTargetWorker` could be invoked independently of the owner grant and
+exclusive-lock coordinator. Its synthetic tests were retired with it. The
+source-bound API and Worker keep their dedicated negative tests; a future
+composition root must not revive the generic adapter or expose independently
+callable paid operation ports. No executable coordinator has been added.
+
+The subsequently rejected caller-branded session-binding attempt has also
+been reverted. The required single-owner checkout, Drizzle binding and release
+lifecycle are specified in
+[`I111_TRUSTED_SESSION_OWNERSHIP_CONTRACT.md`](./I111_TRUSTED_SESSION_OWNERSHIP_CONTRACT.md).
+That document is design-only and does not change this NO-GO status.
+
 ## Why this separate change
 
 PR #237 merged the independent read-only Mac preflight. The previous one-shot
@@ -18,7 +32,13 @@ that sequence, without changing the normal API, Worker or schema.
 ## Fixed contract for one invocation
 
 1. Acquire and hold an **actual exclusive runtime/DB lease** for the entire
-   invocation. A callback mock is **not** proof of exclusivity.
+   invocation. A callback mock is **not** proof of exclusivity. The lock helper
+   now rejects a bare `pg.Pool`-style query object and requires an already
+   checked-out session with a positive PostgreSQL backend PID; it samples
+   `pg_backend_pid()` after acquisition and before release. This detects
+   mistaken connection-pool use and backend changes, but does **not** prove
+   independent process isolation or bind API/Worker Drizzle operations to the
+   same client. A future coordinator must establish those properties.
 2. Collect an independently authenticated fresh snapshot. Apply the existing
    `assessI111OneShotSnapshot` fail-closed policy. Its best result is
    `STATIC_REVIEW_ONLY`, never a spending permission.

@@ -18,4 +18,14 @@ describe('test database safety guard', () => {
     const url = 'postgresql://user:password@127.0.0.1:5432/xiaohai_test';
     expect(assertTestDatabaseUrl(url)).toBe(url);
   });
+
+  it('accepts only the exact I111 REQUIRE_NEW disposable database pattern', () => {
+    const url = 'postgresql://user:password@127.0.0.1:60183/xiaohai_i111_require_new_a1b2c3d4e5f6';
+    expect(assertTestDatabaseUrl(url)).toBe(url);
+    expect(() =>
+      assertTestDatabaseUrl(
+        'postgresql://user:password@127.0.0.1:60183/xiaohai_i111_require_new_short',
+      ),
+    ).toThrow('disposable test database');
+  });
 });

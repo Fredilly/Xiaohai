@@ -62,6 +62,8 @@ type PictureBookContext = {
   operation: PictureBookTextOperation;
 };
 
+type IllustrationCreationPolicy = 'ALLOW_ACTIVE_REUSE' | 'REQUIRE_NEW';
+
 export class PictureBookError extends Error {
   constructor(
     readonly code:
@@ -96,6 +98,7 @@ export class PictureBookService {
     pictureBookId: string,
     pageId: string,
     regenerate = false,
+    creationPolicy: IllustrationCreationPolicy = 'ALLOW_ACTIVE_REUSE',
   ) {
     if (!this.config.imageEnabled) throw new PictureBookError('FEATURE_DISABLED');
 
@@ -153,6 +156,7 @@ export class PictureBookService {
         .limit(1)
         .for('update');
       if (active) {
+        if (creationPolicy === 'REQUIRE_NEW') throw new PictureBookError('INVALID_STATE');
         return { illustration: active, shouldNotify: active.status === 'QUEUED' };
       }
 
