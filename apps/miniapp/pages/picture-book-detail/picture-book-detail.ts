@@ -89,33 +89,65 @@ Page({
     try {
       const detail = await getPictureBook(this.data.id);
       const references = await Promise.all(
-        detail.characters.map(
-          async (character) =>
-            [
-              character.characterId,
-              (await listCharacterReferences(this.data.id, character.characterId)).references,
-            ] as const,
-        ),
+        detail.characters.map(async (character) => {
+          try {
+            return {
+              characterId: character.characterId,
+              items: (await listCharacterReferences(this.data.id, character.characterId))
+                .references,
+              unavailable: false,
+            };
+          } catch (error) {
+            // Reference thumbnails must not make the owned book unreadable on a
+            // transient failure, but an auth denial must still hide its content.
+            if (
+              error instanceof PictureBookApiError &&
+              (error.status === 401 || error.status === 403)
+            ) {
+              throw error;
+            }
+            return { characterId: character.characterId, items: [], unavailable: true };
+          }
+        }),
       );
       if (this.pageClosed || revision !== this.loadRevision) return;
-      const freshReferences = Object.fromEntries(references);
+      const freshReferences = Object.fromEntries(
+        references.map(({ characterId, items }) => [characterId, items]),
+      );
       const previousUrls = playbackUrls(this.data.detail, this.data.references);
       const freshUrls = playbackUrls(detail, freshReferences);
       const urlChanged =
         previousUrls.length !== freshUrls.length ||
         previousUrls.some((url, index) => url !== freshUrls[index]);
+      const referencesUnavailable = references.some((item) => item.unavailable);
       this.setData({
         detail,
         references: freshReferences,
-        imageError: this.data.imageError && !urlChanged,
+        imageError: this.data.imageError && (!urlChanged || referencesUnavailable),
         characterBibleConfirmed:
           detail.characters.length > 0 &&
           detail.characters.every((character) => character.confirmed && character.locked),
-        error: '',
+        error: referencesUnavailable
+          ? '部分角色参考图未加载，绘本内容仍可查看；请刷新状态重试。'
+          : '',
       });
-    } catch {
-      if (!this.pageClosed && revision === this.loadRevision)
-        this.setData({ error: '绘本加载失败' });
+    } catch (error) {
+      if (!this.pageClosed && revision === this.loadRevision) {
+        if (
+          error instanceof PictureBookApiError &&
+          (error.status === 401 || error.status === 403)
+        ) {
+          this.setData({
+            detail: null,
+            references: {},
+            characterBibleConfirmed: false,
+            imageError: false,
+            error: '登录状态已失效，请重新登录后查看绘本。',
+          });
+        } else {
+          this.setData({ error: '绘本加载失败' });
+        }
+      }
     } finally {
       if (!this.pageClosed && revision === this.loadRevision) this.setData({ loading: false });
     }

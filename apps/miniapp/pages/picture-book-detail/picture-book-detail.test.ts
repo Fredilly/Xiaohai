@@ -336,4 +336,43 @@ describe('picture-book background image job recovery (#112)', () => {
     expect(page.data.polling).toBe(false);
     expect(page.pageClosed).toBe(true);
   });
+
+  it('keeps the saved book available when only reference thumbnails fail to load', async () => {
+    readDetail.mockResolvedValue(book(oldUrl));
+    readReferences
+      .mockResolvedValueOnce({ references: [{ playbackUrl: oldUrl }] } as never)
+      .mockRejectedValueOnce(new Error('network:timeout'));
+    const page = instance();
+    await page.load();
+    page.onImageError({ detail: { errMsg: oldUrl } } as never);
+
+    await page.load();
+
+    expect(page.data.detail?.pages[0]?.illustrations[0]?.playbackUrl).toBe(oldUrl);
+    expect(page.data.references['character-1']).toEqual([]);
+    expect(page.data.error).toContain('部分角色参考图未加载');
+    expect(page.data.loading).toBe(false);
+    expect(page.data.imageError).toBe(true);
+    expect(submitReference).not.toHaveBeenCalled();
+    expect(submitIllustration).not.toHaveBeenCalled();
+  });
+
+  it.each([401, 403])(
+    'hides an already opened book when reference access is denied (%i)',
+    async (status) => {
+      readDetail.mockResolvedValue(book(oldUrl));
+      readReferences
+        .mockResolvedValueOnce({ references: [{ playbackUrl: oldUrl }] } as never)
+        .mockRejectedValueOnce(new PictureBookApiError(status));
+      const page = instance();
+      await page.load();
+      expect(page.data.detail).not.toBeNull();
+
+      await page.load();
+
+      expect(page.data.detail).toBeNull();
+      expect(page.data.references).toEqual({});
+      expect(page.data.error).toContain('登录状态已失效');
+    },
+  );
 });
