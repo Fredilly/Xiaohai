@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { readI111RequireNewDatabaseConfig } from './i111-require-new-database-guard.js';
+import { assertI111RequireNewDisposableDatabase } from './i111-require-new-database-guard.js';
 
 const runId = 'a1b2c3d4e5f6';
 const databaseName = `xiaohai_i111_require_new_${runId}`;
@@ -21,7 +21,7 @@ const safe = {
 };
 
 function rejected(overrides: Record<string, string | undefined>) {
-  expect(() => readI111RequireNewDatabaseConfig({ ...safe, ...overrides })).toThrow(
+  expect(() => assertI111RequireNewDisposableDatabase({ ...safe, ...overrides })).toThrow(
     'I111_REQUIRE_NEW_DATABASE_GUARD_STOP',
   );
 }
@@ -29,7 +29,7 @@ function rejected(overrides: Record<string, string | undefined>) {
 describe('I111 REQUIRE_NEW disposable PostgreSQL guard', () => {
   it('skips only when no I111 integration activation field is configured', () => {
     expect(
-      readI111RequireNewDatabaseConfig({
+      assertI111RequireNewDisposableDatabase({
         DATABASE_URL: 'postgresql://ordinary:secret@127.0.0.1:5432/xiaohai_test',
         NODE_ENV: 'test',
       }),
@@ -37,7 +37,7 @@ describe('I111 REQUIRE_NEW disposable PostgreSQL guard', () => {
   });
 
   it('accepts a complete dedicated one-time identity without retaining credentials', () => {
-    expect(readI111RequireNewDatabaseConfig(safe)).toEqual({
+    expect(assertI111RequireNewDisposableDatabase(safe)).toEqual({
       databaseName,
       databaseComment: `xiaohai-i111-require-new-disposable:${runId}`,
       expectedDatabaseOid: 24576,
@@ -123,11 +123,11 @@ describe('I111 REQUIRE_NEW disposable PostgreSQL guard', () => {
       new URL('i111-require-new.integration.test.ts', import.meta.url),
       'utf8',
     );
-    expect(source.indexOf('readI111RequireNewDatabaseConfig(process.env)')).toBeGreaterThanOrEqual(
-      0,
-    );
+    expect(
+      source.indexOf('assertI111RequireNewDisposableDatabase(process.env)'),
+    ).toBeGreaterThanOrEqual(0);
     expect(source.indexOf('createDatabase(process.env)')).toBeGreaterThan(
-      source.indexOf('readI111RequireNewDatabaseConfig(process.env)'),
+      source.indexOf('assertI111RequireNewDisposableDatabase(process.env)'),
     );
     expect(source.indexOf('await verifyDisposableIdentity')).toBeLessThan(
       source.indexOf('await seedFixture'),

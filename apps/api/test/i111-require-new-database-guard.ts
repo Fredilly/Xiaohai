@@ -55,7 +55,7 @@ function decoded(value: string): string {
  * Returns null only when the dedicated suite is entirely unconfigured.
  * Any partial opt-in or ambiguous target fails before createDatabase().
  */
-export function readI111RequireNewDatabaseConfig(
+export function assertI111RequireNewDisposableDatabase(
   env: GuardEnv,
 ): I111RequireNewDatabaseConfig | null {
   const configured = activationKeys.some((key) => env[key] !== undefined);

@@ -17,7 +17,7 @@ import {
 } from '@xiaohai/db';
 import { createI111SourceBoundFormalApiService } from '../src/picture-book/i111-source-bound-service.js';
 import {
-  readI111RequireNewDatabaseConfig,
+  assertI111RequireNewDisposableDatabase,
   type I111RequireNewDatabaseConfig,
 } from './i111-require-new-database-guard.js';
 
@@ -38,7 +38,7 @@ const mediaId = '80000000-1111-4111-8111-111111111111';
 const characterId = '90000000-1111-4111-8111-111111111111';
 const budgetKey = 'I111_MAC_PLAN_B_THREE_PAID_IMAGE_CALLS';
 
-const guardConfig = readI111RequireNewDatabaseConfig(process.env);
+const guardConfig = assertI111RequireNewDisposableDatabase(process.env);
 const database = guardConfig ? createDatabase(process.env) : null;
 const suite = database ? describe : describe.skip;
 type Db = ReturnType<typeof createDatabase>['db'];
