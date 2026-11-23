@@ -22,8 +22,7 @@ export const I111_READONLY_PATHS = Object.freeze({
   mimi: '/Volumes/Data/Xiaohai-i111-gate-b/.i111-plan-b/assets/mimi_reference_candidate.png',
   pip: '/Volumes/Data/Xiaohai-i111-gate-b/.i111-plan-b/assets/pip_reference_candidate.png',
   apiMode: '/Volumes/Data/Xiaohai-i111-gate-b/.i111-plan-b/api.mode',
-  approval:
-    '/Volumes/Data/Xiaohai-i111-pr241-runtime-approval/i111-readonly-runtime-approval.json',
+  approval: '/Volumes/Data/Xiaohai-i111-pr241-runtime-approval/i111-readonly-runtime-approval.json',
 });
 
 const EXPECTED = Object.freeze({
