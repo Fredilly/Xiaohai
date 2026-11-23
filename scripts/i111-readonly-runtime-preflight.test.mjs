@@ -4,6 +4,7 @@ import { lstat, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promis
 import { join } from 'node:path';
 import {
   I111_READONLY_PATHS,
+  I111_PREFLIGHT_INTERNAL_TOKEN,
   inspectI111RuntimeResources,
   loadI111SourceState,
   runI111ReadonlyRuntimePreflight,
@@ -12,6 +13,8 @@ import {
   validateDockerSocketEvidence,
   verifyI111BindHostSource,
   verifyGitHubApproval,
+  validateI111PriceEvidence,
+  validateI111RemoteBosEvidence,
 } from './i111-readonly-runtime-preflight.mjs';
 import { I111_ONE_SHOT_SCOPE as scope } from './i111-one-shot-policy.mjs';
 
@@ -276,7 +279,7 @@ async function run({
   const database = fakeDatabase(rows);
   const result = await runI111ReadonlyRuntimePreflight({
     env: environment,
-    argv: [],
+    internalToken: I111_PREFLIGHT_INTERNAL_TOKEN,
     dependencies: {
       runtimeInspector: () => runtimeResult,
       fileInspector: () => fileResult,
@@ -328,7 +331,7 @@ test('rejects failed local prerequisites before runtime, TCP, Redis or PostgreSQ
     let redisCalls = 0;
     let postgresCalls = 0;
     const result = await runI111ReadonlyRuntimePreflight({
-      argv: [],
+      internalToken: I111_PREFLIGHT_INTERNAL_TOKEN,
       env: scenario.environment ?? env(),
       dependencies: {
         fileInspector: () => scenario.files ?? validFiles(),
@@ -385,8 +388,49 @@ test('uses only a read-only transaction, separates remote proof, and never autho
 test('independent BOS and price evidence can clear only those preflight gates', async () => {
   const { result } = await run({
     dependencies: {
-      remoteBosVerifier: async () => true,
-      priceVerifier: async () => true,
+      remoteBosVerifier: async ({ source }) => ({
+        kind: 'I111_REMOTE_BOS_EVIDENCE',
+        authenticated: true,
+        checkedOutSha: source.checkedOutSha,
+        bookId: scope.bookId,
+        ownerId: scope.ownerId,
+        bucket,
+        endpoint: 'https://cd.bcebos.com',
+        observedAt: 1,
+        expiresAt: 2,
+        objects: [
+          {
+            name: 'Mimi',
+            statusCode: 200,
+            private: true,
+            objectKey: `picture-books/character-references/i111/${scope.ownerId}/${scope.bookId}/mimi.png`,
+            sha256: 'a'.repeat(64),
+          },
+          {
+            name: 'Pip',
+            statusCode: 200,
+            private: true,
+            objectKey: `picture-books/character-references/i111/${scope.ownerId}/${scope.bookId}/pip.png`,
+            sha256: 'b'.repeat(64),
+          },
+        ],
+      }),
+      priceVerifier: async ({ source }) => ({
+        kind: 'I111_PRICE_EVIDENCE',
+        authenticated: true,
+        checkedOutSha: source.checkedOutSha,
+        provider: scope.provider,
+        model: scope.model,
+        currency: 'CNY',
+        inputImages: 2,
+        outputImages: 1,
+        maxCalls: 3,
+        reservationMinor: 25,
+        maxSpendMinor: 200,
+        expectedChargeMinor: 22,
+        observedAt: 1,
+        expiresAt: 2,
+      }),
     },
   });
   assert.equal(result.result, 'STOP');
@@ -396,6 +440,73 @@ test('independent BOS and price evidence can clear only those preflight gates', 
   assert.equal(result.checks.atomicIsolation, 'DEFERRED_TO_TRUSTED_COORDINATOR');
   assert.equal(result.checks.retrySemantics, 'DEFERRED_TO_TRUSTED_COORDINATOR');
   assert.equal(result.paidExecutionAuthorized, false);
+});
+
+test('evidence validators reject booleans, wrong scope, stale hashes and malformed manifests', () => {
+  const source = { checkedOutSha: reviewedSha };
+  const environment = { BAIDU_BOS_BUCKET: bucket, BAIDU_BOS_ENDPOINT: 'https://cd.bcebos.com' };
+  assert.equal(validateI111RemoteBosEvidence(true, { env: environment, source }), false);
+  assert.equal(validateI111PriceEvidence(true, { source }), false);
+  const remote = {
+    kind: 'I111_REMOTE_BOS_EVIDENCE',
+    authenticated: true,
+    checkedOutSha: reviewedSha,
+    bookId: scope.bookId,
+    ownerId: scope.ownerId,
+    bucket,
+    endpoint: environment.BAIDU_BOS_ENDPOINT,
+    observedAt: 1,
+    expiresAt: 2,
+    objects: [
+      {
+        name: 'Mimi',
+        statusCode: 200,
+        private: true,
+        objectKey: `picture-books/character-references/i111/${scope.ownerId}/${scope.bookId}/mimi`,
+        sha256: 'a'.repeat(64),
+      },
+      {
+        name: 'Pip',
+        statusCode: 200,
+        private: true,
+        objectKey: `picture-books/character-references/i111/${scope.ownerId}/${scope.bookId}/pip`,
+        sha256: 'b'.repeat(64),
+      },
+    ],
+  };
+  assert.equal(validateI111RemoteBosEvidence(remote, { env: environment, source }), true);
+  assert.equal(
+    validateI111RemoteBosEvidence(
+      { ...remote, checkedOutSha: 'f'.repeat(40) },
+      { env: environment, source },
+    ),
+    false,
+  );
+  assert.equal(
+    validateI111RemoteBosEvidence(
+      { ...remote, objects: remote.objects.slice(0, 1) },
+      { env: environment, source },
+    ),
+    false,
+  );
+  const price = {
+    kind: 'I111_PRICE_EVIDENCE',
+    authenticated: true,
+    checkedOutSha: reviewedSha,
+    provider: scope.provider,
+    model: scope.model,
+    currency: 'CNY',
+    inputImages: 2,
+    outputImages: 1,
+    maxCalls: 3,
+    reservationMinor: 25,
+    maxSpendMinor: 200,
+    expectedChargeMinor: 22,
+    observedAt: 1,
+    expiresAt: 2,
+  };
+  assert.equal(validateI111PriceEvidence(price, { source }), true);
+  assert.equal(validateI111PriceEvidence({ ...price, model: 'other' }, { source }), false);
 });
 
 test('rejects wrong database identity and restricted-role privilege drift before scoped reads', async () => {
@@ -1248,7 +1359,7 @@ test('detects a Worker or Redis task appearing between the two non-atomic sample
   let runtimeCalls = 0;
   const workerRace = await runI111ReadonlyRuntimePreflight({
     env: env(),
-    argv: [],
+    internalToken: I111_PREFLIGHT_INTERNAL_TOKEN,
     dependencies: {
       fileInspector: () => validFiles(),
       sourceInspector: () => validSource(),
@@ -1267,7 +1378,7 @@ test('detects a Worker or Redis task appearing between the two non-atomic sample
   let redisCalls = 0;
   const queueRace = await runI111ReadonlyRuntimePreflight({
     env: env(),
-    argv: [],
+    internalToken: I111_PREFLIGHT_INTERNAL_TOKEN,
     dependencies: {
       fileInspector: () => validFiles(),
       sourceInspector: () => validSource(),
@@ -1619,6 +1730,13 @@ test('rejects CLI arguments before any filesystem, runtime, Redis or database in
   });
   assert.equal(touched, false);
   assert.deepEqual(result, {
+    result: 'STOP',
+    errorCodes: ['I111_ARGUMENTS_FORBIDDEN'],
+    paidExecutionAuthorized: false,
+    checks: {},
+  });
+  const emptyOverride = await runI111ReadonlyRuntimePreflight({ argv: [] });
+  assert.deepEqual(emptyOverride, {
     result: 'STOP',
     errorCodes: ['I111_ARGUMENTS_FORBIDDEN'],
     paidExecutionAuthorized: false,

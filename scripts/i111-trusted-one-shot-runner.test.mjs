@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   runI111TrustedOneShot,
+  parseI111TrustedCliArgs,
   simulateI111TrustedOneShot,
 } from './i111-trusted-one-shot-runner.mjs';
 import { I111_ONE_SHOT_SCOPE as scope } from './i111-one-shot-policy.mjs';
@@ -94,6 +95,17 @@ test('caller cannot inject a DB, PoolClient, API or Worker port', async () => {
     verdict: 'STOP',
     errorCode: 'I111_CALLER_PORTS_FORBIDDEN',
     paidExecutionAuthorized: false,
+  });
+});
+
+test('trusted CLI accepts one known mode and rejects extra or unknown arguments', () => {
+  assert.deepEqual(parseI111TrustedCliArgs([]), { mode: 'dry-run' });
+  assert.deepEqual(parseI111TrustedCliArgs(['live']), { mode: 'live' });
+  assert.deepEqual(parseI111TrustedCliArgs(['live', '--extra']), {
+    errorCode: 'I111_ARGUMENTS_INVALID',
+  });
+  assert.deepEqual(parseI111TrustedCliArgs(['--argv=[]']), {
+    errorCode: 'I111_MODE_INVALID',
   });
 });
 

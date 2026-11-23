@@ -25,6 +25,10 @@ export const I111_READONLY_PATHS = Object.freeze({
   approval: '/Volumes/Data/Xiaohai-i111-pr242-runtime-approval/i111-readonly-runtime-approval.json',
 });
 
+// Only the trusted runner may invoke a preflight as an internal library call.
+// Direct CLI invocations still inspect their real argv and reject extras.
+export const I111_PREFLIGHT_INTERNAL_TOKEN = Symbol('I111_PREFLIGHT_INTERNAL_TOKEN');
+
 const EXPECTED = Object.freeze({
   volumeRoot: '/Volumes/Data',
   volumeUuid: '512BF66D-91B9-4789-93A8-42BB83B1E0B9',
@@ -99,6 +103,8 @@ const PROVENANCE_FILES = Object.freeze([
   'apps/worker/src/i111-paid-attempt-gate.ts',
   'apps/worker/src/index.ts',
   'apps/api/src/picture-book/image-queue.ts',
+  'scripts/i111-one-shot-orchestration.mjs',
+  'scripts/i111-trusted-one-shot-runner.mjs',
 ]);
 
 const REDIS_QUEUES = Object.freeze([
@@ -167,6 +173,81 @@ function secretPresent(value) {
     value.length <= 512 &&
     !value.startsWith('INJECT_') &&
     !/placeholder|example|changeme/i.test(value)
+  );
+}
+
+function validEvidenceWindow(evidence) {
+  if (!Number.isSafeInteger(evidence?.observedAt) || !Number.isSafeInteger(evidence?.expiresAt)) {
+    return false;
+  }
+  return evidence.expiresAt > evidence.observedAt;
+}
+
+/**
+ * Validate an independently authenticated BOS manifest. A boolean is never
+ * accepted as evidence: the caller must supply a scoped, hashed manifest
+ * produced by a separately reviewed verifier. This function performs shape,
+ * scope and freshness checks only; the verifier remains responsible for the
+ * authenticated zero-fee request that produced the manifest.
+ */
+export function validateI111RemoteBosEvidence(evidence, { env, source } = {}) {
+  if (!evidence || typeof evidence !== 'object' || Array.isArray(evidence)) return false;
+  if (
+    evidence.kind !== 'I111_REMOTE_BOS_EVIDENCE' ||
+    evidence.authenticated !== true ||
+    evidence.checkedOutSha !== source?.checkedOutSha ||
+    evidence.bookId !== scope.bookId ||
+    evidence.ownerId !== scope.ownerId ||
+    evidence.bucket !== env?.BAIDU_BOS_BUCKET ||
+    evidence.endpoint !== env?.BAIDU_BOS_ENDPOINT ||
+    !validEvidenceWindow(evidence) ||
+    !Array.isArray(evidence.objects) ||
+    evidence.objects.length !== 2
+  ) {
+    return false;
+  }
+  const names = new Set();
+  for (const object of evidence.objects) {
+    if (
+      !object ||
+      typeof object !== 'object' ||
+      !['Mimi', 'Pip'].includes(object.name) ||
+      names.has(object.name) ||
+      object.statusCode !== 200 ||
+      object.private !== true ||
+      typeof object.objectKey !== 'string' ||
+      !object.objectKey.includes(`/i111/${scope.ownerId}/${scope.bookId}/`) ||
+      !/^[0-9a-f]{64}$/u.test(object.sha256)
+    ) {
+      return false;
+    }
+    names.add(object.name);
+  }
+  return names.size === 2;
+}
+
+/**
+ * Validate an independently sourced price/invoice basis. It intentionally
+ * does not contact the provider and never turns a local flag into approval.
+ */
+export function validateI111PriceEvidence(evidence, { source } = {}) {
+  return (
+    evidence &&
+    typeof evidence === 'object' &&
+    !Array.isArray(evidence) &&
+    evidence.kind === 'I111_PRICE_EVIDENCE' &&
+    evidence.authenticated === true &&
+    evidence.checkedOutSha === source?.checkedOutSha &&
+    evidence.provider === scope.provider &&
+    evidence.model === scope.model &&
+    evidence.currency === 'CNY' &&
+    evidence.inputImages === 2 &&
+    evidence.outputImages === 1 &&
+    evidence.maxCalls === scope.maxCalls &&
+    evidence.reservationMinor === scope.reservationMinor &&
+    evidence.maxSpendMinor === scope.budgetLimitMinor &&
+    evidence.expectedChargeMinor === 22 &&
+    validEvidenceWindow(evidence)
   );
 }
 
@@ -1871,7 +1952,19 @@ export async function runI111ReadonlyRuntimePreflight(options = {}) {
   };
   const errors = [];
   try {
-    if ((options.argv ?? process.argv.slice(2)).length !== 0) {
+    const invocationArgv =
+      options.internalToken === I111_PREFLIGHT_INTERNAL_TOKEN
+        ? []
+        : (options.argv ?? process.argv.slice(2));
+    if (options.argv !== undefined && options.argv.length === 0) {
+      return {
+        result: 'STOP',
+        errorCodes: ['I111_ARGUMENTS_FORBIDDEN'],
+        paidExecutionAuthorized: false,
+        checks: {},
+      };
+    }
+    if (invocationArgv.length !== 0) {
       return {
         result: 'STOP',
         errorCodes: ['I111_ARGUMENTS_FORBIDDEN'],
@@ -1912,14 +2005,18 @@ export async function runI111ReadonlyRuntimePreflight(options = {}) {
     let remoteBosEvidence = false;
     let priceEvidence = false;
     try {
-      remoteBosEvidence =
-        (await (dependencies.remoteBosVerifier ?? (async () => false))({ env, source })) === true;
+      remoteBosEvidence = validateI111RemoteBosEvidence(
+        await (dependencies.remoteBosVerifier ?? (async () => null))({ env, source }),
+        { env, source },
+      );
     } catch {
       remoteBosEvidence = false;
     }
     try {
-      priceEvidence =
-        (await (dependencies.priceVerifier ?? (async () => false))({ env, source })) === true;
+      priceEvidence = validateI111PriceEvidence(
+        await (dependencies.priceVerifier ?? (async () => null))({ env, source }),
+        { source },
+      );
     } catch {
       priceEvidence = false;
     }

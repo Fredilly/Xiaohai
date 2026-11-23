@@ -1,7 +1,10 @@
 import { coordinateI111OneShot, previewI111OneShot } from './i111-one-shot-orchestration.mjs';
 import { I111_ONE_SHOT_SCOPE as scope } from './i111-one-shot-policy.mjs';
 import { verifyI111OwnerGrantPort } from './i111-paid-operation-grant.mjs';
-import { runI111ReadonlyRuntimePreflight } from './i111-readonly-runtime-preflight.mjs';
+import {
+  I111_PREFLIGHT_INTERNAL_TOKEN,
+  runI111ReadonlyRuntimePreflight,
+} from './i111-readonly-runtime-preflight.mjs';
 
 const LOCK_KEY = [111, 20261119];
 const STOP = 'I111_TRUSTED_RUNNER_STOP';
@@ -228,7 +231,11 @@ async function loadRuntimeModules() {
 
 async function runLiveUnsafe({ env, root }) {
   if (!requireLiveEnvironment(env)) return stop('I111_LIVE_GATE_STOP');
-  const preflight = await runI111ReadonlyRuntimePreflight({ root, env, argv: [] });
+  const preflight = await runI111ReadonlyRuntimePreflight({
+    root,
+    env,
+    internalToken: I111_PREFLIGHT_INTERNAL_TOKEN,
+  });
   if (
     !['PASS', 'PASS_WITH_DEFERRED_GATES'].includes(preflight.result) ||
     !preflight.snapshot ||
@@ -393,11 +400,67 @@ async function runLiveUnsafe({ env, root }) {
           row.uncertainty === 'NONE'
         );
       },
-      verifyTrustedLiveBoundary: async ({ slot }) => {
+      verifyTrustedLiveBoundary: async ({ targetId, slot }) => {
         if (!(await verifyGrant({ pageId: slot.pageId, revisionNumber: slot.revisionNumber })))
           return false;
-        const check = await query('select pg_backend_pid()::int4 as pid');
-        return check.rows[0]?.pid === pid;
+        const identity = await query(
+          'select current_database() as database_name, current_user as database_user, pg_backend_pid()::int4 as pid',
+        );
+        const identityRow = identity.rows[0];
+        if (
+          identity.rows.length !== 1 ||
+          identityRow.database_name !== scope.databaseName ||
+          identityRow.database_user !== 'xiaohai_i111_app' ||
+          identityRow.pid !== pid
+        )
+          return false;
+        if (
+          snapshot.runtime.unrelatedQueuedJobs !== 0 ||
+          snapshot.runtime.otherActiveJobs !== 0 ||
+          snapshot.budget.unaccountedReservations !== 0 ||
+          snapshot.budget.unaccountedLedgerEntries !== 0 ||
+          snapshot.budget.unsettledAtRisk !== 0
+        )
+          return false;
+        const active = await query(
+          `select count(*)::int as count from work_page_illustrations
+           where page_id in ($1::uuid, $2::uuid) and status in ('QUEUED','RUNNING')
+             and id <> $3::uuid`,
+          [scope.page1Id, scope.page2Id, targetId],
+        );
+        if (Number(active.rows[0]?.count) !== 0) return false;
+        const target = await query(
+          `select page_id, revision_number, status from work_page_illustrations
+           where id = $1::uuid`,
+          [targetId],
+        );
+        if (
+          target.rows.length !== 1 ||
+          target.rows[0].page_id !== slot.pageId ||
+          Number(target.rows[0].revision_number) !== slot.revisionNumber ||
+          target.rows[0].status !== 'QUEUED'
+        )
+          return false;
+        const reservation = await query(
+          `select count(*)::int as count,
+                  coalesce(sum(reserved_minor), 0)::int as reserved_minor
+             from ai_cost_reservations
+            where resource_id = $1::uuid`,
+          [targetId],
+        );
+        if (
+          Number(reservation.rows[0]?.count) !== 1 ||
+          Number(reservation.rows[0]?.reserved_minor) !== scope.reservationMinor
+        )
+          return false;
+        const budget = await query(
+          `select coalesce(sum(reserved_minor), 0)::int as reserved_minor
+             from ai_cost_reservations
+            where consumer_user_id = $1::uuid and budget_key = $2 and window_key = $3
+              and status in ('RESERVED','AT_RISK')`,
+          [scope.ownerId, scope.budgetKey, scope.windowKey],
+        );
+        return Number(budget.rows[0]?.reserved_minor) <= scope.budgetLimitMinor;
       },
       processTargetIdWithAtomicGateOnce: async ({ targetId, slot }) =>
         workerFor(targetId, slot).processTargetIdWithAtomicGateOnce({ targetId, slot }),
@@ -489,8 +552,18 @@ export async function runI111TrustedOneShot(options = {}) {
   return runLive({ env: process.env, root });
 }
 
+export function parseI111TrustedCliArgs(args) {
+  if (!Array.isArray(args) || args.length > 1) return { errorCode: 'I111_ARGUMENTS_INVALID' };
+  const mode = args[0] ?? 'dry-run';
+  if (mode !== 'dry-run' && mode !== 'live') return { errorCode: 'I111_MODE_INVALID' };
+  return { mode };
+}
+
 if (import.meta.url === `file://${process.argv[1]}`) {
-  const mode = process.argv[2] ?? 'dry-run';
-  const result = await runI111TrustedOneShot({ mode });
+  const args = process.argv.slice(2);
+  const parsed = parseI111TrustedCliArgs(args);
+  const result = parsed.errorCode
+    ? stop(parsed.errorCode)
+    : await runI111TrustedOneShot({ mode: parsed.mode });
   process.stdout.write(`${JSON.stringify(result)}\n`);
 }
