@@ -14,6 +14,7 @@ const safe = {
   I111_REQUIRE_NEW_EXPECTED_SERVER_VERSION: '17.7',
   I111_REQUIRE_NEW_EXPECTED_SYSTEM_IDENTIFIER: '7523456789012345678',
   I111_REQUIRE_NEW_PG_TEST: '1',
+  I111_REQUIRE_NEW_PG_TEST_REQUIRED: '1',
   I111_REQUIRE_NEW_TEST_RUN_ID: runId,
   NODE_ENV: 'test',
   TEST_DATABASE_URL: localUrl,
@@ -49,6 +50,7 @@ describe('I111 REQUIRE_NEW disposable PostgreSQL guard', () => {
   });
 
   it.each([
+    ['missing required-run marker', { I111_REQUIRE_NEW_PG_TEST_REQUIRED: undefined }],
     ['partial activation', { I111_REQUIRE_NEW_PG_TEST: undefined }],
     ['unsafe app environment', { APP_ENV: 'staging' }],
     ['unsafe node environment', { NODE_ENV: 'production' }],
@@ -134,5 +136,12 @@ describe('I111 REQUIRE_NEW disposable PostgreSQL guard', () => {
     expect(source).not.toContain('.delete(');
     expect(source).not.toContain('provider.generate');
     expect(source).not.toContain('processOne(');
+
+    const apiPackage = JSON.parse(
+      readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
+    ) as { scripts?: Record<string, string> };
+    expect(apiPackage.scripts?.['test:i111-require-new-integration']).toBe(
+      'I111_REQUIRE_NEW_PG_TEST_REQUIRED=1 vitest run --config vitest.integration.config.ts test/i111-require-new.integration.test.ts',
+    );
   });
 });

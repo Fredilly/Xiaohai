@@ -4,6 +4,7 @@ const STOP = 'I111_REQUIRE_NEW_DATABASE_GUARD_STOP';
 const TEST_ROLE = 'xiaohai_i111_require_new_test';
 const DENIED_HOST_PORTS = new Set([5432, 52511, 55000]);
 const activationKeys = [
+  'I111_REQUIRE_NEW_PG_TEST_REQUIRED',
   'I111_REQUIRE_NEW_PG_TEST',
   'I111_REQUIRE_NEW_TEST_RUN_ID',
   'I111_REQUIRE_NEW_EXPECTED_DATABASE_OID',
@@ -60,6 +61,7 @@ export function readI111RequireNewDatabaseConfig(
   const configured = activationKeys.some((key) => env[key] !== undefined);
   if (!configured) return null;
   if (
+    env.I111_REQUIRE_NEW_PG_TEST_REQUIRED !== '1' ||
     env.I111_REQUIRE_NEW_PG_TEST !== '1' ||
     env.NODE_ENV !== 'test' ||
     env.APP_ENV !== 'dev' ||
