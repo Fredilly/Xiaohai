@@ -18,7 +18,7 @@ vi.mock('../../services/picture-book', () => ({
 }));
 
 type TestState = {
-  books: Array<{ id: string }>;
+  books: Array<{ id: string; coverPlaybackUrl?: string | null }>;
   imageErrors: Record<string, boolean>;
   loading: boolean;
   error: string;
@@ -27,12 +27,15 @@ type TestState = {
 
 type TestPage = {
   data: TestState;
+  requestVersion: number;
+  pageClosed: boolean;
   setData(changes: Partial<TestState>): void;
   load(): Promise<void>;
+  onUnload(): void;
   goToLogin(): void;
 };
 
-let definition: Pick<TestPage, 'load' | 'goToLogin'>;
+let definition: Pick<TestPage, 'load' | 'onUnload' | 'goToLogin'>;
 
 beforeAll(async () => {
   vi.stubGlobal('Page', (page: typeof definition) => {
@@ -51,11 +54,16 @@ beforeEach(() => {
 function createPage(): TestPage {
   const page: TestPage = {
     data: { books: [], imageErrors: {}, loading: true, error: '', needsLogin: false },
+    requestVersion: 0,
+    pageClosed: false,
     setData(changes) {
       Object.assign(page.data, changes);
     },
     load() {
       return definition.load.call(page);
+    },
+    onUnload() {
+      definition.onUnload.call(page);
     },
     goToLogin() {
       definition.goToLogin.call(page);
@@ -128,5 +136,75 @@ describe('picture books: login-required state', () => {
     expect(page.data.needsLogin).toBe(false);
     expect(page.data.loading).toBe(false);
     expect(page.data.error).toBe('绘本加载失败，请检查网络后重试。');
+  });
+
+  it('ignores stale list responses so a slow expired BOS cover cannot replace a fresh one', async () => {
+    mocks.token.mockReturnValue('valid-session');
+    let resolveOld: (value: { pictureBooks: TestState['books'] }) => void = () => {};
+    mocks.listPictureBooks
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveOld = resolve;
+          }),
+      )
+      .mockResolvedValueOnce({
+        pictureBooks: [{ id: 'book-1', coverPlaybackUrl: 'https://bos.invalid/cover?sig=fresh' }],
+      });
+    const page = createPage();
+
+    const oldLoad = page.load();
+    await page.load();
+    resolveOld({
+      pictureBooks: [{ id: 'book-1', coverPlaybackUrl: 'https://bos.invalid/cover?sig=expired' }],
+    });
+    await oldLoad;
+
+    expect(page.data.books[0]?.coverPlaybackUrl).toContain('sig=fresh');
+    expect(page.data.loading).toBe(false);
+    expect(mocks.listPictureBooks).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps the signed-out state if an older authorized list request finishes later', async () => {
+    mocks.token.mockReturnValueOnce('previous-session').mockReturnValueOnce('');
+    let resolveOld: (value: { pictureBooks: TestState['books'] }) => void = () => {};
+    mocks.listPictureBooks.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveOld = resolve;
+        }),
+    );
+    const page = createPage();
+
+    const oldLoad = page.load();
+    await page.load();
+    resolveOld({ pictureBooks: [{ id: 'private-book' }] });
+    await oldLoad;
+
+    expect(page.data.books).toEqual([]);
+    expect(page.data.needsLogin).toBe(true);
+    expect(page.data.loading).toBe(false);
+    expect(mocks.listPictureBooks).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not write a late list response after the page has unloaded', async () => {
+    mocks.token.mockReturnValue('valid-session');
+    let resolveRead: (value: { pictureBooks: TestState['books'] }) => void = () => {};
+    mocks.listPictureBooks.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveRead = resolve;
+        }),
+    );
+    const page = createPage();
+
+    const pending = page.load();
+    page.onUnload();
+    resolveRead({ pictureBooks: [{ id: 'unmounted-book' }] });
+    await pending;
+
+    expect(page.pageClosed).toBe(true);
+    expect(page.data.books).toEqual([]);
+    expect(page.requestVersion).toBe(2);
   });
 });
