@@ -99,6 +99,7 @@ export function createI111SourceBoundFormalApiService(db: Db) {
           input.pictureBookId,
           input.pageId,
           input.regenerate,
+          'REQUIRE_NEW',
         );
         const expectedRevision = input.pageId === scope.page1Id ? 1 : input.regenerate ? 2 : 1;
         if (
