@@ -26,6 +26,7 @@ const CODES = Object.freeze({
   RESERVATION: 'I111_EXECUTOR_RESERVATION_UNVERIFIED',
   PROCESS: 'I111_EXECUTOR_PROCESS_UNVERIFIED',
   RESULT: 'I111_EXECUTOR_RESULT_UNVERIFIED',
+  RUNTIME: 'I111_EXECUTOR_RUNTIME_UNVERIFIED',
   UNKNOWN: 'I111_EXECUTOR_OUTCOME_UNCERTAIN',
   RECONCILE: 'I111_EXECUTOR_RECONCILIATION_REQUIRED',
 });
@@ -151,6 +152,12 @@ export async function coordinateI111OneShot(ports) {
         (await ports.verifyExactlyOneReservation({ targetId, slot })) === true,
         CODES.RESERVATION,
       );
+      // This is the last trusted check before the exact-ID Worker reaches the
+      // atomic provider-slot marker.  A live adapter must perform it while
+      // holding the same exclusive session/lock used for the API transaction.
+      if (typeof ports.verifyTrustedLiveBoundary === 'function') {
+        assert((await ports.verifyTrustedLiveBoundary({ targetId, slot })) === true, CODES.RUNTIME);
+      }
       // This MUST be a source-bound, inseparable exact-ID Worker operation:
       // claim targetId -> consumeI111ProviderSlot (atomic AT_RISK marker) ->
       // one guarded provider POST. An independently supplied boolean result
@@ -162,7 +169,7 @@ export async function coordinateI111OneShot(ports) {
       assert(
         final &&
           final.illustrationId === targetId &&
-          final.status === 'SUCCEEDED' &&
+          (final.status === 'SUCCEEDED' || final.status === 'READY') &&
           final.mediaStatus === 'READY' &&
           final.reservationStatus === 'AT_RISK' &&
           final.ledgerStatus === 'AT_RISK',

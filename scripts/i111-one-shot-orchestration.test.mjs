@@ -200,6 +200,24 @@ test('one invocation prepares one target-ID through formal API and never auto-ad
   }
 });
 
+test('trusted live boundary failure stops before the exact-ID Worker', async () => {
+  const { ports, events } = setup();
+  ports.verifyTrustedLiveBoundary = async () => {
+    events.push('boundary');
+    return false;
+  };
+  expectStop(await coordinateI111OneShot(ports), 'I111_EXECUTOR_RUNTIME_UNVERIFIED');
+  assert.deepEqual(events, [
+    'lock',
+    'preflight',
+    'approval',
+    'fresh',
+    'api',
+    'reservation',
+    'boundary',
+  ]);
+});
+
 test('unverified snapshot, pending cost and fourth slot stop before grant or API', async () => {
   for (const change of [
     (s) => (s.runtime.genericWorkerRunning = true),

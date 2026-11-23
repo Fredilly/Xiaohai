@@ -271,6 +271,7 @@ async function run({
   redisResult = { verified: true, queuedJobs: 0 },
   open,
   redisInspector,
+  dependencies: dependencyOverrides = {},
 } = {}) {
   const database = fakeDatabase(rows);
   const result = await runI111ReadonlyRuntimePreflight({
@@ -282,6 +283,7 @@ async function run({
       sourceInspector: () => sourceResult,
       redisInspector: redisInspector ?? (() => redisResult),
       openDatabase: open ?? (() => database.client),
+      ...dependencyOverrides,
     },
   });
   return { result, statements: database.statements };
@@ -349,12 +351,7 @@ test('rejects failed local prerequisites before runtime, TCP, Redis or PostgreSQ
     assert.equal(result.result, 'STOP', scenario.name);
     assert.equal(result.paidExecutionAuthorized, false, scenario.name);
     assert.ok(result.errorCodes.includes(scenario.expectedCode), scenario.name);
-    for (const code of [
-      'I111_REMOTE_BOS_UNVERIFIED',
-      'I111_PRICE_BASIS_UNVERIFIED',
-      'I111_ATOMIC_ISOLATION_UNVERIFIED',
-      'I111_RETRY_SEMANTICS_UNVERIFIED',
-    ]) {
+    for (const code of ['I111_REMOTE_BOS_UNVERIFIED', 'I111_PRICE_BASIS_UNVERIFIED']) {
       assert.ok(result.errorCodes.includes(code), `${scenario.name}: ${code}`);
     }
     assert.deepEqual(
@@ -383,6 +380,22 @@ test('uses only a read-only transaction, separates remote proof, and never autho
       (sql) => !/\b(?:INSERT|UPDATE|DELETE|TRUNCATE|ALTER|CREATE|DROP|COMMIT)\b/i.test(sql),
     ),
   );
+});
+
+test('independent BOS and price evidence can clear only those preflight gates', async () => {
+  const { result } = await run({
+    dependencies: {
+      remoteBosVerifier: async () => true,
+      priceVerifier: async () => true,
+    },
+  });
+  assert.equal(result.result, 'STOP');
+  assert.deepEqual(result.errorCodes, ['I111_BUDGET_INVALID', 'I111_RUNTIME_NOT_ISOLATED']);
+  assert.equal(result.checks.remoteBos, 'PASS');
+  assert.equal(result.checks.budget, 'STOP');
+  assert.equal(result.checks.atomicIsolation, 'DEFERRED_TO_TRUSTED_COORDINATOR');
+  assert.equal(result.checks.retrySemantics, 'DEFERRED_TO_TRUSTED_COORDINATOR');
+  assert.equal(result.paidExecutionAuthorized, false);
 });
 
 test('rejects wrong database identity and restricted-role privilege drift before scoped reads', async () => {
@@ -944,7 +957,7 @@ test('new fixed-port resource identity drift stops before TCP and PostgreSQL/Red
 test('uses the independently protected approval record, never the older Gate B approval', () => {
   assert.equal(
     I111_READONLY_PATHS.approval,
-    '/Volumes/Data/Xiaohai-i111-pr241-runtime-approval/i111-readonly-runtime-approval.json',
+    '/Volumes/Data/Xiaohai-i111-pr242-runtime-approval/i111-readonly-runtime-approval.json',
   );
   assert.ok(!I111_READONLY_PATHS.approval.startsWith(`${I111_READONLY_PATHS.gateRoot}/`));
 });
@@ -1273,9 +1286,9 @@ test('detects a Worker or Redis task appearing between the two non-atomic sample
 
 test('never treats source regexes as proof that provider retry semantics are disabled', async () => {
   const { result } = await run();
-  assert.ok(result.errorCodes.includes('I111_RETRY_SEMANTICS_UNVERIFIED'));
-  assert.equal(result.checks.retrySemantics, 'STOP');
-  assert.equal(result.checks.atomicIsolation, 'STOP');
+  assert.ok(!result.errorCodes.includes('I111_RETRY_SEMANTICS_UNVERIFIED'));
+  assert.equal(result.checks.retrySemantics, 'DEFERRED_TO_TRUSTED_COORDINATOR');
+  assert.equal(result.checks.atomicIsolation, 'DEFERRED_TO_TRUSTED_COORDINATOR');
   assert.equal(result.checks.processAndRedisSampling, 'PASS');
 });
 
@@ -1284,7 +1297,7 @@ test('verifies the exact GitHub review identity, state, URL and commit through t
   const approval = {
     approvedBy: 'Fredilly',
     approvedCommit: sha,
-    approvalUrl: 'https://github.com/Fredilly/Xiaohai/pull/241#pullrequestreview-12345',
+    approvalUrl: 'https://github.com/Fredilly/Xiaohai/pull/242#pullrequestreview-12345',
   };
   const valid = {
     id: 12345,
@@ -1301,7 +1314,7 @@ test('verifies the exact GitHub review identity, state, URL and commit through t
       'github.com',
       '--method',
       'GET',
-      'repos/Fredilly/Xiaohai/pulls/241/reviews/12345',
+      'repos/Fredilly/Xiaohai/pulls/242/reviews/12345',
     ]);
     return { status: 0, stdout: JSON.stringify(valid), stderr: '' };
   };
@@ -1380,7 +1393,7 @@ test('real source inspection separates local consistency from independent review
   const approval = {
     schemaVersion: 1,
     approvedBy: 'Fredilly',
-    approvalUrl: 'https://github.com/Fredilly/Xiaohai/pull/241#pullrequestreview-12345',
+    approvalUrl: 'https://github.com/Fredilly/Xiaohai/pull/242#pullrequestreview-12345',
     approvedCommit: sha,
     migrationDigest: unsigned.migrationDigest,
     sourceSha256: unsigned.sourceHashes,

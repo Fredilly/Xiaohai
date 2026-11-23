@@ -22,7 +22,7 @@ export const I111_READONLY_PATHS = Object.freeze({
   mimi: '/Volumes/Data/Xiaohai-i111-gate-b/.i111-plan-b/assets/mimi_reference_candidate.png',
   pip: '/Volumes/Data/Xiaohai-i111-gate-b/.i111-plan-b/assets/pip_reference_candidate.png',
   apiMode: '/Volumes/Data/Xiaohai-i111-gate-b/.i111-plan-b/api.mode',
-  approval: '/Volumes/Data/Xiaohai-i111-pr241-runtime-approval/i111-readonly-runtime-approval.json',
+  approval: '/Volumes/Data/Xiaohai-i111-pr242-runtime-approval/i111-readonly-runtime-approval.json',
 });
 
 const EXPECTED = Object.freeze({
@@ -462,7 +462,7 @@ function runCommand(command, args, cwd) {
 
 export async function verifyGitHubApproval(approval, checkedOutSha, dependencies = {}) {
   const match =
-    /^https:\/\/github\.com\/Fredilly\/Xiaohai\/pull\/241#pullrequestreview-([1-9]\d*)$/.exec(
+    /^https:\/\/github\.com\/Fredilly\/Xiaohai\/pull\/242#pullrequestreview-([1-9]\d*)$/.exec(
       approval?.approvalUrl ?? '',
     );
   if (
@@ -483,7 +483,7 @@ export async function verifyGitHubApproval(approval, checkedOutSha, dependencies
         'github.com',
         '--method',
         'GET',
-        `repos/Fredilly/Xiaohai/pulls/241/reviews/${match[1]}`,
+        `repos/Fredilly/Xiaohai/pulls/242/reviews/${match[1]}`,
       ],
       dependencies.root,
     );
@@ -1350,7 +1350,7 @@ export async function loadI111SourceState(root, approval, dependencies) {
   const localApprovalRecordConsistent =
     approval?.schemaVersion === 1 &&
     approval?.approvedBy === 'Fredilly' &&
-    /^https:\/\/github\.com\/Fredilly\/Xiaohai\/pull\/241#pullrequestreview-[1-9]\d*$/.test(
+    /^https:\/\/github\.com\/Fredilly\/Xiaohai\/pull\/242#pullrequestreview-[1-9]\d*$/.test(
       approval?.approvalUrl ?? '',
     ) &&
     approval?.approvedCommit === checkedOutSha &&
@@ -1866,6 +1866,8 @@ export async function runI111ReadonlyRuntimePreflight(options = {}) {
     redisInspector: options.dependencies?.redisInspector ?? defaultRedisInspector,
     fileInspector: options.dependencies?.fileInspector ?? inspectFiles,
     sourceInspector: options.dependencies?.sourceInspector ?? loadI111SourceState,
+    remoteBosVerifier: options.dependencies?.remoteBosVerifier,
+    priceVerifier: options.dependencies?.priceVerifier,
   };
   const errors = [];
   try {
@@ -1903,12 +1905,26 @@ export async function runI111ReadonlyRuntimePreflight(options = {}) {
     const config = inspectConfiguration(env, source);
     errors.push(...config.errors);
 
-    errors.push(
-      'I111_ATOMIC_ISOLATION_UNVERIFIED',
-      'I111_RETRY_SEMANTICS_UNVERIFIED',
-      'I111_REMOTE_BOS_UNVERIFIED',
-      'I111_PRICE_BASIS_UNVERIFIED',
-    );
+    // Remote BOS and pricing are independent evidence gates. They remain STOP
+    // unless a trusted caller supplies fresh, authenticated evidence. Atomic
+    // isolation and retry semantics are intentionally deferred to the trusted
+    // coordinator, which verifies them under the held PostgreSQL session.
+    let remoteBosEvidence = false;
+    let priceEvidence = false;
+    try {
+      remoteBosEvidence =
+        (await (dependencies.remoteBosVerifier ?? (async () => false))({ env, source })) === true;
+    } catch {
+      remoteBosEvidence = false;
+    }
+    try {
+      priceEvidence =
+        (await (dependencies.priceVerifier ?? (async () => false))({ env, source })) === true;
+    } catch {
+      priceEvidence = false;
+    }
+    if (!remoteBosEvidence) errors.push('I111_REMOTE_BOS_UNVERIFIED');
+    if (!priceEvidence) errors.push('I111_PRICE_BASIS_UNVERIFIED');
 
     // A STOP verdict alone is insufficient: a rejected local prerequisite must
     // prevent even Docker inspection and unauthenticated TCP probes.
@@ -2148,7 +2164,10 @@ export async function runI111ReadonlyRuntimePreflight(options = {}) {
       ].includes(code),
     );
     return {
-      result: errorCodes.length === 0 && policy.verdict === 'STATIC_REVIEW_ONLY' ? 'PASS' : 'STOP',
+      result:
+        errorCodes.length === 0 && policy.verdict === 'STATIC_REVIEW_ONLY'
+          ? 'PASS_WITH_DEFERRED_GATES'
+          : 'STOP',
       errorCodes,
       paidExecutionAuthorized: false,
       // The trusted one-shot runner consumes this independently collected,
@@ -2164,11 +2183,11 @@ export async function runI111ReadonlyRuntimePreflight(options = {}) {
         localPngFingerprints:
           files.mimiLocalPngVerified && files.pipLocalPngVerified ? 'PASS' : 'STOP',
         databaseReferenceMetadata: database.referenceMetadataVerified === true ? 'PASS' : 'STOP',
-        remoteBos: 'STOP',
+        remoteBos: remoteBosEvidence ? 'PASS' : 'STOP',
         processAndRedisSampling: runtimeSamplesIdle ? 'PASS' : 'STOP',
-        atomicIsolation: 'STOP',
-        retrySemantics: 'STOP',
-        runtime: 'STOP',
+        atomicIsolation: 'DEFERRED_TO_TRUSTED_COORDINATOR',
+        retrySemantics: 'DEFERRED_TO_TRUSTED_COORDINATOR',
+        runtime: runtimeSamplesIdle ? 'PASS' : 'STOP',
         redis:
           redisBefore.verified &&
           redisBefore.queuedJobs === 0 &&

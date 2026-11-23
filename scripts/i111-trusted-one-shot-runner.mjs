@@ -4,7 +4,6 @@ import { verifyI111OwnerGrantPort } from './i111-paid-operation-grant.mjs';
 import { runI111ReadonlyRuntimePreflight } from './i111-readonly-runtime-preflight.mjs';
 
 const LOCK_KEY = [111, 20261119];
-const UUID = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/u;
 const STOP = 'I111_TRUSTED_RUNNER_STOP';
 const UNKNOWN = 'I111_TRUSTED_RUNNER_OUTCOME_UNCERTAIN';
 const CONNECT_TIMEOUT_MS = 5_000;
@@ -229,21 +228,15 @@ async function loadRuntimeModules() {
 
 async function runLiveUnsafe({ env, root }) {
   if (!requireLiveEnvironment(env)) return stop('I111_LIVE_GATE_STOP');
-  const preflight = await runI111ReadonlyRuntimePreflight({ root, env });
-  if (preflight.result !== 'PASS' || !preflight.snapshot) return stop('I111_PREFLIGHT_STOP');
+  const preflight = await runI111ReadonlyRuntimePreflight({ root, env, argv: [] });
+  if (
+    !['PASS', 'PASS_WITH_DEFERRED_GATES'].includes(preflight.result) ||
+    !preflight.snapshot ||
+    preflight.checks?.remoteBos !== 'PASS' ||
+    preflight.checks?.budget !== 'PASS'
+  )
+    return stop('I111_PREFLIGHT_STOP');
   const snapshot = preflight.snapshot;
-  const preview = previewI111OneShot(snapshot);
-  if (preview.verdict !== 'STATIC_REVIEW_ONLY') return stop('I111_PREFLIGHT_STOP');
-  const grant = await verifyI111OwnerGrantPort({
-    exactCodeSha: snapshot.checkedOutSha,
-    bookId: scope.bookId,
-    pageId: preview.nextPageId,
-    revisionNumber: preview.nextRevisionNumber,
-    maxCalls: scope.maxCalls,
-    maxSpendMinor: scope.budgetLimitMinor,
-  });
-  if (grant !== 'INDEPENDENT_VERIFIED_ONE_TIME_GRANT')
-    return stop('I111_OPERATION_APPROVAL_REQUIRED');
 
   const {
     PictureBookService,
@@ -303,128 +296,145 @@ async function runLiveUnsafe({ env, root }) {
     const pidCheck = await query('select pg_backend_pid()::int4 as pid');
     if (pidCheck.rows[0]?.pid !== pid) return stop('I111_BACKEND_PID_CHANGED');
     const db = drizzle(client, { schema: dbSchema });
-    const imageQueue = noOpQueue();
-    const api = new PictureBookService(
-      db,
-      noOpQueue(),
-      imageQueue,
-      {
-        enabled: true,
-        provider: 'BAILIAN',
-        model: scope.model,
-        maxAttempts: 1,
-        timeoutMs: 600_000,
-        imageEnabled: true,
-        imageProvider: 'BAILIAN',
-        imageModel: scope.model,
-        imageBudget: {
-          budgetKey: scope.budgetKey,
-          amountMinor: scope.reservationMinor,
-          globalLimitMinor: scope.budgetLimitMinor,
-          consumerLimitMinor: scope.budgetLimitMinor,
-          windowKey: scope.windowKey,
+    const makeApi = () =>
+      new PictureBookService(
+        db,
+        noOpQueue(),
+        noOpQueue(),
+        {
+          enabled: true,
+          provider: 'BAILIAN',
+          model: scope.model,
+          maxAttempts: 1,
+          timeoutMs: 600_000,
+          imageEnabled: true,
+          imageProvider: 'BAILIAN',
+          imageModel: scope.model,
+          imageBudget: {
+            budgetKey: scope.budgetKey,
+            amountMinor: scope.reservationMinor,
+            globalLimitMinor: scope.budgetLimitMinor,
+            consumerLimitMinor: scope.budgetLimitMinor,
+            windowKey: scope.windowKey,
+          },
         },
+        redactedLogger(),
+      );
+    const workerFor = (targetId, slot) =>
+      createI111SourceBoundTargetWorker({
+        db,
+        targetIllustrationId: targetId,
+        expectedSlot: slot,
+        workspaceId: env.BAILIAN_WORKSPACE_ID,
+        apiKey: env.DASHSCOPE_API_KEY,
+        imageTimeoutMs: 600_000,
+        bos: {
+          endpoint: env.BAIDU_BOS_ENDPOINT,
+          bucket: env.BAIDU_BOS_BUCKET,
+          publicOrigin: env.BAIDU_BOS_PUBLIC_ORIGIN,
+          accessKeyId: env.BAIDU_BOS_ACCESS_KEY_ID,
+          secretAccessKey: env.BAIDU_BOS_SECRET_ACCESS_KEY,
+        },
+        logger: redactedLogger(),
+      });
+    const verifyGrant = async ({ pageId, revisionNumber }) =>
+      (await verifyI111OwnerGrantPort({
+        exactCodeSha: snapshot.checkedOutSha,
+        bookId: scope.bookId,
+        pageId,
+        revisionNumber,
+        maxCalls: scope.maxCalls,
+        maxSpendMinor: scope.budgetLimitMinor,
+      })) === 'INDEPENDENT_VERIFIED_ONE_TIME_GRANT';
+    const outcome = await coordinateI111OneShot({
+      withExclusiveIsolation: async (operation) => operation(),
+      readTrustedSnapshot: async () => snapshot,
+      verifyOwnerOperationGrant: async ({ pageId, revisionNumber }) =>
+        (await verifyGrant({ pageId, revisionNumber }))
+          ? 'INDEPENDENT_VERIFIED_ONE_TIME_GRANT'
+          : 'STOP',
+      verifySlotFreshBeforePrepare: async ({ slot }) => {
+        const [existing] = await db
+          .select({ id: dbSchema.workPageIllustrations.id })
+          .from(dbSchema.workPageIllustrations)
+          .where(
+            and(
+              eq(dbSchema.workPageIllustrations.pageId, slot.pageId),
+              inArray(dbSchema.workPageIllustrations.status, ['QUEUED', 'RUNNING']),
+            ),
+          )
+          .limit(1);
+        return !existing;
       },
-      redactedLogger(),
-    );
-    const slot = slotOrder[snapshot.attempts.length];
-    if (!slot) return stop('I111_FOURTH_CALL_REJECTED');
-    const [existing] = await db
-      .select({
-        id: dbSchema.workPageIllustrations.id,
-        status: dbSchema.workPageIllustrations.status,
-      })
-      .from(dbSchema.workPageIllustrations)
-      .where(
-        and(
-          eq(dbSchema.workPageIllustrations.pageId, slot.pageId),
-          inArray(dbSchema.workPageIllustrations.status, ['QUEUED', 'RUNNING']),
+      prepareViaFormalApi: async ({ consumerUserId, pictureBookId, pageId, regenerate }) =>
+        makeApi().generateIllustration(
+          consumerUserId,
+          pictureBookId,
+          pageId,
+          regenerate,
+          'REQUIRE_NEW',
         ),
-      )
-      .limit(1);
-    if (existing) return stop('I111_DUPLICATE_TASK');
-    const created = await api.generateIllustration(
-      scope.ownerId,
-      scope.bookId,
-      slot.pageId,
-      slot.regenerate,
-      'REQUIRE_NEW',
-    );
-    if (
-      created.pageId !== slot.pageId ||
-      created.revisionNumber !== slot.revisionNumber ||
-      !UUID.test(created.illustrationId)
-    )
-      return stop('I111_CREATED_TARGET_INVALID');
-    const reservations = await db
-      .select()
-      .from(dbSchema.aiCostReservations)
-      .where(eq(dbSchema.aiCostReservations.resourceId, created.illustrationId));
-    if (
-      reservations.length !== 1 ||
-      reservations[0].resourceType !== 'PICTURE_BOOK_IMAGE' ||
-      reservations[0].budgetKey !== scope.budgetKey ||
-      reservations[0].windowKey !== scope.windowKey ||
-      reservations[0].consumerUserId !== scope.ownerId ||
-      reservations[0].provider !== 'BAILIAN' ||
-      reservations[0].model !== scope.model ||
-      reservations[0].reservedMinor !== scope.reservationMinor ||
-      reservations[0].status !== 'RESERVED' ||
-      reservations[0].uncertainty !== 'NONE'
-    )
-      return stop('I111_RESERVATION_INVALID');
-    const worker = createI111SourceBoundTargetWorker({
-      db,
-      targetIllustrationId: created.illustrationId,
-      expectedSlot: slot,
-      workspaceId: env.BAILIAN_WORKSPACE_ID,
-      apiKey: env.DASHSCOPE_API_KEY,
-      imageTimeoutMs: 600_000,
-      bos: {
-        endpoint: env.BAIDU_BOS_ENDPOINT,
-        bucket: env.BAIDU_BOS_BUCKET,
-        publicOrigin: env.BAIDU_BOS_PUBLIC_ORIGIN,
-        accessKeyId: env.BAIDU_BOS_ACCESS_KEY_ID,
-        secretAccessKey: env.BAIDU_BOS_SECRET_ACCESS_KEY,
+      verifyExactlyOneReservation: async ({ targetId }) => {
+        const reservations = await db
+          .select()
+          .from(dbSchema.aiCostReservations)
+          .where(eq(dbSchema.aiCostReservations.resourceId, targetId));
+        const row = reservations[0];
+        return (
+          reservations.length === 1 &&
+          row.resourceType === 'PICTURE_BOOK_IMAGE' &&
+          row.budgetKey === scope.budgetKey &&
+          row.windowKey === scope.windowKey &&
+          row.consumerUserId === scope.ownerId &&
+          row.provider === 'BAILIAN' &&
+          row.model === scope.model &&
+          row.reservedMinor === scope.reservationMinor &&
+          row.status === 'RESERVED' &&
+          row.uncertainty === 'NONE'
+        );
       },
-      logger: redactedLogger(),
+      verifyTrustedLiveBoundary: async ({ slot }) => {
+        if (!(await verifyGrant({ pageId: slot.pageId, revisionNumber: slot.revisionNumber })))
+          return false;
+        const check = await query('select pg_backend_pid()::int4 as pid');
+        return check.rows[0]?.pid === pid;
+      },
+      processTargetIdWithAtomicGateOnce: async ({ targetId, slot }) =>
+        workerFor(targetId, slot).processTargetIdWithAtomicGateOnce({ targetId, slot }),
+      readFinalEvidence: async (targetId) => {
+        const [illustration] = await db
+          .select({
+            status: dbSchema.workPageIllustrations.status,
+            mediaAssetId: dbSchema.workPageIllustrations.mediaAssetId,
+            mediaStatus: dbSchema.mediaAssets.status,
+          })
+          .from(dbSchema.workPageIllustrations)
+          .leftJoin(
+            dbSchema.mediaAssets,
+            eq(dbSchema.mediaAssets.id, dbSchema.workPageIllustrations.mediaAssetId),
+          )
+          .where(eq(dbSchema.workPageIllustrations.id, targetId));
+        const [reservation] = await db
+          .select({
+            status: dbSchema.aiCostReservations.status,
+            uncertainty: dbSchema.aiCostReservations.uncertainty,
+          })
+          .from(dbSchema.aiCostReservations)
+          .where(eq(dbSchema.aiCostReservations.resourceId, targetId));
+        const [ledger] = await db
+          .select({ outcome: dbSchema.aiCostLedger.outcome })
+          .from(dbSchema.aiCostLedger)
+          .where(eq(dbSchema.aiCostLedger.resourceId, targetId));
+        return {
+          illustrationId: targetId,
+          status: illustration?.status,
+          mediaStatus: illustration?.mediaStatus,
+          reservationStatus: reservation?.uncertainty,
+          ledgerStatus: ledger?.outcome,
+        };
+      },
     });
-    const processed = await worker.processTargetIdWithAtomicGateOnce({
-      targetId: created.illustrationId,
-      slot,
-    });
-    if (processed !== created.illustrationId) return stop('I111_WORKER_TARGET_INVALID');
-    const [finalIllustration] = await db
-      .select({
-        status: dbSchema.workPageIllustrations.status,
-        mediaAssetId: dbSchema.workPageIllustrations.mediaAssetId,
-        mediaStatus: dbSchema.mediaAssets.status,
-      })
-      .from(dbSchema.workPageIllustrations)
-      .leftJoin(
-        dbSchema.mediaAssets,
-        eq(dbSchema.mediaAssets.id, dbSchema.workPageIllustrations.mediaAssetId),
-      )
-      .where(eq(dbSchema.workPageIllustrations.id, created.illustrationId));
-    const [finalReservation] = await db
-      .select({
-        status: dbSchema.aiCostReservations.status,
-        uncertainty: dbSchema.aiCostReservations.uncertainty,
-      })
-      .from(dbSchema.aiCostReservations)
-      .where(eq(dbSchema.aiCostReservations.resourceId, created.illustrationId));
-    const [finalLedger] = await db
-      .select({ outcome: dbSchema.aiCostLedger.outcome })
-      .from(dbSchema.aiCostLedger)
-      .where(eq(dbSchema.aiCostLedger.resourceId, created.illustrationId));
-    if (
-      finalIllustration?.status !== 'READY' ||
-      finalIllustration.mediaStatus !== 'READY' ||
-      finalReservation?.uncertainty !== 'AT_RISK' ||
-      finalLedger?.outcome !== 'AT_RISK'
-    )
-      return stop('I111_RESULT_INVALID');
-    return stop('I111_RECONCILIATION_REQUIRED');
+    return outcome;
   } catch {
     lockUnknown = lockAttempted && !lockAcquired;
     return stop(lockUnknown ? UNKNOWN : UNKNOWN);
