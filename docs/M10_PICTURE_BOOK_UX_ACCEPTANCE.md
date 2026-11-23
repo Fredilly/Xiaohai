@@ -61,6 +61,11 @@ refresh does not submit a second paid request; and stale list responses cannot
 replace newer signed cover URLs or restore private books after logout. Those checks
 do **not** substitute for a controlled real illustration/failure run.
 
+The create-page regression also allows one in-flight create request per page,
+and treats a timed-out or ambiguous create response as **unknown**, prompting the
+user to inspect “我的绘本” without automatically resubmitting. This is client-side
+duplicate mitigation, not server-side cross-session idempotency.
+
 ## Manual DevTools checklist
 
 The mock/local storyboard → preview → reopen steps below were exercised on
