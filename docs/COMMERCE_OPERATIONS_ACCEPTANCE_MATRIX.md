@@ -55,3 +55,15 @@ Paths establish only that UI/API/test artifacts are present, **not** that screen
 - No paid AI run, inventory cutover, payment, production deployment, credentials or customer records were used here.
 
 This is the **first code-evidence inventory** for #114; it is not #114 completion and does not close the issue.
+
+## #208 集成增量（代码证据；不修改上述真实 UAT 状态）
+
+| 路径 | 新增证据 | 实际环境状态 |
+| --- | --- | --- |
+| 食品正式选店下单、抢最后库存、取消 | food-order-lifecycle.integration.test.ts；food-reservation.integration.test.ts | 专属合成 PostgreSQL 可验证；Staging/真机 NOT TESTED |
+| 食品自提/配送消费原批次、召回竞争 | 同一事务库存/预留事件与食品 SALE；跨店 SKU 溯源锁 | 非生产合成 Provider；真实配送/支付 NOT TESTED |
+| 退款与实物接收分离 | 未履约退款释放；履约后退款不返库存；独立 PHYSICAL_RETURN/HELD；原分配数量与凭证唯一 | 门店/HQ 功能入口已接 API；浏览器 NOT TESTED |
+| 食品跨店调拨 | 原 DRAFT/SUBMITTED/IN_TRANSIT/RECEIVED；源批次/目的批次和双侧流水，祖先召回阻止下游销售 | 合成 PostgreSQL；真实物流/门店清点 NOT TESTED |
+| 普通商品独立建档 | 食品开关关闭时首次盘点/重试仍通过；东门原美萍审核链未改为食品依赖 | 真实 Excel/实盘、正式导入 NOT TESTED |
+
+#114 已关闭是 GitHub 状态事实，不能据此把本次新增 #208 流程记为真实验收通过。#116、#32–#35 仍需现场条件；本轮未扩大到未授权环境、付费 AI 或发布。

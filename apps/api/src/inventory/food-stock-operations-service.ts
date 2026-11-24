@@ -1,5 +1,6 @@
+import { lockFoodSku } from './food-lock.js';
 import { createHash, randomUUID } from 'node:crypto';
-import { and, asc, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import {
   foodLotIntakeRequestSchema,
   foodLotDispositionRequestSchema,
@@ -42,7 +43,10 @@ const fingerprint = (input: object) =>
   createHash('sha256').update(JSON.stringify(input)).digest('hex');
 
 export class FoodStockOperationsService {
-  constructor(private readonly db: Db) {}
+  constructor(
+    private readonly db: Db,
+    private readonly checkoutEnabled = false,
+  ) {}
 
   private async authorize(actor: StaffAuthorizationContext, storeId: string, permission: string) {
     if (!actor.permissions.includes('inventory.read') || !actor.permissions.includes(permission))
@@ -52,7 +56,7 @@ export class FoodStockOperationsService {
 
   private async today(query: Db | Tx, storeId: string) {
     const result = await query.execute<{ today: string }>(
-      sql`select to_char(CURRENT_TIMESTAMP AT TIME ZONE timezone, 'YYYY-MM-DD') as today from stores where id=${storeId}::uuid`,
+      sql`select to_char(clock_timestamp() AT TIME ZONE timezone, 'YYYY-MM-DD') as today from stores where id=${storeId}::uuid`,
     );
     if (!result.rows[0]) throw new FoodStockError('NOT_FOUND');
     return result.rows[0].today;
@@ -75,6 +79,21 @@ export class FoodStockOperationsService {
       .limit(501);
     if (rows.length > 500) throw new FoodStockError('UNRECONCILED_FOOD_STOCK');
     const businessDate = await this.today(this.db, storeId);
+    const eligibility = rows.length
+      ? await this.db
+          .select({
+            id: foodBatches.id,
+            ok: sql<boolean>`food_lot_origin_usable(${foodBatches.id})`,
+          })
+          .from(foodBatches)
+          .where(
+            inArray(
+              foodBatches.id,
+              rows.map((r) => r.id),
+            ),
+          )
+      : [];
+    const usable = new Set(eligibility.filter((r) => r.ok).map((r) => r.id));
     const result = evaluatePackagedFoodStock({
       businessDate,
       aggregate: {
@@ -89,10 +108,13 @@ export class FoodStockOperationsService {
       },
       batches: rows.map((row) => ({
         ...row,
-        state: row.state as 'AVAILABLE' | 'HELD' | 'RECALLED',
+        state: (usable.has(row.id) ? row.state : 'HELD') as 'AVAILABLE' | 'HELD' | 'RECALLED',
       })),
     });
-    const verified = rows.length > 0 && rows.every((row) => row.foodKind !== null);
+    const verified =
+      rows.length > 0 &&
+      rows.every((row) => row.foodKind !== null) &&
+      new Set(rows.map((row) => row.foodKind)).size === 1;
     return {
       storeId,
       skuId,
@@ -113,7 +135,7 @@ export class FoodStockOperationsService {
       })),
       result: verified ? result : { ...result, status: 'DISABLED' as const, sellable: 0 },
       // Physical lot availability is not yet a reservation/checkout capability.
-      checkoutEnabled: false as const,
+      checkoutEnabled: this.checkoutEnabled,
     };
   }
 
@@ -147,6 +169,7 @@ export class FoodStockOperationsService {
           replayed: true,
         };
       }
+      await lockFoodSku(tx, input.skuId);
       const [balance] = await tx
         .select()
         .from(storeInventory)
@@ -336,6 +359,7 @@ export class FoodStockOperationsService {
           replayed: true,
         };
       }
+      await lockFoodSku(tx, input.skuId);
       const [balance] = await tx
         .select()
         .from(storeInventory)
@@ -357,6 +381,14 @@ export class FoodStockOperationsService {
       if (batch.version !== input.expectedVersion) throw new FoodStockError('STALE_VERSION');
       if (batch.state === input.state) throw new FoodStockError('CONFLICT');
       if (input.state === 'AVAILABLE') {
+        if (
+          !(
+            await tx.execute<{ ok: boolean }>(
+              sql`select food_lot_origin_usable(${batch.id}::uuid,true) as ok`,
+            )
+          ).rows[0]?.ok
+        )
+          throw new FoodStockError('FOOD_BATCH_BLOCKED');
         if (!batch.foodKind || batch.expiresOn < (await this.today(tx, input.storeId)))
           throw new FoodStockError('FOOD_BATCH_BLOCKED');
         if (

@@ -231,3 +231,138 @@ test('read-only staff cannot submit inventory writes and single-permission opera
     }
   }
 });
+
+const foodBatchId = '44444444-4444-4444-8444-444444444444';
+const orderId = '55555555-5555-4555-8555-555555555555';
+const allocationId = '66666666-6666-4666-8666-666666666666';
+async function ordinaryInventoryFixture(page: Page) {
+  await page.route('**/api/v1/staff/inventory?*', (route) =>
+    route.fulfill({ json: { items: [balance] } }),
+  );
+}
+test('food intake network retry retains the original operation key', async ({ page }) => {
+  await ordinaryInventoryFixture(page);
+  await page.route('**/api/v1/staff/inventory/food-stock?*', (route) =>
+    route.fulfill({
+      json: {
+        storeId,
+        skuId,
+        businessDate: '2026-11-24',
+        inventoryVersion: 1,
+        onHand: 5,
+        checkoutEnabled: false,
+        rows: [
+          {
+            id: foodBatchId,
+            lotCode: 'SYNTHETIC',
+            kind: 'PACKAGED_FOOD',
+            manufacturedOn: null,
+            expiresOn: '2099-01-01',
+            onHand: 5,
+            reserved: 0,
+            blocked: 0,
+            state: 'HELD',
+            version: 0,
+          },
+        ],
+        result: {
+          status: 'READY',
+          sellable: 0,
+          expiredOnHand: 0,
+          blockedOnHand: 5,
+          batches: [{ id: foodBatchId, expiresOn: '2099-01-01', disposition: 'HELD', sellable: 0 }],
+        },
+      },
+    }),
+  );
+  const keys: string[] = [];
+  await page.route('**/api/v1/staff/inventory/food-stock/intake', async (route) => {
+    const body = route.request().postDataJSON() as { idempotencyKey: string };
+    keys.push(body.idempotencyKey);
+    if (keys.length === 1) await route.abort('failed');
+    else await route.fulfill({ status: 201, json: { replayed: true } });
+  });
+  await mount(page);
+  await page.getByLabel('本店 SKU', { exact: true }).selectOption(skuId);
+  const form = page.getByRole('group', { name: '新批次入库（新食品须先建草稿、关联零库存）' });
+  await form.getByLabel('批号', { exact: true }).fill('SYNTHETIC-NEW');
+  await form.getByLabel('到期日').fill('2099-12-31');
+  await form.getByLabel('入库数量').fill('2');
+  await form.getByLabel('原因', { exact: true }).fill('Synthetic receipt');
+  await form.getByLabel('内部凭证编号（不填网址）').fill('synthetic:receipt:1');
+  await form.getByRole('button', { name: '入库并冻结' }).click();
+  await expect(page.getByRole('status').filter({ hasText: '未确认成功' })).toHaveCount(1);
+  await form.getByRole('button', { name: '入库并冻结' }).click();
+  await expect.poll(() => keys.length).toBe(2);
+  expect(keys[0]).toBe(keys[1]);
+});
+test('physical receipt keeps the same key when the post-success refresh fails', async ({
+  page,
+}) => {
+  await ordinaryInventoryFixture(page);
+  let reads = 0;
+  await page.route(`**/api/v1/staff/inventory/food-stock/order/${orderId}`, async (route) => {
+    reads++;
+    if (reads === 2)
+      await route.fulfill({ status: 503, json: { error: { code: 'SYNTHETIC_UNAVAILABLE' } } });
+    else
+      await route.fulfill({
+        json: {
+          orderId,
+          storeId,
+          status: 'COMPLETED',
+          allocations: [
+            {
+              id: allocationId,
+              skuId,
+              batchId: foodBatchId,
+              lotCode: 'SYNTHETIC',
+              quantity: 2,
+              status: 'SOLD',
+              returnedQuantity: reads > 2 ? 1 : 0,
+            },
+          ],
+        },
+      });
+  });
+  const keys: string[] = [];
+  await page.route('**/api/v1/staff/inventory/food-stock/physical-returns', (route) => {
+    const body = route.request().postDataJSON() as { idempotencyKey: string };
+    keys.push(body.idempotencyKey);
+    return route.fulfill({ json: { returnedBatchId: foodBatchId, replayed: keys.length > 1 } });
+  });
+  await mount(page);
+  const panel = page.getByRole('region', { name: '食品退货与溯源' });
+  await panel.getByLabel('原订单 ID').fill(orderId);
+  await panel.getByRole('button', { name: '读取原订单批次' }).click();
+  const form = panel.getByRole('group', { name: '确认收到实物（与退款分开）' });
+  await form.getByLabel('实际收到数量').fill('1');
+  await form.getByLabel('原因', { exact: true }).fill('Synthetic physical receipt');
+  await form.getByLabel('内部接收凭证').fill('synthetic:return:1');
+  await form.getByRole('button', { name: '接收为冻结批次' }).click();
+  await expect(panel.getByRole('status')).toContainText('未确认成功');
+  await form.getByRole('button', { name: '接收为冻结批次' }).click();
+  await expect(panel.getByRole('status')).toContainText('没有自动退款');
+  expect(keys).toHaveLength(2);
+  expect(keys[0]).toBe(keys[1]);
+});
+test('a mismatched store trace response is never displayed', async ({ page }) => {
+  await ordinaryInventoryFixture(page);
+  await page.route(`**/api/v1/staff/inventory/food-stock/trace/${foodBatchId}`, (route) =>
+    route.fulfill({
+      json: {
+        batchId: foodBatchId,
+        storeId: otherStoreId,
+        lotCode: 'OTHER_STORE_MUST_NOT_RENDER',
+        transfers: [],
+        returns: [],
+      },
+    }),
+  );
+  await mount(page);
+  const panel = page.getByRole('region', { name: '食品退货与溯源' });
+  await panel.getByLabel('本店批次 ID').fill(foodBatchId);
+  await panel.getByRole('button', { name: '查询批次来源' }).click();
+  await expect(panel.getByRole('status')).toContainText('未确认成功');
+  await expect(panel).not.toContainText('OTHER_STORE_MUST_NOT_RENDER');
+});

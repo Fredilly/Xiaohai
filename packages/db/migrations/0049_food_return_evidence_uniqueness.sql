@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "food_physical_returns_evidence_unique" ON "food_physical_returns" USING btree ("reservation_id","source_ref");

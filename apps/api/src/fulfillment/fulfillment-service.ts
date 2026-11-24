@@ -1,3 +1,5 @@
+import { lockFoodSku } from '../inventory/food-lock.js';
+import { FoodReservationService, isFoodSku } from '../inventory/food-reservation-service.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, inArray, or, sql } from 'drizzle-orm';
 import type {
@@ -61,6 +63,7 @@ export class FulfillmentService {
     private readonly commerce: CommerceService,
     private readonly pickupSecret: string,
     private readonly deliveryProvider: DeliveryProvider,
+    private readonly foodCheckoutEnabled = false,
   ) {}
 
   async quote(
@@ -148,7 +151,7 @@ export class FulfillmentService {
       // A duplicate key replays above; a new key sees an empty cart after the first commit.
       const initialCart = await this.commerce.getCart(consumerUserId, undefined, tx);
       // Inventory is always locked before local price rows, matching Staff edits.
-      await reserveSaleInventory(tx, input.storeId, initialCart.items);
+      await reserveSaleInventory(tx, input.storeId, initialCart.items, this.foodCheckoutEnabled);
       const cart = await this.commerce.getCart(consumerUserId, input.storeId, tx, true);
       const quote = await this.quote(consumerUserId, input, tx, cart);
       if (input.expectedTotalMinor !== undefined && input.expectedTotalMinor !== quote.totalMinor)
@@ -193,18 +196,21 @@ export class FulfillmentService {
         clientRequestId: input.clientRequestId,
         fulfillmentFingerprint: fingerprint,
       });
-      await tx.insert(orderItems).values(
-        cart.items.map((item) => ({
-          orderId,
-          skuId: item.skuId,
-          productNameSnapshot: item.productName,
-          skuNameSnapshot: item.skuName,
-          skuCodeSnapshot: skuCodes.get(item.skuId)!,
-          unitPriceMinor: item.unitPriceMinor,
-          quantity: item.quantity,
-          lineTotalMinor: item.lineTotalMinor,
-        })),
-      );
+      const createdItems = await tx
+        .insert(orderItems)
+        .values(
+          cart.items.map((item) => ({
+            orderId,
+            skuId: item.skuId,
+            productNameSnapshot: item.productName,
+            skuNameSnapshot: item.skuName,
+            skuCodeSnapshot: skuCodes.get(item.skuId)!,
+            unitPriceMinor: item.unitPriceMinor,
+            quantity: item.quantity,
+            lineTotalMinor: item.lineTotalMinor,
+          })),
+        )
+        .returning();
       await this.commerce.attributeReferral(tx, orderId, consumerUserId, input.referralCode);
 
       if (input.method === 'PICKUP') {
@@ -229,6 +235,14 @@ export class FulfillmentService {
         });
       }
 
+      for (const item of [...createdItems].sort((a, b) => a.skuId.localeCompare(b.skuId))) {
+        if (await isFoodSku(tx, item.skuId))
+          await new FoodReservationService(this.db, this.foodCheckoutEnabled).reserveInTransaction(
+            tx,
+            item.id,
+            input.storeId,
+          );
+      }
       await tx.delete(cartItems).where(eq(cartItems.cartId, cartRow.id));
       return orderId;
     });
@@ -332,7 +346,7 @@ export class FulfillmentService {
     await this.db.transaction(async (tx) => {
       const { order, pickup } = await lockPickup(tx, orderId);
       if (!order || !pickup) throw new FulfillmentError('NOT_FOUND');
-      await this.requireStoreAccess(context, pickup.storeId);
+      await this.requireStoreAccess(context, pickup.storeId, tx);
       if (order.status === 'PICKUP_READY') return;
       if (order.status !== 'PAID' || pickup.status !== 'ISSUED')
         throw new FulfillmentError('INVALID_STATE');
@@ -353,7 +367,7 @@ export class FulfillmentService {
     await this.db.transaction(async (tx) => {
       const { order, pickup } = await lockPickup(tx, orderId);
       if (!order || !pickup) throw new FulfillmentError('NOT_FOUND');
-      await this.requireStoreAccess(context, pickup.storeId);
+      await this.requireStoreAccess(context, pickup.storeId, tx);
       if (pickup.status === 'VERIFIED' && order.status === 'COMPLETED') return;
       if (order.status !== 'PICKUP_READY' || pickup.status !== 'ISSUED')
         throw new FulfillmentError('INVALID_STATE');
@@ -365,6 +379,7 @@ export class FulfillmentService {
         pickup.storeId,
         context.staffAccountId,
         idempotencyKey,
+        new FoodReservationService(this.db, this.foodCheckoutEnabled),
       );
       const now = new Date();
       await tx
@@ -425,6 +440,7 @@ export class FulfillmentService {
         delivery.storeId,
         context.staffAccountId,
         idempotencyKey,
+        new FoodReservationService(this.db, this.foodCheckoutEnabled),
       );
       const now = new Date();
       await tx
@@ -468,7 +484,7 @@ export class FulfillmentService {
         .where(eq(deliveries.orderId, orderId))
         .limit(1);
       if (!order || !delivery) throw new FulfillmentError('NOT_FOUND');
-      await this.requireStoreAccess(context, delivery.storeId);
+      await this.requireStoreAccess(context, delivery.storeId, tx);
       if (delivery.status === 'DELIVERED' && order.status === 'COMPLETED') return;
       if (delivery.status !== 'DISPATCHED' || order.status !== 'DELIVERING')
         throw new FulfillmentError('INVALID_STATE');
@@ -602,8 +618,12 @@ export class FulfillmentService {
     return zone;
   }
 
-  private async requireStoreAccess(context: StaffAuthorizationContext, storeId: string) {
-    const [store] = await this.db
+  private async requireStoreAccess(
+    context: StaffAuthorizationContext,
+    storeId: string,
+    query: Database | Transaction = this.db,
+  ) {
+    const [store] = await query
       .select({ id: stores.id, regionId: stores.regionId, franchiseeId: stores.franchiseeId })
       .from(stores)
       .where(eq(stores.id, storeId))
@@ -641,9 +661,11 @@ async function reserveSaleInventory(
   tx: Transaction,
   storeId: string,
   items: Array<{ skuId: string; quantity: number }>,
+  foodCheckoutEnabled: boolean,
 ) {
   const orderedItems = [...items].sort((a, b) => a.skuId.localeCompare(b.skuId));
   for (const item of orderedItems) {
+    await lockFoodSku(tx, item.skuId);
     await tx.execute(
       sql`select 1 from store_inventory where store_id=${storeId} and sku_id=${item.skuId} for update`,
     );
@@ -654,7 +676,10 @@ async function reserveSaleInventory(
       .from(foodBatches)
       .where(eq(foodBatches.skuId, item.skuId))
       .limit(1);
-    if (food) throw new FulfillmentError('INVALID_STATE');
+    if (food) {
+      if (!foodCheckoutEnabled) throw new FulfillmentError('INVALID_STATE');
+      continue; // FEFO allocation is created with the order item below, in this transaction.
+    }
     const [balance] = await tx
       .select()
       .from(storeInventory)
@@ -685,6 +710,7 @@ async function deductSaleInventory(
   storeId: string,
   staffAccountId: string,
   idempotencyKey: string,
+  foodService: FoodReservationService,
 ) {
   const items = await tx
     .select()
@@ -692,6 +718,7 @@ async function deductSaleInventory(
     .where(eq(orderItems.orderId, orderId))
     .orderBy(asc(orderItems.skuId));
   for (const item of items) {
+    await lockFoodSku(tx, item.skuId);
     await tx.execute(
       sql`select 1 from store_inventory where store_id=${storeId} and sku_id=${item.skuId} for update`,
     );
@@ -700,7 +727,10 @@ async function deductSaleInventory(
       .from(foodBatches)
       .where(eq(foodBatches.skuId, item.skuId))
       .limit(1);
-    if (food) throw new FulfillmentError('INVALID_STATE');
+    if (food) {
+      await foodService.sellInTransaction(tx, item.id, storeId, staffAccountId);
+      continue;
+    }
     const [balance] = await tx
       .select()
       .from(storeInventory)

@@ -12,7 +12,7 @@ describe('food operations entry', () => {
       />,
     );
     expect(html).toContain('Synthetic bottle');
-    expect(html).toContain('食品销售仍关闭');
-    expect(html).not.toContain('<form');
+    expect(html).toContain('食品下单状态以服务端配置和实时批次校验为准');
+    expect(html).not.toContain('入库并冻结');
   });
 });

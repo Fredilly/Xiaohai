@@ -1,3 +1,8 @@
+import {
+  FoodReservationService,
+  foodQuantityAvailable,
+  isFoodSku,
+} from '../inventory/food-reservation-service.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { isIP } from 'node:net';
 import { and, asc, desc, eq, ilike, inArray, or, sql } from 'drizzle-orm';
@@ -105,6 +110,7 @@ export class CommerceService {
     private readonly db: Db,
     private readonly referrals?: ReferralAttributionWriter,
     private readonly catalogPreviewSecret = '',
+    private readonly foodCheckoutEnabled = false,
   ) {}
 
   async attributeReferral(tx: Tx, orderId: string, consumerUserId: string, referralCode?: string) {
@@ -248,6 +254,14 @@ export class CommerceService {
       rows.map((row) => row.sku.id),
       query,
     );
+    if (storeId && this.foodCheckoutEnabled) {
+      for (const row of rows)
+        if (
+          (await isFoodSku(query, row.sku.id)) &&
+          !(await foodQuantityAvailable(query, storeId, row.sku.id, row.item.quantity))
+        )
+          blocked.add(row.sku.id);
+    }
     const items = rows.map(({ item, sku, product }) => {
       const local = prices.get(sku.id);
       const effectiveSku = local?.sku ?? sku;
@@ -560,11 +574,19 @@ export class CommerceService {
 
       if (reservationStoreId) {
         const items = await tx
-          .select({ skuId: orderItems.skuId, quantity: orderItems.quantity })
+          .select({ id: orderItems.id, skuId: orderItems.skuId, quantity: orderItems.quantity })
           .from(orderItems)
           .where(eq(orderItems.orderId, id))
           .orderBy(asc(orderItems.skuId));
         for (const item of items) {
+          if (await isFoodSku(tx, item.skuId)) {
+            await new FoodReservationService(this.db, true).releaseInTransaction(
+              tx,
+              item.id,
+              reservationStoreId,
+            );
+            continue;
+          }
           await tx.execute(
             sql`select 1 from store_inventory where store_id=${reservationStoreId} and sku_id=${item.skuId} for update`,
           );
@@ -1285,7 +1307,7 @@ export class CommerceService {
   }
 
   private async foodCheckoutBlockedSkuIds(ids: string[], query: Db | Tx = this.db) {
-    if (!ids.length) return new Set<string>();
+    if (!ids.length || this.foodCheckoutEnabled) return new Set<string>();
     const rows = await query
       .selectDistinct({ skuId: foodBatches.skuId })
       .from(foodBatches)

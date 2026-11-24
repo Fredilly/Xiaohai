@@ -1,3 +1,4 @@
+import { FoodReservationError } from '../inventory/food-reservation-service.js';
 import { z } from 'zod';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import {
@@ -216,15 +217,17 @@ function fail(request: FastifyRequest, reply: FastifyReply, error: unknown) {
       error: { code: error.code, message: error.code, requestId: request.id },
     });
   }
-  if (error instanceof FulfillmentError) {
+  if (error instanceof FulfillmentError || error instanceof FoodReservationError) {
     const status =
-      error.code === 'NOT_FOUND'
-        ? 404
-        : error.code === 'FORBIDDEN'
-          ? 403
-          : error.code === 'PICKUP_CODE_INVALID'
-            ? 400
-            : 409;
+      error.code === 'WRITES_DISABLED'
+        ? 503
+        : error.code === 'NOT_FOUND'
+          ? 404
+          : error.code === 'FORBIDDEN'
+            ? 403
+            : error.code === 'PICKUP_CODE_INVALID'
+              ? 400
+              : 409;
     return reply.status(status).send({
       error: { code: error.code, message: error.code, requestId: request.id },
     });

@@ -1,7 +1,13 @@
+import {
+  foodPhysicalReturnRequestSchema,
+  type FoodLogisticsService,
+} from './food-logistics-service.js';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import {
   foodLotIntakeRequestSchema,
+  foodTraceResponseSchema,
+  foodOrderAllocationsResponseSchema,
   foodLotDispositionRequestSchema,
   foodBatchMovementRequestSchema,
 } from '@xiaohai/contracts/food';
@@ -27,6 +33,7 @@ export function registerFoodStockRoutes(
     food: FoodStockOperationsService;
     movement: FoodBatchMovementService;
     writesEnabled?: boolean;
+    logistics?: FoodLogisticsService;
   },
 ) {
   async function authenticate(request: FastifyRequest, permission: string, write = false) {
@@ -36,6 +43,41 @@ export function registerFoodStockRoutes(
     if (write && options.writesEnabled !== true) throw new FoodWritesDisabled();
     return actor;
   }
+  app.post('/api/v1/staff/inventory/food-stock/physical-returns', async (request, reply) => {
+    const input = foodPhysicalReturnRequestSchema.safeParse(request.body);
+    if (!input.success) return invalid(request, reply);
+    try {
+      const actor = await authenticate(request, 'inventory.receive', true);
+      if (!options.logistics) throw new FoodWritesDisabled();
+      return await options.logistics.receiveReturn(actor, input.data);
+    } catch (error) {
+      return fail(request, reply, error);
+    }
+  });
+  app.get('/api/v1/staff/inventory/food-stock/order/:id', async (request, reply) => {
+    const params = z.object({ id: z.uuid() }).strict().safeParse(request.params);
+    if (!params.success) return invalid(request, reply);
+    try {
+      const actor = await authenticate(request, 'inventory.read');
+      if (!options.logistics) throw new FoodWritesDisabled();
+      return foodOrderAllocationsResponseSchema.parse(
+        await options.logistics.orderAllocations(actor, params.data.id),
+      );
+    } catch (error) {
+      return fail(request, reply, error);
+    }
+  });
+  app.get('/api/v1/staff/inventory/food-stock/trace/:id', async (request, reply) => {
+    const params = z.object({ id: z.uuid() }).strict().safeParse(request.params);
+    if (!params.success) return invalid(request, reply);
+    try {
+      const actor = await authenticate(request, 'inventory.read');
+      if (!options.logistics) throw new FoodWritesDisabled();
+      return foodTraceResponseSchema.parse(await options.logistics.trace(actor, params.data.id));
+    } catch (error) {
+      return fail(request, reply, error);
+    }
+  });
   app.get('/api/v1/staff/inventory/food-stock', async (request, reply) => {
     const input = querySchema.safeParse(request.query);
     if (!input.success) return invalid(request, reply);

@@ -1,3 +1,4 @@
+import { FoodReservationService, isFoodSku } from '../inventory/food-reservation-service.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, sql } from 'drizzle-orm';
 import {
@@ -137,7 +138,10 @@ export class PaymentService {
       const { payment: locked, order } = await this.lock(tx, payment);
       const [existing] = await tx.select().from(refunds).where(eq(refunds.paymentId, paymentId));
       if (existing) return existing;
-      if (locked.status !== 'SUCCEEDED' || !['PAID', 'CANCELLED'].includes(order.status))
+      if (
+        locked.status !== 'SUCCEEDED' ||
+        !['PAID', 'CANCELLED', 'PICKUP_READY', 'DELIVERING', 'COMPLETED'].includes(order.status)
+      )
         throw new PaymentError('INVALID_REFUND_STATE');
       const [created] = await tx
         .insert(refunds)
@@ -149,7 +153,7 @@ export class PaymentService {
           originalOrderStatus: order.status,
         })
         .returning();
-      if (order.status === 'PAID')
+      if (order.status !== 'CANCELLED')
         await tx
           .update(orders)
           .set({ status: 'REFUNDING', updatedAt: new Date() })
@@ -431,13 +435,22 @@ export class PaymentService {
     if (!storeId) return;
 
     const items = await tx
-      .select({ skuId: orderItems.skuId, quantity: orderItems.quantity })
+      .select({ id: orderItems.id, skuId: orderItems.skuId, quantity: orderItems.quantity })
       .from(orderItems)
       .where(eq(orderItems.orderId, orderId))
       .orderBy(asc(orderItems.skuId));
     if (!items.length) throw new PaymentError('REFUND_RESERVATION_CONFLICT');
 
     for (const item of items) {
+      if (await isFoodSku(tx, item.skuId)) {
+        await new FoodReservationService(this.db, true).releaseInTransaction(
+          tx,
+          item.id,
+          storeId,
+          'REFUND',
+        );
+        continue;
+      }
       await tx.execute(
         sql`select 1 from store_inventory where store_id=${storeId} and sku_id=${item.skuId} for update`,
       );

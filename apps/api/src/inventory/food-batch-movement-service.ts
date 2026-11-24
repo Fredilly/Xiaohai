@@ -1,3 +1,4 @@
+import { lockFoodSku } from './food-lock.js';
 import { createHash } from 'node:crypto';
 import { and, asc, eq, sql } from 'drizzle-orm';
 import {
@@ -82,6 +83,7 @@ export class FoodBatchMovementService {
           replayed: true,
         };
       }
+      await lockFoodSku(tx, input.skuId);
       const [balance] = await tx
         .select()
         .from(storeInventory)
@@ -111,7 +113,7 @@ export class FoodBatchMovementService {
         .from(stores)
         .where(eq(stores.id, input.storeId));
       const date = await tx.execute<{ today: string }>(
-        sql`select to_char(CURRENT_TIMESTAMP AT TIME ZONE ${store!.timezone}, 'YYYY-MM-DD') as today`,
+        sql`select to_char(clock_timestamp() AT TIME ZONE ${store!.timezone}, 'YYYY-MM-DD') as today`,
       );
       const today = date.rows[0]!.today;
       let total = 0;

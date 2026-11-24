@@ -107,4 +107,46 @@ describe('food stock HTTP fail-closed boundary', () => {
       await f.app.close();
     }
   });
+  it('physical return requires the explicit write gate before any logistics service', async () => {
+    const f = fixture(false);
+    try {
+      const result = await f.app.inject({
+        method: 'POST',
+        url: '/api/v1/staff/inventory/food-stock/physical-returns',
+        payload: {
+          reservationId: randomUUID(),
+          quantity: 1,
+          idempotencyKey: randomUUID(),
+          reason: 'Synthetic physical receipt',
+          sourceRef: 'synthetic:receipt:1',
+        },
+      });
+      expect(result.statusCode).toBe(503);
+      expect(result.json<{ error: { code: string } }>().error.code).toBe(
+        'FOOD_STOCK_WRITES_DISABLED',
+      );
+    } finally {
+      await f.app.close();
+    }
+  });
+  it('rejects signed URL return evidence without echoing it', async () => {
+    const f = fixture(true);
+    try {
+      const result = await f.app.inject({
+        method: 'POST',
+        url: '/api/v1/staff/inventory/food-stock/physical-returns',
+        payload: {
+          reservationId: randomUUID(),
+          quantity: 1,
+          idempotencyKey: randomUUID(),
+          reason: 'Synthetic',
+          sourceRef: 'https://private.test/?signature=secret',
+        },
+      });
+      expect(result.statusCode).toBe(400);
+      expect(result.body).not.toContain('secret');
+    } finally {
+      await f.app.close();
+    }
+  });
 });

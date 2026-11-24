@@ -1,3 +1,6 @@
+import { lockFoodSku } from './food-lock.js';
+import { dispatchFoodTransferItem, receiveFoodTransferItem } from './food-logistics-service.js';
+import { isFoodSku } from './food-reservation-service.js';
 import { and, asc, eq, ilike, inArray, lte, notExists, or, sql } from 'drizzle-orm';
 import type {
   CreateGoodsReceiptRequest,
@@ -54,10 +57,17 @@ export class InventoryOperationsError extends Error {
 }
 
 export class InventoryOperationsService {
-  constructor(private readonly db: Database) {}
+  constructor(
+    private readonly db: Database,
+    private readonly foodWritesEnabled = false,
+  ) {}
 
-  async requireStoreAccess(context: StaffAuthorizationContext, storeId: string) {
-    const [store] = await this.db
+  async requireStoreAccess(
+    context: StaffAuthorizationContext,
+    storeId: string,
+    query: Database | Transaction = this.db,
+  ) {
+    const [store] = await query
       .select({ id: stores.id, regionId: stores.regionId, franchiseeId: stores.franchiseeId })
       .from(stores)
       .where(eq(stores.id, storeId))
@@ -189,6 +199,7 @@ export class InventoryOperationsService {
   ) {
     await this.requireStoreAccess(context, input.storeId);
     return await this.db.transaction(async (tx) => {
+      await lockFoodSku(tx, input.skuId);
       if (input.initialQuantity > 0) {
         await assertNotFoodInventory(tx, input.skuId);
         const [previous] = await tx
@@ -820,8 +831,8 @@ export class InventoryOperationsService {
   ) {
     return await this.db.transaction(async (tx) => {
       const doc = await lockTransfer(tx, id);
-      await this.assertStore(context, doc.sourceStoreId);
-      await this.assertStore(context, doc.destinationStoreId);
+      await this.requireStoreAccess(context, doc.sourceStoreId, tx);
+      await this.requireStoreAccess(context, doc.destinationStoreId, tx);
       if (action === 'SUBMIT') {
         if (doc.status === 'SUBMITTED') return doc;
         if (doc.status !== 'DRAFT') throw new InventoryOperationsError('INVALID_STATE');
@@ -853,6 +864,15 @@ export class InventoryOperationsService {
         if (doc.status === 'IN_TRANSIT') return doc;
         if (doc.status !== 'SUBMITTED') throw new InventoryOperationsError('INVALID_STATE');
         for (const item of items) {
+          await lockFoodSku(tx, item.skuId);
+          await tx.execute(
+            sql`select 1 from store_inventory where store_id=${doc.sourceStoreId} and sku_id=${item.skuId} for update`,
+          );
+          if (await isFoodSku(tx, item.skuId)) {
+            if (!this.foodWritesEnabled) throw new InventoryOperationsError('INVALID_STATE');
+            await dispatchFoodTransferItem(tx, doc, item, context.staffAccountId);
+            continue;
+          }
           await lockInventory(tx, doc.sourceStoreId, item.skuId);
           const [balance] = await tx
             .select()
@@ -902,7 +922,16 @@ export class InventoryOperationsService {
       if (doc.status === 'RECEIVED') return doc;
       if (doc.status !== 'IN_TRANSIT') throw new InventoryOperationsError('INVALID_STATE');
       for (const item of items) {
+        await lockFoodSku(tx, item.skuId);
         await ensureInventory(tx, doc.destinationStoreId, item.skuId);
+        await tx.execute(
+          sql`select 1 from store_inventory where store_id=${doc.destinationStoreId} and sku_id=${item.skuId} for update`,
+        );
+        if (await isFoodSku(tx, item.skuId)) {
+          if (!this.foodWritesEnabled) throw new InventoryOperationsError('INVALID_STATE');
+          await receiveFoodTransferItem(tx, doc, item, context.staffAccountId);
+          continue;
+        }
         await lockInventory(tx, doc.destinationStoreId, item.skuId);
         const [balance] = await tx
           .update(storeInventory)

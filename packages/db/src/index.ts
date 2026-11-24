@@ -50,6 +50,8 @@ export {
 export { regions, franchisees, stores, storeStaff, storeCatalogMetadata } from './store-schema.js';
 export {
   foodBatches,
+  foodPhysicalReturns,
+  foodTransferAllocations,
   foodBatchTransactions,
   foodBatchReservations,
   foodBatchReservationEvents,

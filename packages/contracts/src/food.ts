@@ -60,7 +60,7 @@ export const packagedFoodPreviewRequestSchema = z
 
 export const packagedFoodPreviewResponseSchema = z.object({
   mode: z.literal('READ_ONLY_PROPOSAL'),
-  checkoutEnabled: z.literal(false),
+  checkoutEnabled: z.boolean(),
   storeId: z.uuid(),
   skuId: z.uuid(),
   businessDate: z.iso.date(),
@@ -169,5 +169,39 @@ export const foodStockReadResponseSchema = z.object({
     }),
   ),
   result: packagedFoodPreviewResponseSchema.shape.result,
-  checkoutEnabled: z.literal(false),
+  checkoutEnabled: z.boolean(),
+});
+
+export const foodPhysicalReturnRequestSchema = z
+  .object({
+    reservationId: z.uuid(),
+    quantity: z.number().int().min(1).max(1000000),
+    ...operationEvidence,
+  })
+  .strict();
+export type FoodPhysicalReturnRequest = z.infer<typeof foodPhysicalReturnRequestSchema>;
+export const foodOrderAllocationsResponseSchema = z.object({
+  orderId: z.uuid(),
+  storeId: z.uuid(),
+  status: z.string(),
+  allocations: z.array(
+    z.object({
+      id: z.uuid(),
+      skuId: z.uuid(),
+      batchId: z.uuid(),
+      lotCode: z.string(),
+      quantity: stockQuantity,
+      status: z.enum(['RESERVED', 'RELEASED', 'SOLD']),
+      returnedQuantity: stockQuantity,
+    }),
+  ),
+});
+export const foodTraceResponseSchema = z.object({
+  batchId: z.uuid(),
+  storeId: z.uuid(),
+  lotCode: z.string(),
+  transfers: z.array(
+    z.object({ sourceBatchId: z.uuid(), transferItemId: z.uuid(), quantity: stockQuantity }),
+  ),
+  returns: z.array(z.object({ reservationId: z.uuid(), quantity: stockQuantity })),
 });

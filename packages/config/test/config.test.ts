@@ -127,3 +127,34 @@ describe('#208 default-disabled food stock writes', () => {
       ).toThrow();
   });
 });
+
+describe('#208 checkout activation requires both explicit gates', () => {
+  it('keeps checkout false by default and rejects partial or malformed activation', () => {
+    expect(loadServiceConfig(serviceEnv).FOOD_CHECKOUT_ENABLED).toBe(false);
+    expect(() => loadServiceConfig({ ...serviceEnv, FOOD_CHECKOUT_ENABLED: 'true' })).toThrow(
+      'FOOD_CHECKOUT_REQUIRES_STOCK_WRITES',
+    );
+    expect(
+      loadServiceConfig({
+        ...serviceEnv,
+        FOOD_CHECKOUT_ENABLED: 'true',
+        FOOD_STOCK_WRITES_ENABLED: 'true',
+      }).FOOD_CHECKOUT_ENABLED,
+    ).toBe(true);
+    for (const value of ['false', 'true'])
+      expect(
+        loadServiceConfig({
+          ...serviceEnv,
+          FOOD_STOCK_WRITES_ENABLED: 'true',
+          FOOD_CHECKOUT_ENABLED: value,
+        }).FOOD_CHECKOUT_ENABLED,
+      ).toBe(value === 'true');
+    expect(() =>
+      loadServiceConfig({
+        ...serviceEnv,
+        FOOD_STOCK_WRITES_ENABLED: 'true',
+        FOOD_CHECKOUT_ENABLED: '1',
+      }),
+    ).toThrow();
+  });
+});

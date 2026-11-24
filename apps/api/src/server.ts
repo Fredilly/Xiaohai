@@ -1,3 +1,4 @@
+import { FoodLogisticsService } from './inventory/food-logistics-service.js';
 import { loadServiceConfig } from '@xiaohai/config';
 import { createDatabase } from '@xiaohai/db';
 import { buildApp } from './app.js';
@@ -119,9 +120,14 @@ const staffAuthorization = new StaffAuthorizationService(
 );
 const homeCms = new HomeCmsService(db);
 const commission = new CommissionService(db);
-const commerce = new CommerceService(db, commission, config.STAFF_SESSION_SECRET);
+const commerce = new CommerceService(
+  db,
+  commission,
+  config.STAFF_SESSION_SECRET,
+  config.FOOD_CHECKOUT_ENABLED,
+);
 const stores = new StoreNetworkService(db);
-const inventory = new InventoryOperationsService(db);
+const inventory = new InventoryOperationsService(db, config.FOOD_STOCK_WRITES_ENABLED);
 const content = new ContentService(db);
 const rateLimitStore = new RedisRateLimitStore(config.REDIS_URL);
 const app = buildApp({
@@ -189,7 +195,8 @@ registerFoodBatchPreviewRoutes(app, {
 registerInventoryOperationsRoutes(app, { operations: inventory, staffAuthorization });
 registerFoodStockRoutes(app, {
   staffAuthorization,
-  food: new FoodStockOperationsService(db),
+  food: new FoodStockOperationsService(db, config.FOOD_CHECKOUT_ENABLED),
+  logistics: new FoodLogisticsService(db, config.FOOD_STOCK_WRITES_ENABLED),
   movement: new FoodBatchMovementService(db),
   writesEnabled: config.FOOD_STOCK_WRITES_ENABLED,
 });
@@ -224,6 +231,7 @@ registerFulfillmentRoutes(app, {
     commerce,
     pickupCodeSecret,
     loadDeliveryProvider(config.DELIVERY_PROVIDER),
+    config.FOOD_CHECKOUT_ENABLED,
   ),
   consumerSessions: sessions,
   staffAuthorization,

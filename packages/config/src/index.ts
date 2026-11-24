@@ -28,6 +28,10 @@ const optionalHttpsUrl = z.preprocess(
   z.url().startsWith('https://').optional(),
 );
 const serviceSchema = baseSchema.extend({
+  FOOD_CHECKOUT_ENABLED: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((value) => value === 'true'),
   FOOD_STOCK_WRITES_ENABLED: z
     .enum(['true', 'false'])
     .default('false')
@@ -111,6 +115,8 @@ const databaseSchema = baseSchema.extend({ DATABASE_URL: z.url().startsWith('pos
 
 export const loadServiceConfig = (env: NodeJS.ProcessEnv) => {
   const config = serviceSchema.parse(env);
+  if (config.FOOD_CHECKOUT_ENABLED && !config.FOOD_STOCK_WRITES_ENABLED)
+    throw new Error('FOOD_CHECKOUT_REQUIRES_STOCK_WRITES');
   if (config.PICTURE_BOOK_IMAGE_ENABLED && config.PICTURE_BOOK_IMAGE_PROVIDER === 'BAILIAN') {
     assertImageReferenceLifetime(config.PICTURE_BOOK_IMAGE_TIMEOUT_MS);
     if (isQwenImageThreeModel(config.PICTURE_BOOK_IMAGE_MODEL)) {

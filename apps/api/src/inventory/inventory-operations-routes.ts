@@ -1,3 +1,4 @@
+import { FoodStockError } from './food-stock-operations-service.js';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import {
@@ -322,7 +323,7 @@ function fail(request: FastifyRequest, reply: FastifyReply, error: unknown) {
         requestId: request.id,
       },
     });
-  if (error instanceof InventoryOperationsError) {
+  if (error instanceof InventoryOperationsError || error instanceof FoodStockError) {
     const status = error.code === 'NOT_FOUND' ? 404 : error.code === 'FORBIDDEN' ? 403 : 409;
     return reply.status(status).send({
       error: {
@@ -333,7 +334,7 @@ function fail(request: FastifyRequest, reply: FastifyReply, error: unknown) {
     });
   }
   request.log.error(
-    { requestId: request.id, errorCode: 'INVENTORY_OPERATION_FAILED', err: error },
+    { requestId: request.id, errorCode: 'INVENTORY_OPERATION_FAILED' },
     'Inventory operation failed',
   );
   return reply.status(500).send({

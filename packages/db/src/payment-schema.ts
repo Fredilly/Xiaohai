@@ -67,7 +67,10 @@ export const refunds = pgTable(
       'refunds_status_check',
       sql`${t.status} in ('PENDING','PROCESSING','SUCCEEDED','CLOSED','ABNORMAL')`,
     ),
-    check('refunds_original_status_check', sql`${t.originalOrderStatus} in ('PAID','CANCELLED')`),
+    check(
+      'refunds_original_status_check',
+      sql`${t.originalOrderStatus} in ('PAID','CANCELLED','PICKUP_READY','DELIVERING','COMPLETED')`,
+    ),
   ],
 );
 

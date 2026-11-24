@@ -226,7 +226,9 @@ suite('FEFO order-item reservations on exclusively-owned PostgreSQL', () => {
         .update(foodBatchReservationEvents)
         .set({ eventType: 'SALE' })
         .where(eq(foodBatchReservationEvents.id, after.events[0]!.id)),
-    ).rejects.toThrow(/FOOD_RESERVATION_EVENT_APPEND_ONLY/);
+    ).rejects.toMatchObject({
+      cause: { code: '55000', message: 'FOOD_RESERVATION_EVENT_APPEND_ONLY' },
+    });
   });
 
   it('serializes last-unit competition and rolls back losing reservations', async () => {
@@ -287,7 +289,52 @@ suite('FEFO order-item reservations on exclusively-owned PostgreSQL', () => {
         batchId: f.lots[0]!.id,
         quantity: 1,
       }),
-    ).rejects.toThrow(/FOOD_RESERVATION_EVENT_MISMATCH/);
+    ).rejects.toMatchObject({
+      cause: { code: '23514', message: 'FOOD_RESERVATION_EVENT_MISMATCH' },
+    });
     expect((await f.balances()).allocations).toHaveLength(0);
+  });
+  it('rejects a complete-looking partial allocation group and a sale with no physical ledger at COMMIT', async () => {
+    const f = await fixture();
+    const { item } = await f.createOrderItem(4);
+    await expect(
+      db!.transaction(async (tx) => {
+        const [allocation] = await tx
+          .insert(foodBatchReservations)
+          .values({
+            orderItemId: item.id,
+            storeId: f.store.id,
+            skuId: f.sku.id,
+            batchId: f.lots[0]!.id,
+            quantity: 1,
+          })
+          .returning();
+        await tx.insert(foodBatchReservationEvents).values({
+          reservationId: allocation!.id,
+          eventType: 'RESERVE',
+          quantity: 1,
+          idempotencyKey: randomUUID(),
+        });
+      }),
+    ).rejects.toMatchObject({ cause: { code: '23514' } });
+    await service!.reserve(item.id, f.store.id);
+    const before = await f.balances();
+    await expect(
+      db!.transaction(async (tx) => {
+        for (const row of before.allocations) {
+          await tx
+            .update(foodBatchReservations)
+            .set({ status: 'SOLD' })
+            .where(eq(foodBatchReservations.id, row.id));
+          await tx.insert(foodBatchReservationEvents).values({
+            reservationId: row.id,
+            eventType: 'SALE',
+            quantity: row.quantity,
+            idempotencyKey: randomUUID(),
+          });
+        }
+      }),
+    ).rejects.toMatchObject({ cause: { code: '23514' } });
+    expect((await f.balances()).allocations.every((r) => r.status === 'RESERVED')).toBe(true);
   });
 });

@@ -1,3 +1,4 @@
+import { FoodTraceabilityPanel } from './food-traceability-panel';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import {
   foodStockReadResponseSchema,
@@ -19,7 +20,7 @@ export function FoodStockPanel(props: Props) {
 function FoodStockSession({ token, storeId, permissions, items }: Props) {
   const [skuId, setSkuId] = useState('');
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
-  const [status, setStatus] = useState('选择本店 SKU 后读取真实批次。食品下单尚未启用。');
+  const [status, setStatus] = useState('选择本店 SKU 后读取真实批次及服务端交易开关状态。');
   const [busy, setBusy] = useState(false);
   const requestVersion = useRef(0);
   const inFlight = useRef(false);
@@ -151,7 +152,8 @@ function FoodStockSession({ token, storeId, permissions, items }: Props) {
   return (
     <section aria-label="食品批次管理">
       <h3>预包装食品与瓶装饮料批次</h3>
-      <p>新批次默认冻结；不支持现制配方扣料。食品销售仍关闭。</p>
+      <FoodTraceabilityPanel token={token} storeId={storeId} permissions={permissions} />
+      <p>新批次默认冻结；不支持现制配方扣料。食品下单状态以服务端配置和实时批次校验为准。</p>
       <label>
         本店 SKU
         <select
@@ -179,7 +181,8 @@ function FoodStockSession({ token, storeId, permissions, items }: Props) {
         <>
           <p>
             总库存 {snapshot.onHand}；批次校验 {snapshot.result.status}；批次可售量{' '}
-            {snapshot.result.sellable}（尚不能下单）
+            {snapshot.result.sellable}（
+            {snapshot.checkoutEnabled ? '交易流程已启用，仍需结算复核' : '食品交易未启用'}）
           </p>
           <table>
             <thead>
@@ -193,7 +196,11 @@ function FoodStockSession({ token, storeId, permissions, items }: Props) {
             <tbody>
               {snapshot.rows.map((r) => (
                 <tr key={r.id}>
-                  <td>{r.lotCode}</td>
+                  <td>
+                    {r.lotCode}
+                    <br />
+                    <small>批次 ID：{r.id}</small>
+                  </td>
                   <td>{r.expiresOn}</td>
                   <td>{r.state}</td>
                   <td>{r.onHand}</td>
