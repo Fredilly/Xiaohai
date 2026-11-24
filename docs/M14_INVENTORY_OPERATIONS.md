@@ -65,6 +65,43 @@ Store Web 的库存模块提供真实余额、出库和调整的最小入口。�
 
 The Store Web inventory module provides a minimal real balance, issue, and adjustment entry point. Full procurement, stocktake, and transfer management UI remains for M19; the APIs are available to controlled operations tools in this milestone.
 
+### 2026-11-24：门店首次库存建档 / Opening stock registration
+
+原先库存页只能操作已有 `store_inventory` 的 SKU，导致总部新建商品草稿后，门店无法录入首次实盘。本次补齐以下受控路径：
+
+1. HQ 有权限账号先在总部后台创建商品及 SKU，保持商品 `DRAFT`。
+2. Store Web 选择已授权门店，进入「库存操作 → 首次库存建档」，按 SKU 编码或商品名检索尚未关联本店的商品。
+3. 具有 `inventory.read` 的账号可检索；提交必须具有 `inventory.adjust`，并通过服务端真实 `STORE/REGION/FRANCHISEE/GLOBAL` Data Scope 校验。
+4. 首次实盘非零数量在单个 PostgreSQL 事务中插入 `store_inventory` 和带 `STORE_OPENING_COUNT` 标记的 `ADJUSTMENT_IN` 不可变库存流水；零数量建立零库存记录但不产生零增量流水。两种情况均记录操作人和请求 ID 的审计日志。已存在的门店 SKU 不会被覆写；重复非零请求可按 UUID 幂等键安全重放。
+5. 之后从「查询已有库存」查到 SKU，数量修改走原有调整/盘点流程。首次登记**不**自动发布商品、启用销售或代替美萍正式迁移。
+
+API：`GET /api/v1/staff/inventory/opening-candidates?storeId=...&q=...`、`POST /api/v1/staff/inventory/opening-stock`；原库存 GET 额外支持 `q` 搜索 SKU 编码和名称。
+
+本次新增契约、Store Web、API 与隔离 PostgreSQL 集成测试；在无 `DATABASE_URL` 的环境里，集成用例无法完成实际数据库验证。正式建档还取决于可访问部署、Staff 账号、真实门店、迁移/对账及实际设备 UAT，不能把本地测试通过表述为已上线可用。
+
+### 2026-11-24：东门店导入、南门店人工建档的操作分流
+
+按当前门店实际安排：**东门店库存计划通过已有美萍 Excel 迁移链路导入；南门店库存计划逐件人工录入**。技术上不把门店名称硬编码到权限或账务逻辑，所有操作仍绑定员工实际授权的门店 ID。
+
+- **东门店：** Store Web「库存」新增可上传 `.xls/.xlsx`（不超过 5 MiB）的只读预检查入口，复用现有 `POST /api/v1/staff/migrations/meiping/preflight` 及 `inventory.receive` 权限，显示源行、匹配、新建候选、异常/阻断、待核对的暂定库存和异常 CSV 下载。预检查不落地商品或库存。正式一次性迁移继续使用已有审核会话、人工实际数量、独立批准、受保护的 `INITIAL_MIGRATION` 和对账机制；不得把历史 Excel 每行暂定的 1 件当作真实盘点。
+- **南门店：** 使用「首次库存建档」逐件搜索既有 SKU、录入实盘数量；有数量的建立库存流水，0 数量仍留审计记录。之后走正常库存调整或盘点。尚不存在的商品资料由具备共享主数据授权的账号先创建草稿，不得自动将南店资料公开到其他门店。
+- **边界：** 这项操作分流只规定建档方法，不代表已经取得正式数据库批量写入/迁移授权，也不代表东门店 1,000 行历史数据已经准确或导入成功。
+
+### 2026-11-24：#208 库存重试、切店与 Excel 对账保护
+
+本轮继续在 `codex/local-release-integration` 上开发，不创建新的功能分支或 PR：
+
+- 库存页按 Staff 会话及门店重建状态；同一门店连续查询只接受最新请求结果。首次建档选择与旧门店查询结果不会带到下一门店。
+- 出库/调整在一次请求期间锁定输入并同步阻止重复提交；相同门店、SKU、版本、操作、数量、原因的手动重试复用幂等键，不自动重试。键仅在当前组件会话中保留；刷新页面/更换会话后的恢复仍须先查库存及流水，不能宣称具备持久化的一次性执行能力。
+- 服务端在返回旧幂等结果前，重新校验门店权限，并绑定门店、SKU、数量、流水类型、来源类型、原因和操作员工；其他业务或首次建档流水不能冒充普通出库/调整的成功结果。首次建档已有的非零幂等路径与零库存冲突语义保持不变。
+- Excel 汇总必须满足「匹配 + 新建候选 + 异常 = 源记录」、阻断不超过异常、待实盘行数等于源记录。不满足时拒绝展示。页面展示门店 ID 和源 SHA-256；CSV 文件名带门店及指纹前缀，并拒绝把成功 HTTP 中的 JSON 当作 CSV 下载。所有结果仍只是只读预检查。
+
+**自动验证：** API 单测 197/197（含新增 11 项幂等边界）、Store Web 单测 53/53、Admin Web 单测及小程序单测 159/159 通过；API/Store Web TypeScript、lint 和 build 通过。以上单测不是 PostgreSQL 实际事务验证，不代表正式导入或真实库存验收。
+
+**浏览器交互回归：** 新增独立的 `pnpm test:inventory-web`，使用 Vite 回环端口与拦截的合成 API，覆盖乱序库存读取、重复提交/断网重试、切店清空建档、旧 Excel 响应隔离、CSV 下载类型/指纹，以及只读/单项写权限的操作入口。须先安装 Playwright Chromium（或通过 `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` 指定可运行的 Chromium）。本次 Work 沙箱拒绝 Chromium 本地 socket；提升执行权限也被环境策略拒绝，因此这 6 项仅已完成测试代码、类型检查与用例发现，**实际浏览器验收未通过/未完成**。本轮没有连接业务 PostgreSQL、BOS 或执行真实库存写入。
+
+**#208 尚不能宣告完成：** GitHub 上 #209/#211/#213 及食品 #214–#217 仍为未合并草稿；本工作区的库存补丁不代表这些草稿已集成。#217 最新 `4a93bb9` 仍有 Fred 的 `CHANGES_REQUESTED`：聚合流水只能关联单条批次流水，须完成多批次求和一致性模型及实际 PostgreSQL 验证，或取得明确的单批次业务限制批准。食品批次持久化、收货/预留/销售/退款与结算过期保护仍需工程实现及审查，不能将离线投影或 schema 草稿描述为可售库存。跨店定价/主数据归属、现制饮品扣料规则和实际门店数据验收也仍是单独关口。
+
 ## 验证 / Verification
 
 运行 `npm exec --yes pnpm@11.19.0 -- check`、`npm exec --yes pnpm@11.19.0 -- --filter @xiaohai/db db:check`、`db:generate`、fresh database migration 和 `apps/api/test/inventory-operations.integration.test.ts`。集成测试覆盖认证、权限、Data Scope、并发超扣、版本过期、重复入库/调拨以及事务回滚。

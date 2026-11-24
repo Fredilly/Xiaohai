@@ -212,7 +212,12 @@ function Shell({
           )
         ) : current === 'inventory' ? (
           currentStore ? (
-            <InventoryPanel token={token} storeId={currentStore.id} />
+            <InventoryPanel
+              key={currentStore.id}
+              token={token}
+              storeId={currentStore.id}
+              permissions={me.permissions}
+            />
           ) : (
             <StoreRequired />
           )

@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Inventory interaction regression fixture</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module">
+      import React from 'react';
+      import { createRoot } from 'react-dom/client';
+      import { InventoryPanel } from '../src/inventory-panel.tsx';
+      import { StoreMeipingPreflightPanel } from '../src/store-meiping-preflight-panel.tsx';
+      const root = createRoot(document.getElementById('root'));
+      window.addEventListener('inventory-props', ({ detail }) => {
+        root.render(
+          React.createElement(
+            detail.preflight ? StoreMeipingPreflightPanel : InventoryPanel,
+            detail,
+          ),
+        );
+      });
+      window.fixtureReady = true;
+    </script>
+  </body>
+</html>

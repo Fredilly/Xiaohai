@@ -4,6 +4,13 @@ import { describe, expect, it } from 'vitest';
 const loadTemplate = (name) => readFileSync(new URL(name, import.meta.url), 'utf8');
 
 describe('detail retry buttons are bound to their guarded handlers', () => {
+  it('binds product cover failures to the rendered product and URL', () => {
+    const wxml = loadTemplate('./product/product.wxml');
+    expect(wxml).toContain('data-id="{{product.id}}"');
+    expect(wxml).toContain('data-src="{{product.displayCoverUrl}}"');
+    expect(wxml).toContain('binderror="coverError"');
+  });
+
   it('binds the rental retry button to the actual Page.retry handler', () => {
     const wxml = loadTemplate('./rental-detail/rental-detail.wxml');
     expect(wxml).toContain('bindtap="retry"');

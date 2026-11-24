@@ -4,6 +4,9 @@ import {
   createStockTransferRequestSchema,
   inventoryAdjustmentRequestSchema,
   inventoryMutationRequestSchema,
+  inventoryListQuerySchema,
+  openingStockCandidatesQuerySchema,
+  openingStockRegistrationRequestSchema,
   publicInventoryQuerySchema,
 } from './inventory.js';
 
@@ -100,5 +103,33 @@ describe('M14 inventory operation contracts', () => {
         items: [{ skuId: id, quantity: 1 }],
       }).success,
     ).toBe(false);
+  });
+
+  it('bounds first stock registration and prevents client-controlled balances or scopes', () => {
+    const input = {
+      storeId: id,
+      skuId: second,
+      initialQuantity: 0,
+      reason: '首次实盘',
+      idempotencyKey: crypto.randomUUID(),
+    };
+    expect(openingStockRegistrationRequestSchema.safeParse(input).success).toBe(true);
+    for (const initialQuantity of [-1, 1.25, 1_000_001]) {
+      expect(
+        openingStockRegistrationRequestSchema.safeParse({ ...input, initialQuantity }).success,
+      ).toBe(false);
+    }
+    expect(openingStockRegistrationRequestSchema.safeParse({ ...input, onHand: 999 }).success).toBe(
+      false,
+    );
+    expect(
+      openingStockRegistrationRequestSchema.safeParse({ ...input, dataScope: 'GLOBAL' }).success,
+    ).toBe(false);
+    expect(openingStockCandidatesQuerySchema.safeParse({ storeId: id, q: 'SKU' }).success).toBe(
+      true,
+    );
+    expect(openingStockCandidatesQuerySchema.safeParse({ storeId: id, q: '' }).success).toBe(false);
+    expect(inventoryListQuerySchema.safeParse({ storeId: id, q: ' SKU ' }).data?.q).toBe('SKU');
+    expect(inventoryListQuerySchema.safeParse({ storeId: id, q: '' }).success).toBe(false);
   });
 });

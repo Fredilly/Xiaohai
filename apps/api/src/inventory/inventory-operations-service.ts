@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, lte, or, sql } from 'drizzle-orm';
+import { and, asc, eq, ilike, inArray, lte, notExists, or, sql } from 'drizzle-orm';
 import type {
   CreateGoodsReceiptRequest,
   CreatePurchaseOrderRequest,
@@ -7,14 +7,18 @@ import type {
   InventoryAdjustmentRequest,
   InventoryListQuery,
   InventoryMutationRequest,
+  OpeningStockCandidatesQuery,
+  OpeningStockRegistrationRequest,
   StocktakeCountRequest,
 } from '@xiaohai/contracts/inventory';
 import {
+  auditLogs,
   goodsReceiptItems,
   goodsReceipts,
   inventoryTransactions,
   purchaseOrderItems,
   purchaseOrders,
+  products,
   skus,
   stocktakeItems,
   stocktakes,
@@ -108,6 +112,12 @@ export class InventoryOperationsService {
         and(
           scopeFilter,
           input.storeId ? eq(storeInventory.storeId, input.storeId) : undefined,
+          input.q
+            ? or(
+                ilike(skus.code, `%${input.q.replace(/[\\%_]/g, '\\$&')}%`),
+                ilike(skus.name, `%${input.q.replace(/[\\%_]/g, '\\$&')}%`),
+              )
+            : undefined,
           input.lowStockThreshold !== undefined
             ? lte(
                 sql`${storeInventory.onHand} - ${storeInventory.reserved} - ${storeInventory.rentalReserved}`,
@@ -125,6 +135,143 @@ export class InventoryOperationsService {
         available: row.onHand - row.reserved - row.rentalReserved,
       })),
     };
+  }
+
+  async listOpeningStockCandidates(
+    context: StaffAuthorizationContext,
+    input: OpeningStockCandidatesQuery,
+  ) {
+    await this.requireStoreAccess(context, input.storeId);
+    // A candidate must exist in the shared catalog but not yet be registered for this store.
+    // Stock visibility never changes the shared product's publication state.
+    const query = `%${input.q.replace(/[\\%_]/g, '\\$&')}%`;
+    const rows = await this.db
+      .select({
+        skuId: skus.id,
+        skuCode: skus.code,
+        skuName: skus.name,
+        productName: products.name,
+        productStatus: products.status,
+        skuStatus: skus.status,
+      })
+      .from(skus)
+      .innerJoin(products, eq(skus.productId, products.id))
+      .where(
+        and(
+          inArray(products.status, ['DRAFT', 'ACTIVE']),
+          or(ilike(products.name, query), ilike(skus.name, query), ilike(skus.code, query)),
+          notExists(
+            this.db
+              .select({ skuId: storeInventory.skuId })
+              .from(storeInventory)
+              .where(
+                and(eq(storeInventory.storeId, input.storeId), eq(storeInventory.skuId, skus.id)),
+              ),
+          ),
+        ),
+      )
+      .orderBy(asc(skus.code))
+      .limit(30);
+    return {
+      items: rows.map((row) => ({
+        ...row,
+        productStatus: row.productStatus as 'DRAFT' | 'ACTIVE',
+        skuStatus: row.skuStatus as 'ACTIVE' | 'INACTIVE',
+      })),
+    };
+  }
+
+  async registerOpeningStock(
+    context: StaffAuthorizationContext,
+    input: OpeningStockRegistrationRequest,
+    requestId: string,
+  ) {
+    await this.requireStoreAccess(context, input.storeId);
+    return await this.db.transaction(async (tx) => {
+      if (input.initialQuantity > 0) {
+        const [previous] = await tx
+          .select()
+          .from(inventoryTransactions)
+          .where(eq(inventoryTransactions.idempotencyKey, input.idempotencyKey))
+          .limit(1);
+        if (previous) {
+          if (
+            previous.storeId !== input.storeId ||
+            previous.skuId !== input.skuId ||
+            previous.quantityDelta !== input.initialQuantity ||
+            previous.reason !== input.reason ||
+            previous.metadata?.source !== 'STORE_OPENING_COUNT'
+          )
+            throw new InventoryOperationsError('CONFLICT');
+          return {
+            storeId: previous.storeId,
+            skuId: previous.skuId,
+            onHand: previous.balanceAfter,
+            version: 1,
+          };
+        }
+      }
+      const [sku] = await tx
+        .select({ id: skus.id, productStatus: products.status })
+        .from(skus)
+        .innerJoin(products, eq(skus.productId, products.id))
+        .where(eq(skus.id, input.skuId))
+        .limit(1);
+      if (!sku || !['DRAFT', 'ACTIVE'].includes(sku.productStatus))
+        throw new InventoryOperationsError('NOT_FOUND');
+      // INSERT rather than UPDATE: an opening count must never overwrite a live balance.
+      const [created] = await tx
+        .insert(storeInventory)
+        .values({
+          storeId: input.storeId,
+          skuId: input.skuId,
+          onHand: input.initialQuantity,
+          version: input.initialQuantity > 0 ? 1 : 0,
+        })
+        .onConflictDoNothing()
+        .returning();
+      if (!created) throw new InventoryOperationsError('CONFLICT');
+      if (input.initialQuantity > 0) {
+        const [entry] = await tx
+          .insert(inventoryTransactions)
+          .values({
+            storeId: input.storeId,
+            skuId: input.skuId,
+            transactionType: 'ADJUSTMENT_IN',
+            quantityDelta: input.initialQuantity,
+            balanceAfter: input.initialQuantity,
+            referenceType: 'INVENTORY_ADJUSTMENT',
+            referenceId: crypto.randomUUID(),
+            idempotencyKey: input.idempotencyKey,
+            reason: input.reason,
+            metadata: { source: 'STORE_OPENING_COUNT' },
+            createdByStaffAccountId: context.staffAccountId,
+          })
+          .onConflictDoNothing()
+          .returning();
+        if (!entry) throw new InventoryOperationsError('CONFLICT');
+      }
+      await tx.insert(auditLogs).values({
+        actorStaffAccountId: context.staffAccountId,
+        actionKey: 'inventory.opening_stock.register',
+        resourceType: 'store_inventory',
+        resourceId: `${input.storeId}:${input.skuId}`,
+        requestId,
+        metadata: {
+          storeId: input.storeId,
+          skuId: input.skuId,
+          initialQuantity: input.initialQuantity,
+          reason: input.reason,
+          version: created.version,
+        },
+      });
+      return {
+        storeId: created.storeId,
+        skuId: created.skuId,
+        onHand: created.onHand,
+        version: created.version,
+      };
+    });
   }
 
   async listTransactions(context: StaffAuthorizationContext, storeId: string) {
@@ -413,7 +560,20 @@ export class InventoryOperationsService {
         .from(inventoryTransactions)
         .where(eq(inventoryTransactions.idempotencyKey, input.idempotencyKey))
         .limit(1);
-      if (existing) return existing;
+      if (existing) {
+        if (
+          existing.storeId !== input.storeId ||
+          existing.skuId !== input.skuId ||
+          existing.quantityDelta !== delta ||
+          existing.transactionType !== type ||
+          existing.referenceType !== (type === 'ISSUE' ? 'STOCK_ISSUE' : 'INVENTORY_ADJUSTMENT') ||
+          existing.reason !== input.reason ||
+          existing.createdByStaffAccountId !== context.staffAccountId ||
+          existing.metadata?.source === 'STORE_OPENING_COUNT'
+        )
+          throw new InventoryOperationsError('CONFLICT');
+        return existing;
+      }
       await lockInventory(tx, input.storeId, input.skuId);
       const [balance] = await tx
         .select()

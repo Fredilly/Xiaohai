@@ -33,6 +33,7 @@ export type Product = {
   name: string;
   description: string | null;
   coverUrl: string | null;
+  mediaUrls?: string[];
   title: string | null;
   author: string | null;
   isbn: string | null;

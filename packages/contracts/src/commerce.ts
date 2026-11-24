@@ -54,6 +54,8 @@ export const catalogProductSchema = z.object({
   name: z.string(),
   description: z.string().nullable(),
   coverUrl: z.string().nullable(),
+  /** Ordered, public product detail images; omitted by older catalog APIs. */
+  mediaUrls: z.array(z.url().max(2048)).max(12).optional(),
   title: z.string().nullable(),
   author: z.string().nullable(),
   isbn: z.string().nullable(),
@@ -166,6 +168,8 @@ const adminProductFieldsSchema = z
     name: z.string().trim().min(1).max(160),
     description: z.string().trim().max(4000).nullable().optional(),
     coverUrl: z.url().max(2048).nullable().optional(),
+    /** Stable, ordered detail photos. Omitted means leave existing photos unchanged. */
+    mediaUrls: z.array(z.url().max(2048)).max(12).optional(),
     status: productStatusSchema,
     book: z
       .object({

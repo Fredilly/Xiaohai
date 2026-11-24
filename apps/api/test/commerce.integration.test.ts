@@ -9,6 +9,7 @@ import {
   createDatabase,
   orderItems,
   orders,
+  productMedia,
   products,
   referralAttributions,
   referralLinks,
@@ -34,6 +35,7 @@ suite('M5 Commerce PostgreSQL integration', () => {
     await database!.db.delete(carts);
     await database!.db.delete(userAddresses);
     await database!.db.delete(storeInventory);
+    await database!.db.delete(productMedia);
     await database!.db.delete(skus);
     await database!.db.delete(products);
     await database!.db.delete(bookEditions);
@@ -86,6 +88,42 @@ suite('M5 Commerce PostgreSQL integration', () => {
       isDefault: true,
     });
   }
+  it('reads ordered public gallery images for one active non-book product only', async () => {
+    const [product] = await database!.db
+      .insert(products)
+      .values({ name: '咖啡豆', status: 'ACTIVE', coverUrl: 'https://cdn.example.com/cover.jpg' })
+      .returning({ id: products.id });
+    await database!.db.insert(skus).values({
+      productId: product!.id,
+      code: `coffee-${Math.random()}`,
+      name: '袋装',
+      priceMinor: 1800,
+      status: 'ACTIVE',
+    });
+    await database!.db.insert(productMedia).values([
+      { productId: product!.id, displayOrder: 2, url: 'https://cdn.example.com/third.jpg' },
+      { productId: product!.id, displayOrder: 0, url: 'https://cdn.example.com/first.jpg' },
+      { productId: product!.id, displayOrder: 1, url: 'http://cdn.example.com/unsafe.jpg' },
+      {
+        productId: product!.id,
+        displayOrder: 1,
+        url: 'https://cdn.example.com/private.jpg?token=not-for-client',
+      },
+    ]);
+    const detail = await commerce.getProduct(product!.id);
+    expect(detail).toMatchObject({
+      id: product!.id,
+      title: null,
+      isbn: null,
+      mediaUrls: ['https://cdn.example.com/first.jpg', 'https://cdn.example.com/third.jpg'],
+    });
+    expect((await commerce.listCatalog()).products[0]).not.toHaveProperty('mediaUrls');
+    await database!.db
+      .update(products)
+      .set({ status: 'DRAFT' })
+      .where(eq(products.id, product!.id));
+    await expect(commerce.getProduct(product!.id)).rejects.toMatchObject({ code: 'NOT_FOUND' });
+  });
   it('isolates carts and rejects unavailable SKU', async () => {
     const a = await consumer(),
       b = await consumer(),

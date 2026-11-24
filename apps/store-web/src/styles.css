@@ -52,6 +52,9 @@ select {
   font-size: 12px;
   font-weight: 700;
 }
+.inventory-mutation-fields {
+  display: contents;
+}
 .operation-form input,
 .operation-form select {
   border: 1px solid #d5cdbf;

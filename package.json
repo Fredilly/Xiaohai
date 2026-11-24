@@ -23,6 +23,7 @@
     "test": "turbo run test",
     "test:integration": "pnpm --filter @xiaohai/api test:integration && pnpm --filter @xiaohai/worker test:integration",
     "test:e2e": "playwright test",
+    "test:inventory-web": "playwright test --config playwright.inventory.config.ts",
     "check:workspace": "node scripts/check-workspace.mjs",
     "check:secrets": "node --test scripts/secret-policy.test.mjs scripts/set-local-secret.test.mjs && node scripts/check-secrets.mjs",
     "check:miniapp": "node scripts/check-miniapp.mjs",
