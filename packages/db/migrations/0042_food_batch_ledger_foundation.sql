@@ -93,7 +93,7 @@ ALTER TABLE "food_batch_transactions" ADD CONSTRAINT "food_batch_transactions_cr
 --> statement-breakpoint
 CREATE UNIQUE INDEX "food_batch_transactions_idempotency_unique" ON "food_batch_transactions" ("idempotency_key");
 --> statement-breakpoint
-CREATE UNIQUE INDEX "food_batch_transactions_aggregate_unique" ON "food_batch_transactions" ("aggregate_transaction_id");
+CREATE UNIQUE INDEX "food_batch_transactions_aggregate_batch_unique" ON "food_batch_transactions" ("aggregate_transaction_id","batch_id");
 --> statement-breakpoint
 CREATE INDEX "food_batch_transactions_store_sku_created_idx" ON "food_batch_transactions" ("store_id","sku_id","created_at");
 --> statement-breakpoint
@@ -107,3 +107,99 @@ $food_immutable$;
 CREATE TRIGGER "food_batch_transactions_append_only"
 BEFORE UPDATE OR DELETE ON "food_batch_transactions"
 FOR EACH ROW EXECUTE FUNCTION "reject_food_batch_transaction_mutation"();
+--> statement-breakpoint
+-- Every operation has ONE aggregate and one event per affected lot. This lock
+-- serializes contenders for a group; no partial group can commit independently.
+CREATE FUNCTION "bind_food_batch_event"() RETURNS trigger
+LANGUAGE plpgsql AS $food_bind$
+DECLARE
+  aggregate_row public.inventory_transactions%ROWTYPE;
+  expected_type text;
+BEGIN
+  SELECT * INTO aggregate_row FROM public.inventory_transactions
+    WHERE id = NEW.aggregate_transaction_id FOR UPDATE;
+  -- Let the scoped FK report absent/foreign aggregate identities.
+  IF NOT FOUND OR aggregate_row.store_id <> NEW.store_id OR aggregate_row.sku_id <> NEW.sku_id THEN
+    RETURN NEW;
+  END IF;
+  expected_type := CASE NEW.transaction_type
+    WHEN 'EXISTING_LOT_RECEIPT' THEN 'PURCHASE_RECEIPT'
+    WHEN 'DAMAGE' THEN 'ADJUSTMENT_OUT'
+    WHEN 'STOCKTAKE_LOSS' THEN 'STOCKTAKE_LOSS'
+    ELSE NULL END;
+  IF aggregate_row.reference_type <> 'FOOD_BATCH_OPERATION'
+    OR aggregate_row.metadata->>'source' IS DISTINCT FROM 'FOOD_BATCH_OPERATION'
+    OR aggregate_row.transaction_type IS DISTINCT FROM expected_type
+    OR aggregate_row.reference_type <> NEW.reference_type
+    OR aggregate_row.reference_id <> NEW.reference_id
+    OR aggregate_row.created_by_staff_account_id <> NEW.created_by_staff_account_id
+    OR aggregate_row.reason IS DISTINCT FROM NEW.reason THEN
+    RAISE EXCEPTION 'FOOD_BATCH_GROUP_IDENTITY_MISMATCH' USING ERRCODE = '23514';
+  END IF;
+  RETURN NEW;
+END;
+$food_bind$;
+--> statement-breakpoint
+CREATE TRIGGER "food_batch_event_identity"
+BEFORE INSERT ON "food_batch_transactions"
+FOR EACH ROW EXECUTE FUNCTION "bind_food_batch_event"();
+--> statement-breakpoint
+CREATE FUNCTION "assert_food_batch_group"(aggregate_id uuid) RETURNS void
+LANGUAGE plpgsql AS $food_sum$
+DECLARE
+  aggregate_row public.inventory_transactions%ROWTYPE;
+  actual_delta bigint;
+  event_count bigint;
+  kinds bigint;
+BEGIN
+  SELECT * INTO STRICT aggregate_row FROM public.inventory_transactions
+    WHERE id = aggregate_id FOR UPDATE;
+  SELECT count(*), coalesce(sum(quantity_delta::bigint), 0), count(DISTINCT transaction_type)
+    INTO event_count, actual_delta, kinds FROM public.food_batch_transactions
+    WHERE aggregate_transaction_id = aggregate_id;
+  IF event_count = 0 OR kinds <> 1 OR actual_delta <> aggregate_row.quantity_delta::bigint THEN
+    RAISE EXCEPTION 'FOOD_BATCH_GROUP_DELTA_MISMATCH' USING ERRCODE = '23514';
+  END IF;
+END;
+$food_sum$;
+--> statement-breakpoint
+CREATE FUNCTION "check_food_batch_group"() RETURNS trigger
+LANGUAGE plpgsql AS $food_group$
+BEGIN
+  IF TG_TABLE_NAME = 'food_batch_transactions' THEN
+    PERFORM public.assert_food_batch_group(NEW.aggregate_transaction_id);
+  ELSIF NEW.reference_type = 'FOOD_BATCH_OPERATION'
+    OR NEW.metadata->>'source' = 'FOOD_BATCH_OPERATION' THEN
+    PERFORM public.assert_food_batch_group(NEW.id);
+  END IF;
+  RETURN NULL;
+END;
+$food_group$;
+--> statement-breakpoint
+-- Check at transaction end, after ALL lot events have been inserted. Both
+-- directions matter: an aggregate marked as food cannot commit with no events.
+CREATE CONSTRAINT TRIGGER "food_batch_group_total"
+AFTER INSERT ON "food_batch_transactions" DEFERRABLE INITIALLY DEFERRED
+FOR EACH ROW EXECUTE FUNCTION "check_food_batch_group"();
+--> statement-breakpoint
+CREATE CONSTRAINT TRIGGER "food_aggregate_group_total"
+AFTER INSERT ON "inventory_transactions" DEFERRABLE INITIALLY DEFERRED
+FOR EACH ROW EXECUTE FUNCTION "check_food_batch_group"();
+--> statement-breakpoint
+CREATE FUNCTION "reject_food_aggregate_mutation"() RETURNS trigger
+LANGUAGE plpgsql AS $food_parent_immutable$
+BEGIN
+  IF OLD.reference_type = 'FOOD_BATCH_OPERATION'
+    OR OLD.metadata->>'source' = 'FOOD_BATCH_OPERATION'
+    OR EXISTS (SELECT 1 FROM public.food_batch_transactions WHERE aggregate_transaction_id = OLD.id)
+    OR (TG_OP = 'UPDATE' AND (NEW.reference_type = 'FOOD_BATCH_OPERATION'
+      OR NEW.metadata->>'source' = 'FOOD_BATCH_OPERATION')) THEN
+    RAISE EXCEPTION 'FOOD_BATCH_AGGREGATE_APPEND_ONLY' USING ERRCODE = '55000';
+  END IF;
+  RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
+END;
+$food_parent_immutable$;
+--> statement-breakpoint
+CREATE TRIGGER "food_aggregate_append_only"
+BEFORE UPDATE OR DELETE ON "inventory_transactions"
+FOR EACH ROW EXECUTE FUNCTION "reject_food_aggregate_mutation"();

@@ -1,0 +1,702 @@
+import { describe, expect, it } from 'vitest';
+import * as vm from 'node:vm';
+import {
+  I111_TRUSTED_SESSION_NEGATIVE_CASES,
+  runI111TrustedCoordinator,
+} from '../src/i111-trusted-coordinator.js';
+import { readFile } from 'node:fs/promises';
+import * as typescript from 'typescript';
+
+const sourcePath = new URL('../src/i111-trusted-coordinator.ts', import.meta.url);
+
+type HarnessOptions = {
+  backendPids?: number[];
+  poolCtorThrows?: boolean;
+  connectThrows?: boolean;
+  connectNever?: boolean;
+  connectDelayMs?: number;
+  lockResult?: boolean;
+  lockThrows?: boolean;
+  malformedLock?: boolean;
+  lockNever?: boolean;
+  lockDelayMs?: number;
+  lockRejectDelayMs?: number;
+  lockQueryTimeoutError?: boolean;
+  backendThrows?: boolean;
+  backendNever?: boolean;
+  backendDelayMs?: number;
+  backendQueryTimeoutError?: boolean;
+  unlockResult?: boolean;
+  unlockThrows?: boolean;
+  unlockNever?: boolean;
+  unlockDelayMs?: number;
+  unlockQueryTimeoutError?: boolean;
+  releaseThrows?: boolean;
+  endNever?: boolean;
+  endThrows?: boolean;
+  endDelayMs?: number;
+  endRejectDelayMs?: number;
+  poolEndTimeoutMs?: number;
+  sameRealmErrors?: boolean;
+  timeoutMs?: number;
+};
+
+async function loadPrivateKernel(options: HarnessOptions = {}) {
+  const source = await readFile(sourcePath, 'utf8');
+  const timeoutMs = options.timeoutMs ?? 5_000;
+  const poolEndTimeoutMs = options.poolEndTimeoutMs ?? 1_000;
+  const body = source
+    .slice(source.indexOf('const STOP ='))
+    .replace('const CONNECT_TIMEOUT_MS = 5_000;', `const CONNECT_TIMEOUT_MS = ${timeoutMs};`)
+    .replace('const QUERY_TIMEOUT_MS = 5_000;', `const QUERY_TIMEOUT_MS = ${timeoutMs};`)
+    .replace(
+      'const POOL_END_TIMEOUT_MS = 1_000;',
+      `const POOL_END_TIMEOUT_MS = ${poolEndTimeoutMs};`,
+    )
+    .replace(/^export\s+/gmu, '');
+  const program = `
+    const pg = globalThis.__pg;
+    const drizzle = globalThis.__drizzle;
+    const schema = {};
+    ${body}
+    globalThis.__makeRealmError = () => new Error('REALM_SECRET');
+    globalThis.__kernel = { executeOwnedLifecycle };
+  `;
+  const output = typescript.transpileModule(program, {
+    compilerOptions: { target: typescript.ScriptTarget.ES2022, module: typescript.ModuleKind.None },
+  }).outputText;
+  const calls: Array<{ owner: object; sql: string }> = [];
+  const events: string[] = [];
+  const releaseErrors: Array<unknown> = [];
+  let endCalls = 0;
+  let makeRealmError: (() => Error) | undefined;
+  const failure = (message: string) =>
+    options.sameRealmErrors && makeRealmError ? makeRealmError() : new Error(message);
+  const pid = 4321;
+  const backendPids = [...(options.backendPids ?? [pid, pid])];
+  const client = {
+    processID: pid,
+    async query(sql: string) {
+      calls.push({ owner: client, sql });
+      if (sql.includes('pg_try_advisory_lock')) {
+        events.push('lock');
+        if (options.lockThrows) throw failure('lock transport failure');
+        if (options.lockNever) return new Promise(() => {});
+        if (options.lockQueryTimeoutError) {
+          events.push('lock-underlying-pending');
+          setTimeout(() => events.push('lock-underlying-complete'), 80);
+          return new Promise((_, reject) =>
+            setTimeout(() => reject(failure('Query read timeout')), 5),
+          );
+        }
+        if (options.lockRejectDelayMs) {
+          return new Promise((_, reject) =>
+            setTimeout(() => reject(failure('late lock failure')), options.lockRejectDelayMs),
+          );
+        }
+        if (options.malformedLock) return { rows: [{}] };
+        if (options.lockDelayMs) {
+          return new Promise((resolve) =>
+            setTimeout(
+              () => resolve({ rows: [{ locked: options.lockResult ?? true }] }),
+              options.lockDelayMs,
+            ),
+          );
+        }
+        return { rows: [{ locked: options.lockResult ?? true }] };
+      }
+      if (sql.includes('pg_backend_pid')) {
+        events.push('backend');
+        if (options.backendThrows) throw failure('pid transport failure');
+        if (options.backendNever) return new Promise(() => {});
+        if (options.backendQueryTimeoutError) {
+          events.push('backend-underlying-pending');
+          setTimeout(() => events.push('backend-underlying-complete'), 80);
+          return new Promise((_, reject) =>
+            setTimeout(() => reject(failure('Query read timeout')), 5),
+          );
+        }
+        const backendPid = backendPids.shift() ?? pid;
+        if (options.backendDelayMs) {
+          return new Promise((resolve) =>
+            setTimeout(
+              () => resolve({ rows: [{ backend_pid: backendPid }] }),
+              options.backendDelayMs,
+            ),
+          );
+        }
+        return { rows: [{ backend_pid: backendPid }] };
+      }
+      if (sql.includes('pg_advisory_unlock')) {
+        events.push('unlock');
+        if (options.unlockThrows) throw failure('unlock transport failure');
+        if (options.unlockNever) return new Promise(() => {});
+        if (options.unlockQueryTimeoutError) {
+          events.push('unlock-underlying-pending');
+          setTimeout(() => events.push('unlock-underlying-complete'), 80);
+          return new Promise((_, reject) =>
+            setTimeout(() => reject(failure('Query read timeout')), 5),
+          );
+        }
+        if (options.unlockDelayMs) {
+          return new Promise((resolve) =>
+            setTimeout(
+              () => resolve({ rows: [{ unlocked: options.unlockResult ?? true }] }),
+              options.unlockDelayMs,
+            ),
+          );
+        }
+        return { rows: [{ unlocked: options.unlockResult ?? true }] };
+      }
+      throw new Error('unexpected SQL');
+    },
+    release(error?: unknown) {
+      releaseErrors.push(error);
+      events.push(error ? 'release-destroy' : 'release');
+      if (options.releaseThrows) throw new Error('release failure');
+    },
+  };
+  const pool = {
+    async connect() {
+      events.push('connect');
+      if (options.connectThrows) throw failure('connect failure');
+      if (options.connectNever) return new Promise(() => {});
+      if (options.connectDelayMs) {
+        return new Promise((resolve) => setTimeout(() => resolve(client), options.connectDelayMs));
+      }
+      return client;
+    },
+    end() {
+      events.push('end');
+      endCalls += 1;
+      if (options.endThrows) return Promise.reject(failure('pool end failure'));
+      if (options.endRejectDelayMs) {
+        return new Promise<void>((_, reject) =>
+          setTimeout(() => reject(failure('late pool end failure')), options.endRejectDelayMs),
+        );
+      }
+      if (options.endDelayMs) {
+        return new Promise<void>((resolve) => setTimeout(resolve, options.endDelayMs));
+      }
+      return options.endNever ? new Promise<void>(() => {}) : Promise.resolve();
+    },
+  };
+  class FakePool {
+    constructor() {
+      if (options.poolCtorThrows) throw failure('pool constructor failure');
+      return pool;
+    }
+  }
+  const context: Record<string, unknown> = {
+    __pg: { Pool: FakePool },
+    __drizzle: (received: object) => ({ received }),
+    setTimeout,
+    clearTimeout,
+    Promise,
+    console,
+  };
+  context.globalThis = context;
+  vm.runInNewContext(output, context);
+  makeRealmError = context.__makeRealmError as () => Error;
+  return {
+    executeOwnedLifecycle: (context.__kernel as { executeOwnedLifecycle: typeof Function })
+      .executeOwnedLifecycle,
+    client,
+    calls,
+    events,
+    releaseErrors,
+    get endCalls() {
+      return endCalls;
+    },
+  };
+}
+
+describe('I111 Trusted Coordinator ownership kernel', () => {
+  it('is default-deny and rejects every caller-supplied argument', async () => {
+    await expect(runI111TrustedCoordinator()).resolves.toMatchObject({
+      verdict: 'STOP',
+      errorCode: 'I111_TRUSTED_COORDINATOR_NOT_ENABLED',
+      paidExecutionAuthorized: false,
+    });
+    await expect(runI111TrustedCoordinator({ client: {} })).resolves.toMatchObject({
+      verdict: 'STOP',
+      paidExecutionAuthorized: false,
+    });
+  });
+
+  it('records the required future rejection cases without claiming live proof', () => {
+    expect(I111_TRUSTED_SESSION_NEGATIVE_CASES).toEqual(
+      expect.arrayContaining([
+        'pool-query-wrapper',
+        'bare-pool',
+        'caller-client-or-drizzle',
+        'two-distinct-clients',
+        'premature-or-double-release',
+        'backend-pid-change',
+        'cross-backend-transaction',
+        'in-flight-query-at-release',
+        'lock-query-transaction-unlock-release-failure',
+        'unknown-provider-result',
+      ]),
+    );
+  });
+
+  it('keeps ownership and release lifecycle private and rejects unsafe composition shapes', async () => {
+    const source = await readFile(sourcePath, 'utf8');
+    expect(source).toContain('() => pool!.connect()');
+    expect(source).toContain('drizzle(client, { schema })');
+    expect(source).toContain('await releaseOwnedLock(client, lockState, lockState.pinnedPid)');
+    expect(source).toContain('client.release()');
+    expect(source).toContain(
+      'let safeToRelease = !lockState.lockAttempted || lockState.lockConfirmedNotAcquired',
+    );
+    expect(source).toContain('if (client && safeToRelease)');
+    expect(source).toContain('POOL_END_TIMEOUT_MS');
+    expect(source).toContain('await Promise.race([ending, timeout])');
+    expect(source).not.toContain('timer.unref()');
+    expect(source).toContain('function safeCoordinatorFailure(error: unknown)');
+    expect(source).not.toContain('primaryFailure instanceof Error');
+    expect(source).toContain('pool = new pg.Pool({');
+    expect(source).toContain('connectionTimeoutMillis: CONNECT_TIMEOUT_MS');
+    expect(source).toContain('statement_timeout: QUERY_TIMEOUT_MS');
+    expect(source).toContain('query_timeout: QUERY_TIMEOUT_MS');
+    expect(
+      source.indexOf('await releaseOwnedLock(client, lockState, lockState.pinnedPid)'),
+    ).toBeLessThan(source.indexOf('client.release()'));
+    expect(source).not.toContain('pool.query(');
+    expect(source).not.toContain('WeakMap');
+    expect(source).not.toContain('provider.generate');
+    expect(source).not.toContain('processTargetIdWithAtomicGateOnce');
+    expect(source).not.toContain('apiService');
+    expect(source).not.toContain('createTargetWorker');
+  });
+
+  it('uses one checked-out client and unlocks before release and pool end', async () => {
+    const harness = await loadPrivateKernel();
+    await expect(harness.executeOwnedLifecycle('offline-test')).rejects.toThrow(
+      'I111_TRUSTED_COORDINATOR_PORTS_NOT_WIRED',
+    );
+    expect(harness.events).toEqual([
+      'connect',
+      'lock',
+      'backend',
+      'backend',
+      'unlock',
+      'release',
+      'end',
+    ]);
+    expect(harness.releaseErrors).toEqual([undefined]);
+    expect(new Set(harness.calls.map((call) => call.owner)).size).toBe(1);
+    expect(harness.calls.map((call) => call.owner)).toEqual(
+      harness.calls.map(() => harness.client),
+    );
+  });
+
+  it('stops without release when the backend changes after lock acquisition', async () => {
+    const harness = await loadPrivateKernel({ backendPids: [9999, 9999] });
+    await expect(harness.executeOwnedLifecycle('offline-test')).rejects.toThrow(
+      'I111_TRUSTED_COORDINATOR_STOP',
+    );
+    expect(harness.events).toEqual([
+      'connect',
+      'lock',
+      'backend',
+      'backend',
+      'release-destroy',
+      'end',
+    ]);
+    expect(harness.releaseErrors).toHaveLength(1);
+    expect(harness.releaseErrors[0]).toMatchObject({ message: 'I111_TRUSTED_COORDINATOR_STOP' });
+  });
+
+  it('destroys rather than releases when the lock request throws after being sent', async () => {
+    const harness = await loadPrivateKernel({ lockThrows: true });
+    await expect(harness.executeOwnedLifecycle('offline-test')).rejects.toThrow(
+      'I111_TRUSTED_COORDINATOR_STOP',
+    );
+    expect(harness.events).toEqual(['connect', 'lock', 'release-destroy', 'end']);
+    expect(harness.releaseErrors).toHaveLength(1);
+  });
+
+  it('destroys rather than releases when the lock response is malformed', async () => {
+    const harness = await loadPrivateKernel({ malformedLock: true });
+    await expect(harness.executeOwnedLifecycle('offline-test')).rejects.toThrow(
+      'I111_TRUSTED_COORDINATOR_STOP',
+    );
+    expect(harness.events).toEqual(['connect', 'lock', 'release-destroy', 'end']);
+    expect(harness.releaseErrors).toHaveLength(1);
+  });
+
+  it('allows ordinary release only for an explicit false lock result', async () => {
+    const harness = await loadPrivateKernel({ lockResult: false });
+    await expect(harness.executeOwnedLifecycle('offline-test')).rejects.toThrow(
+      'I111_TRUSTED_COORDINATOR_STOP',
+    );
+    expect(harness.events).toEqual(['connect', 'lock', 'release', 'end']);
+    expect(harness.releaseErrors).toEqual([undefined]);
+  });
+
+  it('redacts same-realm pool-constructor and connect failures', async () => {
+    const constructorFailure = await loadPrivateKernel({
+      poolCtorThrows: true,
+      sameRealmErrors: true,
+    });
+    await expect(constructorFailure.executeOwnedLifecycle('offline-test')).rejects.toThrow(
+      'I111_TRUSTED_COORDINATOR_STOP',
+    );
+    await expect(constructorFailure.executeOwnedLifecycle('offline-test')).rejects.not.toThrow(
+      'REALM_SECRET',
+    );
+
+    const connectFailure = await loadPrivateKernel({ connectThrows: true, sameRealmErrors: true });
+    await expect(connectFailure.executeOwnedLifecycle('offline-test')).rejects.toThrow(
+      'I111_TRUSTED_COORDINATOR_STOP',
+    );
+    expect(connectFailure.events).toEqual(['connect', 'end']);
+  });
+
+  it('redacts same-realm lock and PID query failures', async () => {
+    const lockFailure = await loadPrivateKernel({ lockThrows: true, sameRealmErrors: true });
+    await expect(lockFailure.executeOwnedLifecycle('offline-test')).rejects.toThrow(
+      'I111_TRUSTED_COORDINATOR_STOP',
+    );
+    await expect(lockFailure.executeOwnedLifecycle('offline-test')).rejects.not.toThrow(
+      'REALM_SECRET',
+    );
+    expect(lockFailure.events).toEqual([
+      'connect',
+      'lock',
+      'release-destroy',
+      'end',
+      'connect',
+      'lock',
+      'release-destroy',
+      'end',
+    ]);
+
+    const pidFailure = await loadPrivateKernel({ backendThrows: true, sameRealmErrors: true });
+    await expect(pidFailure.executeOwnedLifecycle('offline-test')).rejects.toThrow(
+      'I111_TRUSTED_COORDINATOR_STOP',
+    );
+    expect(pidFailure.events).toEqual(['connect', 'lock', 'backend', 'release-destroy', 'end']);
+  });
+
+  it('redacts same-realm unlock and pool-end failures', async () => {
+    const unlockFailure = await loadPrivateKernel({ unlockThrows: true, sameRealmErrors: true });
+    await expect(unlockFailure.executeOwnedLifecycle('offline-test')).rejects.toThrow(
+      'I111_TRUSTED_COORDINATOR_STOP',
+    );
+    expect(unlockFailure.events).toEqual([
+      'connect',
+      'lock',
+      'backend',
+      'backend',
+      'unlock',
+      'release-destroy',
+      'end',
+    ]);
+
+    const endFailure = await loadPrivateKernel({ endThrows: true, sameRealmErrors: true });
+    await expect(endFailure.executeOwnedLifecycle('offline-test')).rejects.toThrow(
+      'I111_TRUSTED_COORDINATOR_STOP',
+    );
+    expect(endFailure.events).toEqual([
+      'connect',
+      'lock',
+      'backend',
+      'backend',
+      'unlock',
+      'release',
+      'end',
+    ]);
+  });
+
+  it('bounds a connection wait and destroys a client that arrives late', async () => {
+    const never = await loadPrivateKernel({ connectNever: true, timeoutMs: 20 });
+    await expect(never.executeOwnedLifecycle('offline-test')).rejects.toThrow(
+      'I111_TRUSTED_COORDINATOR_STOP',
+    );
+    expect(never.events).toEqual(['connect', 'end']);
+
+    const late = await loadPrivateKernel({ connectDelayMs: 40, timeoutMs: 20 });
+    await expect(late.executeOwnedLifecycle('offline-test')).rejects.toThrow(
+      'I111_TRUSTED_COORDINATOR_STOP',
+    );
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(late.events).toEqual(['connect', 'end', 'release-destroy']);
+    expect(late.releaseErrors).toHaveLength(1);
+    expect(late.endCalls).toBe(1);
+  });
+
+  it('keeps a late client fail-closed when destroy-release throws', async () => {
+    const late = await loadPrivateKernel({
+      connectDelayMs: 40,
+      releaseThrows: true,
+      poolEndTimeoutMs: 20,
+      timeoutMs: 10,
+      sameRealmErrors: true,
+    });
+    await expect(late.executeOwnedLifecycle('offline-test')).rejects.toThrow(
+      'I111_TRUSTED_COORDINATOR_STOP',
+    );
+    await new Promise((resolve) => setTimeout(resolve, 70));
+    expect(late.events).toEqual(['connect', 'end', 'release-destroy']);
+    expect(late.releaseErrors).toHaveLength(1);
+    expect(late.endCalls).toBe(1);
+    expect(late.calls).toHaveLength(0);
+  });
+
+  it('handles late connect, release failure and pending pool shutdown without follow-up SQL', async () => {
+    const interleaved = await loadPrivateKernel({
+      connectDelayMs: 45,
+      releaseThrows: true,
+      endNever: true,
+      poolEndTimeoutMs: 20,
+      timeoutMs: 10,
+      sameRealmErrors: true,
+    });
+    await expect(interleaved.executeOwnedLifecycle('offline-test')).rejects.toThrow(
+      'I111_TRUSTED_COORDINATOR_STOP',
+    );
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    expect(interleaved.events).toEqual(['connect', 'end', 'release-destroy']);
+    expect(interleaved.releaseErrors).toHaveLength(1);
+    expect(interleaved.endCalls).toBe(1);
+    expect(interleaved.calls).toHaveLength(0);
+  });
+
+  it('destroys on advisory-lock timeout and handles late resolve/reject safely', async () => {
+    const lateResolve = await loadPrivateKernel({ lockDelayMs: 40, timeoutMs: 20 });
+    await expect(lateResolve.executeOwnedLifecycle('offline-test')).rejects.toThrow(
+      'I111_TRUSTED_COORDINATOR_STOP',
+    );
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(lateResolve.events).toEqual(['connect', 'lock', 'release-destroy', 'end']);
+
+    const lateReject = await loadPrivateKernel({ lockRejectDelayMs: 40, timeoutMs: 20 });
+    await expect(lateReject.executeOwnedLifecycle('offline-test')).rejects.toThrow(
+      'I111_TRUSTED_COORDINATOR_STOP',
+    );
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(lateReject.events).toEqual(['connect', 'lock', 'release-destroy', 'end']);
+  });
+
+  it('treats an ordinary driver timeout error during lock as unknown and never continues SQL', async () => {
+    const harness = await loadPrivateKernel({ lockQueryTimeoutError: true, sameRealmErrors: true });
+    await expect(harness.executeOwnedLifecycle('offline-test')).rejects.toThrow(
+      'I111_TRUSTED_COORDINATOR_STOP',
+    );
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(harness.events).toEqual([
+      'connect',
+      'lock',
+      'lock-underlying-pending',
+      'release-destroy',
+      'end',
+      'lock-underlying-complete',
+    ]);
+    expect(harness.events).not.toContain('backend');
+    expect(harness.events).not.toContain('unlock');
+    expect(harness.releaseErrors).toHaveLength(1);
+  });
+
+  it('treats an ordinary driver timeout during backend PID query as unknown', async () => {
+    const harness = await loadPrivateKernel({
+      backendQueryTimeoutError: true,
+      sameRealmErrors: true,
+    });
+    await expect(harness.executeOwnedLifecycle('offline-test')).rejects.toThrow(
+      'I111_TRUSTED_COORDINATOR_STOP',
+    );
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(harness.events).toEqual([
+      'connect',
+      'lock',
+      'backend',
+      'backend-underlying-pending',
+      'release-destroy',
+      'end',
+      'backend-underlying-complete',
+    ]);
+    expect(harness.events.filter((event) => event === 'backend')).toHaveLength(1);
+    expect(harness.events).not.toContain('unlock');
+    expect(harness.releaseErrors).toHaveLength(1);
+  });
+
+  it('treats an ordinary driver timeout during unlock as unknown', async () => {
+    const harness = await loadPrivateKernel({
+      unlockQueryTimeoutError: true,
+      sameRealmErrors: true,
+    });
+    await expect(harness.executeOwnedLifecycle('offline-test')).rejects.toThrow(
+      'I111_TRUSTED_COORDINATOR_STOP',
+    );
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(harness.events).toEqual([
+      'connect',
+      'lock',
+      'backend',
+      'backend',
+      'unlock',
+      'unlock-underlying-pending',
+      'release-destroy',
+      'end',
+      'unlock-underlying-complete',
+    ]);
+    expect(harness.releaseErrors).toHaveLength(1);
+  });
+
+  it('destroys on backend and unlock query timeouts without retrying queries', async () => {
+    const backend = await loadPrivateKernel({ backendNever: true, timeoutMs: 20 });
+    await expect(backend.executeOwnedLifecycle('offline-test')).rejects.toThrow(
+      'I111_TRUSTED_COORDINATOR_STOP',
+    );
+    expect(backend.events).toEqual(['connect', 'lock', 'backend', 'release-destroy', 'end']);
+
+    const unlock = await loadPrivateKernel({ unlockNever: true, timeoutMs: 20 });
+    await expect(unlock.executeOwnedLifecycle('offline-test')).rejects.toThrow(
+      'I111_TRUSTED_COORDINATOR_STOP',
+    );
+    expect(unlock.events).toEqual([
+      'connect',
+      'lock',
+      'backend',
+      'backend',
+      'unlock',
+      'release-destroy',
+      'end',
+    ]);
+  });
+
+  it('keeps every combined timeout and cleanup failure redacted and fail-closed', async () => {
+    const harness = await loadPrivateKernel({
+      unlockNever: true,
+      endNever: true,
+      releaseThrows: true,
+      timeoutMs: 20,
+      sameRealmErrors: true,
+    });
+    await expect(harness.executeOwnedLifecycle('offline-test')).rejects.toThrow(
+      'I111_TRUSTED_COORDINATOR_STOP',
+    );
+    await expect(harness.executeOwnedLifecycle('offline-test')).rejects.not.toThrow('REALM_SECRET');
+    expect(harness.events.slice(0, 6)).toEqual([
+      'connect',
+      'lock',
+      'backend',
+      'backend',
+      'unlock',
+      'release-destroy',
+    ]);
+  });
+
+  it('stops without release when unlock returns false', async () => {
+    const harness = await loadPrivateKernel({ unlockResult: false });
+    await expect(harness.executeOwnedLifecycle('offline-test')).rejects.toThrow(
+      'I111_TRUSTED_COORDINATOR_STOP',
+    );
+    expect(harness.events).toEqual([
+      'connect',
+      'lock',
+      'backend',
+      'backend',
+      'unlock',
+      'release-destroy',
+      'end',
+    ]);
+    expect(harness.releaseErrors).toHaveLength(1);
+  });
+
+  it('reports release failure and never treats it as success', async () => {
+    const harness = await loadPrivateKernel({ releaseThrows: true });
+    await expect(harness.executeOwnedLifecycle('offline-test')).rejects.toThrow(
+      'I111_TRUSTED_COORDINATOR_STOP',
+    );
+    expect(harness.events).toEqual([
+      'connect',
+      'lock',
+      'backend',
+      'backend',
+      'unlock',
+      'release',
+      'end',
+    ]);
+    expect(harness.releaseErrors).toEqual([undefined]);
+  });
+
+  it('bounds a pool.end that never resolves after a safe release', async () => {
+    const harness = await loadPrivateKernel({ endNever: true });
+    const started = Date.now();
+    await expect(harness.executeOwnedLifecycle('offline-test')).rejects.toThrow(
+      'I111_TRUSTED_COORDINATOR_STOP',
+    );
+    expect(Date.now() - started).toBeLessThan(2_000);
+    expect(harness.events).toEqual([
+      'connect',
+      'lock',
+      'backend',
+      'backend',
+      'unlock',
+      'release',
+      'end',
+    ]);
+    expect(harness.releaseErrors).toEqual([undefined]);
+    expect(harness.endCalls).toBe(1);
+  });
+
+  it('distinguishes delayed pool shutdown completion from a timeout', async () => {
+    const delayed = await loadPrivateKernel({ endDelayMs: 40, poolEndTimeoutMs: 20 });
+    await expect(delayed.executeOwnedLifecycle('offline-test')).rejects.toThrow(
+      'I111_TRUSTED_COORDINATOR_STOP',
+    );
+    expect(delayed.events).toEqual([
+      'connect',
+      'lock',
+      'backend',
+      'backend',
+      'unlock',
+      'release',
+      'end',
+    ]);
+    expect(delayed.endCalls).toBe(1);
+
+    const lateReject = await loadPrivateKernel({
+      endRejectDelayMs: 40,
+      poolEndTimeoutMs: 20,
+      sameRealmErrors: true,
+    });
+    await expect(lateReject.executeOwnedLifecycle('offline-test')).rejects.toThrow(
+      'I111_TRUSTED_COORDINATOR_STOP',
+    );
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    expect(lateReject.events).toEqual([
+      'connect',
+      'lock',
+      'backend',
+      'backend',
+      'unlock',
+      'release',
+      'end',
+    ]);
+    expect(lateReject.endCalls).toBe(1);
+  });
+
+  it('bounds pool.end when unlock fails and the client must remain unreleased', async () => {
+    const harness = await loadPrivateKernel({ unlockResult: false, endNever: true });
+    const started = Date.now();
+    await expect(harness.executeOwnedLifecycle('offline-test')).rejects.toThrow(
+      'I111_TRUSTED_COORDINATOR_STOP',
+    );
+    expect(Date.now() - started).toBeLessThan(2_000);
+    expect(harness.events).toEqual([
+      'connect',
+      'lock',
+      'backend',
+      'backend',
+      'unlock',
+      'release-destroy',
+      'end',
+    ]);
+    expect(harness.releaseErrors).toHaveLength(1);
+  });
+});

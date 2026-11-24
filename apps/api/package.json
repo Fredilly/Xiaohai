@@ -13,6 +13,7 @@
     "lint": "eslint src test",
     "start": "node dist/server.js",
     "test": "vitest run --exclude '**/*.integration.test.ts'",
+    "test:i111-require-new-integration": "I111_REQUIRE_NEW_PG_TEST_REQUIRED=1 vitest run --config vitest.integration.config.ts test/i111-require-new.integration.test.ts",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "typecheck": "tsc --noEmit"
   },

@@ -1,5 +1,5 @@
 {
-  "id": "2fef749b-a1b2-4c3d-8901-208fb0010041",
+  "id": "cd8981d2-86fd-42de-9198-ef7ca435032a",
   "prevId": "641c4d6e-2310-4898-9e7a-298eb5f937d8",
   "version": "7",
   "dialect": "postgresql",
@@ -5217,7 +5217,7 @@
         },
         "character_reference_images_provider_check": {
           "name": "character_reference_images_provider_check",
-          "value": "\"character_reference_images\".\"provider\" in ('MOCK','BAILIAN')"
+          "value": "\"character_reference_images\".\"provider\" in ('MOCK','BAILIAN','IMPORTED')"
         },
         "character_reference_images_ready_asset_check": {
           "name": "character_reference_images_ready_asset_check",
@@ -8005,6 +8005,21 @@
         }
       },
       "indexes": {
+        "inventory_transactions_idempotency_unique": {
+          "name": "inventory_transactions_idempotency_unique",
+          "columns": [
+            {
+              "expression": "idempotency_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "inventory_transactions_store_sku_id_unique": {
           "name": "inventory_transactions_store_sku_id_unique",
           "columns": [
@@ -8022,21 +8037,6 @@
             },
             {
               "expression": "id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "inventory_transactions_idempotency_unique": {
-          "name": "inventory_transactions_idempotency_unique",
-          "columns": [
-            {
-              "expression": "idempotency_key",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -8170,7 +8170,7 @@
       "checkConstraints": {
         "inventory_transactions_type_check": {
           "name": "inventory_transactions_type_check",
-          "value": "\"inventory_transactions\".\"transaction_type\" in ('PURCHASE_RECEIPT','SALE','ISSUE','ADJUSTMENT_IN','ADJUSTMENT_OUT','STOCKTAKE_GAIN','STOCKTAKE_LOSS','TRANSFER_OUT','TRANSFER_IN','RETURN_TO_SUPPLIER','RENTAL_OUT','RENTAL_RETURN')"
+          "value": "\"inventory_transactions\".\"transaction_type\" in ('INITIAL_MIGRATION','PURCHASE_RECEIPT','SALE','ISSUE','ADJUSTMENT_IN','ADJUSTMENT_OUT','STOCKTAKE_GAIN','STOCKTAKE_LOSS','TRANSFER_OUT','TRANSFER_IN','RETURN_TO_SUPPLIER','RENTAL_OUT','RENTAL_RETURN')"
         },
         "inventory_transactions_delta_nonzero_check": {
           "name": "inventory_transactions_delta_nonzero_check",
@@ -9276,6 +9276,481 @@
         "suppliers_status_check": {
           "name": "suppliers_status_check",
           "value": "\"suppliers\".\"status\" in ('ACTIVE','INACTIVE')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.food_batch_transactions": {
+      "name": "food_batch_transactions",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "store_id": {
+          "name": "store_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sku_id": {
+          "name": "sku_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "batch_id": {
+          "name": "batch_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "transaction_type": {
+          "name": "transaction_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "quantity_delta": {
+          "name": "quantity_delta",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "on_hand_before": {
+          "name": "on_hand_before",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "on_hand_after": {
+          "name": "on_hand_after",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reserved_before": {
+          "name": "reserved_before",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reserved_after": {
+          "name": "reserved_after",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "blocked_before": {
+          "name": "blocked_before",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "blocked_after": {
+          "name": "blocked_after",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "aggregate_transaction_id": {
+          "name": "aggregate_transaction_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reference_type": {
+          "name": "reference_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reference_id": {
+          "name": "reference_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "idempotency_key": {
+          "name": "idempotency_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_by_staff_account_id": {
+          "name": "created_by_staff_account_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "food_batch_transactions_idempotency_unique": {
+          "name": "food_batch_transactions_idempotency_unique",
+          "columns": [
+            {
+              "expression": "idempotency_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "food_batch_transactions_aggregate_batch_unique": {
+          "name": "food_batch_transactions_aggregate_batch_unique",
+          "columns": [
+            {
+              "expression": "aggregate_transaction_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "batch_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "food_batch_transactions_store_sku_created_idx": {
+          "name": "food_batch_transactions_store_sku_created_idx",
+          "columns": [
+            {
+              "expression": "store_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "sku_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "food_batch_transactions_created_by_staff_account_id_staff_accounts_id_fk": {
+          "name": "food_batch_transactions_created_by_staff_account_id_staff_accounts_id_fk",
+          "tableFrom": "food_batch_transactions",
+          "tableTo": "staff_accounts",
+          "columnsFrom": ["created_by_staff_account_id"],
+          "columnsTo": ["id"],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "food_batch_transactions_batch_scope_fk": {
+          "name": "food_batch_transactions_batch_scope_fk",
+          "tableFrom": "food_batch_transactions",
+          "tableTo": "food_batches",
+          "columnsFrom": ["store_id", "sku_id", "batch_id"],
+          "columnsTo": ["store_id", "sku_id", "id"],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "food_batch_transactions_aggregate_scope_fk": {
+          "name": "food_batch_transactions_aggregate_scope_fk",
+          "tableFrom": "food_batch_transactions",
+          "tableTo": "inventory_transactions",
+          "columnsFrom": ["store_id", "sku_id", "aggregate_transaction_id"],
+          "columnsTo": ["store_id", "sku_id", "id"],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "food_batch_transactions_type_check": {
+          "name": "food_batch_transactions_type_check",
+          "value": "\"food_batch_transactions\".\"transaction_type\" in ('EXISTING_LOT_RECEIPT','DAMAGE','STOCKTAKE_LOSS')"
+        },
+        "food_batch_transactions_quantity_check": {
+          "name": "food_batch_transactions_quantity_check",
+          "value": "\"food_batch_transactions\".\"on_hand_before\" >= 0 and \"food_batch_transactions\".\"on_hand_after\" >= 0 and \"food_batch_transactions\".\"on_hand_after\" = \"food_batch_transactions\".\"on_hand_before\" + \"food_batch_transactions\".\"quantity_delta\""
+        },
+        "food_batch_transactions_direction_check": {
+          "name": "food_batch_transactions_direction_check",
+          "value": "((\"food_batch_transactions\".\"transaction_type\" = 'EXISTING_LOT_RECEIPT' and \"food_batch_transactions\".\"quantity_delta\" > 0) or (\"food_batch_transactions\".\"transaction_type\" in ('DAMAGE','STOCKTAKE_LOSS') and \"food_batch_transactions\".\"quantity_delta\" < 0))"
+        },
+        "food_batch_transactions_allocation_check": {
+          "name": "food_batch_transactions_allocation_check",
+          "value": "\"food_batch_transactions\".\"reserved_before\" >= 0 and \"food_batch_transactions\".\"reserved_after\" >= 0 and \"food_batch_transactions\".\"blocked_before\" >= 0 and \"food_batch_transactions\".\"blocked_after\" >= 0 and \"food_batch_transactions\".\"reserved_before\" = \"food_batch_transactions\".\"reserved_after\" and \"food_batch_transactions\".\"blocked_before\" = \"food_batch_transactions\".\"blocked_after\" and \"food_batch_transactions\".\"reserved_after\" + \"food_batch_transactions\".\"blocked_after\" <= \"food_batch_transactions\".\"on_hand_after\""
+        },
+        "food_batch_transactions_evidence_check": {
+          "name": "food_batch_transactions_evidence_check",
+          "value": "length(btrim(\"food_batch_transactions\".\"idempotency_key\")) between 1 and 128 and length(btrim(\"food_batch_transactions\".\"reference_type\")) between 1 and 100 and length(btrim(\"food_batch_transactions\".\"reason\")) between 1 and 500"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.food_batches": {
+      "name": "food_batches",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "store_id": {
+          "name": "store_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sku_id": {
+          "name": "sku_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "lot_code": {
+          "name": "lot_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "manufactured_on": {
+          "name": "manufactured_on",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "expires_on": {
+          "name": "expires_on",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "on_hand": {
+          "name": "on_hand",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "reserved": {
+          "name": "reserved",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "blocked": {
+          "name": "blocked",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'HELD'"
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "created_by_staff_account_id": {
+          "name": "created_by_staff_account_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "food_batches_store_sku_id_unique": {
+          "name": "food_batches_store_sku_id_unique",
+          "columns": [
+            {
+              "expression": "store_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "sku_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "food_batches_lot_expiry_unique": {
+          "name": "food_batches_lot_expiry_unique",
+          "columns": [
+            {
+              "expression": "store_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "sku_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "lot_code",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "expires_on",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "food_batches_store_sku_expiry_idx": {
+          "name": "food_batches_store_sku_expiry_idx",
+          "columns": [
+            {
+              "expression": "store_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "sku_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "expires_on",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "food_batches_created_by_staff_account_id_staff_accounts_id_fk": {
+          "name": "food_batches_created_by_staff_account_id_staff_accounts_id_fk",
+          "tableFrom": "food_batches",
+          "tableTo": "staff_accounts",
+          "columnsFrom": ["created_by_staff_account_id"],
+          "columnsTo": ["id"],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "food_batches_inventory_fk": {
+          "name": "food_batches_inventory_fk",
+          "tableFrom": "food_batches",
+          "tableTo": "store_inventory",
+          "columnsFrom": ["store_id", "sku_id"],
+          "columnsTo": ["store_id", "sku_id"],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "food_batches_quantities_check": {
+          "name": "food_batches_quantities_check",
+          "value": "\"food_batches\".\"on_hand\" >= 0 and \"food_batches\".\"reserved\" >= 0 and \"food_batches\".\"blocked\" >= 0 and \"food_batches\".\"reserved\" + \"food_batches\".\"blocked\" <= \"food_batches\".\"on_hand\""
+        },
+        "food_batches_status_check": {
+          "name": "food_batches_status_check",
+          "value": "\"food_batches\".\"state\" in ('AVAILABLE','HELD','RECALLED')"
+        },
+        "food_batches_version_check": {
+          "name": "food_batches_version_check",
+          "value": "\"food_batches\".\"version\" >= 0"
+        },
+        "food_batches_lot_code_check": {
+          "name": "food_batches_lot_code_check",
+          "value": "length(btrim(\"food_batches\".\"lot_code\")) between 1 and 100"
+        },
+        "food_batches_dates_check": {
+          "name": "food_batches_dates_check",
+          "value": "\"food_batches\".\"manufactured_on\" is null or \"food_batches\".\"expires_on\" >= \"food_batches\".\"manufactured_on\""
         }
       },
       "isRLSEnabled": false
@@ -13956,475 +14431,6 @@
         "catalog_correction_requests_review_shape_check": {
           "name": "catalog_correction_requests_review_shape_check",
           "value": "(\"status\" = 'PENDING' AND \"reviewed_by_staff_account_id\" IS NULL AND \"review_reason\" IS NULL AND \"reviewed_at\" IS NULL) OR (\"status\" IN ('ACCEPTED', 'REJECTED') AND \"reviewed_by_staff_account_id\" IS NOT NULL AND \"review_reason\" IS NOT NULL AND \"reviewed_at\" IS NOT NULL)"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.food_batches": {
-      "name": "food_batches",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "store_id": {
-          "name": "store_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "sku_id": {
-          "name": "sku_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "lot_code": {
-          "name": "lot_code",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "manufactured_on": {
-          "name": "manufactured_on",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "expires_on": {
-          "name": "expires_on",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "on_hand": {
-          "name": "on_hand",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "reserved": {
-          "name": "reserved",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "blocked": {
-          "name": "blocked",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "state": {
-          "name": "state",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'HELD'"
-        },
-        "version": {
-          "name": "version",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "created_by_staff_account_id": {
-          "name": "created_by_staff_account_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "food_batches_store_sku_id_unique": {
-          "name": "food_batches_store_sku_id_unique",
-          "columns": [
-            {
-              "expression": "store_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "sku_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "food_batches_lot_expiry_unique": {
-          "name": "food_batches_lot_expiry_unique",
-          "columns": [
-            {
-              "expression": "store_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "sku_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "lot_code",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "expires_on",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "food_batches_store_sku_expiry_idx": {
-          "name": "food_batches_store_sku_expiry_idx",
-          "columns": [
-            {
-              "expression": "store_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "sku_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "expires_on",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "food_batches_inventory_fk": {
-          "name": "food_batches_inventory_fk",
-          "tableFrom": "food_batches",
-          "tableTo": "store_inventory",
-          "columnsFrom": ["store_id", "sku_id"],
-          "columnsTo": ["store_id", "sku_id"],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
-        },
-        "food_batches_created_by_staff_account_id_staff_accounts_id_fk": {
-          "name": "food_batches_created_by_staff_account_id_staff_accounts_id_fk",
-          "tableFrom": "food_batches",
-          "tableTo": "staff_accounts",
-          "columnsFrom": ["created_by_staff_account_id"],
-          "columnsTo": ["id"],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "food_batches_quantities_check": {
-          "name": "food_batches_quantities_check",
-          "value": "\"food_batches\".\"on_hand\" >= 0 and \"food_batches\".\"reserved\" >= 0 and \"food_batches\".\"blocked\" >= 0 and \"food_batches\".\"reserved\" + \"food_batches\".\"blocked\" <= \"food_batches\".\"on_hand\""
-        },
-        "food_batches_status_check": {
-          "name": "food_batches_status_check",
-          "value": "\"food_batches\".\"state\" in ('AVAILABLE','HELD','RECALLED')"
-        },
-        "food_batches_version_check": {
-          "name": "food_batches_version_check",
-          "value": "\"food_batches\".\"version\" >= 0"
-        },
-        "food_batches_lot_code_check": {
-          "name": "food_batches_lot_code_check",
-          "value": "length(btrim(\"food_batches\".\"lot_code\")) between 1 and 100"
-        },
-        "food_batches_dates_check": {
-          "name": "food_batches_dates_check",
-          "value": "\"food_batches\".\"manufactured_on\" is null or \"food_batches\".\"expires_on\" >= \"food_batches\".\"manufactured_on\""
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.food_batch_transactions": {
-      "name": "food_batch_transactions",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "store_id": {
-          "name": "store_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "sku_id": {
-          "name": "sku_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "batch_id": {
-          "name": "batch_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "transaction_type": {
-          "name": "transaction_type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "quantity_delta": {
-          "name": "quantity_delta",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "on_hand_before": {
-          "name": "on_hand_before",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "on_hand_after": {
-          "name": "on_hand_after",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "reserved_before": {
-          "name": "reserved_before",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "reserved_after": {
-          "name": "reserved_after",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "blocked_before": {
-          "name": "blocked_before",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "blocked_after": {
-          "name": "blocked_after",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "aggregate_transaction_id": {
-          "name": "aggregate_transaction_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "reference_type": {
-          "name": "reference_type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "reference_id": {
-          "name": "reference_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "idempotency_key": {
-          "name": "idempotency_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "reason": {
-          "name": "reason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_by_staff_account_id": {
-          "name": "created_by_staff_account_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "food_batch_transactions_idempotency_unique": {
-          "name": "food_batch_transactions_idempotency_unique",
-          "columns": [
-            {
-              "expression": "idempotency_key",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "food_batch_transactions_aggregate_unique": {
-          "name": "food_batch_transactions_aggregate_unique",
-          "columns": [
-            {
-              "expression": "aggregate_transaction_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "food_batch_transactions_store_sku_created_idx": {
-          "name": "food_batch_transactions_store_sku_created_idx",
-          "columns": [
-            {
-              "expression": "store_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "sku_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "food_batch_transactions_batch_scope_fk": {
-          "name": "food_batch_transactions_batch_scope_fk",
-          "tableFrom": "food_batch_transactions",
-          "tableTo": "food_batches",
-          "columnsFrom": ["store_id", "sku_id", "batch_id"],
-          "columnsTo": ["store_id", "sku_id", "id"],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
-        },
-        "food_batch_transactions_aggregate_scope_fk": {
-          "name": "food_batch_transactions_aggregate_scope_fk",
-          "tableFrom": "food_batch_transactions",
-          "tableTo": "inventory_transactions",
-          "columnsFrom": ["store_id", "sku_id", "aggregate_transaction_id"],
-          "columnsTo": ["store_id", "sku_id", "id"],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
-        },
-        "food_batch_transactions_created_by_staff_account_id_staff_accounts_id_fk": {
-          "name": "food_batch_transactions_created_by_staff_account_id_staff_accounts_id_fk",
-          "tableFrom": "food_batch_transactions",
-          "tableTo": "staff_accounts",
-          "columnsFrom": ["created_by_staff_account_id"],
-          "columnsTo": ["id"],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "food_batch_transactions_type_check": {
-          "name": "food_batch_transactions_type_check",
-          "value": "\"food_batch_transactions\".\"transaction_type\" in ('EXISTING_LOT_RECEIPT','DAMAGE','STOCKTAKE_LOSS')"
-        },
-        "food_batch_transactions_quantity_check": {
-          "name": "food_batch_transactions_quantity_check",
-          "value": "\"food_batch_transactions\".\"on_hand_before\" >= 0 and \"food_batch_transactions\".\"on_hand_after\" >= 0 and \"food_batch_transactions\".\"on_hand_after\" = \"food_batch_transactions\".\"on_hand_before\" + \"food_batch_transactions\".\"quantity_delta\""
-        },
-        "food_batch_transactions_direction_check": {
-          "name": "food_batch_transactions_direction_check",
-          "value": "((\"food_batch_transactions\".\"transaction_type\" = 'EXISTING_LOT_RECEIPT' and \"food_batch_transactions\".\"quantity_delta\" > 0) or (\"food_batch_transactions\".\"transaction_type\" in ('DAMAGE','STOCKTAKE_LOSS') and \"food_batch_transactions\".\"quantity_delta\" < 0))"
-        },
-        "food_batch_transactions_allocation_check": {
-          "name": "food_batch_transactions_allocation_check",
-          "value": "\"food_batch_transactions\".\"reserved_before\" >= 0 and \"food_batch_transactions\".\"reserved_after\" >= 0 and \"food_batch_transactions\".\"blocked_before\" >= 0 and \"food_batch_transactions\".\"blocked_after\" >= 0 and \"food_batch_transactions\".\"reserved_before\" = \"food_batch_transactions\".\"reserved_after\" and \"food_batch_transactions\".\"blocked_before\" = \"food_batch_transactions\".\"blocked_after\" and \"food_batch_transactions\".\"reserved_after\" + \"food_batch_transactions\".\"blocked_after\" <= \"food_batch_transactions\".\"on_hand_after\""
-        },
-        "food_batch_transactions_evidence_check": {
-          "name": "food_batch_transactions_evidence_check",
-          "value": "length(btrim(\"food_batch_transactions\".\"idempotency_key\")) between 1 and 128 and length(btrim(\"food_batch_transactions\".\"reference_type\")) between 1 and 100 and length(btrim(\"food_batch_transactions\".\"reason\")) between 1 and 500"
         }
       },
       "isRLSEnabled": false

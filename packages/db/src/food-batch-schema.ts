@@ -116,7 +116,10 @@ export const foodBatchTransactions = pgTable(
       ],
     }).onDelete('restrict'),
     uniqueIndex('food_batch_transactions_idempotency_unique').on(t.idempotencyKey),
-    uniqueIndex('food_batch_transactions_aggregate_unique').on(t.aggregateTransactionId),
+    uniqueIndex('food_batch_transactions_aggregate_batch_unique').on(
+      t.aggregateTransactionId,
+      t.batchId,
+    ),
     index('food_batch_transactions_store_sku_created_idx').on(t.storeId, t.skuId, t.createdAt),
     check(
       'food_batch_transactions_type_check',

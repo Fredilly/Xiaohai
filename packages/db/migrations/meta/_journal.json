@@ -292,8 +292,15 @@
     {
       "idx": 41,
       "version": "7",
-      "when": 1794057600000,
-      "tag": "0041_food_batch_ledger_foundation",
+      "when": 1794662400000,
+      "tag": "0041_character_reference_import_provider",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1795499273902,
+      "tag": "0042_food_batch_ledger_foundation",
       "breakpoints": true
     }
   ]

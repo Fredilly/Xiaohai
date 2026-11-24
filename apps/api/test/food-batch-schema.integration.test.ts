@@ -9,7 +9,7 @@ const database = assertMeipingApplyDisposableDatabase(process.env)
   : null;
 const suite = database ? describe : describe.skip;
 
-suite('food batch migration 0041: real disposable PostgreSQL constraints (#208)', () => {
+suite('food batch migration 0042: real disposable PostgreSQL constraints (#208)', () => {
   afterAll(async () => database?.pool.end());
 
   it('rejects cross-store/SKU aggregate references and invalid ledger mutations', async () => {
@@ -39,7 +39,7 @@ suite('food batch migration 0041: real disposable PostgreSQL constraints (#208)'
         idempotency_key, reason, created_by_staff_account_id
       ) VALUES (
         $1, $2, $3, $4, $5, $6, $7, $8,
-        0, 0, 0, 0, $9, 'FOOD_BATCH_TEST', $10, $11, 'disposable-only', $12
+        0, 0, 0, 0, $9, 'FOOD_BATCH_OPERATION', $10, $11, 'disposable-only', $12
       )
     `;
     const event = (
@@ -63,7 +63,7 @@ suite('food batch migration 0041: real disposable PostgreSQL constraints (#208)'
       overrides.before ?? 3,
       overrides.after ?? 5,
       overrides.aggregateId ?? ids.aggA,
-      randomUUID(),
+      overrides.aggregateId ?? ids.aggA,
       overrides.key ?? `food-batch-${randomUUID()}`,
       ids.actor,
     ];
@@ -84,7 +84,7 @@ suite('food batch migration 0041: real disposable PostgreSQL constraints (#208)'
       await client.query('BEGIN');
 
       // CI's critical job runs db:migrate on xiaohai_test immediately before
-      // this suite. Fail if 0041 or its real PostgreSQL FK/trigger is absent.
+      // this suite. Fail if 0042 or its real PostgreSQL FK/trigger is absent.
       const [schema] = (
         await client.query<{ batches: string | null; events: string | null }>(
           `SELECT to_regclass('public.food_batches')::text AS batches,
@@ -160,9 +160,9 @@ suite('food batch migration 0041: real disposable PostgreSQL constraints (#208)'
         await client.query(
           `INSERT INTO inventory_transactions
             (id, store_id, sku_id, transaction_type, quantity_delta, balance_after,
-             reference_type, reference_id, idempotency_key, created_by_staff_account_id)
-           VALUES ($1, $2, $3, 'PURCHASE_RECEIPT', 2, 12, 'FOOD_BATCH_TEST', $4, $5, $6)`,
-          [id, storeId, skuId, randomUUID(), `agg-${randomUUID()}`, ids.actor],
+             reference_type, reference_id, idempotency_key, created_by_staff_account_id, reason, metadata)
+           VALUES ($1, $2, $3, 'PURCHASE_RECEIPT', 2, 12, 'FOOD_BATCH_OPERATION', $4, $5, $6, 'disposable-only', '{"source":"FOOD_BATCH_OPERATION"}')`,
+          [id, storeId, skuId, id, `agg-${randomUUID()}`, ids.actor],
         );
       }
 

@@ -1,46 +1,105 @@
-# #208 Food batch persistence: SQL migration / rollback runbook
+# #208 Food multi-lot ledger: migration and transactional writer
 
-**Status: Draft review only.** This PR creates an *additive* Drizzle schema and SQL migration `0041_food_batch_ledger_foundation` for packaged-food/sealed-beverage lots. It does **not** call `db:migrate` on shared Staging/production, import food, backfill old stock, expose a new API, enable checkout or authorize a real inventory transaction. The GitHub CI disposable-PostgreSQL runner may migrate its isolated test database only.
+## Scope and current status
 
-## Source of truth and invariant boundary
+Code review only; no shared Staging/production migration, real merchant stock, BOS,
+checkout, API activation or deployment is authorized by this document.
 
-- `store_inventory(store_id,sku_id)` remains the authoritative total inventory. A lot's composite foreign key requires that exact Store/SKU to exist; a cross-Store batch event cannot reference another Store's lot.
-- `food_batches` is reserved for *verified packaged food and sealed beverages*, but the current catalog has no approved food type discriminator. **No insert service yet**. Until real category verification, provenance and reconciliation exist, the table must not authorize any sale.
-- An unconfirmed lot defaults to `HELD`. Nonnegative quantity, allocation ceiling, version, date sequence and lot identity are DB constraints. `AVAILABLE` must never be inferred from the default. Duplicate store/SKU/lot-code/expiry records are rejected.
-- No hidden import/backfill runs. Existing books, products, inventory, payments and Meiping migration data are untouched by this additive change.
-- `food_batch_transactions` is a separate append-only record of a **proposed future** event model. Its database foreign key checks the complete (`store_id`, `sku_id`, `aggregate_transaction_id`) against the same Store/SKU aggregate stock event. The older ID-only foreign key is insufficient. The additional unique (`store_id`, `sku_id`, `id`) index on `inventory_transactions` is only a PostgreSQL FK target and does not rewrite existing stock history. Initially it allows only `EXISTING_LOT_RECEIPT`, `DAMAGE` and `STOCKTAKE_LOSS`; reservation/transfer/expiry/refund operations need their own reviewed models and migrations. All current on-hand event types require a linked existing `inventory_transactions` event and a Staff actor, and enforce balanced before/after quantity and unchanged reserved/blocked values.
-- A database `BEFORE UPDATE OR DELETE` trigger forbids rewriting/deleting ledger rows. This is a database-level guard for normal application behavior, **not an absolute protection against a privileged DB owner who can disable triggers or modify the schema**. Verify least-privilege DB credentials before deployment.
+PR dependency order remains **#214 → #215 → #216 → #217**. The existing branches
+have been updated with current main; none has been merged into main. Main's
+`0000–0041` migration files and journal entries are retained. The *unpublished food
+schema draft*, formerly numbered `0041`, is regenerated as
+`0042_food_batch_ledger_foundation` with a Drizzle-generated snapshot. This avoids
+colliding with main's `0041_character_reference_import_provider`; it is NOT a
+repair procedure for a database that already installed the older food draft.
+Such an environment must stop and receive a separately reviewed recovery plan.
 
-## Safe CI / developer verification
+This PR now also includes an **internal** `FoodBatchMovementService` for an
+already registered, reconciled Store/SKU and existing lots. It has no registered
+HTTP endpoint and creates no product or lot. It must not be described as a live
+Store/HQ food workflow. Verified category/provenance intake, UI, freeze/release,
+expiry disposal, reservations, FEFO, sales/refunds and checkout remain separate
+work. Existing read-only proposal endpoints stay read-only.
 
-1. Confirm the PR is stacked on #216 → #215 → #214 and compare the full combined schema against the current target `main`; do not rebase or merge without checking all upstream changes.
-2. Use only an allowlisted disposable PostgreSQL URL. Run the existing migration journal guard, Drizzle check, typecheck, unit tests and critical integration. CI's disposable migration must create both empty tables and the mutation-reject trigger with no changes to the original Store inventory data.
-3. Inspect `pg_constraint` for the **same Store/SKU composite aggregate FK** and lot FK, `pg_indexes` for the aggregate composite unique target, idempotency/lot unique keys, `pg_trigger` for `food_batch_transactions_append_only`, and `pg_proc` for its function. Attempt an UPDATE/DELETE of a specifically seeded test event only in an isolated, allowlisted disposable database to prove the trigger blocks mutation. Also test wrong Store/SKU, invalid dates, negative balance and duplicate idempotency/lot identity.
-4. CI must apply migration 0041 to its allowlisted disposable PostgreSQL database **before** running `apps/api/test/food-batch-schema.integration.test.ts`. The guarded integration test performs real inserts and explicit negative tests inside a single transaction which is rolled back, proving that mismatched aggregate Store/SKU, foreign lot scope, duplicate idempotency, invalid balances/dates and ledger UPDATE/DELETE are rejected by PostgreSQL. If the migration is missing, it fails rather than silently passing. No test ever connects to shared Staging/production.
-5. Record before/after migration journal state and that `food_batches` and `food_batch_transactions` remain empty after schema-only migration. Do not seed real merchant data.
-5. Treat CI success as **code verification**, not production authorization. Obtain independent human review, a separately approved migration window and verified backup/restore capability before any shared Staging or production application.
+## Operation model and integrity
 
-## Preconditions for any future authorized live schema installation
+- One operation creates **one aggregate inventory transaction** and **one event
+  per affected lot**. `(aggregate_transaction_id,batch_id)` is unique; the old
+  global unique aggregate-ID index is removed from the unpublished draft.
+- All child events share the aggregate's Store/SKU, actor, reference and reason.
+  `EXISTING_LOT_RECEIPT` maps to `PURCHASE_RECEIPT`, `DAMAGE` to `ADJUSTMENT_OUT`,
+  and `STOCKTAKE_LOSS` to `STOCKTAKE_LOSS`. Mixed operation kinds are rejected.
+- Aggregate reference/source are `FOOD_BATCH_OPERATION`. A marked aggregate
+  **cannot commit without children**. Deferred constraints check both directions
+  and require the sum of child signed deltas (using bigint) to equal the aggregate
+  delta. Incomplete, excessive or missing splits abort the transaction.
+- Inserting an event locks its parent. Both food events and their aggregate
+  history reject UPDATE/DELETE. These controls do not resist a DB owner who can
+  disable triggers; deployment still needs least-privilege role review.
+- The writer authenticates *server-provided* Staff context permissions
+  (`inventory.read` plus `inventory.receive` or `inventory.adjust`) and Store
+  data scope. No client scope or caller-supplied date is trusted.
+- The writer serializes each UUID operation key with a transaction advisory lock,
+  then locks aggregate stock and all lots in stable order. It verifies inventory
+  and lot versions, actual lot totals/reservations against aggregate stock, and
+  remaining unallocated stock before writing anything.
+- Same-key retries, including reordered input lines, return the original result.
+  Changed payload/actor/key reuse fails closed. Lot-event keys are derived from
+  operation UUID + lot UUID. A lost response never justifies a new operation key.
+- Store-local date is calculated from the stored timezone and PostgreSQL's
+  transaction clock. Expired, HELD and RECALLED lots cannot be received/deducted
+  through this writer. Blocked/reserved stock cannot be consumed. Explicit
+  expiry/quarantine disposal and allocation changes require their own workflow;
+  they must not be emulated by silently changing balances.
+- Nothing publishes DRAFT products or enables checkout. Existing totals remain
+  the sole aggregate source of truth; Redis does not store stock balances.
 
-- Fresh, independently verified backup and restore access, capacity, migration sequencing, existing deployed code compatibility and current migration journal. Staging is presently blocked (`STAGING_READY=false`) under #195.
-- Explicit owner authorization naming **this exact migration**, environment, immutable commit and operator. Do not reuse Phase B / Phase C Docker approvals, or the unrelated Meiping import authorizations.
-- Ensure no other PR is assigning `0041` to a different migration, verify `main` and all stacked PR bases; if another migration lands first, regenerate the journal/snapshot using repository tooling and get a new review.
-- Audit DB owner privileges; the append-only trigger is bypassable by an account able to disable triggers. Future event insert code must authenticate Staff, enforce RBAC/Data Scope, lock aggregate and lot rows, check versions, and atomically append aggregate and lot events. There is **no such write code in this PR**.
+## Reproducible verification
 
-## Post-apply reconciliation (when separately authorized)
+Use only `assertMeipingApplyDisposableDatabase`-allowlisted disposable local
+PostgreSQL. Set both effective URLs to the **same** explicitly owned
+`xiaohai_test`; no shared/remote database, `.env` substitution or production role.
+Use the repository's `db:migrate` for the full real migration chain first.
 
-- Verify both new tables exist and the migration journal reports exactly the reviewed migration.
-- Confirm both new tables contain **zero rows** immediately after application.
-- Check original `store_inventory`, `inventory_transactions` and existing catalog counts/checksums against preflight evidence.
-- Confirm linked Store/SKU foreign keys, lot uniqueness, state/quantity/date constraints and the database append-only trigger.
-- Keep checkout and the public API unchanged and disabled for batch-derived availability.
+```bash
+pnpm --filter @xiaohai/db db:migrate
+pnpm --filter @xiaohai/api exec vitest run --config vitest.integration.config.ts \
+  test/food-batch-schema.integration.test.ts \
+  test/food-batch-movement.integration.test.ts
+node scripts/check-migration-chain.mjs
+pnpm --filter @xiaohai/db db:check
+```
 
-## Rollback / recovery (owner-controlled, no automatic destructive operations)
+Work verification used a newly initialized, private scratch cluster running
+PostgreSQL **16.16**, bound only to `127.0.0.1:45928` with Unix sockets disabled,
+owner `i208_test_owner`, database `xiaohai_test`. Its lifecycle and all child
+migration/test processes ran together; the server stopped at the end. This is
+independent of original Mac/#111 resources and contains synthetic fixtures only.
+A successful run applied **all 43 real migrations (0000–0042)** and passed the
+real schema and multi-lot service integration tests. No synthetic schema was
+substituted. Record the latest run's test count and commit separately.
 
-- Code rollback: disable the future food endpoints (none exist in this PR) and restore previously tested application binaries; older application code does not query the new tables.
-- Schema rollback is **not** an automatic `DROP TABLE`: first independently establish whether food batches/events now contain records or are referenced by newer versions. Preserve records and existing backup. Any schema removal needs a separate reviewed migration, explicit owner approval and a verified data/export/recovery plan. Never truncate food or inventory history.
-- A failed migration must stop and surface safe metadata. Do not reset or directly alter `drizzle.__drizzle_migrations`, do not force reapply and do not run any broad Docker/SQL cleanup.
+Coverage includes positive two-lot receipt/damage/stocktake loss; parallel
+same-key replay; parallel distinct deductions at the same version; changed
+payload/actor; wrong Store/lot; duplicate lots; stale versions; expiry, HELD,
+RECALLED, blocked stock; aggregate mismatch; incomplete/absent child groups failing
+at COMMIT with full rollback; and food aggregate/event mutation denial.
 
-## Outstanding product and operational decisions
+## Shared-environment application remains STOP
 
-Who owns a food SKU, authoritative Store timezone and expiry-day rule, FEFO/FIFO allocation, duplicate lot-code policy, food labeling/traceability, handling frozen/expired stock, individual Store pricing, and prepared-drink ingredient deduction. Resolve before enablement. Neither a successful migration nor `READY` from the #215 operator-supplied preview certifies real sellable stock.
+Before any authorized installation: exact-head independent review, current CI,
+canonical main journal/hash comparison, explicit owner-scoped migration window,
+verified backup **and restoration**, least-privilege DB roles, disk/capacity,
+old-code compatibility and a controlled write window. `STAGING_READY=false`
+remains unchanged. Existing #195 cleanup permissions are unrelated and consumed.
+
+Immediately before/after migration compare original catalog, inventory and
+ledger counts/checksums; both new food tables should be empty after schema-only
+installation. Inspect actual composite FKs, unique indexes, deferred triggers and
+immutable-history triggers. Execute negative checks only in the disposable clone.
+
+Rollback is code rollback / endpoint disablement. Do not automatically drop,
+truncate, disable triggers, reset the Drizzle journal, replay migrations blindly,
+or delete lots/events. If any food history exists, retain it and require a
+separate data-preserving recovery migration and verified backup. A green test or
+internal writer does not authorize food sales, actual migration or release.

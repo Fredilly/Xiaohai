@@ -299,4 +299,19 @@ export const pictureBookReferenceAcceptedSchema = z
     status: z.literal('QUEUED'),
   })
   .strict();
+export const pictureBookImportedReferenceAcceptedSchema = z
+  .object({
+    pictureBookId: z.uuid(),
+    characterId: z.uuid(),
+    referenceRevisionId: z.uuid(),
+    revisionNumber: z.number().int().positive(),
+    status: z.literal('READY'),
+  })
+  .strict();
+export const importPictureBookReferenceRequestSchema = z
+  .object({
+    imageBase64: z.string().min(1).max(4_200_000),
+  })
+  .strict();
+
 export const selectPictureBookReferenceSchema = z.object({ revisionId: z.uuid() }).strict();

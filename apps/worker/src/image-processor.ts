@@ -1,4 +1,5 @@
-import { and, asc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, notInArray, or, sql } from 'drizzle-orm';
+import { assertImageReferenceLifetime, IMAGE_PROVIDER_MIN_TIMEOUT_MS } from '@xiaohai/config';
 import {
   characterProfiles,
   characterReferenceImages,
@@ -11,6 +12,12 @@ import {
 } from '@xiaohai/db';
 import type { ImageProvider } from './image-provider.js';
 import { ImageProviderError } from './image-provider.js';
+import {
+  I111_PAID_RUN,
+  consumeI111ProviderSlot,
+  noteI111ProviderOutcome,
+} from './i111-paid-attempt-gate.js';
+import type { PrivateBosReferenceResolver } from './private-bos-reference.js';
 
 type Db = ReturnType<typeof createDatabase>['db'];
 type ImageLogger = { error: (fields: Record<string, unknown>, message: string) => void };
@@ -33,7 +40,14 @@ export class ImageJobProcessor {
     private readonly provider: ImageProvider,
     private readonly timeoutMs: number,
     private readonly logger?: ImageLogger,
-  ) {}
+    private readonly resolveReferenceUrl: PrivateBosReferenceResolver = () => null,
+    private readonly i111AllowedIllustrationId?: string,
+  ) {
+    if (this.provider.name === 'BAILIAN') assertImageReferenceLifetime(this.timeoutMs);
+    if (this.i111AllowedIllustrationId && process.env.APP_ENV !== 'dev') {
+      throw new Error('I111_PAID_ATTEMPT_STOP');
+    }
+  }
 
   async processOne(): Promise<string | null> {
     const claimed = await this.db.transaction(async (tx) => {
@@ -44,12 +58,21 @@ export class ImageJobProcessor {
           and(
             eq(workPageIllustrations.status, 'QUEUED'),
             eq(workPageIllustrations.provider, this.provider.name),
+            ...(this.i111AllowedIllustrationId
+              ? [eq(workPageIllustrations.id, this.i111AllowedIllustrationId)]
+              : [
+                  notInArray(workPageIllustrations.pageId, [
+                    I111_PAID_RUN.page1Id,
+                    I111_PAID_RUN.page2Id,
+                  ]),
+                ]),
           ),
         )
         .orderBy(asc(workPageIllustrations.createdAt))
         .limit(1)
         .for('update', { skipLocked: true });
       if (!illustration) {
+        if (this.i111AllowedIllustrationId) return null;
         const [reference] = await tx
           .select({ reference: characterReferenceImages, character: characterProfiles })
           .from(characterReferenceImages)
@@ -102,7 +125,7 @@ export class ImageJobProcessor {
     const illustrationRow = isReference ? null : (row as IllustrationInputRow);
 
     const generationStartedAt = Date.now();
-    const effectiveTimeoutMs = Math.max(this.timeoutMs, 600_000);
+    const effectiveTimeoutMs = Math.max(this.timeoutMs, IMAGE_PROVIDER_MIN_TIMEOUT_MS);
     let providerInvoked = false;
     try {
       if (this.provider.name === 'BAILIAN') {
@@ -110,6 +133,7 @@ export class ImageJobProcessor {
           .select({
             status: aiCostReservations.status,
             uncertainty: aiCostReservations.uncertainty,
+            budgetKey: aiCostReservations.budgetKey,
           })
           .from(aiCostReservations)
           .where(
@@ -130,6 +154,28 @@ export class ImageJobProcessor {
             validationCode: 'AI_BUDGET_RESERVATION_REQUIRED',
           });
         }
+        if (
+          (reservation.budgetKey === I111_PAID_RUN.budgetKey) !==
+          (this.i111AllowedIllustrationId === row.id)
+        ) {
+          throw new ImageProviderError('IMAGE_PROVIDER_UNAVAILABLE', {
+            stage: 'BUDGET_VALIDATION',
+            validationCode: 'I111_PAID_ATTEMPT_STOP',
+          });
+        }
+      }
+      // An ordinary Worker must never process either #111 frozen page even
+      // if an operator accidentally configures a different budget key.
+      if (
+        illustrationRow &&
+        (illustrationRow.pageId === I111_PAID_RUN.page1Id ||
+          illustrationRow.pageId === I111_PAID_RUN.page2Id) &&
+        !this.i111AllowedIllustrationId
+      ) {
+        throw new ImageProviderError('IMAGE_PROVIDER_UNAVAILABLE', {
+          stage: 'BUDGET_VALIDATION',
+          validationCode: 'I111_PAID_ATTEMPT_STOP',
+        });
       }
       // MOCK uses consistency metadata only. Never pass its local display URL
       // to an image provider as an I2I input. BAILIAN keeps strict HTTPS checks.
@@ -137,6 +183,15 @@ export class ImageJobProcessor {
         illustrationRow && this.provider.name === 'BAILIAN'
           ? await this.referenceUrls(illustrationRow.consistency)
           : [];
+      if (this.provider.name === 'BAILIAN' && this.i111AllowedIllustrationId) {
+        if (isReference || row.id !== this.i111AllowedIllustrationId) {
+          throw new ImageProviderError('IMAGE_PROVIDER_UNAVAILABLE', {
+            stage: 'BUDGET_VALIDATION',
+            validationCode: 'I111_PAID_ATTEMPT_STOP',
+          });
+        }
+        await consumeI111ProviderSlot(this.db, row.id);
+      }
       providerInvoked = true;
       const result = await this.provider.generate({
         generationKey: row.id,
@@ -280,6 +335,10 @@ export class ImageJobProcessor {
     providerRequestId?: string,
     failureCode?: string,
   ) {
+    if (this.i111AllowedIllustrationId === resourceId && this.provider.name === 'BAILIAN') {
+      await noteI111ProviderOutcome(this.db, resourceId, providerRequestId, failureCode);
+      return;
+    }
     await this.db.transaction(async (tx) => {
       const [reservation] = await tx
         .select()
@@ -293,6 +352,7 @@ export class ImageJobProcessor {
         .for('update');
       if (
         !reservation ||
+        reservation.budgetKey === I111_PAID_RUN.budgetKey ||
         reservation.status !== 'RESERVED' ||
         reservation.uncertainty === 'AT_RISK'
       )
@@ -379,28 +439,37 @@ export class ImageJobProcessor {
       .select({
         id: mediaAssets.id,
         provider: mediaAssets.provider,
-        url: mediaAssets.playbackUrl,
+        objectKey: mediaAssets.objectKey,
+        playbackUrl: mediaAssets.playbackUrl,
         status: mediaAssets.status,
       })
       .from(mediaAssets)
       .where(inArray(mediaAssets.id, ids));
-    const realReferenceRows = rows.filter((row) => row.provider === 'BAIDU_BOS');
-    if (
-      rows.length !== ids.length ||
-      rows.some(
-        (row) =>
-          row.status !== 'READY' ||
-          (row.provider !== 'MOCK_IMAGE' &&
-            (row.provider !== 'BAIDU_BOS' || !row.url || !row.url.startsWith('https://'))),
-      )
-    )
+    const hasInvalidReference = rows.some((row) => {
+      if (row.status !== 'READY') return true;
+      return row.provider !== 'MOCK_IMAGE' && row.provider !== 'BAIDU_BOS';
+    });
+    if (rows.length !== ids.length || new Set(ids).size !== ids.length || hasInvalidReference) {
       throw new ImageProviderError('IMAGE_PROVIDER_UNAVAILABLE', {
         stage: 'VALIDATION',
         validationCode: 'INVALID_REFERENCE_ASSET',
       });
-    return ids
-      .map((id) => realReferenceRows.find((row) => row.id === id)?.url)
-      .filter((url): url is string => Boolean(url));
+    }
+
+    // Only private BOS objects signed for the worker's exact bucket are
+    // allowed as remote I2I inputs. Never fall back to the unsigned URL.
+    return ids.flatMap((id) => {
+      const asset = rows.find((item) => item.id === id)!;
+      if (asset.provider === 'MOCK_IMAGE') return [];
+      const signed = this.resolveReferenceUrl(asset);
+      if (!signed) {
+        throw new ImageProviderError('IMAGE_PROVIDER_UNAVAILABLE', {
+          stage: 'VALIDATION',
+          validationCode: 'INVALID_REFERENCE_ASSET',
+        });
+      }
+      return [signed];
+    });
   }
 }
 

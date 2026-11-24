@@ -5,7 +5,7 @@ import { foodBatches, foodBatchTransactions } from './food-batch-schema.js';
 import { inventoryTransactions } from './inventory-schema.js';
 
 const migration = readFileSync(
-  new URL('../migrations/0041_food_batch_ledger_foundation.sql', import.meta.url),
+  new URL('../migrations/0042_food_batch_ledger_foundation.sql', import.meta.url),
   'utf8',
 );
 
@@ -30,6 +30,9 @@ describe('food batch additive migration structure (#208)', () => {
     const table = getTableConfig(foodBatchTransactions);
     expect(table.name).toBe('food_batch_transactions');
     expect(table.foreignKeys.length).toBe(3);
+    expect(table.indexes.map((entry) => entry.config.name)).toContain(
+      'food_batch_transactions_aggregate_batch_unique',
+    );
     expect(table.indexes.length).toBe(3);
     const aggregate = getTableConfig(inventoryTransactions);
     expect(aggregate.indexes.map((entry) => entry.config.name)).toContain(
@@ -45,6 +48,12 @@ describe('food batch additive migration structure (#208)', () => {
     expect(migration).toContain('BEFORE UPDATE OR DELETE');
     expect(migration).toContain('FOOD_BATCH_LEDGER_APPEND_ONLY');
     expect(migration).toContain('food_batch_transactions_idempotency_unique');
+    expect(migration).toContain('food_batch_transactions_aggregate_batch_unique');
+    expect(migration).not.toContain('food_batch_transactions_aggregate_unique');
+    expect(migration).toContain('DEFERRABLE INITIALLY DEFERRED');
+    expect(migration).toContain('FOOD_BATCH_GROUP_DELTA_MISMATCH');
+    expect(migration).toContain('food_aggregate_group_total');
+    expect(migration).toContain('food_aggregate_append_only');
     expect(migration).toContain('food_batches_inventory_fk');
     expect(migration).toContain('food_batch_transactions_aggregate_scope_fk');
     expect(migration).toContain('inventory_transactions_store_sku_id_unique');
