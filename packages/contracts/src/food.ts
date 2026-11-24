@@ -49,3 +49,35 @@ export const packagedFoodDraftMetadataSchema = z
 
 export type PackagedFoodBatch = z.infer<typeof packagedFoodBatchSchema>;
 export type PackagedFoodDraftMetadata = z.infer<typeof packagedFoodDraftMetadataSchema>;
+
+/** Proposed batch input is not persisted or approved for public checkout. */
+export const packagedFoodPreviewRequestSchema = z
+  .object({
+    businessDate: z.iso.date(),
+    batches: z.array(packagedFoodBatchSchema).max(500),
+  })
+  .strict();
+
+export const packagedFoodPreviewResponseSchema = z.object({
+  mode: z.literal('READ_ONLY_PROPOSAL'),
+  checkoutEnabled: z.literal(false),
+  storeId: z.uuid(),
+  skuId: z.uuid(),
+  businessDate: z.iso.date(),
+  result: z.object({
+    status: z.enum(['READY', 'MISSING_BATCHES', 'MISMATCH', 'DISABLED']),
+    sellable: stockQuantity,
+    expiredOnHand: stockQuantity,
+    blockedOnHand: stockQuantity,
+    batches: z.array(
+      z.object({
+        id: z.uuid(),
+        expiresOn: z.iso.date(),
+        disposition: z.enum(['AVAILABLE', 'EXPIRED', 'HELD', 'RECALLED']),
+        sellable: stockQuantity,
+      }),
+    ),
+  }),
+});
+
+export type PackagedFoodPreviewRequest = z.infer<typeof packagedFoodPreviewRequestSchema>;
