@@ -1,11 +1,12 @@
 import { FoodTraceabilityPanel } from './food-traceability-panel';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import {
-  foodStockReadResponseSchema,
+  type foodStockReadResponseSchema,
   foodLotIntakeRequestSchema,
   foodLotDispositionRequestSchema,
   foodBatchMovementRequestSchema,
 } from '@xiaohai/contracts/food';
+import { parseScopedFoodStock } from './food-response-scope';
 type Snapshot = ReturnType<typeof foodStockReadResponseSchema.parse>;
 type Props = {
   token: string;
@@ -40,19 +41,25 @@ function FoodStockSession({ token, storeId, permissions, items }: Props) {
     if (!response.ok) throw new Error(`HTTP_${response.status}`);
     return (await response.json()) as unknown;
   }
-  async function load() {
+  async function load(): Promise<boolean> {
     const version = ++requestVersion.current;
     setSnapshot(null);
-    if (!skuId) return;
+    if (!skuId) return false;
     try {
-      const data = foodStockReadResponseSchema.parse(
+      const data = parseScopedFoodStock(
         await request(`?${new URLSearchParams({ storeId, skuId })}`),
+        storeId,
+        skuId,
       );
-      if (version === requestVersion.current) setSnapshot(data);
+      if (version === requestVersion.current) {
+        setSnapshot(data);
+        return true;
+      }
     } catch {
       if (version === requestVersion.current)
         setStatus('批次读取失败，请重新读取；不能据此进行库存操作。');
     }
+    return false;
   }
   useEffect(() => {
     void load();
@@ -62,9 +69,10 @@ function FoodStockSession({ token, storeId, permissions, items }: Props) {
   }, [skuId]); // session is remounted on token/store changes
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const formElement = event.currentTarget;
     if (inFlight.current || !snapshot || snapshot.storeId !== storeId || snapshot.skuId !== skuId)
       return;
-    const data = new FormData(event.currentTarget);
+    const data = new FormData(formElement);
     const operation = text(data, 'operation');
     const reason = text(data, 'reason');
     const sourceRef = text(data, 'sourceRef');
@@ -126,8 +134,14 @@ function FoodStockSession({ token, storeId, permissions, items }: Props) {
     try {
       await request(suffix, parsed.data);
       retry.current = null;
-      setStatus('操作已提交，库存与批次已刷新。');
-      await load();
+      formElement.reset();
+      setStatus('写入已成功响应，正在重新读取批次。');
+      const refreshed = await load();
+      setStatus(
+        refreshed
+          ? '操作已提交，库存与批次已刷新。'
+          : '写入已成功响应，但批次刷新未确认；请先重新读取库存，勿重复提交原操作。',
+      );
     } catch {
       setStatus(
         '未确认成功，请保留原输入，先重新读取核对；相同版本和输入保留同一请求编号。写入默认关闭，须在获准环境启用。',

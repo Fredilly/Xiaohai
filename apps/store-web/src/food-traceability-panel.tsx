@@ -1,9 +1,9 @@
 import { useRef, useState, type FormEvent } from 'react';
 import {
-  foodOrderAllocationsResponseSchema,
+  type foodOrderAllocationsResponseSchema,
   foodPhysicalReturnRequestSchema,
-  foodTraceResponseSchema,
 } from '@xiaohai/contracts/food';
+import { parseScopedFoodOrder, parseScopedFoodTrace } from './food-response-scope';
 type Props = { token: string; storeId: string; permissions: string[] };
 const env = import.meta.env as { VITE_API_BASE_URL?: string };
 export function FoodTraceabilityPanel(props: Props) {
@@ -51,10 +51,11 @@ function Session({ token, storeId, permissions }: Props) {
     const id = text(new FormData(event.currentTarget), 'orderId');
     setOrder(null);
     await run(async () => {
-      const next = foodOrderAllocationsResponseSchema.parse(
+      const next = parseScopedFoodOrder(
         await request(`/order/${encodeURIComponent(id)}`),
+        storeId,
+        id,
       );
-      if (next.storeId !== storeId) throw new Error('STORE_MISMATCH');
       setOrder(next);
       setStatus('原订单批次已读取。只接收实际收到的实物，不能用退款记录代替。');
     });
@@ -85,10 +86,11 @@ function Session({ token, storeId, permissions }: Props) {
     }
     await run(async () => {
       await request('/physical-returns', parsed.data);
-      const next = foodOrderAllocationsResponseSchema.parse(
+      const next = parseScopedFoodOrder(
         await request(`/order/${order.orderId}`),
+        storeId,
+        order.orderId,
       );
-      if (next.storeId !== storeId) throw new Error('STORE_MISMATCH');
       setOrder(next);
       setStatus('实物已按原批次接收为新的冻结批次；没有自动退款或恢复可售。');
     });
@@ -98,10 +100,11 @@ function Session({ token, storeId, permissions }: Props) {
     if (inFlight.current) return;
     const id = text(new FormData(event.currentTarget), 'batchId');
     await run(async () => {
-      const result = foodTraceResponseSchema.parse(
+      const result = parseScopedFoodTrace(
         await request(`/trace/${encodeURIComponent(id)}`),
+        storeId,
+        id,
       );
-      if (result.storeId !== storeId) throw new Error('STORE_MISMATCH');
       setStatus(
         `批号 ${result.lotCode}；调拨来源 ${result.transfers.map((r) => r.sourceBatchId).join('、') || '无'}；退货来源 ${result.returns.map((r) => r.reservationId).join('、') || '无'}。这里只显示来源标识，不公开其他门店库存。`,
       );

@@ -23,6 +23,14 @@ API 单元 **233**、Store Web **59**、HQ Web **86**、Miniapp **167**、Config
 
 `FOOD_STOCK_WRITES_ENABLED=false`、`FOOD_CHECKOUT_ENABLED=false` 保持默认。不能因测试成功自动改环境。500 批次工作集、32 层来源上限及超过即停止的行为须在目标数据预检。
 
+## 本轮门店交互安全补充（2026-11-24）
+
+门店食品页面新增服务端读取结果的 **门店 + SKU、门店 + 订单、门店 + 批次** 双重身份校验；即使响应 JSON 结构合法，错店或错对象也不会被展示。食品写入有明确成功响应时自动清空已提交的表单；后续批次刷新失败会提示“写入已成功响应、读取未确认”，避免原输入被当作一笔待重试的新操作。网络中断而无法确认 POST 成功时仍保留原请求键。
+
+门店端单测 **62 PASS**（新增 3 项响应身份负例），门店端 typecheck、lint、build 通过。之前 API/其他端与 PostgreSQL 数字是前轮证据，不代表本轮重新运行了所有真实数据库用例。
+
+本执行环境已实际尝试 `pnpm test:inventory-web` 两次：默认缺少 Playwright 自带 Chromium；改用 `/usr/bin/chromium` 后，Chromium 在进程启动阶段因本地 socket `Operation not permitted (1)` 直接退出。9 项均未执行到页面断言，故 **9 NOT TESTED（环境门禁）**，不能记为业务 FAIL 或 PASS。不得通过权限绕过、共享服务或放宽测试的 `/api/**` 默认阻断来制造绿色结果；需在允许本地浏览器进程的隔离环境按下列统一清单复测。
+
 ## 本机统一执行
 
 1. 核对最新分支 SHA/干净状态、专属合成测试环境及非生产 Provider；**禁止复用 #111 Gate B、原 Mac 数据库、真实商品库或共享资源**。
