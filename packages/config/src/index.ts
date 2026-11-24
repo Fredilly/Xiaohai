@@ -1,5 +1,19 @@
 import { appEnvironmentSchema, logLevelSchema } from '@xiaohai/validation';
 import { z } from 'zod';
+import {
+  assertBeijingImageWorkspaceEndpoint,
+  assertImageReferenceLifetime,
+  isQwenImageThreeModel,
+} from './image-runtime-safety.js';
+
+export {
+  assertBeijingImageWorkspaceEndpoint,
+  assertImageReferenceLifetime,
+  IMAGE_PROVIDER_MIN_TIMEOUT_MS,
+  IMAGE_REFERENCE_EXPIRY_MARGIN_MS,
+  PRIVATE_BOS_IMAGE_REFERENCE_TTL_SECONDS,
+  isQwenImageThreeModel,
+} from './image-runtime-safety.js';
 
 const baseSchema = z.object({
   APP_ENV: appEnvironmentSchema.default('dev'),
@@ -77,6 +91,8 @@ const serviceSchema = baseSchema.extend({
   PICTURE_BOOK_IMAGE_PROVIDER: z.enum(['MOCK', 'BAILIAN']).default('MOCK'),
   PICTURE_BOOK_IMAGE_MODEL: z.string().trim().min(1).max(128).default('mock-image-v1'),
   PICTURE_BOOK_IMAGE_TIMEOUT_MS: z.coerce.number().int().min(1000).max(900000).default(600000),
+  DASHSCOPE_WORKSPACE_ID: optionalNonEmptyString,
+  PICTURE_BOOK_IMAGE_BASE_URL: optionalHttpsUrl,
   PICTURE_BOOK_IMAGE_BUDGET_ENABLED: z
     .string()
     .default('false')
@@ -89,7 +105,19 @@ const serviceSchema = baseSchema.extend({
 });
 const databaseSchema = baseSchema.extend({ DATABASE_URL: z.url().startsWith('postgresql://') });
 
-export const loadServiceConfig = (env: NodeJS.ProcessEnv) => serviceSchema.parse(env);
+export const loadServiceConfig = (env: NodeJS.ProcessEnv) => {
+  const config = serviceSchema.parse(env);
+  if (config.PICTURE_BOOK_IMAGE_ENABLED && config.PICTURE_BOOK_IMAGE_PROVIDER === 'BAILIAN') {
+    assertImageReferenceLifetime(config.PICTURE_BOOK_IMAGE_TIMEOUT_MS);
+    if (isQwenImageThreeModel(config.PICTURE_BOOK_IMAGE_MODEL)) {
+      assertBeijingImageWorkspaceEndpoint(
+        config.DASHSCOPE_WORKSPACE_ID,
+        config.PICTURE_BOOK_IMAGE_BASE_URL,
+      );
+    }
+  }
+  return config;
+};
 const workerSchema = baseSchema.extend({
   DATABASE_URL: z.url().startsWith('postgresql://'),
   REDIS_URL: z.url().startsWith('redis://'),
@@ -152,14 +180,12 @@ export const loadWorkerConfig = (env: NodeJS.ProcessEnv) => {
     throw new Error('Qwen API key is required');
   if (config.PICTURE_BOOK_IMAGE_ENABLED && config.PICTURE_BOOK_IMAGE_PROVIDER === 'BAILIAN') {
     if (!config.DASHSCOPE_API_KEY) throw new Error('Bailian API key is required for image jobs');
-    if (config.PICTURE_BOOK_IMAGE_MODEL.startsWith('qwen-image-3.0')) {
-      if (
-        !config.PICTURE_BOOK_IMAGE_BASE_URL ||
-        !new URL(config.PICTURE_BOOK_IMAGE_BASE_URL).pathname.endsWith('/compatible-mode/v1')
-      )
-        throw new Error(
-          'Qwen Image 3.0 requires PICTURE_BOOK_IMAGE_BASE_URL with a region-matched workspace endpoint ending in /compatible-mode/v1',
-        );
+    assertImageReferenceLifetime(config.PICTURE_BOOK_IMAGE_TIMEOUT_MS);
+    if (isQwenImageThreeModel(config.PICTURE_BOOK_IMAGE_MODEL)) {
+      assertBeijingImageWorkspaceEndpoint(
+        config.DASHSCOPE_WORKSPACE_ID,
+        config.PICTURE_BOOK_IMAGE_BASE_URL,
+      );
     } else if (!config.PICTURE_BOOK_IMAGE_BASE_URL && !config.DASHSCOPE_BASE_URL) {
       throw new Error('Bailian image base URL is required');
     }

@@ -593,6 +593,147 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
     ).toContain('绿色围巾');
   });
 
+  it('imports an owned real-reference PNG idempotently without paid jobs, and enforces locks', async () => {
+    const uploaded: string[] = [];
+    const png =
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==';
+    const pictureBook = new PictureBookService(
+      db,
+      queue,
+      imageQueue,
+      config,
+      undefined,
+      (asset) => asset.playbackUrl,
+      {
+        upload(input) {
+          uploaded.push(input.objectKey);
+          return Promise.resolve({
+            objectKey: input.objectKey,
+            playbackUrl: `https://test-reference-bucket.cd.bcebos.com/${input.objectKey}`,
+            byteSize: input.body.byteLength,
+          });
+        },
+      },
+    );
+    const alice = await createUser();
+    const bob = await createUser();
+    const { book } = await createBook(pictureBook, alice);
+    const character = (await pictureBook.getPictureBook(alice, book.id)).characters[0]!;
+    const endpoint = `/api/v1/ai/picture-books/${book.id}/characters/${character.characterId}/reference-images/import`;
+    const app = await createApp(pictureBook);
+    try {
+      const denied = await app.inject({
+        method: 'POST',
+        url: endpoint,
+        headers: { authorization: `Bearer ${token(bob)}` },
+        payload: { imageBase64: png },
+      });
+      expect(denied.statusCode).toBe(404);
+      expect(uploaded).toHaveLength(0);
+
+      const malformed = await app.inject({
+        method: 'POST',
+        url: endpoint,
+        headers: { authorization: `Bearer ${token(alice)}` },
+        payload: { imageBase64: Buffer.from('not a png').toString('base64') },
+      });
+      expect(malformed.statusCode).toBe(400);
+      expect(uploaded).toHaveLength(0);
+
+      const authorized = {
+        method: 'POST' as const,
+        url: endpoint,
+        headers: { authorization: `Bearer ${token(alice)}` },
+        payload: { imageBase64: png },
+      };
+      const [first, second] = await Promise.all([app.inject(authorized), app.inject(authorized)]);
+      expect(first.statusCode).toBe(201);
+      expect(second.statusCode).toBe(201);
+      expect(first.json<{ referenceRevisionId: string }>().referenceRevisionId).toBe(
+        second.json<{ referenceRevisionId: string }>().referenceRevisionId,
+      );
+
+      const revisions = await db
+        .select()
+        .from(characterReferenceImages)
+        .where(eq(characterReferenceImages.characterProfileId, character.characterId));
+      expect(revisions).toHaveLength(1);
+      expect(revisions[0]).toMatchObject({
+        status: 'READY',
+        provider: 'IMPORTED',
+        model: 'OWNER_SUPPLIED_PNG',
+        revisionNumber: 1,
+      });
+      expect(revisions[0]!.mediaAssetId).toBeTruthy();
+      expect(notifications).toHaveLength(0);
+
+      const selected = await app.inject({
+        method: 'POST',
+        url: `/api/v1/ai/picture-books/${book.id}/characters/${character.characterId}/reference-images/${revisions[0]!.id}/select`,
+        headers: { authorization: `Bearer ${token(alice)}` },
+        payload: { revisionId: revisions[0]!.id },
+      });
+      expect(selected.statusCode).toBe(200);
+
+      // Existing confirm path still requires a valid reference for ALL characters.
+      const allCharacters = (await pictureBook.getPictureBook(alice, book.id)).characters;
+      for (const other of allCharacters.filter(
+        (item) => item.characterId !== character.characterId,
+      )) {
+        const imported = await pictureBook.importCharacterReference(
+          alice,
+          book.id,
+          other.characterId,
+          png,
+        );
+        await pictureBook.selectCharacterReference(
+          alice,
+          book.id,
+          other.characterId,
+          imported.referenceRevisionId,
+        );
+      }
+      await pictureBook.confirmCharacters(alice, book.id);
+      const locked = await app.inject(authorized);
+      expect(locked.statusCode).toBe(409);
+      expect((await db.select().from(characterReferenceImages)).length).toBe(allCharacters.length);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('does not create READY records when the isolated object upload fails', async () => {
+    const pictureBook = new PictureBookService(
+      db,
+      queue,
+      imageQueue,
+      config,
+      undefined,
+      () => null,
+      {
+        upload() {
+          return Promise.reject(new Error('synthetic storage outage'));
+        },
+      },
+    );
+    const alice = await createUser();
+    const { book } = await createBook(pictureBook, alice);
+    const character = (await pictureBook.getPictureBook(alice, book.id)).characters[0]!;
+    await expect(
+      pictureBook.importCharacterReference(
+        alice,
+        book.id,
+        character.characterId,
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==',
+      ),
+    ).rejects.toThrow('synthetic storage outage');
+    const revisions = await db
+      .select()
+      .from(characterReferenceImages)
+      .where(eq(characterReferenceImages.characterProfileId, character.characterId));
+    expect(revisions).toHaveLength(0);
+  });
+
   it('deduplicates active reference jobs', async () => {
     const pictureBook = service();
     const alice = await createUser();
@@ -930,6 +1071,83 @@ suite('M10 Picture Book PostgreSQL integration and ownership', () => {
     } finally {
       await app.close();
     }
+  });
+
+  it('applies storyboard when a page also names a one-off character outside the locked Character Bible', async () => {
+    const pictureBook = service();
+    const alice = await createUser();
+    const { book } = await createBook(pictureBook, alice);
+
+    const locked = await applyCharacters(pictureBook, alice, book.id);
+    const fox = locked.detail.characters.find((character) => character.name === '小狐狸')!;
+
+    const storyboard = await pictureBook.generate(alice, book.id, { operation: 'STORYBOARD' });
+    await succeed(
+      storyboard.jobId,
+      JSON.stringify({
+        cover: {
+          characterKeys: ['小狐狸', '小鸟'],
+          sceneDescription: '森林封面',
+          illustrationPrompt: 'fox and bird',
+        },
+        pages: [
+          {
+            characterKeys: ['小狐狸', '路过的鹿'],
+            storyText: '小狐狸遇见一只路过的鹿。',
+            sceneDescription: '森林小路',
+            illustrationPrompt: 'fox beside a passing deer',
+          },
+        ],
+      }),
+    );
+
+    const detail = await pictureBook.applyJob(alice, book.id, storyboard.jobId);
+    expect(detail.pictureBook.status).toBe('PLANNED');
+
+    const [page] = await db
+      .select({ characterIds: workPages.characterIds })
+      .from(workPages)
+      .where(eq(workPages.pictureBookId, book.id))
+      .orderBy(workPages.pageNumber)
+      .offset(1)
+      .limit(1);
+
+    expect(page?.characterIds).toEqual([fox.characterId]);
+  });
+
+  it('still rejects storyboard pages whose character keys contain no locked Character Bible character', async () => {
+    const pictureBook = service();
+    const alice = await createUser();
+    const { book } = await createBook(pictureBook, alice);
+
+    await applyCharacters(pictureBook, alice, book.id);
+    const storyboard = await pictureBook.generate(alice, book.id, { operation: 'STORYBOARD' });
+    await succeed(
+      storyboard.jobId,
+      JSON.stringify({
+        cover: {
+          characterKeys: ['小狐狸'],
+          sceneDescription: '森林封面',
+          illustrationPrompt: 'fox',
+        },
+        pages: [
+          {
+            characterKeys: ['路过的鹿'],
+            storyText: '只有一只路过的鹿。',
+            sceneDescription: '森林小路',
+            illustrationPrompt: 'a passing deer',
+          },
+        ],
+      }),
+    );
+
+    await expect(pictureBook.applyJob(alice, book.id, storyboard.jobId)).rejects.toMatchObject({
+      code: 'INVALID_JOB_OUTPUT',
+    });
+
+    expect(
+      await db.select().from(workPages).where(eq(workPages.pictureBookId, book.id)),
+    ).toHaveLength(0);
   });
 
   it('rejects invalid structured AI output without persisting partial storyboard data', async () => {

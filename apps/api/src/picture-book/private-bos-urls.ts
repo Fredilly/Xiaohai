@@ -69,12 +69,10 @@ export function createPrivateBosPlaybackResolver(
     return disabled;
   }
 
-  const signer: Presigner =
-    signerOverride ??
-    new baiduSdk.BosClient({
-      endpoint,
-      credentials: { ak, sk },
-    });
+  // BOS SDK 1.0.7 defaults to signing /v1/<key>. Sign the canonical /<key>
+  // path instead; never rewrite an already signed URL or relax path checks.
+  const signerConfig = { endpoint, credentials: { ak, sk }, removeVersionPrefix: true };
+  const signer: Presigner = signerOverride ?? new baiduSdk.BosClient(signerConfig);
 
   return (asset) => {
     if (asset.provider !== 'BAIDU_BOS' || !asset.playbackUrl) return null;
@@ -92,11 +90,17 @@ export function createPrivateBosPlaybackResolver(
     try {
       // Only sign media whose canonical address belongs to THIS private bucket.
       const recorded = new URL(asset.playbackUrl);
+      // Only #111 imported reference keys may retain the historical extra slash.
+      // Never normalize arbitrary stored paths or sign the untrusted recorded URL.
+      const legacyI111ReferencePath =
+        /^picture-books\/character-references\/i111\/[0-9a-f-]+\/[0-9a-f-]+\/[0-9a-f-]+\/[0-9a-f]{64}\.png$/.test(
+          key,
+        ) && recorded.pathname === `/${path}`;
       if (
         recorded.protocol !== 'https:' ||
         recorded.hostname !== originHost ||
         recorded.port ||
-        recorded.pathname !== path ||
+        (recorded.pathname !== path && !legacyI111ReferencePath) ||
         recorded.search ||
         recorded.hash ||
         recorded.username ||
