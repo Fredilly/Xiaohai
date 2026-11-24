@@ -23,6 +23,7 @@ function fixture(permissionKeys: string[] = [], global = true) {
   );
   const app = buildApp({ loggerInstance: logger });
   const paymentId = randomUUID();
+  const storeId = randomUUID();
   const payments = {
     create: vi.fn().mockResolvedValue({
       paymentId,
@@ -35,6 +36,11 @@ function fixture(permissionKeys: string[] = [], global = true) {
       },
     }),
     list: vi.fn().mockResolvedValue([]),
+    listStorePayments: vi.fn().mockResolvedValue([]),
+    requestStoreRefund: vi
+      .fn()
+      .mockResolvedValue({ id: randomUUID(), paymentId, status: 'PROCESSING', amountMinor: 100 }),
+    reconcileStorePayment: vi.fn().mockResolvedValue({ runId: randomUUID(), outcome: 'MATCHED' }),
     callback: vi.fn().mockResolvedValue({ reviewRequired: false }),
     requestRefund: vi
       .fn()
@@ -49,7 +55,7 @@ function fixture(permissionKeys: string[] = [], global = true) {
           loginIdentifier: 'test',
           sessionVersion: 0,
           permissions: permissionKeys,
-          dataScopes: [{ type: global ? 'GLOBAL' : 'STORE', id: global ? null : randomUUID() }],
+          dataScopes: [{ type: global ? 'GLOBAL' : 'STORE', id: global ? null : storeId }],
         }),
     },
     staffSessions,
@@ -59,7 +65,7 @@ function fixture(permissionKeys: string[] = [], global = true) {
     consumerSessions,
     staffAuthorization: authorization,
   });
-  return { app, payments, logs };
+  return { app, payments, logs, storeId, paymentId };
 }
 describe('payment routes security', () => {
   it('rejects unauthenticated and Staff tokens on Consumer creation', async () => {
@@ -150,5 +156,46 @@ describe('payment routes security', () => {
     expect(invalid.statusCode).toBe(401);
     expect(logs.join('')).not.toContain('sensitive-callback');
     await app.close();
+  });
+  it('offers an explicit scoped refund path without relaxing the original GLOBAL endpoint', async () => {
+    const f = fixture(['payments.refund'], false);
+    const token = staffSessions.issue(randomUUID()).token;
+    try {
+      const response = await f.app.inject({
+        method: 'POST',
+        url: `/api/v1/staff/stores/${f.storeId}/refunds`,
+        headers: { authorization: `Bearer ${token}` },
+        payload: { paymentId: f.paymentId },
+      });
+      expect(response.statusCode).toBe(200);
+      expect(f.payments.requestStoreRefund).toHaveBeenCalledWith(
+        expect.objectContaining({ dataScopes: [{ type: 'STORE', id: f.storeId }] }),
+        f.storeId,
+        f.paymentId,
+        expect.any(String),
+      );
+      expect(f.payments.requestRefund).not.toHaveBeenCalled();
+    } finally {
+      await f.app.close();
+    }
+  });
+  it('scoped endpoints reject missing permissions and client amount injection before service calls', async () => {
+    for (const permission of [false, true]) {
+      const f = fixture(permission ? ['payments.refund'] : [], false);
+      try {
+        const response = await f.app.inject({
+          method: 'POST',
+          url: `/api/v1/staff/stores/${f.storeId}/refunds`,
+          headers: { authorization: `Bearer ${staffSessions.issue(randomUUID()).token}` },
+          payload: permission
+            ? { paymentId: f.paymentId, amountMinor: 1 }
+            : { paymentId: f.paymentId },
+        });
+        expect(response.statusCode).toBe(permission ? 400 : 403);
+        expect(f.payments.requestStoreRefund).not.toHaveBeenCalled();
+      } finally {
+        await f.app.close();
+      }
+    }
   });
 });

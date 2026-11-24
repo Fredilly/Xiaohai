@@ -6,7 +6,7 @@ import { PaymentService } from '../src/payments/payment-service.js';
 import type { WeChatPayProvider } from '../src/payments/wechat-pay.js';
 import { randomUUID } from 'node:crypto';
 import { and, eq, inArray, sql } from 'drizzle-orm';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
   consumerUsers,
   foodBatches,
@@ -740,5 +740,87 @@ suite('formal food order transactions, synthetic PostgreSQL only', () => {
       code: 'NOT_FOUND',
     });
     expect((await f.balances()).inventory.reserved).toBe(4);
+  });
+  it('store payment/refund scope is bound to the order before any Provider call; GLOBAL API remains separate', async () => {
+    const a = await order();
+    const b = await order();
+    await db!
+      .update(orders)
+      .set({ status: 'PAID' })
+      .where(inArray(orders.id, [a.orderId, b.orderId]));
+    const rows = await db!
+      .insert(payments)
+      .values(
+        [a, b].map((f) => ({
+          orderId: f.orderId,
+          merchantId: 'synthetic',
+          appId: 'synthetic',
+          outTradeNo: randomUUID(),
+          amountMinor: 400,
+          status: 'SUCCEEDED',
+          providerTransactionId: randomUUID(),
+        })),
+      )
+      .returning();
+    const paymentA = rows.find((r) => r.orderId === a.orderId)!,
+      paymentB = rows.find((r) => r.orderId === b.orderId)!;
+    const stableRefundId = randomUUID();
+    const refund = vi.fn<WeChatPayProvider['refund']>().mockImplementation((input) =>
+      Promise.resolve({
+        out_trade_no: paymentA.outTradeNo,
+        transaction_id: paymentA.providerTransactionId!,
+        out_refund_no: input.outRefundNo,
+        refund_id: stableRefundId,
+        status: 'SUCCESS',
+        amount: { total: 400, refund: 400, currency: 'CNY' },
+      }),
+    );
+    const configured = vi.fn();
+    const query = vi.fn<WeChatPayProvider['query']>();
+    const provider = {
+      appId: 'synthetic',
+      merchantId: 'synthetic',
+      assertConfigured: configured,
+      refund,
+      query,
+    } as unknown as WeChatPayProvider;
+    const service = new PaymentService(db!, provider);
+    const actor = {
+      ...a.context,
+      permissions: ['payments.read', 'payments.refund', 'payments.reconcile'],
+    };
+    expect((await service.listStorePayments(actor, a.store.id)).map((r) => r.id)).toEqual([
+      paymentA.id,
+    ]);
+    await expect(service.listStorePayments(actor, b.store.id)).rejects.toMatchObject({
+      code: 'FORBIDDEN',
+    });
+    await expect(
+      service.requestStoreRefund(actor, a.store.id, paymentB.id, 'synthetic'),
+    ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    await expect(
+      service.requestStoreRefund(actor, b.store.id, paymentB.id, 'synthetic'),
+    ).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    await expect(
+      service.reconcileStorePayment(actor, a.store.id, paymentB.id, 'synthetic'),
+    ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    await expect(
+      service.requestStoreRefund(
+        { ...actor, permissions: ['payments.read'] },
+        a.store.id,
+        paymentA.id,
+        'synthetic',
+      ),
+    ).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    expect(configured).not.toHaveBeenCalled();
+    expect(refund).not.toHaveBeenCalled();
+    expect(query).not.toHaveBeenCalled();
+    await Promise.all(
+      [1, 2].map(() => service.requestStoreRefund(actor, a.store.id, paymentA.id, 'synthetic')),
+    );
+    expect(refund.mock.calls.length).toBeGreaterThanOrEqual(1);
+    expect(new Set(refund.mock.calls.map(([input]) => input.outRefundNo)).size).toBe(1);
+    expect((await a.balances()).inventory).toMatchObject({ onHand: 5, reserved: 0 });
+    expect((await b.balances()).inventory.reserved).toBe(4);
   });
 });

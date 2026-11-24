@@ -1,4 +1,4 @@
-import Fastify from 'fastify';
+import { buildApp } from '../src/app.js';
 import pino from 'pino';
 import { describe, it, expect, vi } from 'vitest';
 import { registerInventoryOperationsRoutes } from '../src/inventory/inventory-operations-routes.js';
@@ -7,7 +7,7 @@ import type { StaffAuthorizationService } from '../src/auth/staff-authorization.
 describe('inventory transfer error boundary', () => {
   it('never serializes raw SQL/DSN/evidence errors to logs or response', async () => {
     const logs: string[] = [];
-    const app = Fastify({
+    const app = buildApp({
       loggerInstance: pino(
         { level: 'error' },
         {

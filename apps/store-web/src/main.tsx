@@ -1,3 +1,4 @@
+import { StorePaymentsPanel } from './store-payments-panel';
 import { StrictMode, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { createRoot } from 'react-dom/client';
 import type { StaffMeResponse } from '@xiaohai/contracts';
@@ -230,6 +231,16 @@ function Shell({
         ) : current === 'orders' ? (
           currentStore ? (
             <FulfillmentPanel token={token} storeId={currentStore.id} />
+          ) : (
+            <StoreRequired />
+          )
+        ) : current === 'payments' ? (
+          currentStore ? (
+            <StorePaymentsPanel
+              token={token}
+              storeId={currentStore.id}
+              permissions={me.permissions}
+            />
           ) : (
             <StoreRequired />
           )

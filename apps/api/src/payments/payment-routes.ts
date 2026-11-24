@@ -27,6 +27,63 @@ export function registerPaymentRoutes(
     options.staffAuthorization.requireDataScope(context, 'GLOBAL', null);
     return context.staffAccountId;
   };
+
+  // Store-scoped counterparts never weaken the existing GLOBAL financial routes.
+  const storeStaff = async (request: FastifyRequest, permission: string) => {
+    const actor = await options.staffAuthorization.authenticate(request.headers.authorization);
+    options.staffAuthorization.requirePermission(actor, permission);
+    return actor;
+  };
+  app.get('/api/v1/staff/stores/:storeId/payments', async (request, reply) => {
+    try {
+      const actor = await storeStaff(request, 'payments.read');
+      const params = z.object({ storeId: z.uuid() }).strict().safeParse(request.params);
+      if (!params.success) throw new PaymentError('INVALID_REQUEST', 400);
+      return {
+        payments: z
+          .array(paymentStatusSchema)
+          .parse(await options.payments.listStorePayments(actor, params.data.storeId)),
+      };
+    } catch (error) {
+      return failure(request, reply, error);
+    }
+  });
+  app.post('/api/v1/staff/stores/:storeId/refunds', async (request, reply) => {
+    try {
+      const actor = await storeStaff(request, 'payments.refund');
+      const params = z.object({ storeId: z.uuid() }).strict().safeParse(request.params);
+      const body = refundRequestSchema.safeParse(request.body);
+      if (!params.success || !body.success) throw new PaymentError('INVALID_REQUEST', 400);
+      return refundResponseSchema.parse(
+        await options.payments.requestStoreRefund(
+          actor,
+          params.data.storeId,
+          body.data.paymentId,
+          request.id,
+        ),
+      );
+    } catch (error) {
+      return failure(request, reply, error);
+    }
+  });
+  app.post('/api/v1/staff/stores/:storeId/payments/:id/reconcile', async (request, reply) => {
+    try {
+      const actor = await storeStaff(request, 'payments.reconcile');
+      const params = z
+        .object({ storeId: z.uuid(), id: z.uuid() })
+        .strict()
+        .safeParse(request.params);
+      if (!params.success) throw new PaymentError('INVALID_REQUEST', 400);
+      return await options.payments.reconcileStorePayment(
+        actor,
+        params.data.storeId,
+        params.data.id,
+        request.id,
+      );
+    } catch (error) {
+      return failure(request, reply, error);
+    }
+  });
   app.post('/api/v1/payments/wechat', async (request, reply) => {
     try {
       const token = request.headers.authorization?.match(/^Bearer ([^\s]+)$/i)?.[1];

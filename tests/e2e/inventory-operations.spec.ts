@@ -61,6 +61,11 @@ async function upload(page: Page) {
   });
 }
 
+// An omitted mock must never fall through Vite's /api proxy to a local real API.
+test.beforeEach(async ({ page }) => {
+  await page.route('**/api/**', (route) => route.abort('blockedbyclient'));
+});
+
 test('a late inventory search never overwrites the newer result', async ({ page }) => {
   const first = deferred();
   const arrived = deferred();

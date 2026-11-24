@@ -1,6 +1,11 @@
+import type { StaffAuthorizationContext } from '../auth/staff-authorization.js';
+import {
+  InventoryOperationsService,
+  InventoryOperationsError,
+} from '../inventory/inventory-operations-service.js';
 import { FoodReservationService, isFoodSku } from '../inventory/food-reservation-service.js';
 import { createHash, randomUUID } from 'node:crypto';
-import { and, asc, desc, eq, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, isNull, or, sql } from 'drizzle-orm';
 import {
   auditLogs,
   deliveries,
@@ -104,6 +109,71 @@ export class PaymentService {
     );
   }
 
+  async listStorePayments(actor: StaffAuthorizationContext, storeId: string) {
+    if (!actor.permissions.includes('payments.read')) throw new PaymentError('FORBIDDEN', 403);
+    await this.assertStoreScope(this.db, actor, storeId);
+    const rows = await this.db
+      .select({ payment: payments })
+      .from(payments)
+      .innerJoin(orders, eq(payments.orderId, orders.id))
+      .leftJoin(pickupCodes, eq(pickupCodes.orderId, orders.id))
+      .leftJoin(deliveries, eq(deliveries.orderId, orders.id))
+      .where(storePaymentCondition(storeId))
+      .orderBy(desc(payments.createdAt))
+      .limit(100);
+    return rows.map((row) => paymentView(row.payment));
+  }
+  private async assertStoreScope(
+    query: Db | Tx,
+    actor: StaffAuthorizationContext,
+    storeId: string,
+  ) {
+    try {
+      await new InventoryOperationsService(this.db).requireStoreAccess(actor, storeId, query);
+    } catch (error) {
+      if (error instanceof InventoryOperationsError)
+        throw new PaymentError(error.code, error.code === 'FORBIDDEN' ? 403 : 404);
+      throw error;
+    }
+  }
+  private async assertStorePayment(
+    query: Db | Tx,
+    scope: { actor: StaffAuthorizationContext; storeId: string },
+    paymentId: string,
+    permission: string,
+  ) {
+    if (!scope.actor.permissions.includes(permission)) throw new PaymentError('FORBIDDEN', 403);
+    await this.assertStoreScope(query, scope.actor, scope.storeId);
+    const [row] = await query
+      .select({ id: payments.id })
+      .from(payments)
+      .innerJoin(orders, eq(payments.orderId, orders.id))
+      .leftJoin(pickupCodes, eq(pickupCodes.orderId, orders.id))
+      .leftJoin(deliveries, eq(deliveries.orderId, orders.id))
+      .where(and(eq(payments.id, paymentId), storePaymentCondition(scope.storeId)))
+      .limit(1);
+    if (!row) throw new PaymentError('NOT_FOUND', 404);
+  }
+  async requestStoreRefund(
+    actor: StaffAuthorizationContext,
+    storeId: string,
+    paymentId: string,
+    requestId: string,
+  ) {
+    const scope = { actor, storeId };
+    await this.assertStorePayment(this.db, scope, paymentId, 'payments.refund');
+    return this.requestRefund(paymentId, actor.staffAccountId, requestId, scope);
+  }
+  async reconcileStorePayment(
+    actor: StaffAuthorizationContext,
+    storeId: string,
+    paymentId: string,
+    requestId: string,
+  ) {
+    const scope = { actor, storeId };
+    await this.assertStorePayment(this.db, scope, paymentId, 'payments.reconcile');
+    return this.reconcile(paymentId, actor.staffAccountId, requestId, scope);
+  }
   async callback(raw: string, headers: Record<string, string | string[] | undefined>) {
     this.provider.assertConfigured();
     const event = this.provider.notification(raw, headers);
@@ -131,11 +201,17 @@ export class PaymentService {
     });
   }
 
-  async requestRefund(paymentId: string, staffId: string, requestId: string = randomUUID()) {
+  async requestRefund(
+    paymentId: string,
+    staffId: string,
+    requestId: string = randomUUID(),
+    scope?: { actor: StaffAuthorizationContext; storeId: string },
+  ) {
     this.provider.assertConfigured();
     const payment = await this.byId(paymentId);
     const refund = await this.db.transaction(async (tx) => {
       const { payment: locked, order } = await this.lock(tx, payment);
+      if (scope) await this.assertStorePayment(tx, scope, paymentId, 'payments.refund');
       const [existing] = await tx.select().from(refunds).where(eq(refunds.paymentId, paymentId));
       if (existing) return existing;
       if (
@@ -183,7 +259,13 @@ export class PaymentService {
     return refundView(updated!);
   }
 
-  async reconcile(paymentId: string, staffId: string, requestId: string = randomUUID()) {
+  async reconcile(
+    paymentId: string,
+    staffId: string,
+    requestId: string = randomUUID(),
+    scope?: { actor: StaffAuthorizationContext; storeId: string },
+  ) {
+    if (scope) await this.assertStorePayment(this.db, scope, paymentId, 'payments.reconcile');
     this.provider.assertConfigured();
     const payment = await this.byId(paymentId);
     const [run] = await this.db.transaction(async (tx) => {
@@ -206,6 +288,7 @@ export class PaymentService {
       const transaction = await this.provider.query(payment.outTradeNo);
       await this.db.transaction(async (tx) => {
         const locked = await this.lock(tx, payment);
+        if (scope) await this.assertStorePayment(tx, scope, paymentId, 'payments.reconcile');
         await this.applyTransaction(tx, locked.payment, locked.order, transaction);
       });
       const [refund] = await this.db.select().from(refunds).where(eq(refunds.paymentId, paymentId));
@@ -213,6 +296,7 @@ export class PaymentService {
         const result = await this.provider.queryRefund(refund.outRefundNo);
         await this.db.transaction(async (tx) => {
           const locked = await this.lock(tx, payment);
+          if (scope) await this.assertStorePayment(tx, scope, paymentId, 'payments.reconcile');
           await this.applyRefund(tx, locked.payment, locked.order, result);
         });
       }
@@ -527,3 +611,10 @@ const paymentView = (p: Payment) => ({
   amountMinor: p.amountMinor,
   reviewRequired: p.reviewRequired,
 });
+
+function storePaymentCondition(storeId: string) {
+  return or(
+    and(eq(pickupCodes.storeId, storeId), isNull(deliveries.id)),
+    and(eq(deliveries.storeId, storeId), isNull(pickupCodes.id)),
+  );
+}

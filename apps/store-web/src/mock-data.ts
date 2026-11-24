@@ -7,6 +7,7 @@ export type StoreModule = {
     | 'inventory'
     | 'rental'
     | 'orders'
+    | 'payments'
     | 'operations'
     | 'manager'
     | 'meiping';
@@ -64,6 +65,13 @@ export const storeModules: StoreModule[] = [
     description: '当前门店订单履约、自提核验、配送与区域费用',
     status: 'M16 已接入',
     requiredPermission: 'fulfillment.read',
+  },
+  {
+    key: 'payments',
+    label: '本店支付 / 退款',
+    description: '按本店订单与明确权限查询、对账和整单退款，实物退货另记',
+    status: '经营同权 · 门店范围',
+    requiredPermission: 'payments.read',
   },
   {
     key: 'operations',
