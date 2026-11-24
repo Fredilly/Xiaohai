@@ -65,6 +65,20 @@ Store Web 的库存模块提供真实余额、出库和调整的最小入口。�
 
 The Store Web inventory module provides a minimal real balance, issue, and adjustment entry point. Full procurement, stocktake, and transfer management UI remains for M19; the APIs are available to controlled operations tools in this milestone.
 
+### 2026-11-24：门店首次库存建档 / Opening stock registration
+
+原先库存页只能操作已有 `store_inventory` 的 SKU，导致总部新建商品草稿后，门店无法录入首次实盘。本次补齐以下受控路径：
+
+1. HQ 有权限账号先在总部后台创建商品及 SKU，保持商品 `DRAFT`。
+2. Store Web 选择已授权门店，进入「库存操作 → 首次库存建档」，按 SKU 编码或商品名检索尚未关联本店的商品。
+3. 具有 `inventory.read` 的账号可检索；提交必须具有 `inventory.adjust`，并通过服务端真实 `STORE/REGION/FRANCHISEE/GLOBAL` Data Scope 校验。
+4. 首次实盘非零数量在单个 PostgreSQL 事务中插入 `store_inventory` 和带 `STORE_OPENING_COUNT` 标记的 `ADJUSTMENT_IN` 不可变库存流水；零数量仅创建零库存记录。已存在的门店 SKU 不会被覆写；重复非零请求可按 UUID 幂等键安全重放。
+5. 之后从「查询已有库存」查到 SKU，数量修改走原有调整/盘点流程。首次登记**不**自动发布商品、启用销售或代替美萍正式迁移。
+
+API：`GET /api/v1/staff/inventory/opening-candidates?storeId=...&q=...`、`POST /api/v1/staff/inventory/opening-stock`；原库存 GET 额外支持 `q` 搜索 SKU 编码和名称。
+
+本次新增契约、Store Web、API 与隔离 PostgreSQL 集成测试；在无 `DATABASE_URL` 的环境里，集成用例无法完成实际数据库验证。正式建档还取决于可访问部署、Staff 账号、真实门店、迁移/对账及实际设备 UAT，不能把本地测试通过表述为已上线可用。
+
 ## 验证 / Verification
 
 运行 `npm exec --yes pnpm@11.19.0 -- check`、`npm exec --yes pnpm@11.19.0 -- --filter @xiaohai/db db:check`、`db:generate`、fresh database migration 和 `apps/api/test/inventory-operations.integration.test.ts`。集成测试覆盖认证、权限、Data Scope、并发超扣、版本过期、重复入库/调拨以及事务回滚。

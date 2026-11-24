@@ -65,6 +65,21 @@ The historical Issue #70 / PR #75 record reported HTTP 200 and source-file hash 
 
 For the current release gate, GitHub CI, static file inventory, and deterministic tests are separate from WeChat DevTools screenshots and real-device evidence. Owner DevTools screenshots demonstrate a manually injected Home HERO with v2 JPEG rendering consistently at 16:02 and 16:03, plus a 200 image response. This is a **partial** image rendering PASS, not full CMS integration or shop/product/failure-state acceptance. Device checks remain outstanding.
 
+**Later 2026-11-13 local DevTools checkpoint (#70):** an isolated disposable
+PostgreSQL/Redis/API served four explicitly labeled `[TEST ONLY]` catalog rows.
+The Shop list and four Product details passed 8/8 manual checks for matching BOS
+covers, title/price preservation and deliberate missing-cover placeholders.
+This supersedes the older Shop/Product retest status below **only for synthetic
+local fixtures**. Real CMS/catalog provenance, iOS/Android and weak-network
+rendering remain unverified. Do not promote these fixture results to production
+or real-data acceptance.
+
+Subsequent offline regressions also guard Shop and inventory-search responses
+against out-of-order network completion, keep old image-error events from
+clearing a newer Product cover, and cancel pending nearby-location results
+when the user explicitly disables nearby mode. These are deterministic code
+checks, not WeChat device evidence.
+
 ## Home HERO v2 source and runtime evidence
 
 The previous `home/hero/parent-child-reading-v1.jpg` is preserved for diagnosis but **must not be used**: the Git-tracked bundled source and downloaded BOS copy matched SHA-256, yet both failed macOS Preview and `sips` dimension decoding. WeChat DevTools `wx.getImageInfo` returned `getImageInfo:fail invalid` despite an HTTP 200 image response. A successful network request alone is not a visual acceptance.
@@ -117,13 +132,16 @@ Do not mark an unexecuted row as PASS.
 | Target | Network | Flow | Expected | Current status |
 | --- | --- | --- | --- | --- |
 | WeChat DevTools | Normal | Home editorial HERO | Stable v2 image in manually injected HERO and HTTP 200; real CMS override still unverified | PARTIAL PASS (manual injection screenshots) |
-| WeChat DevTools | Normal | Shop → known book | Temporary Shop-card tests showed old v1 defects; dinosaur v2 visually PASS, other current v2 covers still pending | PARTIAL PASS (temporary Shop cards) |
-| WeChat DevTools | Normal | Product detail | Correct BOS cover loads in fixed cover area | PENDING SCREENSHOT |
-| DevTools | Forced image failure | Home / shop / product | Product Detail 404 fallback passed; Shop 404 exposed dropped title/price and awaits retest of full-list fix; Home forced failure pending | PARTIAL / SHOP RETEST REQUIRED |
-| iPhone | Normal / weak | Home → shop → product | BOS images load or fail safely without broken navigation | BLOCKED BY #76 |
-| Android | Normal / weak | Home → shop → product | BOS images load or fail safely without broken navigation | BLOCKED BY #76 |
+| WeChat DevTools | Normal | Shop → known book | Four `[TEST ONLY]` catalog cards passed local Shop checks on 2026-11-13; actual CMS/catalog rows unverified | PARTIAL PASS (synthetic local) |
+| WeChat DevTools | Normal | Product detail | Four `[TEST ONLY]` product details showed the expected cover/fallback and book fields | PARTIAL PASS (synthetic local) |
+| DevTools | Forced image failure | Home / shop / product | Shop and Product local 404 placeholders passed without losing prices/titles; full CMS Home failure path still unverified | PARTIAL PASS (synthetic local) |
+| iPhone | Normal / weak | Home → shop → product | BOS images load or fail safely without broken navigation | BLOCKED / NO PHYSICAL DEVICE PROOF |
+| Android | Normal / weak | Home → shop → product | BOS images load or fail safely without broken navigation | BLOCKED / NO PHYSICAL DEVICE PROOF |
 
-Issue #76 owns the separate real-device API reachability problem where the Mini Program development environment still depends on `127.0.0.1`. Do not solve that problem in #70 by committing a developer LAN IP or changing API/server/payment/database behavior.
+Issue #76 supplied a candidate staging HTTPS API mapping, but an authorized
+test AppID, the actual WeChat request/download-domain allowlists and physical
+device reachability still require verification. Do not work around this with
+a developer LAN IP or change API/server/payment/database behavior in #70.
 
 ## Rollback
 

@@ -324,6 +324,7 @@ export const stockTransferViewSchema = stockTransferSchema.extend({
 export const inventoryListQuerySchema = z
   .object({
     storeId: z.uuid().optional(),
+    q: shortText.optional(),
     lowStockThreshold: z.coerce.number().int().nonnegative().max(10_000).optional(),
     limit: z.coerce.number().int().positive().max(500).optional(),
   })
@@ -340,6 +341,35 @@ export const inventoryBalanceSchema = z.object({
   version: z.number().int().nonnegative(),
 });
 export const inventoryListResponseSchema = z.object({ items: z.array(inventoryBalanceSchema) });
+export const openingStockCandidatesQuerySchema = z
+  .object({ storeId: z.uuid(), q: shortText })
+  .strict();
+export const openingStockCandidateSchema = z.object({
+  skuId: z.uuid(),
+  skuCode: z.string(),
+  skuName: z.string(),
+  productName: z.string(),
+  productStatus: z.enum(['DRAFT', 'ACTIVE']),
+  skuStatus: z.enum(['ACTIVE', 'INACTIVE']),
+});
+export const openingStockCandidatesResponseSchema = z.object({
+  items: z.array(openingStockCandidateSchema),
+});
+export const openingStockRegistrationRequestSchema = z
+  .object({
+    storeId: z.uuid(),
+    skuId: z.uuid(),
+    initialQuantity: z.number().int().nonnegative().max(1_000_000),
+    reason: shortText,
+    idempotencyKey: z.uuid(),
+  })
+  .strict();
+export const openingStockRegistrationResponseSchema = z.object({
+  storeId: z.uuid(),
+  skuId: z.uuid(),
+  onHand: z.number().int().nonnegative(),
+  version: z.number().int().nonnegative(),
+});
 export const inventoryTransactionSchema = z.object({
   id: z.uuid(),
   storeId: z.uuid(),
@@ -368,6 +398,8 @@ export type CreateStocktakeRequest = z.infer<typeof createStocktakeRequestSchema
 export type StocktakeCountRequest = z.infer<typeof stocktakeCountRequestSchema>;
 export type CreateStockTransferRequest = z.infer<typeof createStockTransferRequestSchema>;
 export type InventoryListQuery = z.infer<typeof inventoryListQuerySchema>;
+export type OpeningStockCandidatesQuery = z.infer<typeof openingStockCandidatesQuerySchema>;
+export type OpeningStockRegistrationRequest = z.infer<typeof openingStockRegistrationRequestSchema>;
 export type Supplier = z.infer<typeof supplierSchema>;
 export type PurchaseOrder = z.infer<typeof purchaseOrderViewSchema>;
 export type GoodsReceipt = z.infer<typeof goodsReceiptViewSchema>;

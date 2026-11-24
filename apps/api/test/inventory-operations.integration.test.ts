@@ -261,6 +261,174 @@ suite('M14 inventory operations PostgreSQL integration', () => {
   }
   const auth = (token: string) => ({ authorization: `Bearer ${token}` });
 
+  it('lets authorized stores register initial physical stock exactly once with an immutable entry', async () => {
+    const d = await seed();
+    const app = makeApp();
+    const operator = await staff([inventoryPermissions.read, inventoryPermissions.adjust], {
+      type: 'STORE',
+      id: d.storeB.id,
+    });
+    const lookupUrl = `/api/v1/staff/inventory/opening-candidates?${new URLSearchParams({ storeId: d.storeB.id, q: d.skuB.code })}`;
+    const candidates = await app.inject({
+      method: 'GET',
+      url: lookupUrl,
+      headers: auth(operator.token),
+    });
+    expect(candidates.statusCode).toBe(200);
+    expect(
+      candidates.json<{ items: Array<{ skuId: string }> }>().items.map((row) => row.skuId),
+    ).toEqual([d.skuB.id]);
+
+    const payload = {
+      storeId: d.storeB.id,
+      skuId: d.skuB.id,
+      initialQuantity: 7,
+      reason: '门店首次实盘',
+      idempotencyKey: crypto.randomUUID(),
+    };
+    const first = await app.inject({
+      method: 'POST',
+      url: '/api/v1/staff/inventory/opening-stock',
+      headers: auth(operator.token),
+      payload,
+    });
+    expect(first.statusCode).toBe(201);
+    expect(first.json()).toMatchObject({
+      storeId: d.storeB.id,
+      skuId: d.skuB.id,
+      onHand: 7,
+      version: 1,
+    });
+    const replay = await app.inject({
+      method: 'POST',
+      url: '/api/v1/staff/inventory/opening-stock',
+      headers: auth(operator.token),
+      payload,
+    });
+    expect(replay.statusCode).toBe(201);
+    expect(replay.json()).toEqual(first.json());
+    const overwrite = await app.inject({
+      method: 'POST',
+      url: '/api/v1/staff/inventory/opening-stock',
+      headers: auth(operator.token),
+      payload: { ...payload, idempotencyKey: crypto.randomUUID() },
+    });
+    expect(overwrite.statusCode).toBe(409);
+    const crossKey = await app.inject({
+      method: 'POST',
+      url: '/api/v1/staff/inventory/opening-stock',
+      headers: auth(operator.token),
+      payload: { ...payload, initialQuantity: 8 },
+    });
+    expect(crossKey.statusCode).toBe(409);
+    const [balance] = await database!.db
+      .select()
+      .from(storeInventory)
+      .where(and(eq(storeInventory.storeId, d.storeB.id), eq(storeInventory.skuId, d.skuB.id)));
+    expect(balance).toMatchObject({ onHand: 7, version: 1 });
+    const entries = await database!.db.select().from(inventoryTransactions);
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({
+      storeId: d.storeB.id,
+      skuId: d.skuB.id,
+      quantityDelta: 7,
+      transactionType: 'ADJUSTMENT_IN',
+      idempotencyKey: payload.idempotencyKey,
+      metadata: { source: 'STORE_OPENING_COUNT' },
+    });
+    const inventorySearch = await app.inject({
+      method: 'GET',
+      url: `/api/v1/staff/inventory?${new URLSearchParams({ storeId: d.storeB.id, q: d.skuB.code })}`,
+      headers: auth(operator.token),
+    });
+    expect(inventorySearch.statusCode).toBe(200);
+    expect(
+      inventorySearch.json<{ items: Array<{ skuId: string }> }>().items.map((row) => row.skuId),
+    ).toEqual([d.skuB.id]);
+    expect(
+      (await app.inject({ method: 'GET', url: lookupUrl, headers: auth(operator.token) })).json<{
+        items: unknown[];
+      }>().items,
+    ).toHaveLength(0);
+    await app.close();
+  });
+
+  it('keeps opening stock store-scoped, permission-guarded and safe for zero-count drafts', async () => {
+    const d = await seed();
+    const [draft] = await database!.db
+      .insert(products)
+      .values({ name: '待建档草稿', status: 'DRAFT' })
+      .returning();
+    const [draftSku] = await database!.db
+      .insert(skus)
+      .values({
+        productId: draft!.id,
+        code: `DRAFT-${crypto.randomUUID()}`,
+        name: '草稿 SKU',
+        priceMinor: 100,
+      })
+      .returning();
+    const app = makeApp();
+    const operator = await staff([inventoryPermissions.read, inventoryPermissions.adjust], {
+      type: 'STORE',
+      id: d.storeA.id,
+    });
+    const readOnly = await staff([inventoryPermissions.read], { type: 'STORE', id: d.storeA.id });
+    const lookup = (storeId: string) =>
+      `/api/v1/staff/inventory/opening-candidates?${new URLSearchParams({ storeId, q: draftSku!.code })}`;
+    expect(
+      (
+        await app.inject({ method: 'GET', url: lookup(d.storeA.id), headers: auth(operator.token) })
+      ).json<{ items: Array<{ productStatus: string }> }>().items,
+    ).toMatchObject([{ productStatus: 'DRAFT' }]);
+    expect(
+      (await app.inject({ method: 'GET', url: lookup(d.storeB.id), headers: auth(operator.token) }))
+        .statusCode,
+    ).toBe(403);
+    const payload = {
+      storeId: d.storeA.id,
+      skuId: draftSku!.id,
+      initialQuantity: 0,
+      reason: '待实盘的零库存商品',
+      idempotencyKey: crypto.randomUUID(),
+    };
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/v1/staff/inventory/opening-stock',
+          headers: auth(readOnly.token),
+          payload,
+        })
+      ).statusCode,
+    ).toBe(403);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/v1/staff/inventory/opening-stock',
+          headers: auth(operator.token),
+          payload: { ...payload, storeId: d.storeB.id },
+        })
+      ).statusCode,
+    ).toBe(403);
+    const posted = await app.inject({
+      method: 'POST',
+      url: '/api/v1/staff/inventory/opening-stock',
+      headers: auth(operator.token),
+      payload,
+    });
+    expect(posted.statusCode).toBe(201);
+    expect(posted.json()).toMatchObject({ onHand: 0, version: 0 });
+    expect(await database!.db.select().from(inventoryTransactions)).toHaveLength(0);
+    const [stillDraft] = await database!.db
+      .select({ status: products.status })
+      .from(products)
+      .where(eq(products.id, draft!.id));
+    expect(stillDraft?.status).toBe('DRAFT');
+    await app.close();
+  });
+
   it('requires authentication and permission and rejects disabled staff', async () => {
     const data = await seed();
     const app = makeApp();

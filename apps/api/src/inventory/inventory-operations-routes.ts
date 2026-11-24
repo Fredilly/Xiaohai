@@ -8,6 +8,8 @@ import {
   inventoryAdjustmentRequestSchema,
   inventoryListQuerySchema,
   inventoryMutationRequestSchema,
+  openingStockCandidatesQuerySchema,
+  openingStockRegistrationRequestSchema,
   purchaseOrderActionSchema,
   stocktakeActionSchema,
   stocktakeCountRequestSchema,
@@ -46,6 +48,34 @@ export function registerInventoryOperationsRoutes(
         await auth(request, inventoryPermissions.read),
         input.data,
       );
+    } catch (error) {
+      return fail(request, reply, error);
+    }
+  });
+  app.get('/api/v1/staff/inventory/opening-candidates', async (request, reply) => {
+    const input = openingStockCandidatesQuerySchema.safeParse(request.query);
+    if (!input.success) return invalid(reply, request.id);
+    try {
+      return await options.operations.listOpeningStockCandidates(
+        await auth(request, inventoryPermissions.read),
+        input.data,
+      );
+    } catch (error) {
+      return fail(request, reply, error);
+    }
+  });
+  app.post('/api/v1/staff/inventory/opening-stock', async (request, reply) => {
+    const input = openingStockRegistrationRequestSchema.safeParse(request.body);
+    if (!input.success) return invalid(reply, request.id);
+    try {
+      return reply
+        .status(201)
+        .send(
+          await options.operations.registerOpeningStock(
+            await auth(request, inventoryPermissions.adjust),
+            input.data,
+          ),
+        );
     } catch (error) {
       return fail(request, reply, error);
     }
