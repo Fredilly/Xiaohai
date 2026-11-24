@@ -75,7 +75,15 @@ PostgreSQL **16.16**, bound only to `127.0.0.1:45928` with Unix sockets disabled
 owner `i208_test_owner`, database `xiaohai_test`. Its lifecycle and all child
 migration/test processes ran together; the server stopped at the end. This is
 independent of original Mac/#111 resources and contains synthetic fixtures only.
-A successful run applied **all 43 real migrations (0000–0042)** and passed the
+COMMIT/concurrency tests create their own UUID-named database via
+`owned-integration-database.ts` after validating both local URLs. That child is
+migrated with the real repository migrator and dropped only if this process
+successfully created it, after closing its pool, without FORCE or weakening any
+ledger trigger. This requires CREATEDB only in the disposable test cluster. Legacy
+commerce/reservation fixtures with broad cleanup also receive their own child,
+so they cannot delete other suites' inventory or AI ledger references.
+
+A successful focused run applied **all 43 real migrations (0000–0042)** and passed the
 real schema and multi-lot service integration tests. No synthetic schema was
 substituted. Record the latest run's test count and commit separately.
 
@@ -103,3 +111,7 @@ truncate, disable triggers, reset the Drizzle journal, replay migrations blindly
 or delete lots/events. If any food history exists, retain it and require a
 separate data-preserving recovery migration and verified backup. A green test or
 internal writer does not authorize food sales, actual migration or release.
+
+## Latest combined regression evidence
+
+After isolating COMMIT tests and legacy broad-cleanup fixtures, the full API PostgreSQL integration run passed **226 tests, 42 suites**; four explicitly gated tests remained skipped. The focused multi-lot/schema run passed 22 tests. This fixes the cross-suite FK/append-only cleanup failure observed in CI, without disabling any constraint or deleting immutable ledger rows. Exact-head GitHub CI must still be checked after the fix is pushed.

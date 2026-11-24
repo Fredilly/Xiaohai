@@ -15,7 +15,7 @@ import { inventoryTransactions, storeInventory } from './inventory-schema.js';
 import { staffAccounts } from './schema.js';
 
 /**
- * #208 proposed packaged-food persistence. Nothing creates or mutates rows yet.
+ * #208 proposed packaged-food persistence. Only the internal reviewed writer may move existing lots; no HTTP intake is registered.
  * Untyped merchant SKUs must not become eligible for sale from these rows.
  */
 export const foodBatches = pgTable(

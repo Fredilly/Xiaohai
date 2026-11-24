@@ -1,8 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { and, eq, sql } from 'drizzle-orm';
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
-  createDatabase,
   staffAccounts,
   regions,
   stores,
@@ -15,12 +14,13 @@ import {
 } from '@xiaohai/db';
 import type { FoodBatchMovementRequest } from '@xiaohai/contracts/food';
 import { FoodBatchMovementService } from '../src/inventory/food-batch-movement-service.js';
+import { createOwnedIntegrationDatabase } from './owned-integration-database.js';
 import { assertMeipingApplyDisposableDatabase } from './meiping-apply-database-guard.js';
 
-const database = assertMeipingApplyDisposableDatabase(process.env)
-  ? createDatabase(process.env)
-  : null;
-const suite = database ? describe : describe.skip;
+const enabled = assertMeipingApplyDisposableDatabase(process.env);
+const owned = enabled ? createOwnedIntegrationDatabase(process.env) : null;
+const database = owned?.database ?? null;
+const suite = owned ? describe : describe.skip;
 const service = database ? new FoodBatchMovementService(database.db) : null;
 
 async function fixture() {
@@ -117,7 +117,12 @@ async function fixture() {
 }
 
 suite('atomic multi-lot food movements: real migrations, disposable PostgreSQL only', () => {
-  afterAll(async () => database?.pool.end());
+  beforeAll(async () => {
+    await owned!.start();
+  }, 60_000);
+  afterAll(async () => {
+    await owned?.stop();
+  });
 
   it.each(['EXISTING_LOT_RECEIPT', 'DAMAGE', 'STOCKTAKE_LOSS'] as const)(
     'splits one %s movement across two lots',

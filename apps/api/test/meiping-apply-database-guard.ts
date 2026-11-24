@@ -24,7 +24,8 @@ function assertAllowedUrl(value: string): URL {
   if (
     (url.protocol !== 'postgresql:' && url.protocol !== 'postgres:') ||
     !LOCAL_DATABASE_HOSTS.has(url.hostname) ||
-    !DISPOSABLE_DATABASES.has(url.pathname.slice(1)) ||
+    (!DISPOSABLE_DATABASES.has(url.pathname.slice(1)) &&
+      !/^xiaohai_i208_test_[a-f0-9]{32}$/.test(url.pathname.slice(1))) ||
     Boolean(url.search) ||
     Boolean(url.hash)
   ) {

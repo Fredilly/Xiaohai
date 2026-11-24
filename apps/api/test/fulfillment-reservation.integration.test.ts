@@ -1,12 +1,11 @@
 import { and, eq } from 'drizzle-orm';
-import { afterAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
   bookEditions,
   books,
   cartItems,
   carts,
   consumerUsers,
-  createDatabase,
   deliveries,
   deliveryEvents,
   franchisees,
@@ -24,14 +23,18 @@ import {
 import { CommerceService } from '../src/commerce/commerce-service.js';
 import { ManualDeliveryProvider } from '../src/fulfillment/delivery-provider.js';
 import { FulfillmentService } from '../src/fulfillment/fulfillment-service.js';
+import { createOwnedIntegrationDatabase } from './owned-integration-database.js';
 import { assertMeipingApplyDisposableDatabase } from './meiping-apply-database-guard.js';
 
-const database = assertMeipingApplyDisposableDatabase(process.env)
-  ? createDatabase(process.env)
-  : null;
+const enabled = assertMeipingApplyDisposableDatabase(process.env);
+const owned = enabled ? createOwnedIntegrationDatabase(process.env) : null;
+const database = owned?.database ?? null;
 const suite = database ? describe : describe.skip;
 
 suite('M16 fulfillment store inventory reservation integration', () => {
+  beforeAll(async () => {
+    await owned!.start();
+  }, 60_000);
   const commerce = new CommerceService(database!.db);
   const fulfillment = new FulfillmentService(
     database!.db,
@@ -63,8 +66,11 @@ suite('M16 fulfillment store inventory reservation integration', () => {
 
   beforeEach(clean);
   afterAll(async () => {
-    await clean();
-    await database!.pool.end();
+    try {
+      await clean();
+    } finally {
+      await owned?.stop();
+    }
   });
 
   async function seed(onHand: number) {
