@@ -81,3 +81,33 @@ export const packagedFoodPreviewResponseSchema = z.object({
 });
 
 export type PackagedFoodPreviewRequest = z.infer<typeof packagedFoodPreviewRequestSchema>;
+
+/** One explicit movement, split across already registered lots of one Store/SKU. */
+export const foodBatchMovementRequestSchema = z
+  .object({
+    storeId: z.uuid(),
+    skuId: z.uuid(),
+    expectedInventoryVersion: z.number().int().min(0).max(2_147_483_646),
+    kind: z.enum(['EXISTING_LOT_RECEIPT', 'DAMAGE', 'STOCKTAKE_LOSS']),
+    idempotencyKey: z.uuid(),
+    reason: z.string().trim().min(1).max(500),
+    lines: z
+      .array(
+        z
+          .object({
+            batchId: z.uuid(),
+            expectedVersion: z.number().int().min(0).max(2_147_483_646),
+            quantity: z.number().int().min(1).max(1_000_000),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(100),
+  })
+  .strict()
+  .refine(
+    (value) => new Set(value.lines.map((line) => line.batchId)).size === value.lines.length,
+    'DUPLICATE_FOOD_BATCH',
+  );
+
+export type FoodBatchMovementRequest = z.infer<typeof foodBatchMovementRequestSchema>;

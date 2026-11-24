@@ -210,6 +210,8 @@ export const inventoryTransactions = pgTable(
   },
   (t) => [
     uniqueIndex('inventory_transactions_idempotency_unique').on(t.idempotencyKey),
+    // Required PostgreSQL unique target for the food-lot event's scoped aggregate FK.
+    uniqueIndex('inventory_transactions_store_sku_id_unique').on(t.storeId, t.skuId, t.id),
     uniqueIndex('inventory_transactions_reference_unique').on(
       t.referenceType,
       t.referenceId,
