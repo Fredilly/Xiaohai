@@ -353,4 +353,50 @@ suite('atomic multi-lot food movements: real migrations, disposable PostgreSQL o
     ).rejects.toMatchObject({ code: '23514', message: 'FOOD_BATCH_GROUP_IDENTITY_MISMATCH' });
     expect((await f.read()).events).toHaveLength(2);
   });
+  it.each(['HELD', 'RECALLED', 'EXPIRED'] as const)(
+    'disposes %s lots without releasing quarantine, with exactly one aggregate',
+    async (state) => {
+      const f = await fixture();
+      if (state === 'EXPIRED')
+        await f.db
+          .update(foodBatches)
+          .set({ expiresOn: '2000-01-01' })
+          .where(eq(foodBatches.skuId, f.sku.id));
+      else await f.db.update(foodBatches).set({ state }).where(eq(foodBatches.skuId, f.sku.id));
+      const input = { ...f.input, kind: 'DISPOSAL' as const };
+      const results = await Promise.all([1, 2].map(() => service!.apply(f.context, input)));
+      expect(results.filter((r) => !r.replayed)).toHaveLength(1);
+      const data = await f.read();
+      expect(data.aggregates).toHaveLength(1);
+      expect(data.events).toHaveLength(2);
+      expect(data.aggregates[0]).toMatchObject({
+        transactionType: 'ADJUSTMENT_OUT',
+        quantityDelta: -5,
+      });
+      expect(
+        data.batches.every((row) => row.state === (state === 'EXPIRED' ? 'AVAILABLE' : state)),
+      ).toBe(true);
+      expect(data.balances[0]!.onHand).toBe(5);
+    },
+  );
+  it('rejects disposal of unexpired available stock and never consumes reserved units', async () => {
+    const f = await fixture();
+    await expect(service!.apply(f.context, { ...f.input, kind: 'DISPOSAL' })).rejects.toMatchObject(
+      { code: 'FOOD_BATCH_BLOCKED' },
+    );
+    await f.db
+      .update(foodBatches)
+      .set({ state: 'HELD', reserved: 4 })
+      .where(eq(foodBatches.skuId, f.sku.id));
+    await f.db
+      .update(storeInventory)
+      .set({ reserved: 8 })
+      .where(eq(storeInventory.skuId, f.sku.id));
+    await expect(service!.apply(f.context, { ...f.input, kind: 'DISPOSAL' })).rejects.toMatchObject(
+      { code: 'INSUFFICIENT_STOCK' },
+    );
+    const data = await f.read();
+    expect(data.aggregates).toHaveLength(0);
+    expect(data.balances[0]!.onHand).toBe(10);
+  });
 });

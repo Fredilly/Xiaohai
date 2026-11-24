@@ -258,9 +258,10 @@ function FoodStockSession({ token, storeId, permissions, items }: Props) {
               </form>
               <form onSubmit={(e) => void submit(e)}>
                 <fieldset disabled={busy}>
-                  <legend>多批次报损或盘亏</legend>
+                  <legend>多批次报损、盘亏或冻结/过期销毁</legend>
                   <select name="operation" aria-label="库存变动类型">
-                    <option value="DAMAGE">报损</option>
+                    <option value="DAMAGE">可用批次报损</option>
+                    <option value="DISPOSAL">冻结/召回/过期批次销毁</option>
                     <option value="STOCKTAKE_LOSS">盘亏</option>
                   </select>
                   {snapshot.rows.map((r) => (

@@ -32,7 +32,7 @@ export class FoodBatchMovementError extends Error {
   }
 }
 
-/** Internal transactional writer only. No public/Staff route or checkout activation.
+/** Transactional writer behind default-disabled Staff food routes; no checkout activation.
  * Intake must separately establish real packaged-food provenance before creating lots.
  */
 export class FoodBatchMovementService {
@@ -120,9 +120,15 @@ export class FoodBatchMovementService {
         if (!batch) throw new FoodBatchMovementError('NOT_FOUND');
         if (batch.version !== line.expectedVersion)
           throw new FoodBatchMovementError('STALE_VERSION');
-        // Expired/held/recalled disposal needs its own explicitly reviewed movement.
-        if (!batch.foodKind || batch.state !== 'AVAILABLE' || batch.expiresOn < today)
+        if (!batch.foodKind) throw new FoodBatchMovementError('FOOD_BATCH_BLOCKED');
+        if (input.kind === 'DISPOSAL') {
+          // Explicitly discard quarantined/expired stock, without releasing it for sale.
+          // Existing reservations and counted blocked units remain protected below.
+          if (batch.state === 'AVAILABLE' && batch.expiresOn >= today)
+            throw new FoodBatchMovementError('FOOD_BATCH_BLOCKED');
+        } else if (batch.state !== 'AVAILABLE' || batch.expiresOn < today) {
           throw new FoodBatchMovementError('FOOD_BATCH_BLOCKED');
+        }
         const delta = input.kind === 'EXISTING_LOT_RECEIPT' ? line.quantity : -line.quantity;
         const next = batch.onHand + delta;
         if (next < batch.reserved + batch.blocked || next > 1_000_000_000)
@@ -137,7 +143,7 @@ export class FoodBatchMovementService {
       const type =
         input.kind === 'EXISTING_LOT_RECEIPT'
           ? 'PURCHASE_RECEIPT'
-          : input.kind === 'DAMAGE'
+          : input.kind === 'DAMAGE' || input.kind === 'DISPOSAL'
             ? 'ADJUSTMENT_OUT'
             : 'STOCKTAKE_LOSS';
       await tx.insert(inventoryTransactions).values({

@@ -15,7 +15,7 @@ import { inventoryTransactions, storeInventory } from './inventory-schema.js';
 import { staffAccounts } from './schema.js';
 
 /**
- * #208 proposed packaged-food persistence. Nothing creates or mutates rows yet.
+ * #208 packaged-food persistence; guarded intake is default disabled.
  * Untyped merchant SKUs must not become eligible for sale from these rows.
  */
 export const foodBatches = pgTable(
@@ -79,7 +79,7 @@ export const foodBatches = pgTable(
 
 /**
  * Append-only candidate event trail, linked to existing aggregate stock events.
- * No API insert path is enabled. A SQL trigger blocks UPDATE/DELETE.
+ * Guarded API inserts require explicit environment activation. SQL blocks UPDATE/DELETE.
  */
 export const foodBatchTransactions = pgTable(
   'food_batch_transactions',
@@ -130,7 +130,7 @@ export const foodBatchTransactions = pgTable(
     check(
       'food_batch_transactions_type_check',
       sql.raw(
-        "\"food_batch_transactions\".\"transaction_type\" in ('NEW_LOT_RECEIPT','EXISTING_LOT_RECEIPT','DAMAGE','STOCKTAKE_LOSS')",
+        "\"food_batch_transactions\".\"transaction_type\" in ('NEW_LOT_RECEIPT','EXISTING_LOT_RECEIPT','DAMAGE','STOCKTAKE_LOSS','DISPOSAL')",
       ),
     ),
     check(
@@ -142,7 +142,7 @@ export const foodBatchTransactions = pgTable(
     check(
       'food_batch_transactions_direction_check',
       sql.raw(
-        '(("food_batch_transactions"."transaction_type" in (\'NEW_LOT_RECEIPT\',\'EXISTING_LOT_RECEIPT\') and "food_batch_transactions"."quantity_delta" > 0) or ("food_batch_transactions"."transaction_type" in (\'DAMAGE\',\'STOCKTAKE_LOSS\') and "food_batch_transactions"."quantity_delta" < 0))',
+        '(("food_batch_transactions"."transaction_type" in (\'NEW_LOT_RECEIPT\',\'EXISTING_LOT_RECEIPT\') and "food_batch_transactions"."quantity_delta" > 0) or ("food_batch_transactions"."transaction_type" in (\'DAMAGE\',\'STOCKTAKE_LOSS\',\'DISPOSAL\') and "food_batch_transactions"."quantity_delta" < 0))',
       ),
     ),
     check(

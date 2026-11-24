@@ -316,6 +316,13 @@
       "when": 1795502538768,
       "tag": "0044_food_lot_intake_and_classification",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1795506830157,
+      "tag": "0045_food_quarantine_disposal",
+      "breakpoints": true
     }
   ]
 }

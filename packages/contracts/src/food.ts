@@ -88,7 +88,7 @@ export const foodBatchMovementRequestSchema = z
     storeId: z.uuid(),
     skuId: z.uuid(),
     expectedInventoryVersion: z.number().int().min(0).max(2_147_483_646),
-    kind: z.enum(['EXISTING_LOT_RECEIPT', 'DAMAGE', 'STOCKTAKE_LOSS']),
+    kind: z.enum(['EXISTING_LOT_RECEIPT', 'DAMAGE', 'STOCKTAKE_LOSS', 'DISPOSAL']),
     idempotencyKey: z.uuid(),
     reason: z.string().trim().min(1).max(500),
     lines: z

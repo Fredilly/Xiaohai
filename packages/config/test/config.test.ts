@@ -109,3 +109,21 @@ describe('#111 Beijing image workspace and private reference lifetime', () => {
     expect(disabled.PICTURE_BOOK_IMAGE_ENABLED).toBe(false);
   });
 });
+
+describe('#208 default-disabled food stock writes', () => {
+  it('requires the literal true string and never coerces a false string into permission', () => {
+    expect(loadServiceConfig(serviceEnv).FOOD_STOCK_WRITES_ENABLED).toBe(false);
+    expect(
+      loadServiceConfig({ ...serviceEnv, FOOD_STOCK_WRITES_ENABLED: 'false' })
+        .FOOD_STOCK_WRITES_ENABLED,
+    ).toBe(false);
+    expect(
+      loadServiceConfig({ ...serviceEnv, FOOD_STOCK_WRITES_ENABLED: 'true' })
+        .FOOD_STOCK_WRITES_ENABLED,
+    ).toBe(true);
+    for (const value of ['1', 'TRUE', 'yes', ''])
+      expect(() =>
+        loadServiceConfig({ ...serviceEnv, FOOD_STOCK_WRITES_ENABLED: value }),
+      ).toThrow();
+  });
+});
