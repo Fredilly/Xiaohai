@@ -74,6 +74,7 @@ export function registerInventoryOperationsRoutes(
           await options.operations.registerOpeningStock(
             await auth(request, inventoryPermissions.adjust),
             input.data,
+            request.id,
           ),
         );
     } catch (error) {

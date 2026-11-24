@@ -1,6 +1,7 @@
 import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import {
+  auditLogs,
   bookEditions,
   books,
   createDatabase,
@@ -63,6 +64,7 @@ suite('M14 inventory operations PostgreSQL integration', () => {
   };
 
   beforeEach(async () => {
+    await database!.db.delete(auditLogs);
     await database!.db.delete(inventoryTransactions);
     await database!.db.delete(goodsReceiptItems);
     await database!.db.delete(goodsReceipts);
@@ -86,6 +88,7 @@ suite('M14 inventory operations PostgreSQL integration', () => {
     await database!.db.delete(permissions);
   });
   afterAll(async () => {
+    await database!.db.delete(auditLogs);
     await database!.db.delete(inventoryTransactions);
     await database!.db.delete(goodsReceiptItems);
     await database!.db.delete(goodsReceipts);
@@ -336,6 +339,13 @@ suite('M14 inventory operations PostgreSQL integration', () => {
       idempotencyKey: payload.idempotencyKey,
       metadata: { source: 'STORE_OPENING_COUNT' },
     });
+    const audits = await database!.db.select().from(auditLogs);
+    expect(audits).toHaveLength(1);
+    expect(audits[0]).toMatchObject({
+      actorStaffAccountId: operator.id,
+      actionKey: 'inventory.opening_stock.register',
+      metadata: { storeId: d.storeB.id, skuId: d.skuB.id, initialQuantity: 7 },
+    });
     const inventorySearch = await app.inject({
       method: 'GET',
       url: `/api/v1/staff/inventory?${new URLSearchParams({ storeId: d.storeB.id, q: d.skuB.code })}`,
@@ -421,6 +431,9 @@ suite('M14 inventory operations PostgreSQL integration', () => {
     expect(posted.statusCode).toBe(201);
     expect(posted.json()).toMatchObject({ onHand: 0, version: 0 });
     expect(await database!.db.select().from(inventoryTransactions)).toHaveLength(0);
+    expect(await database!.db.select().from(auditLogs)).toMatchObject([
+      { actorStaffAccountId: operator.id, metadata: { initialQuantity: 0 } },
+    ]);
     const [stillDraft] = await database!.db
       .select({ status: products.status })
       .from(products)

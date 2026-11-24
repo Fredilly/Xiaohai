@@ -72,7 +72,7 @@ The Store Web inventory module provides a minimal real balance, issue, and adjus
 1. HQ 有权限账号先在总部后台创建商品及 SKU，保持商品 `DRAFT`。
 2. Store Web 选择已授权门店，进入「库存操作 → 首次库存建档」，按 SKU 编码或商品名检索尚未关联本店的商品。
 3. 具有 `inventory.read` 的账号可检索；提交必须具有 `inventory.adjust`，并通过服务端真实 `STORE/REGION/FRANCHISEE/GLOBAL` Data Scope 校验。
-4. 首次实盘非零数量在单个 PostgreSQL 事务中插入 `store_inventory` 和带 `STORE_OPENING_COUNT` 标记的 `ADJUSTMENT_IN` 不可变库存流水；零数量仅创建零库存记录。已存在的门店 SKU 不会被覆写；重复非零请求可按 UUID 幂等键安全重放。
+4. 首次实盘非零数量在单个 PostgreSQL 事务中插入 `store_inventory` 和带 `STORE_OPENING_COUNT` 标记的 `ADJUSTMENT_IN` 不可变库存流水；零数量建立零库存记录但不产生零增量流水。两种情况均记录操作人和请求 ID 的审计日志。已存在的门店 SKU 不会被覆写；重复非零请求可按 UUID 幂等键安全重放。
 5. 之后从「查询已有库存」查到 SKU，数量修改走原有调整/盘点流程。首次登记**不**自动发布商品、启用销售或代替美萍正式迁移。
 
 API：`GET /api/v1/staff/inventory/opening-candidates?storeId=...&q=...`、`POST /api/v1/staff/inventory/opening-stock`；原库存 GET 额外支持 `q` 搜索 SKU 编码和名称。

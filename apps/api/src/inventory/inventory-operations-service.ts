@@ -12,6 +12,7 @@ import type {
   StocktakeCountRequest,
 } from '@xiaohai/contracts/inventory';
 import {
+  auditLogs,
   goodsReceiptItems,
   goodsReceipts,
   inventoryTransactions,
@@ -183,6 +184,7 @@ export class InventoryOperationsService {
   async registerOpeningStock(
     context: StaffAuthorizationContext,
     input: OpeningStockRegistrationRequest,
+    requestId: string,
   ) {
     await this.requireStoreAccess(context, input.storeId);
     return await this.db.transaction(async (tx) => {
@@ -249,6 +251,20 @@ export class InventoryOperationsService {
           .returning();
         if (!entry) throw new InventoryOperationsError('CONFLICT');
       }
+      await tx.insert(auditLogs).values({
+        actorStaffAccountId: context.staffAccountId,
+        actionKey: 'inventory.opening_stock.register',
+        resourceType: 'store_inventory',
+        resourceId: `${input.storeId}:${input.skuId}`,
+        requestId,
+        metadata: {
+          storeId: input.storeId,
+          skuId: input.skuId,
+          initialQuantity: input.initialQuantity,
+          reason: input.reason,
+          version: created.version,
+        },
+      });
       return {
         storeId: created.storeId,
         skuId: created.skuId,
