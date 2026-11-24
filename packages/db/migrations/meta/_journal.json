@@ -309,6 +309,13 @@
       "when": 1795500899952,
       "tag": "0043_store_sku_independent_prices",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1795502538768,
+      "tag": "0044_food_lot_intake_and_classification",
+      "breakpoints": true
     }
   ]
 }

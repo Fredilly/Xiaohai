@@ -13,6 +13,7 @@ import type {
 } from '@xiaohai/contracts/inventory';
 import {
   auditLogs,
+  foodBatches,
   goodsReceiptItems,
   goodsReceipts,
   inventoryTransactions,
@@ -189,6 +190,7 @@ export class InventoryOperationsService {
     await this.requireStoreAccess(context, input.storeId);
     return await this.db.transaction(async (tx) => {
       if (input.initialQuantity > 0) {
+        await assertNotFoodInventory(tx, input.skuId);
         const [previous] = await tx
           .select()
           .from(inventoryTransactions)
@@ -949,7 +951,16 @@ function numberFor(prefix: string) {
 async function ensureInventory(tx: Transaction, storeId: string, skuId: string) {
   await tx.insert(storeInventory).values({ storeId, skuId }).onConflictDoNothing();
 }
+async function assertNotFoodInventory(tx: Transaction, skuId: string) {
+  const [food] = await tx
+    .select({ id: foodBatches.id })
+    .from(foodBatches)
+    .where(eq(foodBatches.skuId, skuId))
+    .limit(1);
+  if (food) throw new InventoryOperationsError('CONFLICT');
+}
 async function lockInventory(tx: Transaction, storeId: string, skuId: string) {
+  await assertNotFoodInventory(tx, skuId);
   await tx.execute(
     sql`select 1 from store_inventory where store_id=${storeId} and sku_id=${skuId} for update`,
   );

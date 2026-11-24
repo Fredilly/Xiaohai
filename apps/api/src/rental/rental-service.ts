@@ -3,6 +3,7 @@ import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import type { CreateRentalRequest, RentalListQuery } from '@xiaohai/contracts/rental';
 import {
   inventoryReservations,
+  foodBatches,
   inventoryTransactions,
   products,
   pickupCodes,
@@ -601,6 +602,12 @@ function canAccess(
   );
 }
 async function lockInventory(tx: Transaction, storeId: string, skuId: string) {
+  const [food] = await tx
+    .select({ id: foodBatches.id })
+    .from(foodBatches)
+    .where(eq(foodBatches.skuId, skuId))
+    .limit(1);
+  if (food) throw new RentalError('INVALID_STATE');
   await tx.execute(
     sql`select 1 from store_inventory where store_id=${storeId} and sku_id=${skuId} for update`,
   );

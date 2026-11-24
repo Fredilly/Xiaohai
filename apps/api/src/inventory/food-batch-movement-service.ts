@@ -121,7 +121,7 @@ export class FoodBatchMovementService {
         if (batch.version !== line.expectedVersion)
           throw new FoodBatchMovementError('STALE_VERSION');
         // Expired/held/recalled disposal needs its own explicitly reviewed movement.
-        if (batch.state !== 'AVAILABLE' || batch.expiresOn < today)
+        if (!batch.foodKind || batch.state !== 'AVAILABLE' || batch.expiresOn < today)
           throw new FoodBatchMovementError('FOOD_BATCH_BLOCKED');
         const delta = input.kind === 'EXISTING_LOT_RECEIPT' ? line.quantity : -line.quantity;
         const next = batch.onHand + delta;

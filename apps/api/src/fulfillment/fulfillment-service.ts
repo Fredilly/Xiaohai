@@ -9,6 +9,7 @@ import type {
 } from '@xiaohai/contracts/fulfillment';
 import {
   cartItems,
+  foodBatches,
   carts,
   deliveries,
   deliveryEvents,
@@ -643,6 +644,12 @@ async function reserveSaleInventory(
 ) {
   const orderedItems = [...items].sort((a, b) => a.skuId.localeCompare(b.skuId));
   for (const item of orderedItems) {
+    const [food] = await tx
+      .select({ id: foodBatches.id })
+      .from(foodBatches)
+      .where(eq(foodBatches.skuId, item.skuId))
+      .limit(1);
+    if (food) throw new FulfillmentError('INVALID_STATE');
     await tx.execute(
       sql`select 1 from store_inventory where store_id=${storeId} and sku_id=${item.skuId} for update`,
     );
@@ -683,6 +690,12 @@ async function deductSaleInventory(
     .where(eq(orderItems.orderId, orderId))
     .orderBy(asc(orderItems.skuId));
   for (const item of items) {
+    const [food] = await tx
+      .select({ id: foodBatches.id })
+      .from(foodBatches)
+      .where(eq(foodBatches.skuId, item.skuId))
+      .limit(1);
+    if (food) throw new FulfillmentError('INVALID_STATE');
     await tx.execute(
       sql`select 1 from store_inventory where store_id=${storeId} and sku_id=${item.skuId} for update`,
     );

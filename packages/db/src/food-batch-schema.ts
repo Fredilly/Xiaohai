@@ -25,6 +25,7 @@ export const foodBatches = pgTable(
     storeId: uuid('store_id').notNull(),
     skuId: uuid('sku_id').notNull(),
     lotCode: text('lot_code').notNull(),
+    foodKind: text('food_kind').$type<'PACKAGED_FOOD' | 'SEALED_BEVERAGE'>(),
     manufacturedOn: date('manufactured_on', { mode: 'string' }),
     expiresOn: date('expires_on', { mode: 'string' }).notNull(),
     onHand: integer('on_hand').notNull().default(0),
@@ -47,6 +48,11 @@ export const foodBatches = pgTable(
     uniqueIndex('food_batches_store_sku_id_unique').on(t.storeId, t.skuId, t.id),
     uniqueIndex('food_batches_lot_expiry_unique').on(t.storeId, t.skuId, t.lotCode, t.expiresOn),
     index('food_batches_store_sku_expiry_idx').on(t.storeId, t.skuId, t.expiresOn),
+    index('food_batches_sku_idx').on(t.skuId),
+    check(
+      'food_batches_kind_check',
+      sql`${t.foodKind} is null or ${t.foodKind} in ('PACKAGED_FOOD','SEALED_BEVERAGE')`,
+    ),
     check(
       'food_batches_quantities_check',
       sql.raw(
@@ -124,7 +130,7 @@ export const foodBatchTransactions = pgTable(
     check(
       'food_batch_transactions_type_check',
       sql.raw(
-        "\"food_batch_transactions\".\"transaction_type\" in ('EXISTING_LOT_RECEIPT','DAMAGE','STOCKTAKE_LOSS')",
+        "\"food_batch_transactions\".\"transaction_type\" in ('NEW_LOT_RECEIPT','EXISTING_LOT_RECEIPT','DAMAGE','STOCKTAKE_LOSS')",
       ),
     ),
     check(
@@ -136,7 +142,7 @@ export const foodBatchTransactions = pgTable(
     check(
       'food_batch_transactions_direction_check',
       sql.raw(
-        '(("food_batch_transactions"."transaction_type" = \'EXISTING_LOT_RECEIPT\' and "food_batch_transactions"."quantity_delta" > 0) or ("food_batch_transactions"."transaction_type" in (\'DAMAGE\',\'STOCKTAKE_LOSS\') and "food_batch_transactions"."quantity_delta" < 0))',
+        '(("food_batch_transactions"."transaction_type" in (\'NEW_LOT_RECEIPT\',\'EXISTING_LOT_RECEIPT\') and "food_batch_transactions"."quantity_delta" > 0) or ("food_batch_transactions"."transaction_type" in (\'DAMAGE\',\'STOCKTAKE_LOSS\') and "food_batch_transactions"."quantity_delta" < 0))',
       ),
     ),
     check(

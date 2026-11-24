@@ -24,6 +24,9 @@ import {
 } from './commerce/store-catalog-read-routes.js';
 import { CatalogEditService } from './commerce/catalog-edit-service.js';
 import { registerStoreCatalogCreateRoutes } from './commerce/store-catalog-create-routes.js';
+import { registerFoodStockRoutes } from './inventory/food-stock-routes.js';
+import { FoodStockOperationsService } from './inventory/food-stock-operations-service.js';
+import { FoodBatchMovementService } from './inventory/food-batch-movement-service.js';
 import { ProductImageUploadService } from './commerce/product-image-upload-service.js';
 import { registerProductImageUploadRoutes } from './commerce/product-image-upload-routes.js';
 import { createMerchantImageStorage } from './commerce/merchant-image-storage.js';
@@ -184,6 +187,12 @@ registerFoodBatchPreviewRoutes(app, {
   food: new FoodBatchPreviewService(db),
 });
 registerInventoryOperationsRoutes(app, { operations: inventory, staffAuthorization });
+registerFoodStockRoutes(app, {
+  staffAuthorization,
+  food: new FoodStockOperationsService(db),
+  movement: new FoodBatchMovementService(db),
+  writesEnabled: config.FOOD_STOCK_WRITES_ENABLED,
+});
 registerMeipingXlsRoutes(app, { staffAuthorization, stores, inventory, db });
 registerMeipingReviewRoutes(app, {
   review: new MeipingReviewService(db),

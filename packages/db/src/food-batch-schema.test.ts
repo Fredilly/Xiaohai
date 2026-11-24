@@ -15,7 +15,7 @@ describe('food batch additive migration structure (#208)', () => {
     expect(table.name).toBe('food_batches');
     expect(table.columns.find((column) => column.name === 'state')?.default).toBe('HELD');
     expect(table.foreignKeys.length).toBe(2);
-    expect(table.indexes.length).toBe(3);
+    expect(table.indexes.length).toBe(4);
     expect(table.checks.map((constraint) => constraint.name)).toEqual(
       expect.arrayContaining([
         'food_batches_quantities_check',

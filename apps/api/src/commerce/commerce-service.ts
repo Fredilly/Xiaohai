@@ -10,6 +10,7 @@ import type {
 import { isValidIsbn, normalizeIsbn } from '@xiaohai/contracts/commerce';
 import {
   bookEditions,
+  foodBatches,
   books,
   cartItems,
   carts,
@@ -131,7 +132,19 @@ export class CommerceService {
             : undefined,
         ),
       );
-    return { products: groupCatalog(rows) };
+    const catalog = groupCatalog(rows);
+    const blocked = await this.foodCheckoutBlockedSkuIds(
+      catalog.flatMap((product) => product.skus.map((sku) => sku.id)),
+    );
+    return {
+      products: catalog.map((product) => ({
+        ...product,
+        skus: product.skus.map((sku) => ({
+          ...sku,
+          availableForSale: sku.availableForSale && !blocked.has(sku.id),
+        })),
+      })),
+    };
   }
 
   async getProduct(id: string) {
@@ -159,7 +172,15 @@ export class CommerceService {
       media.map((row) => row.url).filter(isPublicProductImageUrl),
       12,
     );
-    return { ...product, mediaUrls };
+    const blocked = await this.foodCheckoutBlockedSkuIds(product.skus.map((sku) => sku.id));
+    return {
+      ...product,
+      mediaUrls,
+      skus: product.skus.map((sku) => ({
+        ...sku,
+        availableForSale: sku.availableForSale && !blocked.has(sku.id),
+      })),
+    };
   }
 
   private async getCartId(consumerUserId: string, query: Db | Tx = this.db) {
@@ -223,6 +244,10 @@ export class CommerceService {
         : await selection
       : [];
     const prices = new Map(scoped.map((row) => [row.skuId, row]));
+    const blocked = await this.foodCheckoutBlockedSkuIds(
+      rows.map((row) => row.sku.id),
+      query,
+    );
     const items = rows.map(({ item, sku, product }) => {
       const local = prices.get(sku.id);
       const effectiveSku = local?.sku ?? sku;
@@ -237,6 +262,7 @@ export class CommerceService {
         quantity: item.quantity,
         lineTotalMinor: price * item.quantity,
         availableForSale:
+          !blocked.has(sku.id) &&
           (!storeId || (local?.price !== null && local?.price !== undefined)) &&
           effectiveProduct.status === 'ACTIVE' &&
           effectiveSku.status === 'ACTIVE' &&
@@ -1258,6 +1284,15 @@ export class CommerceService {
     return updated;
   }
 
+  private async foodCheckoutBlockedSkuIds(ids: string[], query: Db | Tx = this.db) {
+    if (!ids.length) return new Set<string>();
+    const rows = await query
+      .selectDistinct({ skuId: foodBatches.skuId })
+      .from(foodBatches)
+      .where(inArray(foodBatches.skuId, ids));
+    return new Set(rows.map((row) => row.skuId));
+  }
+
   private async requirePurchasableSku(id: string, query: Db | Tx = this.db) {
     const [row] = await query
       .select({ sku: skus, product: products })
@@ -1265,6 +1300,8 @@ export class CommerceService {
       .innerJoin(products, eq(skus.productId, products.id))
       .where(eq(skus.id, id));
     if (!row) throw new CommerceError('NOT_FOUND', 'SKU not found');
+    if ((await this.foodCheckoutBlockedSkuIds([id], query)).has(id))
+      throw new CommerceError('NOT_PURCHASABLE', 'Food batch checkout is not enabled');
     if (row.product.status !== 'ACTIVE' || row.sku.status !== 'ACTIVE' || !row.sku.availableForSale)
       throw new CommerceError('NOT_PURCHASABLE', 'SKU is not purchasable');
     return row;

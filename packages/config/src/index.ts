@@ -28,6 +28,10 @@ const optionalHttpsUrl = z.preprocess(
   z.url().startsWith('https://').optional(),
 );
 const serviceSchema = baseSchema.extend({
+  FOOD_STOCK_WRITES_ENABLED: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((value) => value === 'true'),
   HOST: z.string().default('127.0.0.1'),
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
   WECHAT_APP_ID: z.string().min(1),

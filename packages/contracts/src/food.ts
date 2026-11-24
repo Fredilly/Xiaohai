@@ -111,3 +111,63 @@ export const foodBatchMovementRequestSchema = z
   );
 
 export type FoodBatchMovementRequest = z.infer<typeof foodBatchMovementRequestSchema>;
+
+const operationEvidence = {
+  idempotencyKey: z.uuid(),
+  reason: z.string().trim().min(1).max(500),
+  sourceRef: z.string().regex(/^[A-Za-z0-9._:-]{8,128}$/),
+};
+export const foodLotIntakeRequestSchema = z
+  .object({
+    storeId: z.uuid(),
+    skuId: z.uuid(),
+    kind: packagedFoodKindSchema,
+    expectedInventoryVersion: z.number().int().min(0).max(2_147_483_646),
+    lotCode: z.string().trim().min(1).max(100),
+    manufacturedOn: z.iso.date().nullable(),
+    expiresOn: z.iso.date(),
+    quantity: z.number().int().min(1).max(1_000_000),
+    ...operationEvidence,
+  })
+  .strict()
+  .refine(
+    (value) => !value.manufacturedOn || value.manufacturedOn <= value.expiresOn,
+    'INVALID_FOOD_DATES',
+  );
+export const foodLotDispositionRequestSchema = z
+  .object({
+    storeId: z.uuid(),
+    skuId: z.uuid(),
+    batchId: z.uuid(),
+    expectedInventoryVersion: z.number().int().min(0).max(2_147_483_646),
+    expectedVersion: z.number().int().min(0).max(2_147_483_646),
+    state: packagedFoodBatchStateSchema,
+    ...operationEvidence,
+  })
+  .strict();
+export type FoodLotIntakeRequest = z.infer<typeof foodLotIntakeRequestSchema>;
+export type FoodLotDispositionRequest = z.infer<typeof foodLotDispositionRequestSchema>;
+
+export const foodStockReadResponseSchema = z.object({
+  storeId: z.uuid(),
+  skuId: z.uuid(),
+  businessDate: z.iso.date(),
+  inventoryVersion: stockQuantity,
+  onHand: stockQuantity,
+  rows: z.array(
+    z.object({
+      id: z.uuid(),
+      lotCode: z.string(),
+      kind: packagedFoodKindSchema.nullable(),
+      manufacturedOn: z.iso.date().nullable(),
+      expiresOn: z.iso.date(),
+      onHand: stockQuantity,
+      reserved: stockQuantity,
+      blocked: stockQuantity,
+      state: packagedFoodBatchStateSchema,
+      version: stockQuantity,
+    }),
+  ),
+  result: packagedFoodPreviewResponseSchema.shape.result,
+  checkoutEnabled: z.literal(false),
+});

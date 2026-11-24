@@ -1,3 +1,4 @@
+import { FoodStockPanel } from './food-stock-panel';
 import { useState, type FormEvent } from 'react';
 import type { StaffMeResponse } from '@xiaohai/contracts';
 import type {
@@ -252,6 +253,12 @@ export function HqInventoryWorkflows({
 
   return (
     <section className="panel">
+      <FoodStockPanel
+        token={token}
+        storeId={storeId}
+        permissions={me.permissions}
+        items={balances}
+      />
       <h3>总部库存操作</h3>
       <p>请核对门店、图书和数量；提交后的库存变化会留有流水记录。</p>
       {status && <p>{status}</p>}

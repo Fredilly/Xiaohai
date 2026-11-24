@@ -1,0 +1,296 @@
+import { useEffect, useRef, useState, type FormEvent } from 'react';
+import {
+  foodStockReadResponseSchema,
+  foodLotIntakeRequestSchema,
+  foodLotDispositionRequestSchema,
+  foodBatchMovementRequestSchema,
+} from '@xiaohai/contracts/food';
+type Snapshot = ReturnType<typeof foodStockReadResponseSchema.parse>;
+type Props = {
+  token: string;
+  storeId: string;
+  permissions: string[];
+  items: { skuId: string; skuName: string }[];
+};
+const env = import.meta.env as { VITE_API_BASE_URL?: string };
+export function FoodStockPanel(props: Props) {
+  return <FoodStockSession key={`${props.token}:${props.storeId}`} {...props} />;
+}
+function FoodStockSession({ token, storeId, permissions, items }: Props) {
+  const [skuId, setSkuId] = useState('');
+  const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
+  const [status, setStatus] = useState('选择本店 SKU 后读取真实批次。食品下单尚未启用。');
+  const [busy, setBusy] = useState(false);
+  const requestVersion = useRef(0);
+  const inFlight = useRef(false);
+  const retry = useRef<{ fingerprint: string; key: string } | null>(null);
+  async function request(suffix: string, body?: unknown) {
+    const response = await fetch(
+      `${env.VITE_API_BASE_URL ?? 'http://127.0.0.1:3000'}/api/v1/staff/inventory/food-stock${suffix}`,
+      {
+        method: body ? 'POST' : 'GET',
+        headers: {
+          authorization: `Bearer ${token}`,
+          ...(body ? { 'content-type': 'application/json' } : {}),
+        },
+        body: body ? JSON.stringify(body) : undefined,
+      },
+    );
+    if (!response.ok) throw new Error(`HTTP_${response.status}`);
+    return (await response.json()) as unknown;
+  }
+  async function load() {
+    const version = ++requestVersion.current;
+    setSnapshot(null);
+    if (!skuId) return;
+    try {
+      const data = foodStockReadResponseSchema.parse(
+        await request(`?${new URLSearchParams({ storeId, skuId })}`),
+      );
+      if (version === requestVersion.current) setSnapshot(data);
+    } catch {
+      if (version === requestVersion.current)
+        setStatus('批次读取失败，请重新读取；不能据此进行库存操作。');
+    }
+  }
+  useEffect(() => {
+    void load();
+    return () => {
+      requestVersion.current++;
+    };
+  }, [skuId]); // session is remounted on token/store changes
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (inFlight.current || !snapshot || snapshot.storeId !== storeId || snapshot.skuId !== skuId)
+      return;
+    const data = new FormData(event.currentTarget);
+    const operation = text(data, 'operation');
+    const reason = text(data, 'reason');
+    const sourceRef = text(data, 'sourceRef');
+    const common = { storeId, skuId, expectedInventoryVersion: snapshot.inventoryVersion, reason };
+    let suffix = '';
+    let raw: Record<string, unknown>;
+    if (operation === 'intake') {
+      suffix = '/intake';
+      raw = {
+        ...common,
+        sourceRef,
+        kind: text(data, 'kind'),
+        lotCode: text(data, 'lotCode'),
+        manufacturedOn: text(data, 'manufacturedOn') || null,
+        expiresOn: text(data, 'expiresOn'),
+        quantity: Number(data.get('quantity')),
+      };
+    } else if (operation === 'state') {
+      const batch = snapshot.rows.find((r) => r.id === data.get('batchId'));
+      if (!batch) return;
+      suffix = '/disposition';
+      raw = {
+        ...common,
+        sourceRef,
+        batchId: batch.id,
+        expectedVersion: batch.version,
+        state: text(data, 'state'),
+      };
+    } else {
+      suffix = '/movements';
+      raw = {
+        ...common,
+        kind: operation,
+        lines: snapshot.rows
+          .map((r) => ({
+            batchId: r.id,
+            expectedVersion: r.version,
+            quantity: Number(data.get(`qty:${r.id}`)),
+          }))
+          .filter((r) => r.quantity > 0),
+      };
+    }
+    const fingerprint = JSON.stringify([suffix, raw]);
+    if (retry.current?.fingerprint !== fingerprint)
+      retry.current = { fingerprint, key: crypto.randomUUID() };
+    const schema =
+      operation === 'intake'
+        ? foodLotIntakeRequestSchema
+        : operation === 'state'
+          ? foodLotDispositionRequestSchema
+          : foodBatchMovementRequestSchema;
+    const parsed = schema.safeParse({ ...raw, idempotencyKey: retry.current.key });
+    if (!parsed.success) {
+      setStatus('请检查必填项、数量、日期及不含 URL 的凭证编号。');
+      return;
+    }
+    inFlight.current = true;
+    setBusy(true);
+    try {
+      await request(suffix, parsed.data);
+      retry.current = null;
+      setStatus('操作已提交，库存与批次已刷新。');
+      await load();
+    } catch {
+      setStatus(
+        '未确认成功，请保留原输入，先重新读取核对；相同版本和输入保留同一请求编号。写入默认关闭，须在获准环境启用。',
+      );
+    } finally {
+      inFlight.current = false;
+      setBusy(false);
+    }
+  }
+  const evidence = (
+    <>
+      <label>
+        原因
+        <input name="reason" required maxLength={500} />
+      </label>
+      <label>
+        内部凭证编号（不填网址）
+        <input name="sourceRef" required pattern="[A-Za-z0-9._:-]{8,128}" />
+      </label>
+    </>
+  );
+  return (
+    <section aria-label="食品批次管理">
+      <h3>预包装食品与瓶装饮料批次</h3>
+      <p>新批次默认冻结；不支持现制配方扣料。食品销售仍关闭。</p>
+      <label>
+        本店 SKU
+        <select
+          value={skuId}
+          disabled={busy}
+          onChange={(e) => {
+            setSnapshot(null);
+            retry.current = null;
+            setSkuId(e.target.value);
+          }}
+        >
+          <option value="">请选择</option>
+          {items.map((r) => (
+            <option key={r.skuId} value={r.skuId}>
+              {r.skuName}
+            </option>
+          ))}
+        </select>
+      </label>
+      <button type="button" disabled={!skuId || busy} onClick={() => void load()}>
+        重新读取批次
+      </button>
+      <p role="status">{status}</p>
+      {snapshot && (
+        <>
+          <p>
+            总库存 {snapshot.onHand}；批次校验 {snapshot.result.status}；批次可售量{' '}
+            {snapshot.result.sellable}（尚不能下单）
+          </p>
+          <table>
+            <thead>
+              <tr>
+                <th>批号</th>
+                <th>到期日</th>
+                <th>状态</th>
+                <th>数量</th>
+              </tr>
+            </thead>
+            <tbody>
+              {snapshot.rows.map((r) => (
+                <tr key={r.id}>
+                  <td>{r.lotCode}</td>
+                  <td>{r.expiresOn}</td>
+                  <td>{r.state}</td>
+                  <td>{r.onHand}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {permissions.includes('inventory.receive') && (
+            <form onSubmit={(e) => void submit(e)}>
+              <fieldset disabled={busy}>
+                <legend>新批次入库（新食品须先建草稿、关联零库存）</legend>
+                <input type="hidden" name="operation" value="intake" />
+                <label>
+                  种类
+                  <select name="kind">
+                    <option value="PACKAGED_FOOD">预包装食品</option>
+                    <option value="SEALED_BEVERAGE">瓶装饮料</option>
+                  </select>
+                </label>
+                <label>
+                  批号
+                  <input name="lotCode" required maxLength={100} />
+                </label>
+                <label>
+                  生产日期
+                  <input name="manufacturedOn" type="date" />
+                </label>
+                <label>
+                  到期日
+                  <input name="expiresOn" type="date" required />
+                </label>
+                <label>
+                  入库数量
+                  <input name="quantity" type="number" min={1} max={1000000} required />
+                </label>
+                {evidence}
+                <button>入库并冻结</button>
+              </fieldset>
+            </form>
+          )}
+          {permissions.includes('inventory.adjust') && snapshot.rows.length > 0 && (
+            <>
+              <form onSubmit={(e) => void submit(e)}>
+                <fieldset disabled={busy}>
+                  <legend>冻结、召回与检查后释放</legend>
+                  <input type="hidden" name="operation" value="state" />
+                  <select name="batchId" aria-label="待处理批次">
+                    {snapshot.rows.map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.lotCode}
+                      </option>
+                    ))}
+                  </select>
+                  <select name="state" aria-label="目标状态">
+                    <option value="HELD">冻结</option>
+                    <option value="RECALLED">召回</option>
+                    <option value="AVAILABLE">检查后释放</option>
+                  </select>
+                  {evidence}
+                  <button>提交状态变更</button>
+                </fieldset>
+              </form>
+              <form onSubmit={(e) => void submit(e)}>
+                <fieldset disabled={busy}>
+                  <legend>多批次报损或盘亏</legend>
+                  <select name="operation" aria-label="库存变动类型">
+                    <option value="DAMAGE">报损</option>
+                    <option value="STOCKTAKE_LOSS">盘亏</option>
+                  </select>
+                  {snapshot.rows.map((r) => (
+                    <label key={r.id}>
+                      {r.lotCode} 数量
+                      <input
+                        name={`qty:${r.id}`}
+                        type="number"
+                        min={0}
+                        max={1000000}
+                        defaultValue={0}
+                      />
+                    </label>
+                  ))}
+                  <label>
+                    原因
+                    <input name="reason" required maxLength={500} />
+                  </label>
+                  <button>提交批次变动</button>
+                </fieldset>
+              </form>
+            </>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
+function text(data: FormData, key: string) {
+  const value = data.get(key);
+  return typeof value === 'string' ? value : '';
+}

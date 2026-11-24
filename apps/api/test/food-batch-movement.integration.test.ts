@@ -79,6 +79,7 @@ async function fixture() {
         expiresOn: '2099-12-31',
         onHand: 5,
         state: 'AVAILABLE',
+        foodKind: 'PACKAGED_FOOD' as const,
         createdByStaffAccountId: actor!.id,
       })),
     )

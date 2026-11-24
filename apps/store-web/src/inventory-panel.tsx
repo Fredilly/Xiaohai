@@ -1,3 +1,4 @@
+import { FoodStockPanel } from './food-stock-panel';
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import type { InventoryMutationRequest } from '@xiaohai/contracts/inventory';
 import {
@@ -194,6 +195,7 @@ function InventorySession({ token, storeId, permissions }: InventoryPanelProps) 
     <section className="panel inventory-panel">
       <span className="tag">M14 Inventory Operations</span>
       <h2>库存操作</h2>
+      <FoodStockPanel token={token} storeId={storeId} permissions={permissions} items={items} />
       <p>当前门店由 M19 工作台选择器确定；余额、版本、写入权限与 Data Scope 仍由服务端确认。</p>
       {permissions.includes('inventory.receive') && (
         <StoreMeipingPreflightPanel token={token} storeId={storeId} />
