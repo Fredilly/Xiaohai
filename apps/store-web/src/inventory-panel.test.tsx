@@ -25,4 +25,18 @@ describe('first stock catalog registration UI', () => {
     expect(html).not.toContain('搜索待建档 SKU');
     expect(html).not.toContain('确认首次库存建档');
   });
+
+  it('offers East-store Excel preflight only to staff with receiving permission', () => {
+    const receiving = renderToStaticMarkup(
+      <InventoryPanel {...props} permissions={['inventory.read', 'inventory.receive']} />,
+    );
+    expect(receiving).toContain('Excel 批量导入准备');
+    expect(receiving).toContain('预检查 Excel');
+    expect(receiving).toContain('不是实盘结果');
+    expect(receiving).not.toContain('确认首次库存建档');
+    const readOnly = renderToStaticMarkup(
+      <InventoryPanel {...props} permissions={['inventory.read']} />,
+    );
+    expect(readOnly).not.toContain('预检查 Excel');
+  });
 });

@@ -79,6 +79,14 @@ API：`GET /api/v1/staff/inventory/opening-candidates?storeId=...&q=...`、`POST
 
 本次新增契约、Store Web、API 与隔离 PostgreSQL 集成测试；在无 `DATABASE_URL` 的环境里，集成用例无法完成实际数据库验证。正式建档还取决于可访问部署、Staff 账号、真实门店、迁移/对账及实际设备 UAT，不能把本地测试通过表述为已上线可用。
 
+### 2026-11-24：东门店导入、南门店人工建档的操作分流
+
+按当前门店实际安排：**东门店库存计划通过已有美萍 Excel 迁移链路导入；南门店库存计划逐件人工录入**。技术上不把门店名称硬编码到权限或账务逻辑，所有操作仍绑定员工实际授权的门店 ID。
+
+- **东门店：** Store Web「库存」新增可上传 `.xls/.xlsx`（不超过 5 MiB）的只读预检查入口，复用现有 `POST /api/v1/staff/migrations/meiping/preflight` 及 `inventory.receive` 权限，显示源行、匹配、新建候选、异常/阻断、待核对的暂定库存和异常 CSV 下载。预检查不落地商品或库存。正式一次性迁移继续使用已有审核会话、人工实际数量、独立批准、受保护的 `INITIAL_MIGRATION` 和对账机制；不得把历史 Excel 每行暂定的 1 件当作真实盘点。
+- **南门店：** 使用「首次库存建档」逐件搜索既有 SKU、录入实盘数量；有数量的建立库存流水，0 数量仍留审计记录。之后走正常库存调整或盘点。尚不存在的商品资料由具备共享主数据授权的账号先创建草稿，不得自动将南店资料公开到其他门店。
+- **边界：** 这项操作分流只规定建档方法，不代表已经取得正式数据库批量写入/迁移授权，也不代表东门店 1,000 行历史数据已经准确或导入成功。
+
 ## 验证 / Verification
 
 运行 `npm exec --yes pnpm@11.19.0 -- check`、`npm exec --yes pnpm@11.19.0 -- --filter @xiaohai/db db:check`、`db:generate`、fresh database migration 和 `apps/api/test/inventory-operations.integration.test.ts`。集成测试覆盖认证、权限、Data Scope、并发超扣、版本过期、重复入库/调拨以及事务回滚。

@@ -7,6 +7,7 @@ import {
   loadInventory,
   registerOpeningStock,
 } from './inventory-api';
+import { StoreMeipingPreflightPanel } from './store-meiping-preflight-panel';
 
 type Balance = Awaited<ReturnType<typeof loadInventory>>['items'][number];
 type Candidate = Awaited<ReturnType<typeof findOpeningStockCandidates>>['items'][number];
@@ -154,6 +155,9 @@ export function InventoryPanel({
       <span className="tag">M14 Inventory Operations</span>
       <h2>库存操作</h2>
       <p>当前门店由 M19 工作台选择器确定；余额、版本、写入权限与 Data Scope 仍由服务端确认。</p>
+      {permissions.includes('inventory.receive') && (
+        <StoreMeipingPreflightPanel token={token} storeId={storeId} />
+      )}
       {canOpen && (
         <section aria-label="首次库存建档">
           <h3>首次库存建档</h3>
