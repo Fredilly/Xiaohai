@@ -11,6 +11,7 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
+import { orderItems } from './commerce-schema.js';
 import { inventoryTransactions, storeInventory } from './inventory-schema.js';
 import { staffAccounts } from './schema.js';
 
@@ -156,6 +157,68 @@ export const foodBatchTransactions = pgTable(
       sql.raw(
         'length(btrim("food_batch_transactions"."idempotency_key")) between 1 and 128 and length(btrim("food_batch_transactions"."reference_type")) between 1 and 100 and length(btrim("food_batch_transactions"."reason")) between 1 and 500',
       ),
+    ),
+  ],
+);
+
+/** One immutable order-item/lot assignment; only its lifecycle status changes.
+ * The event table below captures every reservation/release transition.
+ */
+export const foodBatchReservations = pgTable(
+  'food_batch_reservations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orderItemId: uuid('order_item_id')
+      .notNull()
+      .references(() => orderItems.id, { onDelete: 'restrict' }),
+    storeId: uuid('store_id').notNull(),
+    skuId: uuid('sku_id').notNull(),
+    batchId: uuid('batch_id').notNull(),
+    quantity: integer('quantity').notNull(),
+    status: text('status').notNull().default('RESERVED'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    foreignKey({
+      name: 'food_batch_reservations_scope_fk',
+      columns: [t.storeId, t.skuId, t.batchId],
+      foreignColumns: [foodBatches.storeId, foodBatches.skuId, foodBatches.id],
+    }).onDelete('restrict'),
+    uniqueIndex('food_batch_reservations_order_batch_unique').on(t.orderItemId, t.batchId),
+    index('food_batch_reservations_batch_status_idx').on(t.batchId, t.status),
+    check('food_batch_reservations_quantity_check', sql`${t.quantity} between 1 and 1000000`),
+    check(
+      'food_batch_reservations_status_check',
+      sql`${t.status} in ('RESERVED','RELEASED','SOLD')`,
+    ),
+  ],
+);
+
+/** Append-only evidence for allocation changes; no zero-delta aggregate stock events. */
+export const foodBatchReservationEvents = pgTable(
+  'food_batch_reservation_events',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    reservationId: uuid('reservation_id')
+      .notNull()
+      .references(() => foodBatchReservations.id, { onDelete: 'restrict' }),
+    eventType: text('event_type').notNull(),
+    quantity: integer('quantity').notNull(),
+    idempotencyKey: text('idempotency_key').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('food_batch_reservation_events_key_unique').on(t.idempotencyKey),
+    index('food_batch_reservation_events_reservation_idx').on(t.reservationId, t.createdAt),
+    check('food_batch_reservation_events_quantity_check', sql`${t.quantity} between 1 and 1000000`),
+    check(
+      'food_batch_reservation_events_type_check',
+      sql`${t.eventType} in ('RESERVE','RELEASE','SALE')`,
+    ),
+    check(
+      'food_batch_reservation_events_key_check',
+      sql`length(btrim(${t.idempotencyKey})) between 1 and 128`,
     ),
   ],
 );

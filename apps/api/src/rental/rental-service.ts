@@ -602,15 +602,16 @@ function canAccess(
   );
 }
 async function lockInventory(tx: Transaction, storeId: string, skuId: string) {
+  await tx.execute(
+    sql`select 1 from store_inventory where store_id=${storeId} and sku_id=${skuId} for update`,
+  );
+  // Re-read after the lock: concurrent food intake holds this same row first.
   const [food] = await tx
     .select({ id: foodBatches.id })
     .from(foodBatches)
     .where(eq(foodBatches.skuId, skuId))
     .limit(1);
   if (food) throw new RentalError('INVALID_STATE');
-  await tx.execute(
-    sql`select 1 from store_inventory where store_id=${storeId} and sku_id=${skuId} for update`,
-  );
 }
 async function loadInventory(tx: Transaction, storeId: string, skuId: string) {
   const [row] = await tx

@@ -644,15 +644,17 @@ async function reserveSaleInventory(
 ) {
   const orderedItems = [...items].sort((a, b) => a.skuId.localeCompare(b.skuId));
   for (const item of orderedItems) {
+    await tx.execute(
+      sql`select 1 from store_inventory where store_id=${storeId} and sku_id=${item.skuId} for update`,
+    );
+    // A food intake may have committed while waiting for this inventory lock.
+    // The food marker must be checked only AFTER the lock is acquired.
     const [food] = await tx
       .select({ id: foodBatches.id })
       .from(foodBatches)
       .where(eq(foodBatches.skuId, item.skuId))
       .limit(1);
     if (food) throw new FulfillmentError('INVALID_STATE');
-    await tx.execute(
-      sql`select 1 from store_inventory where store_id=${storeId} and sku_id=${item.skuId} for update`,
-    );
     const [balance] = await tx
       .select()
       .from(storeInventory)
@@ -690,15 +692,15 @@ async function deductSaleInventory(
     .where(eq(orderItems.orderId, orderId))
     .orderBy(asc(orderItems.skuId));
   for (const item of items) {
+    await tx.execute(
+      sql`select 1 from store_inventory where store_id=${storeId} and sku_id=${item.skuId} for update`,
+    );
     const [food] = await tx
       .select({ id: foodBatches.id })
       .from(foodBatches)
       .where(eq(foodBatches.skuId, item.skuId))
       .limit(1);
     if (food) throw new FulfillmentError('INVALID_STATE');
-    await tx.execute(
-      sql`select 1 from store_inventory where store_id=${storeId} and sku_id=${item.skuId} for update`,
-    );
     const [balance] = await tx
       .select()
       .from(storeInventory)

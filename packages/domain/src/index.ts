@@ -4,6 +4,7 @@ export interface ConsumerIdentity {
 }
 
 export { evaluatePackagedFoodStock } from './food-stock.js';
+export { planFoodFefoAllocation } from './food-fefo.js';
 export type {
   PackagedFoodAggregate,
   PackagedFoodBatch,

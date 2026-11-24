@@ -48,7 +48,12 @@ export {
   playbackProgress,
 } from './content-schema.js';
 export { regions, franchisees, stores, storeStaff, storeCatalogMetadata } from './store-schema.js';
-export { foodBatches, foodBatchTransactions } from './food-batch-schema.js';
+export {
+  foodBatches,
+  foodBatchTransactions,
+  foodBatchReservations,
+  foodBatchReservationEvents,
+} from './food-batch-schema.js';
 export {
   goodsReceiptItems,
   goodsReceipts,

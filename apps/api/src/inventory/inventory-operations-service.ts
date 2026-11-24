@@ -960,10 +960,12 @@ async function assertNotFoodInventory(tx: Transaction, skuId: string) {
   if (food) throw new InventoryOperationsError('CONFLICT');
 }
 async function lockInventory(tx: Transaction, storeId: string, skuId: string) {
-  await assertNotFoodInventory(tx, skuId);
   await tx.execute(
     sql`select 1 from store_inventory where store_id=${storeId} and sku_id=${skuId} for update`,
   );
+  // Intake obtains this row lock before publishing a food lot. Check AFTER
+  // acquiring it, otherwise a concurrent ordinary write can bypass the guard.
+  await assertNotFoodInventory(tx, skuId);
 }
 async function lockPurchaseOrder(tx: Transaction, id: string) {
   await tx.execute(sql`select 1 from purchase_orders where id=${id} for update`);
