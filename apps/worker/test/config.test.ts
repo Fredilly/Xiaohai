@@ -52,18 +52,19 @@ describe('worker foundation', () => {
       DASHSCOPE_API_KEY: 'test-only',
       DASHSCOPE_BASE_URL: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
     };
-    expect(() => loadWorkerConfig(base)).toThrow('PICTURE_BOOK_IMAGE_BASE_URL');
+    expect(() => loadWorkerConfig(base)).toThrow('IMAGE_BEIJING_WORKSPACE_ENDPOINT_MISMATCH');
     expect(() =>
       loadWorkerConfig({
         ...base,
         PICTURE_BOOK_IMAGE_BASE_URL: 'https://workspace.cn-beijing.maas.aliyuncs.com',
       }),
-    ).toThrow('PICTURE_BOOK_IMAGE_BASE_URL');
+    ).toThrow('IMAGE_BEIJING_WORKSPACE_ENDPOINT_MISMATCH');
     expect(() =>
       loadWorkerConfig({
         ...base,
+        DASHSCOPE_WORKSPACE_ID: 'ws-benchmark123',
         PICTURE_BOOK_IMAGE_BASE_URL:
-          'https://workspace.cn-beijing.maas.aliyuncs.com/compatible-mode/v1',
+          'https://ws-benchmark123.cn-beijing.maas.aliyuncs.com/compatible-mode/v1',
       }),
     ).toThrow('Baidu BOS endpoint is required');
   });
