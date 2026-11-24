@@ -1,6 +1,7 @@
 import type { InventoryAvailability, PublicInventoryItem } from '@xiaohai/contracts/inventory';
 import { searchInventory } from '../../services/inventory';
 import { createRental } from '../../services/rental';
+import { clearFailedBookSearchCover, resolveBookSearchCover } from './book-search-display';
 
 type InputEvent = { detail: { value?: string } };
 type PickerEvent = { detail: { value?: string | number } };
@@ -9,6 +10,7 @@ type InventoryViewItem = PublicInventoryItem & {
   key: string;
   priceText: string;
   distanceText: string;
+  displayCoverUrl: string;
 };
 
 const availabilityValues: InventoryAvailability[] = ['ANY', 'SALE', 'RENT'];
@@ -112,6 +114,7 @@ Page({
           priceText: `¥${(item.sku.priceMinor / 100).toFixed(2)}`,
           distanceText:
             item.store.distanceKm == null ? '' : `${item.store.distanceKm.toFixed(1)} km`,
+          displayCoverUrl: resolveBookSearchCover(item),
         })),
       });
     } catch {
@@ -134,6 +137,14 @@ Page({
   openProduct(event: WechatMiniprogram.TouchEvent) {
     const id = String(event.currentTarget.dataset.id ?? '');
     if (id) void wx.navigateTo({ url: `/pages/product/product?id=${encodeURIComponent(id)}` });
+  },
+
+  coverError(event: WechatMiniprogram.TouchEvent) {
+    const index = Number(event.currentTarget.dataset.index);
+    const itemKey = String(event.currentTarget.dataset.key ?? '');
+    const failedUrl = String(event.currentTarget.dataset.src ?? '');
+    const items = clearFailedBookSearchCover(this.data.items, index, itemKey, failedUrl);
+    if (items !== this.data.items) this.setData({ items });
   },
 
   async reserveRental(event: WechatMiniprogram.TouchEvent) {

@@ -34,7 +34,11 @@ export function assertTestDatabaseUrl(value: string | undefined): string {
   if (!databaseName || databaseName === 'xiaohai_dev') {
     throw new Error('TEST_DATABASE_URL must name a disposable test database');
   }
-  if (!/(^|[_-])(test|tests|testing|ci|e2e|disposable)([_-]|$)/.test(databaseName)) {
+  const explicitlyDisposable = /(^|[_-])(test|tests|testing|ci|e2e|disposable)([_-]|$)/.test(
+    databaseName,
+  );
+  const i111RequireNewDisposable = /^xiaohai_i111_require_new_[a-z0-9]{12,32}$/.test(databaseName);
+  if (!explicitlyDisposable && !i111RequireNewDisposable) {
     throw new Error('TEST_DATABASE_URL must name a disposable test database');
   }
 

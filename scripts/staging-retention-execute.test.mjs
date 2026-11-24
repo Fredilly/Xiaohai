@@ -6,6 +6,13 @@ import { join } from 'node:path';
 import test from 'node:test';
 
 const script = new URL('./staging-image-retention.sh', import.meta.url).pathname;
+const executorWorkflow = new URL(
+  '../.github/workflows/staging-retention-execute.yml',
+  import.meta.url,
+);
+const remoteExecutor = new URL('./staging-retention-remote-executor.sh', import.meta.url).pathname;
+const dispatchScript = new URL('./staging-retention-dispatch.sh', import.meta.url).pathname;
+const executorGuard = new URL('./staging-retention-executor-lib.mjs', import.meta.url).pathname;
 const current = 'e38a1796b7f6eb08a7b10932567c5b781eed606c';
 const rollbackA = 'f8e1fe86bbb904a4e7871901442a5b3dac7890e0';
 const rollbackB = 'd79ca0ff400f52f05a140235565b9c981163ead5';
@@ -330,4 +337,64 @@ test('execute fails before any removal if a protected HOLD service image is miss
     assert.match(r.stderr, /protected image missing/);
     assert.deepEqual((await fx.state()).removed, []);
   }
+});
+
+test('steady-state executor workflow is manual, default-deny and owner-scoped', async () => {
+  const workflow = await readFile(executorWorkflow, 'utf8');
+  const guard = await readFile(executorGuard, 'utf8');
+  assert.match(workflow, /workflow_dispatch:/);
+  assert.match(workflow, /STAGING_RETENTION_EXECUTION_ENABLED == 'true'/);
+  assert.match(workflow, /github\.ref == 'refs\/heads\/main'/);
+  assert.match(workflow, /ref: main/);
+  assert.doesNotMatch(workflow, /ref: \$\{\{ inputs\.revision \}\}/);
+  assert.match(workflow, /STAGING_RETENTION_POLICY_ID/);
+  assert.match(workflow, /STAGING_RETENTION_ALLOWED_ACTOR/);
+  assert.match(workflow, /environment: staging/);
+  assert.match(guard, /XIAOHAI-195-STEADY/);
+  assert.match(guard, /XIAOHAI-195-RETENTION/);
+  assert.doesNotMatch(workflow, /schedule:/);
+});
+
+test('steady-state executor binds exact successful deployment and reviewed proposal artifact', async () => {
+  const workflow = await readFile(executorWorkflow, 'utf8');
+  const guard = await readFile(executorGuard, 'utf8');
+  const remote = await readFile(remoteExecutor, 'utf8');
+  assert.match(guard, /Deploy staging \(after CI\)/);
+  assert.match(guard, /staging-backend-success/);
+  assert.match(workflow, /staging-retention-proposal-\$\{\{ inputs\.revision \}\}/);
+  assert.match(guard, /Reviewed proposal SHA-256 mismatch/);
+  assert.match(workflow, /NORMALIZED_PLAN_SHA256/);
+  assert.match(remote, /uploaded normalized plan hash mismatch/);
+  assert.match(guard, /Proposal must contain one or two exact candidate pairs/);
+  assert.match(guard, /Current revision must never be a retention candidate/);
+});
+
+test('steady-state executor consumes approval before one bounded invocation and has no retry path', async () => {
+  const workflow = await readFile(executorWorkflow, 'utf8');
+  const remote = await readFile(remoteExecutor, 'utf8');
+  const dispatch = await readFile(dispatchScript, 'utf8');
+  assert.match(workflow, /staging-retention-dispatch\.sh/);
+  assert.match(remote, /approval ID already consumed/);
+  assert.match(remote, /\.retention-authorizations/);
+  assert.match(remote, /mkdir -m 0700 "\$receipt_dir"/);
+  assert.match(remote, /--steady-state-execute/);
+  assert.match(remote, /RETENTION_EXECUTOR_NO_RETRY=true/);
+  assert.match(remote, /STAGING_RETENTION_APPROVED_PLAN="\$plan"/);
+  assert.match(remote, /STAGING_DEPLOY_SUCCEEDED_REVISION="\$REVISION"/);
+  assert.match(remote, /STAGING_RETENTION_EXECUTE_ENABLED=true/);
+  assert.doesNotMatch(dispatch, /POLICY_ID|APPROVAL_ID|REVISION=/);
+  assert.doesNotMatch(workflow, /docker image rm/);
+  assert.doesNotMatch(workflow, /docker (?:system|image) prune/);
+});
+
+test('steady-state executor preserves host identity, reviewed script and post-run health gates', async () => {
+  const workflow = await readFile(executorWorkflow, 'utf8');
+  const remote = await readFile(remoteExecutor, 'utf8');
+  assert.match(remote, /host script hash differs from exact deployed revision/);
+  assert.match(remote, /hostname mismatch/);
+  assert.match(remote, /uploaded normalized plan hash mismatch/);
+  assert.match(workflow, /docker inspect --format "\{\{\.State\.Health\.Status\}\}"/);
+  assert.match(workflow, /staging-api\.pamboo\.asia\/health/);
+  assert.match(workflow, /staging-api\.pamboo\.asia\/ready/);
+  assert.match(workflow, /df -hT \/|df -hi \//);
 });

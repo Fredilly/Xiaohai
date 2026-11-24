@@ -13,6 +13,7 @@ import { BaselineModerationAdapter } from './moderation.js';
 import { ImageJobProcessor } from './image-processor.js';
 import { BailianImageProvider, MockImageProvider } from './image-provider.js';
 import { createBaiduBosStorage } from './bos-storage.js';
+import { createPrivateBosReferenceResolver } from './private-bos-reference.js';
 import { VideoJobProcessor } from './video-processor.js';
 import { MockVideoProvider } from './video-provider.js';
 import { CompositionProcessor } from './composition-processor.js';
@@ -51,8 +52,24 @@ const imageProvider =
         }),
       )
     : new MockImageProvider();
+const privateReferenceResolver =
+  config.PICTURE_BOOK_IMAGE_ENABLED && config.PICTURE_BOOK_IMAGE_PROVIDER === 'BAILIAN'
+    ? createPrivateBosReferenceResolver({
+        endpoint: config.BAIDU_BOS_ENDPOINT,
+        bucket: config.BAIDU_BOS_BUCKET,
+        publicOrigin: config.BAIDU_BOS_PUBLIC_ORIGIN,
+        accessKeyId: config.BAIDU_BOS_ACCESS_KEY_ID,
+        secretAccessKey: config.BAIDU_BOS_SECRET_ACCESS_KEY,
+      })
+    : undefined;
 const imageProcessor = config.PICTURE_BOOK_IMAGE_ENABLED
-  ? new ImageJobProcessor(db, imageProvider, config.PICTURE_BOOK_IMAGE_TIMEOUT_MS, logger)
+  ? new ImageJobProcessor(
+      db,
+      imageProvider,
+      config.PICTURE_BOOK_IMAGE_TIMEOUT_MS,
+      logger,
+      privateReferenceResolver,
+    )
   : null;
 
 const videoProvider = new MockVideoProvider();
