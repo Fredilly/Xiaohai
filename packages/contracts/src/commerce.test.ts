@@ -72,6 +72,37 @@ describe('M5 commerce contracts', () => {
     ).toBe(true);
   });
 
+  it('bounds ordered catalog detail media on both create and update', () => {
+    const base = {
+      name: '食品商品',
+      status: 'DRAFT' as const,
+      book: null,
+      sku: {
+        code: 'BATCH-FOOD',
+        name: '标准',
+        priceMinor: 1200,
+        status: 'ACTIVE' as const,
+        availableForSale: false,
+      },
+    };
+    const mediaUrls = ['https://cdn.example.com/front.jpg', 'https://cdn.example.com/back.jpg'];
+    expect(adminProductInputSchema.safeParse({ ...base, mediaUrls }).success).toBe(true);
+    expect(
+      adminProductUpdateSchema.safeParse({
+        ...base,
+        mediaUrls,
+        expectedProductVersion: 1,
+        expectedSkuVersion: 1,
+      }).success,
+    ).toBe(true);
+    expect(
+      adminProductInputSchema.safeParse({
+        ...base,
+        mediaUrls: Array.from({ length: 13 }, (_, n) => `https://cdn.example.com/${n}.jpg`),
+      }).success,
+    ).toBe(false);
+  });
+
   it('separates create and update version contracts', () => {
     const base = {
       name: 'Book',

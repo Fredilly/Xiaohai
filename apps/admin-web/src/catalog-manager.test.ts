@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { bookLookupPolicy, parseYuanToMinor } from './catalog-manager';
+import {
+  applyCatalogDraftDefaults,
+  bookLookupPolicy,
+  isPreviewableProductImage,
+  parseYuanToMinor,
+} from './catalog-manager';
 
 describe('HQ new-book price input', () => {
   it.each([
@@ -43,5 +48,47 @@ describe('HQ new-book lookup isolation', () => {
       canLookUp: false,
       blockDuplicateCreate: false,
     });
+  });
+});
+
+describe('HQ product creation is safe by default (#208)', () => {
+  const input = {
+    name: '食品',
+    status: 'ACTIVE' as const,
+    book: null,
+    sku: {
+      code: 'TEST',
+      name: '成品',
+      priceMinor: 1000,
+      status: 'ACTIVE' as const,
+      availableForSale: true,
+    },
+  };
+  it('never publishes or permits purchases on initial save', () => {
+    expect(applyCatalogDraftDefaults(input, false)).toMatchObject({
+      status: 'DRAFT',
+      sku: { availableForSale: false },
+    });
+    expect(input.status).toBe('ACTIVE');
+    expect(input.sku.availableForSale).toBe(true);
+  });
+  it('preserves explicit status changes while editing an existing product', () => {
+    expect(applyCatalogDraftDefaults(input, true)).toEqual(input);
+  });
+});
+
+describe('HQ photo preview rejects private and unsafe sources', () => {
+  it('previews only stable public HTTPS URLs', () => {
+    expect(isPreviewableProductImage('https://cdn.example.com/a.jpg')).toBe(true);
+    for (const url of [
+      'http://cdn.example.com/a.jpg',
+      'https://cdn.example.com/a.jpg?signature=private',
+      'https://127.0.0.1/a.jpg',
+      'https://localhost/a.jpg',
+      'https://cdn.example.invalid/a.jpg',
+      'javascript:alert(1)',
+    ]) {
+      expect(isPreviewableProductImage(url), url).toBe(false);
+    }
   });
 });

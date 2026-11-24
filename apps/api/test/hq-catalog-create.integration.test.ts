@@ -329,6 +329,10 @@ suite('HQ catalog create and optimistic update on disposable PostgreSQL', () => 
         name: 'HQ Non-book Integration ' + suffix,
         description: 'Isolated non-book fixture',
         status: 'ACTIVE' as const,
+        mediaUrls: [
+          'https://cdn.example.com/sku-front.jpg',
+          'https://cdn.example.com/sku-back.jpg',
+        ],
         book: null,
         sku: {
           code: 'HQ-NONBOOK-SKU-' + suffix,
@@ -341,9 +345,15 @@ suite('HQ catalog create and optimistic update on disposable PostgreSQL', () => 
       const nonBook = await commerce.createAdminProduct(nonBookInput, actor!.id, randomUUID());
       nonBookId = nonBook.id;
       expect(nonBook.book).toBeNull();
+      expect(nonBook.mediaUrls).toEqual(nonBookInput.mediaUrls);
       const nonBookEdit = {
         ...nonBookInput,
         name: 'Updated non-book fixture',
+        mediaUrls: [
+          'https://cdn.example.com/sku-back.jpg',
+          'https://cdn.example.com/sku-front.jpg',
+          'https://cdn.example.com/sku-detail.jpg',
+        ],
         sku: { ...nonBookInput.sku, priceMinor: 1000 },
         expectedProductVersion: 0,
         expectedSkuId: nonBook.skuId,
@@ -367,6 +377,8 @@ suite('HQ catalog create and optimistic update on disposable PostgreSQL', () => 
       expect(updatedNonBook.name).toBe('Updated non-book fixture');
       expect(updatedNonBook.sku.priceMinor).toBe(1000);
       expect(updatedNonBook.book).toBeNull();
+      expect(updatedNonBook.mediaUrls).toEqual(nonBookEdit.mediaUrls);
+      expect((await commerce.getProduct(nonBook.id)).mediaUrls).toEqual(nonBookEdit.mediaUrls);
       const auditCountBeforeInvalidBook = (
         await db
           .select({ id: auditLogs.id })
@@ -452,6 +464,8 @@ suite('HQ catalog create and optimistic update on disposable PostgreSQL', () => 
         skuId: nonBook.skuId,
         bookId: null,
         editionId: null,
+        mediaCount: 3,
+        changedFields: ['product', 'sku', 'media'],
       });
       const [extraSku] = await db
         .insert(skus)

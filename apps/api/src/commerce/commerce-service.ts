@@ -35,6 +35,20 @@ import {
 type Db = ReturnType<typeof createDatabase>['db'];
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
 
+function validateProductMediaUrls(urls: string[] | undefined): void {
+  if (!urls) return;
+  if (
+    urls.length > 12 ||
+    new Set(urls).size !== urls.length ||
+    !urls.every(isPublicProductImageUrl)
+  ) {
+    throw new CommerceError(
+      'INVALID_INPUT',
+      'Product image URLs must be distinct stable public HTTPS links',
+    );
+  }
+}
+
 export function isPublicProductImageUrl(value: string): boolean {
   if (value.length > 2048) return false;
   try {
@@ -588,6 +602,21 @@ export class CommerceService {
       )
       .orderBy(asc(products.name), asc(products.id), asc(skus.code), asc(skus.id));
     const page = productId && onlyOne ? await query.limit(1) : await query;
+    const productIds = [...new Set(page.map(({ product }) => product.id))];
+    const mediaRows = productIds.length
+      ? await this.db
+          .select({ productId: productMedia.productId, url: productMedia.url })
+          .from(productMedia)
+          .where(inArray(productMedia.productId, productIds))
+          .orderBy(asc(productMedia.displayOrder), asc(productMedia.id))
+      : [];
+    const mediaByProduct = new Map<string, string[]>();
+    for (const row of mediaRows) {
+      if (!isPublicProductImageUrl(row.url)) continue;
+      const current = mediaByProduct.get(row.productId) ?? [];
+      if (current.length < 12 && !current.includes(row.url)) current.push(row.url);
+      mediaByProduct.set(row.productId, current);
+    }
     return {
       offset,
       limit,
@@ -604,6 +633,7 @@ export class CommerceService {
         name: product.name,
         description: product.description,
         coverUrl: product.coverUrl,
+        mediaUrls: mediaByProduct.get(product.id) ?? [],
         status: product.status as 'DRAFT' | 'ACTIVE' | 'INACTIVE',
         book: book
           ? {
@@ -739,6 +769,7 @@ export class CommerceService {
     requestId: string,
     idempotencyKey = requestId,
   ) {
+    validateProductMediaUrls(input.mediaUrls);
     // Return a persisted read after commit; never query through a second
     // pooled connection while the INSERT transaction is still open.
     // A browser retry must carry the same key even when Fastify assigns a new request ID.
@@ -814,6 +845,15 @@ export class CommerceService {
             status: input.status,
           })
           .returning({ id: products.id });
+        if (input.mediaUrls?.length) {
+          await tx.insert(productMedia).values(
+            input.mediaUrls.map((url, displayOrder) => ({
+              productId: product!.id,
+              url,
+              displayOrder,
+            })),
+          );
+        }
         await tx.insert(skus).values({
           productId: product!.id,
           ...input.sku,
@@ -826,8 +866,12 @@ export class CommerceService {
           resourceId: product!.id,
           requestId,
           metadata: {
-            changedFields: input.book ? ['product', 'book', 'edition', 'sku'] : ['product', 'sku'],
+            changedFields: [
+              ...(input.book ? ['product', 'book', 'edition', 'sku'] : ['product', 'sku']),
+              ...(input.mediaUrls?.length ? ['media'] : []),
+            ],
             skuCount: 1,
+            mediaCount: input.mediaUrls?.length ?? 0,
             idempotencyKeyHash: keyHash,
             payloadHash,
           },
@@ -852,6 +896,7 @@ export class CommerceService {
     input: AdminProductUpdateInput,
     actorStaffAccountId: string,
   ) {
+    validateProductMediaUrls(input.mediaUrls);
     if (Buffer.byteLength(this.catalogPreviewSecret, 'utf8') < 32) {
       throw new CommerceError('CONFLICT', 'HQ catalog preview signing is not configured');
     }
@@ -898,6 +943,7 @@ export class CommerceService {
     requestId: string,
     previewToken?: string,
   ) {
+    validateProductMediaUrls(input.mediaUrls);
     const matches = await this.getAdminProductsById(id);
     if (matches.length === 0) throw new CommerceError('NOT_FOUND', 'Product not found');
     // A product may have multiple SKUs: never update an arbitrary first SKU.
@@ -987,6 +1033,16 @@ export class CommerceService {
         .where(and(eq(products.id, id), eq(products.version, expectedProductVersion)))
         .returning({ id: products.id });
       if (!updatedProduct) throw new CommerceError('CONFLICT', 'Product version conflict');
+      if (input.mediaUrls) {
+        await tx.delete(productMedia).where(eq(productMedia.productId, id));
+        if (input.mediaUrls.length) {
+          await tx
+            .insert(productMedia)
+            .values(
+              input.mediaUrls.map((url, displayOrder) => ({ productId: id, url, displayOrder })),
+            );
+        }
+      }
       if (bookChanged || editionChanged) {
         const [source] = await tx
           .select({ editionId: products.bookEditionId })
@@ -1057,7 +1113,9 @@ export class CommerceService {
             'sku',
             ...(bookChanged ? ['book'] : []),
             ...(editionChanged ? ['edition'] : []),
+            ...(input.mediaUrls === undefined ? [] : ['media']),
           ],
+          ...(input.mediaUrls === undefined ? {} : { mediaCount: input.mediaUrls.length }),
           beforeVersions: {
             product: current.productVersion,
             sku: current.skuVersion,

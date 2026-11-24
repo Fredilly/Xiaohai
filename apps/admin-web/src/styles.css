@@ -561,6 +561,19 @@ textarea {
   flex: 0 0 auto;
   border-radius: 3px;
 }
+.product-image-previews {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.product-image-previews img {
+  width: 96px;
+  height: 96px;
+  object-fit: contain;
+  border: 1px solid #d9e1e7;
+  border-radius: 8px;
+}
 .product-cover-empty {
   background: #eff3f5;
   color: #798a97;

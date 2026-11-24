@@ -31,10 +31,30 @@ export function parseYuanToMinor(value: string): number | null {
   const minor = BigInt(yuan) * 100n + BigInt((fraction + '00').slice(0, 2));
   return minor <= 2147483647n ? Number(minor) : null;
 }
+export function isPreviewableProductImage(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return (
+      parsed.protocol === 'https:' &&
+      !parsed.username &&
+      !parsed.password &&
+      !parsed.search &&
+      !parsed.hash &&
+      !parsed.port &&
+      /[a-z]/iu.test(parsed.hostname) &&
+      parsed.hostname.includes('.') &&
+      !parsed.hostname.endsWith('.invalid') &&
+      !parsed.hostname.endsWith('.local')
+    );
+  } catch {
+    return false;
+  }
+}
 const blank: AdminProductInput = {
   name: '',
   description: null,
   coverUrl: null,
+  mediaUrls: [],
   status: 'DRAFT',
   book: { title: '', author: '', isbn: null, publisher: null },
   sku: { code: '', name: '标准', priceMinor: 0, status: 'ACTIVE', availableForSale: false },
@@ -47,6 +67,10 @@ export function bookLookupPolicy(editingExisting: boolean, existingBook: boolean
     canLookUp: !editingExisting,
     blockDuplicateCreate: !editingExisting && existingBook,
   };
+}
+export function applyCatalogDraftDefaults(input: AdminProductInput, editingExisting: boolean) {
+  if (editingExisting) return input;
+  return { ...input, status: 'DRAFT' as const, sku: { ...input.sku, availableForSale: false } };
 }
 export function CatalogManager({ token }: { token: string }) {
   const [products, setProducts] = useState<Product[]>([]);
@@ -571,6 +595,7 @@ function ProductForm({
     name: initial.name,
     description: initial.description,
     coverUrl: initial.coverUrl,
+    mediaUrls: initial.mediaUrls ?? [],
     status: initial.status,
     book: initial.book,
     sku: initial.sku,
@@ -586,6 +611,11 @@ function ProductForm({
         }
       : {}),
   });
+  const [mediaText, setMediaText] = useState(() => (initial.mediaUrls ?? []).join('\n'));
+  const parsedMediaUrls = mediaText
+    .split(/\r?\n/u)
+    .map((url) => url.trim())
+    .filter(Boolean);
   const [isBook, setIsBook] = useState(initial.book !== null);
   const [error, setError] = useState('');
   const [stale, setStale] = useState(false);
@@ -698,19 +728,26 @@ function ProductForm({
       setError('价格请输入 0.00 至 21474836.47 元，最多两位小数。');
       return;
     }
+    if (
+      parsedMediaUrls.length > 12 ||
+      new Set(parsedMediaUrls).size !== parsedMediaUrls.length ||
+      parsedMediaUrls.some((url) => !isPreviewableProductImage(url))
+    ) {
+      setError('商品详情图片最多 12 张，不能重复；只能使用无签名参数的公开 HTTPS 图片地址。');
+      return;
+    }
     if (isBook && !v.book?.isbn) {
       setError('图书编码为必填项。');
       return;
     }
-    const next = {
-      ...v,
-      ...(isBook && !editingExisting ? { status: 'DRAFT' as const } : {}),
-      sku: {
-        ...v.sku,
-        priceMinor: nextPriceMinor,
-        ...(isBook && !editingExisting ? { availableForSale: false } : {}),
+    const next = applyCatalogDraftDefaults(
+      {
+        ...v,
+        mediaUrls: parsedMediaUrls,
+        sku: { ...v.sku, priceMinor: nextPriceMinor },
       },
-    };
+      editingExisting,
+    );
     setSaving(true);
     try {
       if (!isBook) {
@@ -784,10 +821,40 @@ function ProductForm({
         />
       </label>
       <label>
+        详情图片（每行一张，最多 12 张；仅使用已上传的公开 HTTPS 地址）
+        <textarea
+          aria-label="商品详情图片地址"
+          rows={5}
+          value={mediaText}
+          onChange={(event) => {
+            invalidateLookup();
+            setMediaText(event.target.value);
+          }}
+        />
+      </label>
+      {!!parsedMediaUrls.length && (
+        <div aria-label="商品详情图片预览" className="product-image-previews">
+          {parsedMediaUrls.map((url, index) =>
+            isPreviewableProductImage(url) ? (
+              <img
+                key={`${index}:${url}`}
+                src={url}
+                alt={`商品详情图 ${index + 1}`}
+                loading="lazy"
+              />
+            ) : (
+              <span key={`${index}:${url}`} role="status">
+                第 {index + 1} 张图片地址无效
+              </span>
+            ),
+          )}
+        </div>
+      )}
+      <label>
         状态
         <select
           value={v.status}
-          disabled={!editingExisting && isBook}
+          disabled={!editingExisting}
           onChange={(e) => {
             invalidateLookup();
             setV({
