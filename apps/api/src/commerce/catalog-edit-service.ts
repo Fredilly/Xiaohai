@@ -71,7 +71,7 @@ export class CatalogEditService {
     skuId: string,
     input: StoreCatalogEditRequest,
     actorStaffAccountId: string,
-    sharedAllowed = false,
+    sharedAllowed: boolean | 'STORE_ONLY' = false,
   ) {
     const source = await this.loadSource(this.db, storeId, skuId);
     if (!source) throw new CatalogEditError('NOT_FOUND');
@@ -83,6 +83,16 @@ export class CatalogEditService {
     const affectedStoreIds = sharedFields.length
       ? await this.findAffectedStores(this.db, source, sharedFields)
       : [storeId];
+    // Store editors may modify shared master fields only when the entire
+    // affected graph belongs to their authorized store. HQ still uses the
+    // independently reviewed multi-store impact acknowledgement path.
+    if (
+      sharedFields.length &&
+      sharedAllowed === 'STORE_ONLY' &&
+      (affectedStoreIds.length !== 1 || affectedStoreIds[0] !== storeId)
+    ) {
+      throw new CatalogEditError('SHARED_FORBIDDEN');
+    }
     const impact = { sharedFields, affectedStoreCount: affectedStoreIds.length, affectedStoreIds };
     return {
       impact,
@@ -98,7 +108,7 @@ export class CatalogEditService {
     actorStaffAccountId: string,
     requestId: string,
     input: StoreCatalogEditRequest,
-    sharedAllowed = false,
+    sharedAllowed: boolean | 'STORE_ONLY' = false,
     previewToken?: string,
   ) {
     try {
@@ -142,6 +152,16 @@ export class CatalogEditService {
         const affectedStoreIds = sharedFields.length
           ? await this.findAffectedStores(tx, source, sharedFields)
           : [storeId];
+        if (
+          sharedFields.length &&
+          sharedAllowed === 'STORE_ONLY' &&
+          (affectedStoreIds.length !== 1 || affectedStoreIds[0] !== storeId)
+        ) {
+          // Recheck AFTER locking every related product/SKU and the inventory
+          // association graph: a newly attached store may never be edited
+          // through a stale earlier single-store preview.
+          throw new CatalogEditError('SHARED_FORBIDDEN');
+        }
         if (sharedFields.length) {
           const impact = {
             sharedFields,
