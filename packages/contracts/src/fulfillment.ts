@@ -26,6 +26,7 @@ export const fulfillmentQuoteRequestSchema = z
 export const fulfilledOrderRequestSchema = fulfillmentQuoteRequestSchema
   .safeExtend({
     clientRequestId: z.string().trim().min(8).max(128),
+    expectedTotalMinor: moneyMinorSchema.optional(),
     referralCode: z
       .string()
       .trim()

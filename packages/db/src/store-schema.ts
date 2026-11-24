@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm';
 import {
   check,
   doublePrecision,
+  foreignKey,
   index,
   integer,
   jsonb,
@@ -14,6 +15,7 @@ import {
 } from 'drizzle-orm/pg-core';
 import { staffAccounts } from './schema.js';
 import { skus } from './commerce-schema.js';
+import { storeInventory } from './inventory-schema.js';
 
 export const regions = pgTable(
   'regions',
@@ -142,6 +144,7 @@ export const storeCatalogMetadata = pgTable(
     shelfLocation: text('shelf_location'),
     storeNote: text('store_note'),
     displayInfo: text('display_info'),
+    storePriceMinor: integer('store_price_minor'),
     version: integer('version').notNull().default(0),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -149,5 +152,14 @@ export const storeCatalogMetadata = pgTable(
   (table) => [
     primaryKey({ columns: [table.storeId, table.skuId], name: 'store_catalog_metadata_pk' }),
     index('store_catalog_metadata_sku_idx').on(table.skuId),
+    foreignKey({
+      name: 'store_catalog_metadata_inventory_fk',
+      columns: [table.storeId, table.skuId],
+      foreignColumns: [storeInventory.storeId, storeInventory.skuId],
+    }).onDelete('cascade'),
+    check(
+      'store_catalog_metadata_price_check',
+      sql`${table.storePriceMinor} is null or ${table.storePriceMinor} >= 0`,
+    ),
   ],
 );

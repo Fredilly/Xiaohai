@@ -55,6 +55,28 @@ describe('Meiping apply integration disposable database guard', () => {
     });
   });
 
+  it('allows only exact local UUID-named multi-lot test databases', () => {
+    const name = 'xiaohai_i208_test_' + 'a'.repeat(32);
+    const url = `postgresql://postgres:fixture@127.0.0.1:5432/${name}`;
+    expect(
+      assertMeipingApplyDisposableDatabase({
+        ...safeEnv,
+        DATABASE_URL: url,
+        TEST_DATABASE_URL: url,
+      }),
+    ).toBe(true);
+    for (const denied of [
+      url + '_backup',
+      url.replace('127.0.0.1', 'production-db.example.com'),
+      url.replace('a'.repeat(32), 'a'.repeat(31)),
+      url + '?host=remote',
+    ]) {
+      expectRejected({ ...safeEnv, DATABASE_URL: denied, TEST_DATABASE_URL: denied });
+    }
+    expectRejected({ ...safeEnv, DATABASE_URL: url, TEST_DATABASE_URL: local });
+    expectRejected({ ...safeEnv, DATABASE_URL: url, TEST_DATABASE_URL: url, APP_ENV: 'staging' });
+  });
+
   it('rejects an unsafe APP_ENV despite both database URLs being local', () => {
     expectRejected({ ...safeEnv, APP_ENV: 'staging' });
   });

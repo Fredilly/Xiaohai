@@ -71,7 +71,7 @@ export class CatalogEditService {
     skuId: string,
     input: StoreCatalogEditRequest,
     actorStaffAccountId: string,
-    sharedAllowed = false,
+    sharedAllowed: boolean | 'STORE_ONLY' = false,
   ) {
     const source = await this.loadSource(this.db, storeId, skuId);
     if (!source) throw new CatalogEditError('NOT_FOUND');
@@ -83,6 +83,16 @@ export class CatalogEditService {
     const affectedStoreIds = sharedFields.length
       ? await this.findAffectedStores(this.db, source, sharedFields)
       : [storeId];
+    // Store editors may modify shared master fields only when the entire
+    // affected graph belongs to their authorized store. HQ still uses the
+    // independently reviewed multi-store impact acknowledgement path.
+    if (
+      sharedFields.length &&
+      sharedAllowed === 'STORE_ONLY' &&
+      (affectedStoreIds.length !== 1 || affectedStoreIds[0] !== storeId)
+    ) {
+      throw new CatalogEditError('SHARED_FORBIDDEN');
+    }
     const impact = { sharedFields, affectedStoreCount: affectedStoreIds.length, affectedStoreIds };
     return {
       impact,
@@ -98,7 +108,7 @@ export class CatalogEditService {
     actorStaffAccountId: string,
     requestId: string,
     input: StoreCatalogEditRequest,
-    sharedAllowed = false,
+    sharedAllowed: boolean | 'STORE_ONLY' = false,
     previewToken?: string,
   ) {
     try {
@@ -142,6 +152,16 @@ export class CatalogEditService {
         const affectedStoreIds = sharedFields.length
           ? await this.findAffectedStores(tx, source, sharedFields)
           : [storeId];
+        if (
+          sharedFields.length &&
+          sharedAllowed === 'STORE_ONLY' &&
+          (affectedStoreIds.length !== 1 || affectedStoreIds[0] !== storeId)
+        ) {
+          // Recheck AFTER locking every related product/SKU and the inventory
+          // association graph: a newly attached store may never be edited
+          // through a stale earlier single-store preview.
+          throw new CatalogEditError('SHARED_FORBIDDEN');
+        }
         if (sharedFields.length) {
           const impact = {
             sharedFields,
@@ -164,9 +184,6 @@ export class CatalogEditService {
         }
         if (changed.includes('publisher') || changed.includes('isbn')) {
           await this.updateEdition(tx, source, canonicalInput);
-        }
-        if (changed.includes('priceMinor')) {
-          await this.updateSku(tx, source, canonicalInput.priceMinor!);
         }
         if (changed.some(isLocalField)) {
           await this.updateLocalMetadata(tx, source, canonicalInput);
@@ -355,7 +372,7 @@ export class CatalogEditService {
         publisher: bookEditions.publisher,
         isbn: bookEditions.isbn,
         skuVersion: skus.version,
-        priceMinor: skus.priceMinor,
+        priceMinor: sql<number>`coalesce(${storeCatalogMetadata.storePriceMinor}, ${skus.priceMinor})`,
         localVersion: storeCatalogMetadata.version,
         shelfLocation: storeCatalogMetadata.shelfLocation,
         storeNote: storeCatalogMetadata.storeNote,
@@ -471,15 +488,6 @@ export class CatalogEditService {
     if (!updated) throw new CatalogEditError('CONFLICT');
   }
 
-  private async updateSku(tx: Tx, source: Source, priceMinor: number) {
-    const [updated] = await tx
-      .update(skus)
-      .set({ priceMinor, version: sql`${skus.version} + 1`, updatedAt: new Date() })
-      .where(and(eq(skus.id, source.skuId), eq(skus.version, source.skuVersion)))
-      .returning({ id: skus.id });
-    if (!updated) throw new CatalogEditError('CONFLICT');
-  }
-
   private async updateLocalMetadata(tx: Tx, source: Source, input: StoreCatalogEditRequest) {
     await tx
       .insert(storeCatalogMetadata)
@@ -488,6 +496,7 @@ export class CatalogEditService {
     const [updated] = await tx
       .update(storeCatalogMetadata)
       .set({
+        ...(input.priceMinor !== undefined ? { storePriceMinor: input.priceMinor } : {}),
         ...(input.shelfLocation !== undefined ? { shelfLocation: input.shelfLocation } : {}),
         ...(input.storeNote !== undefined ? { storeNote: input.storeNote } : {}),
         ...(input.displayInfo !== undefined ? { displayInfo: input.displayInfo } : {}),
@@ -508,7 +517,6 @@ export class CatalogEditService {
   private async findAffectedStores(tx: QueryContext, source: Source, fields: string[]) {
     const conditions = [];
     if (fields.includes('productName')) conditions.push(eq(skus.productId, source.productId));
-    if (fields.includes('priceMinor')) conditions.push(eq(skus.id, source.skuId));
     // Book title and author live on books and affect every edition of that book.
     if (source.bookId && fields.some((field) => ['bookTitle', 'author'].includes(field))) {
       conditions.push(eq(bookEditions.bookId, source.bookId));
@@ -531,7 +539,7 @@ export class CatalogEditService {
 }
 
 function isLocalField(field: string) {
-  return ['shelfLocation', 'storeNote', 'displayInfo'].includes(field);
+  return ['priceMinor', 'shelfLocation', 'storeNote', 'displayInfo'].includes(field);
 }
 
 function hasAny(input: StoreCatalogEditRequest, ...fields: Array<keyof StoreCatalogEditRequest>) {

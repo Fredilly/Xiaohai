@@ -119,6 +119,7 @@ Page({
         this.data.storeId,
         this.data.clientRequestId,
         method === 'DELIVERY' ? this.data.addressId : undefined,
+        this.data.quote.totalMinor,
       );
       void wx.redirectTo({ url: `/pages/order-detail/order-detail?id=${result.orderId}` });
     } catch {

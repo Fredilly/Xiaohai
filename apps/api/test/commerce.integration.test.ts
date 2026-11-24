@@ -1,4 +1,4 @@
-import { afterAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import {
   bookEditions,
@@ -6,7 +6,6 @@ import {
   cartItems,
   carts,
   consumerUsers,
-  createDatabase,
   orderItems,
   orders,
   productMedia,
@@ -19,12 +18,16 @@ import {
 } from '@xiaohai/db';
 import { CommerceService } from '../src/commerce/commerce-service.js';
 import { CommissionService } from '../src/commission/commission-service.js';
+import { createOwnedIntegrationDatabase } from './owned-integration-database.js';
 import { assertMeipingApplyDisposableDatabase } from './meiping-apply-database-guard.js';
-const database = assertMeipingApplyDisposableDatabase(process.env)
-  ? createDatabase(process.env)
-  : null;
+const enabled = assertMeipingApplyDisposableDatabase(process.env);
+const owned = enabled ? createOwnedIntegrationDatabase(process.env) : null;
+const database = owned?.database ?? null;
 const suite = database ? describe : describe.skip;
 suite('M5 Commerce PostgreSQL integration', () => {
+  beforeAll(async () => {
+    await owned!.start();
+  }, 60_000);
   const commission = new CommissionService(database!.db);
   const commerce = new CommerceService(database!.db, commission);
   beforeEach(async () => {
@@ -43,7 +46,7 @@ suite('M5 Commerce PostgreSQL integration', () => {
     await database!.db.delete(referralLinks);
     await database!.db.delete(consumerUsers);
   });
-  afterAll(async () => database?.pool.end());
+  afterAll(async () => owned?.stop());
   async function consumer() {
     const [u] = await database!.db
       .insert(consumerUsers)

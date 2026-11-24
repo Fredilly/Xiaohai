@@ -62,12 +62,18 @@ export class FulfillmentService {
     private readonly deliveryProvider: DeliveryProvider,
   ) {}
 
-  async quote(consumerUserId: string, input: FulfillmentQuoteRequest) {
-    const cart = await this.commerce.getCart(consumerUserId);
+  async quote(
+    consumerUserId: string,
+    input: FulfillmentQuoteRequest,
+    query: Database | Transaction = this.db,
+    preparedCart?: Awaited<ReturnType<CommerceService['getCart']>>,
+  ) {
+    const cart =
+      preparedCart ?? (await this.commerce.getCart(consumerUserId, input.storeId, query));
     if (!cart.items.length) throw new FulfillmentError('CONFLICT');
     if (cart.items.some((item) => !item.availableForSale)) throw new FulfillmentError('CONFLICT');
 
-    const store = await this.requireActiveStore(input.storeId);
+    const store = await this.requireActiveStore(input.storeId, query);
     if (input.method === 'PICKUP') {
       return {
         method: input.method,
@@ -79,8 +85,8 @@ export class FulfillmentService {
       };
     }
 
-    const address = await this.requireAddress(consumerUserId, input.addressId!);
-    const zone = await this.resolveDeliveryZone(input.storeId, address);
+    const address = await this.requireAddress(consumerUserId, input.addressId!, query);
+    const zone = await this.resolveDeliveryZone(input.storeId, address, query);
     return {
       method: input.method,
       store,
@@ -99,6 +105,7 @@ export class FulfillmentService {
           storeId: input.storeId,
           addressId: input.method === 'DELIVERY' ? input.addressId : null,
           referralCode: input.referralCode ?? null,
+          expectedTotalMinor: input.expectedTotalMinor ?? null,
         }),
       )
       .digest('hex');
@@ -138,9 +145,14 @@ export class FulfillmentService {
 
       // Read the cart and quote only AFTER acquiring the consumer checkout lock.
       // A duplicate key replays above; a new key sees an empty cart after the first commit.
-      const quote = await this.quote(consumerUserId, input);
-      const cart = await this.commerce.getCart(consumerUserId);
-      const skuRows = await this.db
+      const initialCart = await this.commerce.getCart(consumerUserId, undefined, tx);
+      // Inventory is always locked before local price rows, matching Staff edits.
+      await reserveSaleInventory(tx, input.storeId, initialCart.items);
+      const cart = await this.commerce.getCart(consumerUserId, input.storeId, tx, true);
+      const quote = await this.quote(consumerUserId, input, tx, cart);
+      if (input.expectedTotalMinor !== undefined && input.expectedTotalMinor !== quote.totalMinor)
+        throw new FulfillmentError('CONFLICT');
+      const skuRows = await tx
         .select({ id: skus.id, code: skus.code })
         .from(skus)
         .where(
@@ -154,11 +166,11 @@ export class FulfillmentService {
 
       const address =
         input.method === 'DELIVERY'
-          ? await this.requireAddress(consumerUserId, input.addressId!)
+          ? await this.requireAddress(consumerUserId, input.addressId!, tx)
           : null;
       const zone =
         input.method === 'DELIVERY'
-          ? await this.resolveDeliveryZone(input.storeId, address!)
+          ? await this.resolveDeliveryZone(input.storeId, address!, tx)
           : null;
 
       const [cartRow] = await tx
@@ -167,8 +179,6 @@ export class FulfillmentService {
         .where(eq(carts.consumerUserId, consumerUserId))
         .limit(1);
       if (!cartRow) throw new FulfillmentError('CONFLICT');
-
-      await reserveSaleInventory(tx, input.storeId, cart.items);
 
       const orderId = randomUUID();
       await tx.insert(orders).values({
@@ -542,8 +552,8 @@ export class FulfillmentService {
     };
   }
 
-  private async requireActiveStore(storeId: string) {
-    const [store] = await this.db
+  private async requireActiveStore(storeId: string, query: Database | Transaction = this.db) {
+    const [store] = await query
       .select({ id: stores.id, name: stores.name, status: stores.operationalStatus })
       .from(stores)
       .where(eq(stores.id, storeId))
@@ -552,8 +562,12 @@ export class FulfillmentService {
     return { id: store.id, name: store.name };
   }
 
-  private async requireAddress(consumerUserId: string, addressId: string) {
-    const [address] = await this.db
+  private async requireAddress(
+    consumerUserId: string,
+    addressId: string,
+    query: Database | Transaction = this.db,
+  ) {
+    const [address] = await query
       .select()
       .from(userAddresses)
       .where(and(eq(userAddresses.id, addressId), eq(userAddresses.consumerUserId, consumerUserId)))
@@ -562,8 +576,12 @@ export class FulfillmentService {
     return address;
   }
 
-  private async resolveDeliveryZone(storeId: string, address: typeof userAddresses.$inferSelect) {
-    const rows = await this.db
+  private async resolveDeliveryZone(
+    storeId: string,
+    address: typeof userAddresses.$inferSelect,
+    query: Database | Transaction = this.db,
+  ) {
+    const rows = await query
       .select()
       .from(deliveryZones)
       .where(

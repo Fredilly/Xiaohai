@@ -1,4 +1,4 @@
-import { and, asc, eq, ilike, isNull, or, sql } from 'drizzle-orm';
+import { and, asc, eq, ilike, isNull, isNotNull, or, sql } from 'drizzle-orm';
 import {
   publicInventoryItemSchema,
   publicInventorySearchResponseSchema,
@@ -12,6 +12,7 @@ import {
   regions,
   skus,
   storeInventory,
+  storeCatalogMetadata,
   stores,
   type createDatabase,
 } from '@xiaohai/db';
@@ -56,7 +57,7 @@ export class InventorySearchService {
         skuId: skus.id,
         skuCode: skus.code,
         skuName: skus.name,
-        priceMinor: skus.priceMinor,
+        priceMinor: sql<number>`${storeCatalogMetadata.storePriceMinor}`,
         availableForSale: skus.availableForSale,
         onHand: storeInventory.onHand,
         reserved: storeInventory.reserved,
@@ -84,6 +85,13 @@ export class InventorySearchService {
       .from(storeInventory)
       .innerJoin(skus, eq(storeInventory.skuId, skus.id))
       .innerJoin(products, eq(skus.productId, products.id))
+      .innerJoin(
+        storeCatalogMetadata,
+        and(
+          eq(storeCatalogMetadata.storeId, storeInventory.storeId),
+          eq(storeCatalogMetadata.skuId, storeInventory.skuId),
+        ),
+      )
       .innerJoin(bookEditions, eq(products.bookEditionId, bookEditions.id))
       .innerJoin(books, eq(bookEditions.bookId, books.id))
       .innerJoin(stores, eq(storeInventory.storeId, stores.id))
@@ -92,6 +100,7 @@ export class InventorySearchService {
       .where(
         and(
           eq(products.status, 'ACTIVE'),
+          isNotNull(storeCatalogMetadata.storePriceMinor),
           eq(skus.status, 'ACTIVE'),
           eq(stores.operationalStatus, 'ACTIVE'),
           eq(regions.operationalStatus, 'ACTIVE'),

@@ -47,12 +47,14 @@ export const createFulfillmentOrder = (
   storeId: string,
   clientRequestId: string,
   addressId?: string,
+  expectedTotalMinor?: number,
 ) => {
   const referralCode = String(wx.getStorageSync('referral_code') || '');
   return request<{ orderId: string }>('/api/v1/fulfillment/orders', 'POST', {
     method,
     storeId,
     clientRequestId,
+    ...(expectedTotalMinor !== undefined ? { expectedTotalMinor } : {}),
     ...(/^[A-Z0-9_-]{8,32}$/.test(referralCode) ? { referralCode } : {}),
     ...(method === 'DELIVERY' && addressId ? { addressId } : {}),
   }).then((result) => {

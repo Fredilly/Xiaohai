@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { ConsumerAuthError } from '../src/auth/errors.js';
 import { StoreNetworkError } from '../src/stores/store-service.js';
+import { CatalogEditError } from '../src/commerce/catalog-edit-service.js';
 import {
   registerStoreCatalogEditRoutes,
   registerStoreCatalogReadRoutes,
@@ -37,9 +38,12 @@ function setup(perms = context.permissions) {
   );
   const preview = vi.fn(() =>
     Promise.resolve({
-      sharedFields: ['bookTitle'],
-      affectedStoreCount: 2,
-      affectedStoreIds: [own, foreign],
+      impact: {
+        sharedFields: ['bookTitle'],
+        affectedStoreCount: 2,
+        affectedStoreIds: [own, foreign],
+      },
+      previewToken: 'signed-test-token',
     }),
   );
   const update = vi.fn(() =>
@@ -207,43 +211,96 @@ describe('authorized direct catalog editing', () => {
     expect(update).not.toHaveBeenCalled();
   });
 
-  it('allows store-local edits but never shared master changes', async () => {
+  it('passes local edits and scoped shared-field previews to the same editor', async () => {
     const { app, preview, update } = setup(['stores.read', 'catalog.edit']);
     const headers = { authorization: ['Be', 'arer ', 'fake-staff-session'].join('') };
-    const previewResponse = await app.inject({
+    const url = `/api/v1/staff/stores/${own}/catalog/${own}`;
+
+    const local = await app.inject({
       method: 'POST',
-      url: `/api/v1/staff/stores/${own}/catalog/${own}/preview`,
+      url: url + '/preview',
       headers,
       payload: body,
     });
-    expect(previewResponse.statusCode).toBe(200);
-    expect(preview).toHaveBeenCalledWith(own, own, body, context.staffAccountId);
+    expect(local.statusCode).toBe(200);
+    expect(preview).toHaveBeenCalledWith(own, own, body, context.staffAccountId, 'STORE_ONLY');
 
-    const updateResponse = await app.inject({
+    const localUpdate = await app.inject({ method: 'PATCH', url, headers, payload: body });
+    expect(localUpdate.statusCode).toBe(200);
+    expect(update).toHaveBeenCalledWith(
+      own,
+      own,
+      context.staffAccountId,
+      expect.any(String),
+      body,
+      'STORE_ONLY',
+      undefined,
+    );
+
+    // Real service permits this only for a single affected store. The route
+    // must carry the signed impact token unchanged rather than bypassing it.
+    preview.mockResolvedValueOnce({
+      impact: { sharedFields: ['bookTitle'], affectedStoreCount: 1, affectedStoreIds: [own] },
+      previewToken: 'signed-test-token',
+    });
+    const approvedPreview = await app.inject({
+      method: 'POST',
+      url: url + '/preview',
+      headers,
+      payload: sharedBody,
+    });
+    expect(approvedPreview.statusCode).toBe(200);
+    expect(preview).toHaveBeenLastCalledWith(
+      own,
+      own,
+      sharedBody,
+      context.staffAccountId,
+      'STORE_ONLY',
+    );
+
+    const signed = await app.inject({
       method: 'PATCH',
-      url: `/api/v1/staff/stores/${own}/catalog/${own}`,
-      headers,
-      payload: body,
+      url,
+      headers: { ...headers, 'x-catalog-preview-token': 'signed-test-token' },
+      payload: sharedBody,
     });
-    expect(updateResponse.statusCode).toBe(200);
-    expect(update).toHaveBeenCalledWith(own, own, context.staffAccountId, expect.any(String), body);
+    expect(signed.statusCode).toBe(200);
+    expect(update).toHaveBeenLastCalledWith(
+      own,
+      own,
+      context.staffAccountId,
+      expect.any(String),
+      sharedBody,
+      'STORE_ONLY',
+      'signed-test-token',
+    );
+  });
 
+  it('returns safe 403 when the store editor rejects cross-store impact', async () => {
+    const { app, preview, update } = setup(['stores.read', 'catalog.edit']);
+    const headers = { authorization: ['Be', 'arer ', 'fake-staff-session'].join('') };
+    const url = `/api/v1/staff/stores/${own}/catalog/${own}`;
+    preview.mockRejectedValueOnce(new CatalogEditError('SHARED_FORBIDDEN'));
     const forbiddenPreview = await app.inject({
       method: 'POST',
-      url: `/api/v1/staff/stores/${own}/catalog/${own}/preview`,
+      url: url + '/preview',
       headers,
       payload: sharedBody,
     });
     expect(forbiddenPreview.statusCode).toBe(403);
+    expect(forbiddenPreview.json()).toMatchObject({ error: { code: 'SHARED_FORBIDDEN' } });
+
+    update.mockRejectedValueOnce(new CatalogEditError('SHARED_FORBIDDEN'));
     const forbiddenWrite = await app.inject({
       method: 'PATCH',
-      url: `/api/v1/staff/stores/${own}/catalog/${own}`,
+      url,
       headers,
       payload: sharedBody,
     });
     expect(forbiddenWrite.statusCode).toBe(403);
-    expect(update).toHaveBeenCalledTimes(1);
+    expect(forbiddenWrite.json()).toMatchObject({ error: { code: 'SHARED_FORBIDDEN' } });
     expect(preview).toHaveBeenCalledTimes(1);
+    expect(update).toHaveBeenCalledTimes(1);
   });
 
   it('rejects an authorized identity outside its store scope', async () => {

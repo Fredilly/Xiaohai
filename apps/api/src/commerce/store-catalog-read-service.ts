@@ -1,4 +1,4 @@
-import { and, asc, eq, ilike, or } from 'drizzle-orm';
+import { and, asc, eq, ilike, or, sql } from 'drizzle-orm';
 import {
   bookEditions,
   books,
@@ -46,7 +46,7 @@ export class StoreCatalogReadService {
         skuName: skus.name,
         skuStatus: skus.status,
         skuVersion: skus.version,
-        priceMinor: skus.priceMinor,
+        priceMinor: sql<number>`coalesce(${storeCatalogMetadata.storePriceMinor}, ${skus.priceMinor})`,
         availableForSale: skus.availableForSale,
         onHand: storeInventory.onHand,
         reserved: storeInventory.reserved,

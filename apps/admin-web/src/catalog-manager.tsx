@@ -24,6 +24,7 @@ import {
 import { loadHqStores } from './hq-operations-api';
 import { isValidIsbn, normalizeIsbn } from '@xiaohai/contracts/commerce';
 import { createBookLookupGate } from './book-lookup-gate';
+import { HqProductImageUploader } from './merchant-image-uploader';
 type Product = Awaited<ReturnType<typeof listAdminProducts>>['products'][number];
 export function parseYuanToMinor(value: string): number | null {
   if (!/^(?:0|[1-9]\d*)(?:\.\d{1,2})?$/.test(value)) return null;
@@ -79,18 +80,20 @@ export function CatalogManager({ token }: { token: string }) {
   const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
+  const [photoProduct, setPhotoProduct] = useState<Product | null>(null);
   const [creating, setCreating] = useState(false);
   useEffect(() => {
-    if (!creating && !editing) return;
+    if (!creating && !editing && !photoProduct) return;
     function handleEscape(event: KeyboardEvent) {
       if (event.key === 'Escape') {
         setCreating(false);
         setEditing(null);
+        setPhotoProduct(null);
       }
     }
     window.addEventListener('keydown', handleEscape);
     return () => window.removeEventListener('keydown', handleEscape);
-  }, [creating, editing]);
+  }, [creating, editing, photoProduct]);
 
   async function load() {
     setState('loading');
@@ -144,7 +147,7 @@ export function CatalogManager({ token }: { token: string }) {
                 <th>商品</th>
                 <th>书名 / 作者</th>
                 <th>SKU 编码</th>
-                <th>价格</th>
+                <th>SKU 参考价</th>
                 <th>状态</th>
                 <th>操作</th>
               </tr>
@@ -174,6 +177,9 @@ export function CatalogManager({ token }: { token: string }) {
                   </td>
                   <td>
                     <button onClick={() => setEditing(p)}>编辑</button>
+                    {p.status === 'DRAFT' && (
+                      <button onClick={() => setPhotoProduct(p)}>上传图片</button>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -261,6 +267,25 @@ export function CatalogManager({ token }: { token: string }) {
           </div>
         </div>
       )}
+      {photoProduct && (
+        <div className="catalog-editor-overlay" role="presentation">
+          <div
+            className="catalog-editor-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-label={`总部上传商品图片：${photoProduct.name}`}
+          >
+            <HqProductImageUploader
+              key={photoProduct.id}
+              token={token}
+              productId={photoProduct.id}
+              productVersion={photoProduct.productVersion}
+              onUploaded={() => void load()}
+              onCancel={() => setPhotoProduct(null)}
+            />
+          </div>
+        </div>
+      )}
       <HqStoreCatalogEditor token={token} />
     </section>
   );
@@ -329,7 +354,7 @@ function HqStoreCatalogEditor({ token }: { token: string }) {
     <section className="panel">
       <h2>总部跨门店商品资料</h2>
       <p className="muted">
-        总部可编辑共享商品资料及指定门店的货架、备注和陈列信息。保存共享字段前会显示影响范围。
+        总部可编辑共享商品资料及指定门店的独立售价、货架、备注和陈列信息。保存共享字段前会显示影响范围。
       </p>
       <label>
         管理门店
@@ -354,7 +379,7 @@ function HqStoreCatalogEditor({ token }: { token: string }) {
             <tr>
               <th>商品</th>
               <th>ISBN / SKU</th>
-              <th>价格</th>
+              <th>本店售价</th>
               <th>本店备注</th>
               <th>操作</th>
             </tr>
@@ -530,7 +555,7 @@ function HqStoreCatalogForm({
         </>
       )}
       <label>
-        价格（分）
+        本店售价（分）
         <input
           type="number"
           min="0"
@@ -968,7 +993,7 @@ function ProductForm({
         />
       </label>
       <label>
-        价格（人民币元）
+        SKU 参考价（人民币元，不覆盖门店售价）
         <input
           inputMode="decimal"
           required

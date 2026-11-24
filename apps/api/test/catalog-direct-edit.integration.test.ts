@@ -1,11 +1,12 @@
+import { assertMeipingApplyDisposableDatabase } from './meiping-apply-database-guard.js';
+import { createOwnedIntegrationDatabase } from './owned-integration-database.js';
 import { randomUUID } from 'node:crypto';
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { and, eq, inArray } from 'drizzle-orm';
 import {
   auditLogs,
   bookEditions,
   books,
-  createDatabase,
   products,
   regions,
   rolePermissions,
@@ -35,19 +36,21 @@ import {
 } from '../src/commerce/store-catalog-read-routes.js';
 
 const databaseUrl = process.env.DATABASE_URL;
-const disposableDatabase =
-  databaseUrl && /^xiaohai_(test|pr157_uat)$/.test(new URL(databaseUrl).pathname.slice(1))
-    ? createDatabase(process.env)
-    : null;
+const enabled = assertMeipingApplyDisposableDatabase(process.env);
+const owned = enabled ? createOwnedIntegrationDatabase(process.env) : null;
+const disposableDatabase = owned?.database ?? null;
 const suite = disposableDatabase ? describe : describe.skip;
 
 suite('direct catalog editing on disposable PostgreSQL', () => {
+  beforeAll(async () => {
+    await owned!.start();
+  }, 60_000);
   const db = disposableDatabase!.db;
   const editor = new CatalogEditService(db, 'isolated-catalog-impact-test-signing-secret-12345');
   const reader = new StoreCatalogReadService(db);
 
   afterAll(async () => {
-    await disposableDatabase!.pool.end();
+    await owned?.stop();
   });
 
   it('updates shared fields and keeps store-local metadata and stock unchanged', async () => {
@@ -183,7 +186,7 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
       };
 
       const preview = await editor.preview(storeA!.id, sku!.id, input, actor!.id, true);
-      expect(preview.impact.sharedFields).toEqual(['bookTitle', 'priceMinor']);
+      expect(preview.impact.sharedFields).toEqual(['bookTitle']);
       expect(preview.impact.affectedStoreCount).toBe(4);
       expect(preview.previewToken).toMatch(/^\d{10}\./);
 
@@ -218,13 +221,13 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
       expect(updated.item.priceMinor).toBe(1200);
       expect(updated.item.shelfLocation).toBe('Shelf A-01');
       expect(updated.item.bookVersion).toBe(1);
-      expect(updated.item.skuVersion).toBe(1);
+      expect(updated.item.skuVersion).toBe(0);
       expect(updated.item.localVersion).toBe(1);
       expect(updated.impact.affectedStoreCount).toBe(4);
 
       const otherStore = await reader.get(storeB!.id, sku!.id);
       expect(otherStore?.bookTitle).toBe('Edited Direct Edit Book');
-      expect(otherStore?.priceMinor).toBe(1200);
+      expect(otherStore?.priceMinor).toBe(1000);
       expect(otherStore?.shelfLocation).toBeNull();
 
       await expect(
@@ -242,7 +245,7 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
       const changedImpactEdit = {
         ...input,
         expectedBookVersion: 1,
-        expectedSkuVersion: 1,
+        expectedSkuVersion: 0,
         expectedLocalVersion: 1,
         bookTitle: 'New HQ book title after scoped preview',
       };
@@ -322,7 +325,7 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
         expectedProductVersion: 1,
         expectedBookVersion: 1,
         expectedEditionVersion: 0,
-        expectedSkuVersion: 1,
+        expectedSkuVersion: 0,
         expectedLocalVersion: 0,
         storeNote: 'Should never be saved',
       };
@@ -335,7 +338,7 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
         const bypassShared = {
           expectedProductVersion: 0,
           expectedBookVersion: 1,
-          expectedSkuVersion: 1,
+          expectedSkuVersion: 0,
           expectedLocalVersion: 1,
           bookTitle: 'Cross-store malicious title',
         };
@@ -404,7 +407,7 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
         const hqEdit = {
           expectedProductVersion: 0,
           expectedBookVersion: 1,
-          expectedSkuVersion: 1,
+          expectedSkuVersion: 0,
           expectedLocalVersion: 1,
           bookTitle: 'HQ approved shared title',
         };
@@ -512,7 +515,7 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
           const concurrentInput = {
             expectedProductVersion: 0,
             expectedBookVersion: 2,
-            expectedSkuVersion: 1,
+            expectedSkuVersion: 0,
             expectedLocalVersion: 1,
             bookTitle: 'Must reject changed affected-store graph',
           };
@@ -621,24 +624,23 @@ suite('direct catalog editing on disposable PostgreSQL', () => {
           expectedSkuVersion: 0,
           expectedLocalVersion: 0,
         };
-        // A STORE-scoped account cannot change a globally shared SKU price,
-        // even when the target SKU is beyond the first 1,000 catalog rows.
-        await expect(
-          editor.update(storeA!.id, lastSku!.id, actor!.id, randomUUID(), {
-            ...baselineVersions,
-            priceMinor: 950,
-          }),
-        ).rejects.toMatchObject({ code: 'SHARED_FORBIDDEN' });
+        // Store pricing stays local even beyond the first 1,000 catalogue rows.
+        const priced = await editor.update(storeA!.id, lastSku!.id, actor!.id, randomUUID(), {
+          ...baselineVersions,
+          priceMinor: 950,
+        });
+        expect(priced.item.priceMinor).toBe(950);
         const lastUpdated = await editor.update(storeA!.id, lastSku!.id, actor!.id, randomUUID(), {
           ...baselineVersions,
+          expectedLocalVersion: 1,
           shelfLocation: 'Shelf Z-01',
         });
         expect(lastUpdated.item).toMatchObject({
           skuId: lastSku!.id,
-          priceMinor: 900,
+          priceMinor: 950,
           skuVersion: 0,
           shelfLocation: 'Shelf Z-01',
-          localVersion: 1,
+          localVersion: 2,
         });
         expect(await reader.get(storeB!.id, lastSku!.id)).toBeNull();
       }

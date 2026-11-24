@@ -23,6 +23,10 @@ import {
   registerStoreCatalogReadRoutes,
 } from './commerce/store-catalog-read-routes.js';
 import { CatalogEditService } from './commerce/catalog-edit-service.js';
+import { registerStoreCatalogCreateRoutes } from './commerce/store-catalog-create-routes.js';
+import { ProductImageUploadService } from './commerce/product-image-upload-service.js';
+import { registerProductImageUploadRoutes } from './commerce/product-image-upload-routes.js';
+import { createMerchantImageStorage } from './commerce/merchant-image-storage.js';
 import { CatalogCorrectionService } from './commerce/catalog-correction-service.js';
 import { registerCatalogCorrectionRoutes } from './commerce/catalog-correction-routes.js';
 import { loadWeChatPayProvider } from './payments/wechat-pay.js';
@@ -51,6 +55,8 @@ import { StoreNetworkService } from './stores/store-service.js';
 import { registerStoreRoutes } from './stores/store-routes.js';
 import { InventorySearchService } from './inventory/inventory-service.js';
 import { registerInventoryRoutes } from './inventory/inventory-routes.js';
+import { FoodBatchPreviewService } from './inventory/food-batch-preview-service.js';
+import { registerFoodBatchPreviewRoutes } from './inventory/food-batch-preview-routes.js';
 import { InventoryOperationsService } from './inventory/inventory-operations-service.js';
 import { registerInventoryOperationsRoutes } from './inventory/inventory-operations-routes.js';
 import { registerMeipingXlsRoutes } from './migration/meiping-xls-routes.js';
@@ -143,11 +149,21 @@ registerStoreCatalogEditRoutes(app, {
   stores,
   catalog: new CatalogEditService(db, config.STAFF_SESSION_SECRET),
 });
+registerStoreCatalogCreateRoutes(app, {
+  staffAuthorization,
+  stores,
+  commerce,
+});
 registerHqCatalogEditRoutes(app, {
   staffAuthorization,
   stores: new StoreNetworkService(db),
   catalog: new StoreCatalogReadService(db),
   editor: new CatalogEditService(db, config.STAFF_SESSION_SECRET),
+});
+registerProductImageUploadRoutes(app, {
+  staffAuthorization,
+  stores,
+  images: new ProductImageUploadService(db, createMerchantImageStorage(process.env)),
 });
 registerCatalogCorrectionRoutes(app, {
   staffAuthorization,
@@ -162,6 +178,11 @@ registerPaymentRoutes(app, {
 registerContentRoutes(app, { content, consumerSessions: sessions, staffAuthorization });
 registerStoreRoutes(app, { stores, staffAuthorization });
 registerInventoryRoutes(app, { inventory: new InventorySearchService(db) });
+registerFoodBatchPreviewRoutes(app, {
+  staffAuthorization,
+  stores,
+  food: new FoodBatchPreviewService(db),
+});
 registerInventoryOperationsRoutes(app, { operations: inventory, staffAuthorization });
 registerMeipingXlsRoutes(app, { staffAuthorization, stores, inventory, db });
 registerMeipingReviewRoutes(app, {

@@ -1,8 +1,11 @@
 import { addCartItem, getProduct, type Product } from '../../services/commerce';
 import { detailAccessMessage } from '../../utils/detail-read-error';
-import { resolveEditorialBookCover } from '../../utils/real-visuals';
+import {
+  presentCatalogProduct,
+  type DisplayProduct as PresentedProduct,
+} from '../../utils/catalog-presentation';
 
-type DisplayProduct = Product & {
+type DisplayProduct = PresentedProduct & {
   displayCoverUrl: string;
   gallery: Array<{ key: number; url: string }>;
 };
@@ -40,11 +43,7 @@ Page({
       const product = await getProduct(id);
       this.setData({
         product: {
-          ...product,
-          displayCoverUrl: resolveEditorialBookCover(
-            product.title ?? product.name,
-            product.coverUrl,
-          ),
+          ...presentCatalogProduct(product),
           gallery: detailGallery(product),
         },
         loading: false,
@@ -99,6 +98,18 @@ Page({
         current === index ? { ...image, url: '' } : image,
       ),
     });
+  },
+  previewGallery(event: WechatMiniprogram.TouchEvent) {
+    const product = this.data.product;
+    const id = String(event.currentTarget.dataset.id ?? '');
+    const current = String(event.currentTarget.dataset.src ?? '');
+    if (!product || product.id !== id || !current) return;
+    const urls = [
+      ...new Set(
+        [product.displayCoverUrl, ...product.gallery.map((image) => image.url)].filter(Boolean),
+      ),
+    ];
+    if (urls.includes(current)) void wx.previewImage({ current, urls });
   },
   openCart() {
     void wx.navigateTo({ url: '/pages/cart/cart' });

@@ -1,8 +1,6 @@
-import { listProducts, type Product } from '../../services/commerce';
+import { listProducts } from '../../services/commerce';
 import { clearFailedShopCover } from './shop-display';
-import { resolveEditorialBookCover } from '../../utils/real-visuals';
-
-type DisplayProduct = Product & { displayCoverUrl: string };
+import { presentCatalogProduct, type DisplayProduct } from '../../utils/catalog-presentation';
 
 Page({
   data: { q: '', products: [] as DisplayProduct[], loading: true, error: false },
@@ -30,13 +28,7 @@ Page({
       const r = await listProducts(query);
       if (this.pageClosed || version !== this.requestVersion) return;
       this.setData({
-        products: r.products.map((product) => ({
-          ...product,
-          displayCoverUrl: resolveEditorialBookCover(
-            product.title ?? product.name,
-            product.coverUrl,
-          ),
-        })),
+        products: r.products.map(presentCatalogProduct),
         loading: false,
       });
     } catch {

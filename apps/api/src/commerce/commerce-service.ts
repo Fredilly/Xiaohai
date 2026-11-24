@@ -22,6 +22,7 @@ import {
   products,
   skus,
   storeInventory,
+  storeCatalogMetadata,
   userAddresses,
   auditLogs,
 } from '@xiaohai/db';
@@ -31,6 +32,7 @@ import {
   signLegacyPreview,
   verifyLegacyPreview,
 } from './hq-catalog-impact.js';
+import { publicProductGalleryUrls } from './product-public-media.js';
 
 type Db = ReturnType<typeof createDatabase>['db'];
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
@@ -62,8 +64,10 @@ export function isPublicProductImageUrl(value: string): boolean {
       Boolean(url.hostname) &&
       isIP(url.hostname.replace(/^\[|\]$/g, '')) === 0 &&
       url.hostname !== 'localhost' &&
+      !url.hostname.endsWith('.localhost') &&
       !url.hostname.endsWith('.invalid') &&
-      !url.hostname.endsWith('.local')
+      !url.hostname.endsWith('.local') &&
+      !url.hostname.endsWith('.internal')
     );
   } catch {
     return false;
@@ -146,100 +150,154 @@ export class CommerceService {
       .select({ url: productMedia.url })
       .from(productMedia)
       .where(eq(productMedia.productId, product.id))
-      .orderBy(asc(productMedia.displayOrder), asc(productMedia.id));
+      .orderBy(asc(productMedia.displayOrder), asc(productMedia.id))
+      .limit(40);
     // Never emit staff-entered private URLs, HTTP links or signed query strings
     // as public Mini Program image sources. WeChat's domain allowlist remains
     // an additional independent boundary.
-    const mediaUrls = [
-      ...new Set(media.map((row) => row.url).filter(isPublicProductImageUrl)),
-    ].slice(0, 12);
+    const mediaUrls = publicProductGalleryUrls(
+      media.map((row) => row.url).filter(isPublicProductImageUrl),
+      12,
+    );
     return { ...product, mediaUrls };
   }
 
-  private async getCartId(consumerUserId: string) {
-    const [existing] = await this.db
+  private async getCartId(consumerUserId: string, query: Db | Tx = this.db) {
+    const [existing] = await query
       .select({ id: carts.id })
       .from(carts)
       .where(eq(carts.consumerUserId, consumerUserId));
     if (existing) return existing.id;
-    const [created] = await this.db
+    const [created] = await query
       .insert(carts)
       .values({ consumerUserId })
       .onConflictDoNothing()
       .returning({ id: carts.id });
     if (created) return created.id;
-    const [resolved] = await this.db
+    const [resolved] = await query
       .select({ id: carts.id })
       .from(carts)
       .where(eq(carts.consumerUserId, consumerUserId));
     return resolved!.id;
   }
 
-  async getCart(consumerUserId: string): Promise<CartResponse> {
-    const cartId = await this.getCartId(consumerUserId);
-    const rows = await this.db
+  async getCart(
+    consumerUserId: string,
+    storeId?: string,
+    query: Db | Tx = this.db,
+    lockPrices = false,
+  ): Promise<CartResponse> {
+    const cartId = await this.getCartId(consumerUserId, query);
+    const rows = await query
       .select({ item: cartItems, sku: skus, product: products })
       .from(cartItems)
       .innerJoin(skus, eq(cartItems.skuId, skus.id))
       .innerJoin(products, eq(skus.productId, products.id))
       .where(eq(cartItems.cartId, cartId));
-    const items = rows.map(({ item, sku, product }) => ({
-      id: item.id,
-      skuId: sku.id,
-      productName: product.name,
-      skuName: sku.name,
-      unitPriceMinor: sku.priceMinor,
-      quantity: item.quantity,
-      lineTotalMinor: sku.priceMinor * item.quantity,
-      availableForSale:
-        product.status === 'ACTIVE' && sku.status === 'ACTIVE' && sku.availableForSale,
-    }));
+    const selection =
+      storeId && rows.length
+        ? query
+            .select({
+              skuId: skus.id,
+              price: storeCatalogMetadata.storePriceMinor,
+              sku: skus,
+              product: products,
+            })
+            .from(storeCatalogMetadata)
+            .innerJoin(skus, eq(storeCatalogMetadata.skuId, skus.id))
+            .innerJoin(products, eq(skus.productId, products.id))
+            .where(
+              and(
+                eq(storeCatalogMetadata.storeId, storeId),
+                inArray(
+                  skus.id,
+                  rows.map((row) => row.sku.id),
+                ),
+              ),
+            )
+            .orderBy(asc(skus.id))
+        : null;
+    const scoped = selection
+      ? lockPrices
+        ? await selection.for('share', { of: [storeCatalogMetadata, skus, products] })
+        : await selection
+      : [];
+    const prices = new Map(scoped.map((row) => [row.skuId, row]));
+    const items = rows.map(({ item, sku, product }) => {
+      const local = prices.get(sku.id);
+      const effectiveSku = local?.sku ?? sku;
+      const effectiveProduct = local?.product ?? product;
+      const price = storeId ? (local?.price ?? 0) : sku.priceMinor;
+      return {
+        id: item.id,
+        skuId: sku.id,
+        productName: effectiveProduct.name,
+        skuName: effectiveSku.name,
+        unitPriceMinor: price,
+        quantity: item.quantity,
+        lineTotalMinor: price * item.quantity,
+        availableForSale:
+          (!storeId || (local?.price !== null && local?.price !== undefined)) &&
+          effectiveProduct.status === 'ACTIVE' &&
+          effectiveSku.status === 'ACTIVE' &&
+          effectiveSku.availableForSale,
+      };
+    });
     return { items, subtotalMinor: items.reduce((sum, item) => sum + item.lineTotalMinor, 0) };
   }
 
   async addCartItem(consumerUserId: string, skuId: string, quantity: number) {
-    const cartId = await this.getCartId(consumerUserId);
-    await this.requirePurchasableSku(skuId);
-    // The unique (cartId, skuId) index serializes competing inserts/updates.
-    // A conditional UPSERT prevents lost increments and never exceeds quantity 99.
-    const [added] = await this.db
-      .insert(cartItems)
-      .values({ cartId, skuId, quantity })
-      .onConflictDoUpdate({
-        target: [cartItems.cartId, cartItems.skuId],
-        set: {
-          quantity: sql`${cartItems.quantity} + ${quantity}`,
-          updatedAt: new Date(),
-        },
-        setWhere: sql`${cartItems.quantity} + ${quantity} <= 99`,
-      })
-      .returning({ id: cartItems.id });
-    if (!added) throw new CommerceError('CONFLICT', 'Cart quantity exceeds limit');
-    return this.getCart(consumerUserId);
+    return await this.db.transaction(async (tx) => {
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${consumerUserId}))`);
+      const cartId = await this.getCartId(consumerUserId, tx);
+      await this.requirePurchasableSku(skuId, tx);
+      // The unique (cartId, skuId) index serializes competing inserts/updates.
+      // A conditional UPSERT prevents lost increments and never exceeds quantity 99.
+      const [added] = await tx
+        .insert(cartItems)
+        .values({ cartId, skuId, quantity })
+        .onConflictDoUpdate({
+          target: [cartItems.cartId, cartItems.skuId],
+          set: {
+            quantity: sql`${cartItems.quantity} + ${quantity}`,
+            updatedAt: new Date(),
+          },
+          setWhere: sql`${cartItems.quantity} + ${quantity} <= 99`,
+        })
+        .returning({ id: cartItems.id });
+      if (!added) throw new CommerceError('CONFLICT', 'Cart quantity exceeds limit');
+      return this.getCart(consumerUserId, undefined, tx);
+    });
   }
 
   async updateCartItem(consumerUserId: string, itemId: string, quantity: number) {
-    const cartId = await this.getCartId(consumerUserId);
-    const [item] = await this.db
-      .select()
-      .from(cartItems)
-      .where(and(eq(cartItems.id, itemId), eq(cartItems.cartId, cartId)));
-    if (!item) throw new CommerceError('NOT_FOUND', 'Cart item not found');
-    await this.requirePurchasableSku(item.skuId);
-    await this.db
-      .update(cartItems)
-      .set({ quantity, updatedAt: new Date() })
-      .where(eq(cartItems.id, itemId));
-    return this.getCart(consumerUserId);
+    return await this.db.transaction(async (tx) => {
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${consumerUserId}))`);
+      const cartId = await this.getCartId(consumerUserId, tx);
+      const [item] = await tx
+        .select()
+        .from(cartItems)
+        .where(and(eq(cartItems.id, itemId), eq(cartItems.cartId, cartId)));
+      if (!item) throw new CommerceError('NOT_FOUND', 'Cart item not found');
+      await this.requirePurchasableSku(item.skuId, tx);
+      await tx
+        .update(cartItems)
+        .set({ quantity, updatedAt: new Date() })
+        .where(eq(cartItems.id, itemId));
+      return this.getCart(consumerUserId, undefined, tx);
+    });
   }
 
   async deleteCartItem(consumerUserId: string, itemId: string) {
-    const cartId = await this.getCartId(consumerUserId);
-    const deleted = await this.db
-      .delete(cartItems)
-      .where(and(eq(cartItems.id, itemId), eq(cartItems.cartId, cartId)))
-      .returning({ id: cartItems.id });
-    if (!deleted.length) throw new CommerceError('NOT_FOUND', 'Cart item not found');
+    return await this.db.transaction(async (tx) => {
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${consumerUserId}))`);
+      const cartId = await this.getCartId(consumerUserId, tx);
+      const deleted = await tx
+        .delete(cartItems)
+        .where(and(eq(cartItems.id, itemId), eq(cartItems.cartId, cartId)))
+        .returning({ id: cartItems.id });
+      if (!deleted.length) throw new CommerceError('NOT_FOUND', 'Cart item not found');
+    });
   }
 
   async listAddresses(consumerUserId: string) {
@@ -302,12 +360,24 @@ export class CommerceService {
     if (!rows.length) throw new CommerceError('NOT_FOUND', 'Address not found');
   }
 
-  async checkoutPreview(consumerUserId: string, addressId: string) {
-    const cart = await this.getCart(consumerUserId);
+  async checkoutPreview(consumerUserId: string, addressId: string, query: Db | Tx = this.db) {
+    const cart = await this.getCart(consumerUserId, undefined, query);
     if (!cart.items.length) throw new CommerceError('CONFLICT', 'Cart is empty');
     if (cart.items.some((item) => !item.availableForSale))
       throw new CommerceError('NOT_PURCHASABLE', 'Cart contains unavailable SKU');
-    const address = await this.requireAddress(consumerUserId, addressId);
+    const [storePrice] = await query
+      .select({ skuId: storeInventory.skuId })
+      .from(storeInventory)
+      .where(
+        inArray(
+          storeInventory.skuId,
+          cart.items.map((item) => item.skuId),
+        ),
+      )
+      .limit(1);
+    if (storePrice)
+      throw new CommerceError('INVALID_INPUT', 'Select a store through fulfillment checkout');
+    const address = await this.requireAddress(consumerUserId, addressId, query);
     return {
       cart,
       address,
@@ -349,8 +419,8 @@ export class CommerceService {
 
       // The winner clears the cart on commit. Later requests see an empty cart,
       // while same-key retries return above without needing its old contents.
-      const preview = await this.checkoutPreview(consumerUserId, addressId);
-      const cartId = await this.getCartId(consumerUserId);
+      const preview = await this.checkoutPreview(consumerUserId, addressId, tx);
+      const cartId = await this.getCartId(consumerUserId, tx);
       const [order] = await tx
         .insert(orders)
         .values({
@@ -763,19 +833,40 @@ export class CommerceService {
     }
   }
 
+  async createStoreDraftProduct(
+    input: AdminProductInput,
+    actorStaffAccountId: string,
+    requestId: string,
+    storeId: string,
+    idempotencyKey: string,
+  ) {
+    // Store-created goods remain invisible and unpurchasable until a separate
+    // explicit publish flow is reviewed. This does not grant global catalog
+    // access: store scope must be authorized by the calling route.
+    if (input.status !== 'DRAFT' || input.sku.availableForSale) {
+      throw new CommerceError('INVALID_INPUT', 'Store creation requires an unsellable draft');
+    }
+    return this.createAdminProduct(input, actorStaffAccountId, requestId, idempotencyKey, storeId);
+  }
+
   async createAdminProduct(
     input: AdminProductInput,
     actorStaffAccountId: string,
     requestId: string,
     idempotencyKey = requestId,
+    linkedStoreId?: string,
   ) {
     validateProductMediaUrls(input.mediaUrls);
+    if (input.coverUrl && !isPublicProductImageUrl(input.coverUrl))
+      throw new CommerceError('INVALID_INPUT', 'Cover must be a stable public HTTPS image');
     // Return a persisted read after commit; never query through a second
     // pooled connection while the INSERT transaction is still open.
     // A browser retry must carry the same key even when Fastify assigns a new request ID.
     // Store only hashes in the immutable audit row; no new schema or secret is required.
+    const actionKey = linkedStoreId ? 'catalog.store_create' : 'catalog.hq_create';
+    const storeKeyNamespace = linkedStoreId ? `${linkedStoreId}:` : '';
     const keyHash = createHash('sha256')
-      .update(`${actorStaffAccountId}:catalog.hq_create:${idempotencyKey}`)
+      .update(`${actorStaffAccountId}:${actionKey}:${storeKeyNamespace}${idempotencyKey}`)
       .digest('hex');
     const payloadHash = createHash('sha256').update(JSON.stringify(input)).digest('hex');
     let createdId: string;
@@ -791,7 +882,7 @@ export class CommerceService {
           .where(
             and(
               eq(auditLogs.actorStaffAccountId, actorStaffAccountId),
-              eq(auditLogs.actionKey, 'catalog.hq_create'),
+              eq(auditLogs.actionKey, actionKey),
               sql`${auditLogs.metadata}->>'idempotencyKeyHash' = ${keyHash}`,
             ),
           )
@@ -854,14 +945,29 @@ export class CommerceService {
             })),
           );
         }
-        await tx.insert(skus).values({
-          productId: product!.id,
-          ...input.sku,
-          code: input.sku.code ?? `XH-SKU-${randomUUID()}`,
-        });
+        const [sku] = await tx
+          .insert(skus)
+          .values({
+            productId: product!.id,
+            ...input.sku,
+            code: input.sku.code ?? `XH-SKU-${randomUUID()}`,
+          })
+          .returning({ id: skus.id });
+        if (linkedStoreId) {
+          // An initial ZERO-quantity association gives the creating Store
+          // scoped read access without inventing stock or ledger entries.
+          // The association and draft creation commit (or roll back) together.
+          await tx.insert(storeInventory).values({
+            storeId: linkedStoreId,
+            skuId: sku!.id,
+            onHand: 0,
+            reserved: 0,
+            rentalReserved: 0,
+          });
+        }
         await tx.insert(auditLogs).values({
           actorStaffAccountId,
-          actionKey: 'catalog.hq_create',
+          actionKey,
           resourceType: 'PRODUCT',
           resourceId: product!.id,
           requestId,
@@ -872,6 +978,7 @@ export class CommerceService {
             ],
             skuCount: 1,
             mediaCount: input.mediaUrls?.length ?? 0,
+            ...(linkedStoreId ? { linkedStoreId, initialOnHand: 0 } : {}),
             idempotencyKeyHash: keyHash,
             payloadHash,
           },
@@ -897,6 +1004,8 @@ export class CommerceService {
     actorStaffAccountId: string,
   ) {
     validateProductMediaUrls(input.mediaUrls);
+    if (input.coverUrl && !isPublicProductImageUrl(input.coverUrl))
+      throw new CommerceError('INVALID_INPUT', 'Cover must be a stable public HTTPS image');
     if (Buffer.byteLength(this.catalogPreviewSecret, 'utf8') < 32) {
       throw new CommerceError('CONFLICT', 'HQ catalog preview signing is not configured');
     }
@@ -944,6 +1053,8 @@ export class CommerceService {
     previewToken?: string,
   ) {
     validateProductMediaUrls(input.mediaUrls);
+    if (input.coverUrl && !isPublicProductImageUrl(input.coverUrl))
+      throw new CommerceError('INVALID_INPUT', 'Cover must be a stable public HTTPS image');
     const matches = await this.getAdminProductsById(id);
     if (matches.length === 0) throw new CommerceError('NOT_FOUND', 'Product not found');
     // A product may have multiple SKUs: never update an arbitrary first SKU.
@@ -1147,8 +1258,8 @@ export class CommerceService {
     return updated;
   }
 
-  private async requirePurchasableSku(id: string) {
-    const [row] = await this.db
+  private async requirePurchasableSku(id: string, query: Db | Tx = this.db) {
+    const [row] = await query
       .select({ sku: skus, product: products })
       .from(skus)
       .innerJoin(products, eq(skus.productId, products.id))
@@ -1158,8 +1269,8 @@ export class CommerceService {
       throw new CommerceError('NOT_PURCHASABLE', 'SKU is not purchasable');
     return row;
   }
-  private async requireAddress(consumerUserId: string, id: string) {
-    const [row] = await this.db
+  private async requireAddress(consumerUserId: string, id: string, query: Db | Tx = this.db) {
+    const [row] = await query
       .select({
         id: userAddresses.id,
         recipientName: userAddresses.recipientName,
@@ -1230,7 +1341,8 @@ function groupCatalog(
       id: product.id,
       name: product.name,
       description: product.description,
-      coverUrl: product.coverUrl,
+      coverUrl:
+        product.coverUrl && isPublicProductImageUrl(product.coverUrl) ? product.coverUrl : null,
       title: book?.title ?? null,
       author: book?.author ?? null,
       isbn: edition?.isbn ?? null,

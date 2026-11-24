@@ -82,6 +82,12 @@
       "import": "./dist/stores.js",
       "default": "./dist/stores.js"
     },
+    "./food": {
+      "types": "./src/food.ts",
+      "development": "./src/food.ts",
+      "import": "./dist/food.js",
+      "default": "./dist/food.js"
+    },
     "./inventory": {
       "types": "./src/inventory.ts",
       "development": "./src/inventory.ts",
