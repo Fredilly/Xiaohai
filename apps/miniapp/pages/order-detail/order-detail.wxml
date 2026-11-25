@@ -44,14 +44,15 @@
       wx:if="{{order.status==='UNPAID'}}"
       class="primary-btn"
       bindtap="pay"
-      disabled="{{paying}}"
+      disabled="{{paying || cancellingOrder}}"
       loading="{{paying}}"
     >微信支付</button>
-    <button wx:if="{{order.status==='UNPAID'}}" bindtap="cancel" disabled="{{paying}}">
-      取消订单
+    <button wx:if="{{order.status==='UNPAID'}}" bindtap="cancel" disabled="{{paying || cancellingOrder}}" loading="{{cancellingOrder}}">
+      {{cancellingOrder ? '正在取消…' : '取消订单'}}
     </button>
     <button bindtap="load">刷新订单状态</button>
     <text class="muted">{{paymentMessage}}</text>
+    <text class="muted">{{cancelMessage}}</text>
 
   </view>
 </view>

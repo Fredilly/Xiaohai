@@ -4,6 +4,8 @@ import { getFulfillment } from '../../services/fulfillment';
 import { payOrder } from '../../services/payments';
 
 Page({
+  readSequence: 0,
+  cancelling: false,
   data: {
     order: null as Awaited<ReturnType<typeof getOrder>> | null,
     fulfillment: null as FulfillmentView | null,
@@ -11,6 +13,8 @@ Page({
     error: false,
     id: '',
     paying: false,
+    cancellingOrder: false,
+    cancelMessage: '',
     paymentMessage: '',
   },
 
@@ -26,32 +30,43 @@ Page({
   },
 
   async load() {
+    const sequence = ++this.readSequence;
+    const orderId = this.data.id;
     this.setData({ loading: true, error: false });
     try {
-      const order = await getOrder(this.data.id);
+      const order = await getOrder(orderId);
       let fulfillment: FulfillmentView | null = null;
       try {
-        fulfillment = await getFulfillment(this.data.id);
+        fulfillment = await getFulfillment(orderId);
       } catch {
         // Legacy M5 orders legitimately have no M16 fulfillment record.
       }
+      if (sequence !== this.readSequence || orderId !== this.data.id) return;
       this.setData({ order, fulfillment, loading: false, error: false });
     } catch {
-      this.setData({ loading: false, error: true });
+      if (sequence === this.readSequence && orderId === this.data.id)
+        this.setData({ loading: false, error: true });
     }
   },
 
   async cancel() {
+    if (this.cancelling || this.data.paying || this.data.order?.status !== 'UNPAID') return;
+    this.cancelling = true;
+    this.setData({ cancellingOrder: true, cancelMessage: '' });
     try {
       await cancelOrder(this.data.id);
-      void this.load();
+      this.setData({ cancelMessage: '取消请求已提交，请以最新订单状态为准。' });
     } catch {
-      this.setData({ error: true });
+      this.setData({ cancelMessage: '取消结果未确认，请刷新订单后再操作。' });
+    } finally {
+      this.cancelling = false;
+      this.setData({ cancellingOrder: false });
+      await this.load();
     }
   },
 
   async pay() {
-    if (this.data.paying) return;
+    if (this.data.paying || this.cancelling || this.data.order?.status !== 'UNPAID') return;
     this.setData({ paying: true, paymentMessage: '' });
     try {
       await payOrder(this.data.id);
