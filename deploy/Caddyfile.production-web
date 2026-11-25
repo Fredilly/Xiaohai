@@ -1,0 +1,37 @@
+# Production web sites only. Deploy on isolated production infrastructure.
+# PRODUCTION_API_UPSTREAM must point to a separately authorized production API,
+# never staging. The compose configuration requires this variable explicitly.
+
+(production_web_common) {
+  encode zstd gzip
+  header {
+    X-Content-Type-Options "nosniff"
+    X-Frame-Options "DENY"
+    Referrer-Policy "strict-origin-when-cross-origin"
+  }
+
+  @api path /api /api/* /health /ready
+  handle @api {
+    reverse_proxy {$PRODUCTION_API_UPSTREAM}
+  }
+}
+
+store.pamboo.asia {
+  import production_web_common
+  handle {
+    root * /srv/store
+    try_files {path} /index.html
+    header Cache-Control "no-cache"
+    file_server
+  }
+}
+
+admin.pamboo.asia {
+  import production_web_common
+  handle {
+    root * /srv/admin
+    try_files {path} /index.html
+    header Cache-Control "no-cache"
+    file_server
+  }
+}

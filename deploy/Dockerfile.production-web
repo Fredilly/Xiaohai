@@ -1,0 +1,17 @@
+# syntax=docker/dockerfile:1
+# Build both UIs once, against same-origin /api and /health endpoints.
+FROM node:22-bookworm-slim AS builder
+WORKDIR /workspace
+RUN corepack enable && corepack prepare pnpm@11.19.0 --activate
+COPY . .
+RUN pnpm install --frozen-lockfile
+ENV VITE_API_BASE_URL=""
+# Include workspace contracts and other transitive packages in a clean builder.
+RUN pnpm --filter '@xiaohai/store-web...' build && pnpm --filter '@xiaohai/admin-web...' build
+
+# No Node application, package manager, source code or runtime secrets in
+# the publicly reachable web image. The API is a separate protected service.
+FROM caddy:2-alpine AS runtime
+COPY --from=builder /workspace/apps/store-web/dist /srv/store
+COPY --from=builder /workspace/apps/admin-web/dist /srv/admin
+COPY deploy/Caddyfile.production-web /etc/caddy/Caddyfile

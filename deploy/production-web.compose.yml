@@ -1,0 +1,22 @@
+# Manual-only production web setup. No staging network or database is mounted.
+name: xiaohai-production-web
+services:
+  web:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.production-web
+    image: xiaohai-production-web:${WEB_REVISION:?Pin an audited source commit}
+    restart: unless-stopped
+    environment:
+      PRODUCTION_API_UPSTREAM: ${PRODUCTION_API_UPSTREAM:?Set an approved production API upstream}
+    ports:
+      - '80:80'
+      - '443:443'
+      - '443:443/udp'
+    volumes:
+      - production_web_caddy_data:/data
+      - production_web_caddy_config:/config
+
+volumes:
+  production_web_caddy_data:
+  production_web_caddy_config:

@@ -34,10 +34,11 @@
     "test:i111-exclusive-lock-integration": "I111_EXCLUSIVE_LOCK_PG_TEST_REQUIRED=1 node --test scripts/i111-exclusive-pg-lock.integration.test.mjs",
     "i111:trusted-runner": "pnpm --filter @xiaohai/api exec tsx ../../scripts/i111-trusted-one-shot-runner.mjs",
     "test:i111-trusted-runner": "node --test scripts/i111-trusted-one-shot-runner.test.mjs",
-    "test:preflight": "node --test scripts/local-startup.test.mjs scripts/image-preflight.test.mjs scripts/i111-build-attestation.test.mjs scripts/i111-db-evidence-ports.test.mjs scripts/i111-exclusive-pg-lock.test.mjs scripts/i111-runtime-surface.test.mjs scripts/i111-one-shot-policy.test.mjs scripts/i111-one-shot-orchestration.test.mjs scripts/i111-paid-operation-grant.test.mjs scripts/i111-trusted-one-shot-runner.test.mjs scripts/i111-readonly-runtime-preflight.test.mjs scripts/i111-reviewed-control-ports.test.mjs scripts/release-preflight.test.mjs scripts/private-bos-staging-smoke.test.mjs",
+    "test:preflight": "node --test scripts/local-startup.test.mjs scripts/image-preflight.test.mjs scripts/i111-build-attestation.test.mjs scripts/i111-db-evidence-ports.test.mjs scripts/i111-exclusive-pg-lock.test.mjs scripts/i111-runtime-surface.test.mjs scripts/i111-one-shot-policy.test.mjs scripts/i111-one-shot-orchestration.test.mjs scripts/i111-paid-operation-grant.test.mjs scripts/i111-trusted-one-shot-runner.test.mjs scripts/i111-readonly-runtime-preflight.test.mjs scripts/i111-reviewed-control-ports.test.mjs scripts/release-preflight.test.mjs scripts/private-bos-staging-smoke.test.mjs scripts/production-web-preflight.test.mjs",
     "preflight:private-bos": "node --env-file-if-exists .env scripts/private-bos-staging-smoke.mjs",
     "test:picture-book-quality": "node --test benchmarks/picture-book-quality/review.test.mjs",
-    "preflight:release": "node --env-file-if-exists .env scripts/release-preflight.mjs"
+    "preflight:release": "node --env-file-if-exists .env scripts/release-preflight.mjs",
+    "preflight:production-web": "node scripts/production-web-preflight.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.35.0",

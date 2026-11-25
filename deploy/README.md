@@ -1,5 +1,7 @@
 # Xiaohai staging deployment (Issue #76)
 
+Production Store/HQ web hostnames and the manual-only, isolated Caddy packaging definition are documented separately in [PRODUCTION_WEB_READINESS.md](PRODUCTION_WEB_READINESS.md). The staging deployment below must not be reused as a production backend.
+
 This deployment is **not live** until DNS, secrets and first-time server setup are performed and verified. Do not set STAGING_READY=true prematurely.
 
 Target: purchased Ubuntu 24.04 Hong Kong VM, 2 vCPU / 4 GiB. Only public ports 80/443; SSH 22 must be restricted after a working key login is tested. PostgreSQL and Redis have no published ports. This is **staging only**.
