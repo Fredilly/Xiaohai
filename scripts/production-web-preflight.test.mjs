@@ -8,7 +8,11 @@ import {
 import { validateUnifiedProductionEnvironment } from './production-unified-preflight.mjs';
 
 const revision = 'a'.repeat(40);
-const valid = { WEB_REVISION: revision, PRODUCTION_API_UPSTREAM: 'https://api.pamboo.asia' };
+const valid = {
+  WEB_REVISION: revision,
+  PRODUCTION_API_UPSTREAM: 'https://api.pamboo.asia',
+  PRODUCTION_HOST_ISOLATED: 'true',
+};
 
 test('requires a pinned code revision and a separate HTTPS production API origin', () => {
   assert.deepEqual(validateProductionWebEnvironment(valid), []);
@@ -25,6 +29,7 @@ test('requires a pinned code revision and a separate HTTPS production API origin
     ['PRODUCTION_API_UPSTREAM', 'https://user:secret@api.pamboo.asia'],
     ['PRODUCTION_API_UPSTREAM', 'https://api.pamboo.asia/api'],
     ['PRODUCTION_API_UPSTREAM', 'https://api.pamboo.asia:8443'],
+    ['PRODUCTION_HOST_ISOLATED', 'false'],
   ]) {
     assert.notEqual(
       validateProductionWebEnvironment({ ...valid, [key]: value }).length,
@@ -44,17 +49,21 @@ test('requires the exact checked-out commit and no uncommitted changes before pa
 });
 
 test('unified production pins the API/Worker and web to the same reviewed SHA', () => {
-  assert.deepEqual(
-    validateUnifiedProductionEnvironment({ WEB_REVISION: revision, API_REVISION: revision }),
-    [],
-  );
+  assert.deepEqual(validateUnifiedProductionEnvironment({ ...valid, API_REVISION: revision }), []);
   assert.notEqual(
-    validateUnifiedProductionEnvironment({ WEB_REVISION: revision, API_REVISION: 'b'.repeat(40) })
-      .length,
+    validateUnifiedProductionEnvironment({ ...valid, API_REVISION: 'b'.repeat(40) }).length,
     0,
   );
   assert.notEqual(
-    validateUnifiedProductionEnvironment({ WEB_REVISION: revision, API_REVISION: 'main' }).length,
+    validateUnifiedProductionEnvironment({ ...valid, API_REVISION: 'main' }).length,
+    0,
+  );
+  assert.notEqual(
+    validateUnifiedProductionEnvironment({
+      ...valid,
+      API_REVISION: revision,
+      PRODUCTION_HOST_ISOLATED: 'false',
+    }).length,
     0,
   );
 });

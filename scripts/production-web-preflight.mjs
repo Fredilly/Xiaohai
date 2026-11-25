@@ -5,6 +5,11 @@ import { execFileSync } from 'node:child_process';
 /** Pure local validation. This never connects to or changes remote infrastructure. */
 export function validateProductionWebEnvironment(env) {
   const failures = [];
+  if (env.PRODUCTION_HOST_ISOLATED !== 'true') {
+    failures.push(
+      'PRODUCTION_HOST_ISOLATED=true requires verified separate production host; do not reuse staging port 80/443',
+    );
+  }
   if (!/^[0-9a-f]{40}$/u.test(env.WEB_REVISION ?? '')) {
     failures.push('WEB_REVISION must pin an exact 40-character commit SHA');
   }

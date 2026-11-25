@@ -78,3 +78,4 @@ API 单元 **233**、Store Web **59**、HQ Web **86**、Miniapp **167**、Config
 - 负责人确认正式门店站 `store.pamboo.asia`、总部站 `admin.pamboo.asia`、API `api.pamboo.asia`。小程序 release 已由无效占位地址切至 `https://api.pamboo.asia`；develop/trial 仍指向 `https://staging-api.pamboo.asia`，保持数据隔离。
 - `deploy/` 已备生产网站（仅静态构建及 HTTPS 反代）和独立 API/Worker 的人工部署定义。没有生产数据库/Redis 自动创建、迁移或清理；生产 Web 通过同源 `/api` 转发，API 上游需要显式配置。生产凭据文件在 Git/Docker ignore 清单中，食品写入/交易和微信支付示例保持关闭。
 - 这只是源代码/配置接通：尚未修改 DNS、申请真实 TLS、获取可用生产服务器或发布官方 AppID，也未进行微信真机、真实支付、真实库存或运营验收。必须由环境负责人提供生产隔离基础设施和微信后台配置，Fred 独立安全审计及 UI 设计不由本轮替代。
+- 新确认的基础设施信息：现有 Staging 与拟上线正式环境使用的是**同一台阿里云 ECS**，`pamboo.asia` 在阿里云购买且 DNS 托管位置待核；企业小程序 AppID 暂报 `wx315898250f72794b`，仍需在微信公众平台核对。当前配置**不可直接在原 ECS 启动第二套 Caddy**，会争用 80/443；两个生产预检已加入默认拒绝门禁 `PRODUCTION_HOST_ISOLATED=true`，该值只允许在确认独立生产主机后提供，绝不可对当前 Staging ECS 虚填。实际部署阻塞及最小 DNS/微信交接见 `deploy/PRODUCTION_WEB_READINESS.md`。不得把此源代码验证当作正式环境或真机验收。

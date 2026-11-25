@@ -6,6 +6,11 @@ import { validateProductionWebSource } from './production-web-preflight.mjs';
 /** One reviewed revision is used for the site bundle and both API images. */
 export function validateUnifiedProductionEnvironment(env) {
   const failures = [];
+  if (env.PRODUCTION_HOST_ISOLATED !== 'true') {
+    failures.push(
+      'Unified production requires a dedicated host; existing staging Caddy already owns 80/443',
+    );
+  }
   if (!/^[0-9a-f]{40}$/u.test(env.WEB_REVISION ?? '')) {
     failures.push('WEB_REVISION must pin an exact reviewed commit');
   }
