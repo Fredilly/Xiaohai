@@ -40,10 +40,14 @@ async function fixture({
   failRemove = null,
   workerRunning = true,
   missingHold = null,
+  cohostContainer = false,
+  cohostInventoryFailure = false,
+  cohostMarker = false,
 } = {}) {
   const dir = await mkdtemp(join(tmpdir(), 'xiaohai-exec-fixture-'));
   const deployDir = join(dir, 'xiaohai-deploy');
   await mkdir(deployDir);
+  if (cohostMarker) await writeFile(join(deployDir, 'cohost.enabled'), 'fixture-only\n');
   for (const file of [
     'revision.env',
     'staging.env',
@@ -76,7 +80,17 @@ async function fixture({
     ]),
   ]);
   if (missingHold) delete images[missingHold];
-  await writeFile(statePath, JSON.stringify({ images, removed: [], failRemove, workerRunning }));
+  await writeFile(
+    statePath,
+    JSON.stringify({
+      images,
+      removed: [],
+      failRemove,
+      workerRunning,
+      cohostContainer,
+      cohostInventoryFailure,
+    }),
+  );
   const docker = join(dir, 'docker');
   await writeFile(
     docker,
@@ -94,6 +108,9 @@ else if (a[0] === 'image' && a[1] === 'inspect') {
   if (a.includes('{{.Id}}')) out(state.images[ref]);
   else if (a.some(x => x.includes('RepoTags'))) out(ref);
   else process.exit(2);
+} else if (a[0] === 'ps' && a[1] === '-a' && a[2] === '--format' && a[3] === '{{.Names}}' && a[4] === '--filter' && a[5] === 'label=com.docker.compose.project=xiaohai-production-cohost') {
+  if (state.cohostInventoryFailure) process.exit(2);
+  if (state.cohostContainer) out('xiaohai-production-cohost-api-1');
 } else if (a[0] === 'ps' && a[1] === '-aq') { out('running-api'); out('running-worker'); }
 else if (a[0] === 'inspect') {
   const ref = a[a.length - 1];
@@ -201,6 +218,20 @@ test('approved exact-ID execution checks services and stops after one pair', asy
     assert.match(result.stdout, new RegExp(`PROTECTED_REVISION revision=${rev}`));
     assert.ok(!(await fx.state()).removed.includes(api(rev)));
     assert.ok(!(await fx.state()).removed.includes(worker(rev)));
+  }
+});
+
+test('approved retention never deletes when cohost is present or container inventory is uncertain', async () => {
+  for (const [options, message] of [
+    [{ cohostMarker: true }, /production cohost marker present/],
+    [{ cohostContainer: true }, /production cohost containers exist/],
+    [{ cohostInventoryFailure: true }, /cannot enumerate production cohost containers/],
+  ]) {
+    const fx = await fixture(options);
+    const result = fx.run();
+    assert.equal(result.status, 1, result.stderr);
+    assert.match(result.stderr, message);
+    assert.deepEqual((await fx.state()).removed, []);
   }
 });
 

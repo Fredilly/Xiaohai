@@ -711,6 +711,7 @@ test('staff rental borrow retries the same key after a timeout and browser reloa
   await expect(page.getByText('RN-TEST-001')).toBeVisible();
   await page.getByPlaceholder('6 位取书码').fill('123456');
   await page.getByRole('button', { name: '核验并借出' }).click();
+  await expect(page.getByRole('button', { name: '核验并借出' })).toHaveCount(0);
   await expect(page.getByRole('status')).toContainText('租借记录已加载');
 
   expect(attempts).toHaveLength(2);
