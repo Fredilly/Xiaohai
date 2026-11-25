@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   cancelOrder: vi.fn(),
   getFulfillment: vi.fn(),
   payOrder: vi.fn(),
+  token: vi.fn(),
 }));
 vi.mock('../../services/commerce', () => ({
   getOrder: mocks.getOrder,
@@ -12,9 +13,11 @@ vi.mock('../../services/commerce', () => ({
 }));
 vi.mock('../../services/fulfillment', () => ({ getFulfillment: mocks.getFulfillment }));
 vi.mock('../../services/payments', () => ({ payOrder: mocks.payOrder }));
+vi.mock('../../services/consumer-session', () => ({ consumerToken: mocks.token }));
 
 type DetailPage = {
   readSequence: number;
+  visibleSession: string;
   cancelling: boolean;
   data: {
     id: string;
@@ -34,6 +37,7 @@ function page(): DetailPage {
   return {
     ...definition,
     readSequence: 0,
+    visibleSession: 'account-a',
     cancelling: false,
     data: { id: 'order-a', order: { status: 'UNPAID' }, paying: false, cancellingOrder: false },
     setData(patch) {
@@ -51,11 +55,41 @@ beforeAll(async () => {
 afterAll(() => vi.unstubAllGlobals());
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.token.mockReturnValue('account-a');
   mocks.getOrder.mockResolvedValue({ id: 'order-a', status: 'CANCELLED' });
   mocks.getFulfillment.mockResolvedValue(null);
 });
 
 describe('consumer order detail transitions', () => {
+  it('never displays an order response received after logout or account change', async () => {
+    let resolve: (value: unknown) => void = () => {};
+    mocks.getOrder.mockImplementationOnce(
+      () =>
+        new Promise((accept) => {
+          resolve = accept;
+        }),
+    );
+    mocks.getFulfillment.mockResolvedValueOnce({ orderId: 'order-a', method: 'PICKUP' });
+    const detail = page();
+    const pending = detail.load();
+    mocks.token.mockReturnValue('account-b');
+    resolve({ id: 'order-a', status: 'UNPAID' });
+    await pending;
+    expect(detail.data.order).toBeNull();
+    expect(detail.data.error).toBe(true);
+    expect(detail.visibleSession).toBe('');
+  });
+
+  it('blocks payment and cancellation from a stale account-bound order view', async () => {
+    const detail = page();
+    mocks.token.mockReturnValue('account-b');
+    await detail.pay();
+    await detail.cancel();
+    expect(mocks.payOrder).not.toHaveBeenCalled();
+    expect(mocks.cancelOrder).not.toHaveBeenCalled();
+    expect(detail.data.order).toBeNull();
+  });
+
   it('serializes cancellation taps, disables payment and reloads authoritative order state', async () => {
     let release: () => void = () => {};
     mocks.cancelOrder.mockImplementationOnce(

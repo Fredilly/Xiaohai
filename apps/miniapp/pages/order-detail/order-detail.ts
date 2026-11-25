@@ -2,9 +2,11 @@ import type { FulfillmentView } from '@xiaohai/contracts/fulfillment';
 import { cancelOrder, getOrder } from '../../services/commerce';
 import { getFulfillment } from '../../services/fulfillment';
 import { payOrder } from '../../services/payments';
+import { consumerToken } from '../../services/consumer-session';
 
 Page({
   readSequence: 0,
+  visibleSession: '',
   cancelling: false,
   data: {
     order: null as Awaited<ReturnType<typeof getOrder>> | null,
@@ -29,11 +31,26 @@ Page({
   onShow() {
     if (this.data.id) void this.load();
   },
+  onHide() {
+    this.readSequence++;
+    this.visibleSession = '';
+    this.setData({ order: null, fulfillment: null });
+  },
+  onUnload() {
+    this.readSequence++;
+    this.visibleSession = '';
+  },
 
   async load() {
     const sequence = ++this.readSequence;
     const orderId = this.data.id;
-    this.setData({ loading: true, error: false });
+    const session = consumerToken();
+    this.visibleSession = '';
+    this.setData({ order: null, fulfillment: null, loading: true, error: false });
+    if (!session) {
+      this.setData({ loading: false, error: true });
+      return;
+    }
     try {
       const order = await getOrder(orderId);
       let fulfillment: FulfillmentView | null = null;
@@ -48,15 +65,24 @@ Page({
         fulfillmentError = !(error instanceof Error && error.message === 'NOT_FOUND');
       }
       if (sequence !== this.readSequence || orderId !== this.data.id) return;
+      if (consumerToken() !== session) {
+        this.setData({ order: null, fulfillment: null, loading: false, error: true });
+        return;
+      }
+      this.visibleSession = session;
       this.setData({ order, fulfillment, fulfillmentError, loading: false, error: false });
     } catch {
       if (sequence === this.readSequence && orderId === this.data.id)
-        this.setData({ loading: false, error: true });
+        this.setData({ order: null, fulfillment: null, loading: false, error: true });
     }
   },
 
   async cancel() {
     if (this.cancelling || this.data.paying || this.data.order?.status !== 'UNPAID') return;
+    if (!this.visibleSession || consumerToken() !== this.visibleSession) {
+      this.setData({ order: null, fulfillment: null, error: true });
+      return;
+    }
     this.cancelling = true;
     this.setData({ cancellingOrder: true, cancelMessage: '' });
     try {
@@ -73,6 +99,10 @@ Page({
 
   async pay() {
     if (this.data.paying || this.cancelling || this.data.order?.status !== 'UNPAID') return;
+    if (!this.visibleSession || consumerToken() !== this.visibleSession) {
+      this.setData({ order: null, fulfillment: null, error: true });
+      return;
+    }
     this.setData({ paying: true, paymentMessage: '' });
     try {
       await payOrder(this.data.id);

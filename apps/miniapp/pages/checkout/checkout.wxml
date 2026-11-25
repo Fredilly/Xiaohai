@@ -14,11 +14,13 @@
         <button
           class="method-btn {{method === 'PICKUP' ? 'selected' : ''}}"
           data-method="PICKUP"
+          disabled="{{creating || orderAttempted}}"
           bindtap="chooseMethod"
         >到店自提</button>
         <button
           class="method-btn {{method === 'DELIVERY' ? 'selected' : ''}}"
           data-method="DELIVERY"
+          disabled="{{creating || orderAttempted}}"
           bindtap="chooseMethod"
         >同城配送</button>
       </view>
@@ -26,7 +28,7 @@
 
     <view class="section card">
       <text class="card-title">履约门店</text>
-      <picker wx:if="{{stores.length}}" range="{{stores}}" range-key="name" value="{{storeIndex}}" bindchange="chooseStore">
+      <picker wx:if="{{stores.length}}" range="{{stores}}" range-key="name" value="{{storeIndex}}" disabled="{{creating || orderAttempted}}" bindchange="chooseStore">
         <view class="picker-row">{{stores[storeIndex].name}} <text>›</text></view>
       </picker>
       <text wx:else class="muted">当前没有可用门店</text>
@@ -34,7 +36,7 @@
 
     <view wx:if="{{method === 'DELIVERY'}}" class="section card">
       <text class="card-title">配送地址</text>
-      <picker wx:if="{{addresses.length}}" range="{{addresses}}" range-key="addressLine" value="{{addressIndex}}" bindchange="chooseAddress">
+      <picker wx:if="{{addresses.length}}" range="{{addresses}}" range-key="addressLine" value="{{addressIndex}}" disabled="{{creating || orderAttempted}}" bindchange="chooseAddress">
         <view class="picker-row">
           <text>{{addresses[addressIndex].recipientName}} · {{addresses[addressIndex].phone}}</text>
           <text class="muted">{{addresses[addressIndex].region}}{{addresses[addressIndex].city}}{{addresses[addressIndex].district}}{{addresses[addressIndex].addressLine}}</text>
@@ -43,7 +45,7 @@
       <text wx:else class="muted">请先在“我的 → 地址”添加配送地址</text>
     </view>
 
-    <view wx:if="{{errorMessage}}" class="demo-note">{{errorMessage}}<button wx:if="{{!quote}}" bindtap="load">重试加载</button></view>
+    <view wx:if="{{errorMessage}}" class="demo-note">{{errorMessage}}<button wx:if="{{needsLogin}}" bindtap="goToLogin">去登录</button><button wx:elif="{{orderAttempted}}" bindtap="openOrders">查看我的订单</button><button wx:elif="{{!quote}}" bindtap="load">重试加载</button></view>
 
     <view wx:if="{{quote}}" class="section card order-amount">
       <text class="card-title">订单金额</text>

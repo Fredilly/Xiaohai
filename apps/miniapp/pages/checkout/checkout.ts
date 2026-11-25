@@ -7,9 +7,16 @@ import {
   randomClientRequestId,
 } from '../../services/fulfillment';
 import { listStores } from '../../services/stores';
+import { consumerToken } from '../../services/consumer-session';
 
 type PickerEvent = { detail: { value: string } };
 type MethodEvent = { currentTarget: { dataset: { method?: FulfillmentMethod } } };
+type SubmittedCheckout = {
+  method: FulfillmentMethod;
+  storeId: string;
+  addressId: string;
+  totalMinor: number;
+};
 
 function matchingQuote(quote: FulfillmentQuote, method: FulfillmentMethod, storeId: string) {
   return (
@@ -26,6 +33,11 @@ function matchingQuote(quote: FulfillmentQuote, method: FulfillmentMethod, store
 
 Page({
   quoteSequence: 0,
+  loadSequence: 0,
+  loadedSession: '',
+  orderAttemptSession: '',
+  attemptedContext: null as SubmittedCheckout | null,
+  reloadOnShow: false,
   data: {
     addresses: [] as Address[],
     stores: [] as PublicStore[],
@@ -39,6 +51,8 @@ Page({
     loading: true,
     quoting: false,
     creating: false,
+    orderAttempted: false,
+    needsLogin: false,
     errorMessage: '',
   },
 
@@ -46,31 +60,84 @@ Page({
     this.setData({ clientRequestId: randomClientRequestId() });
     void this.load();
   },
+  onHide() {
+    this.loadSequence++;
+    this.quoteSequence++;
+    this.loadedSession = '';
+    this.reloadOnShow = true;
+    this.setData({ addresses: [], stores: [], quote: null, quoting: false });
+  },
+  onShow() {
+    if (this.reloadOnShow) {
+      this.reloadOnShow = false;
+      void this.load();
+    }
+  },
 
   async load() {
-    this.setData({ loading: true, errorMessage: '' });
+    const sequence = ++this.loadSequence;
+    const session = consumerToken();
+    this.quoteSequence++;
+    this.loadedSession = '';
+    this.setData({
+      addresses: [],
+      stores: [],
+      quote: null,
+      loading: true,
+      quoting: false,
+      needsLogin: false,
+      errorMessage: '',
+    });
+    if (!session) {
+      this.setData({
+        loading: false,
+        needsLogin: true,
+        errorMessage: '请先微信登录，再确认订单。',
+      });
+      return;
+    }
+    if (this.data.orderAttempted && this.orderAttemptSession !== session) {
+      this.setData({
+        loading: false,
+        errorMessage: '登录账号已切换，请先核对原账号的订单，再重新进入结算。',
+      });
+      return;
+    }
     try {
       const [addresses, stores] = await Promise.all([listAddresses(), listStores({ limit: 50 })]);
+      if (sequence !== this.loadSequence) return;
+      if (consumerToken() !== session) {
+        this.setData({ loading: false, errorMessage: '登录状态已变化，请重新进入结算。' });
+        return;
+      }
+      this.loadedSession = session;
       const selectedAddressIndex = Math.max(
         0,
-        addresses.addresses.findIndex((item) => item.isDefault),
+        addresses.addresses.findIndex((item) =>
+          this.data.orderAttempted ? item.id === this.data.addressId : item.isDefault,
+        ),
       );
+      const selectedStoreIndex = this.data.orderAttempted
+        ? stores.findIndex((item) => item.id === this.data.storeId)
+        : 0;
       this.setData({
         addresses: addresses.addresses,
         stores,
         addressIndex: selectedAddressIndex,
         addressId: addresses.addresses[selectedAddressIndex]?.id ?? '',
-        storeIndex: 0,
-        storeId: stores[0]?.id ?? '',
+        storeIndex: Math.max(0, selectedStoreIndex),
+        storeId: selectedStoreIndex < 0 ? '' : (stores[selectedStoreIndex]?.id ?? ''),
         loading: false,
       });
       await this.preview();
     } catch {
-      this.setData({ loading: false, errorMessage: '结算信息加载失败，请检查登录和网络。' });
+      if (sequence === this.loadSequence)
+        this.setData({ loading: false, errorMessage: '结算信息加载失败，请检查登录和网络。' });
     }
   },
 
   chooseMethod(event: MethodEvent) {
+    if (this.data.creating || this.data.orderAttempted) return;
     const method = event.currentTarget.dataset.method;
     if (!method || method === this.data.method) return;
     this.setData({ method, quote: null, errorMessage: '' });
@@ -78,6 +145,7 @@ Page({
   },
 
   chooseStore(event: PickerEvent) {
+    if (this.data.creating || this.data.orderAttempted) return;
     const storeIndex = Number(event.detail.value);
     const storeId = this.data.stores[storeIndex]?.id ?? '';
     this.setData({ storeIndex, storeId, quote: null, errorMessage: '' });
@@ -85,6 +153,7 @@ Page({
   },
 
   chooseAddress(event: PickerEvent) {
+    if (this.data.creating || this.data.orderAttempted) return;
     const addressIndex = Number(event.detail.value);
     const addressId = this.data.addresses[addressIndex]?.id ?? '';
     this.setData({ addressIndex, addressId, quote: null, errorMessage: '' });
@@ -93,11 +162,29 @@ Page({
 
   async preview() {
     const quoteSequence = ++this.quoteSequence;
+    const session = consumerToken();
+    if (!session || session !== this.loadedSession) {
+      this.setData({
+        addresses: [],
+        quote: null,
+        quoting: false,
+        errorMessage: '登录状态已变化，请重新进入结算。',
+      });
+      return;
+    }
     const method = this.data.method === 'DELIVERY' ? 'DELIVERY' : 'PICKUP';
     const storeId = this.data.storeId;
     const addressId = this.data.addressId;
-    if (!storeId) return;
-    if (method === 'DELIVERY' && !addressId) return;
+    if (!storeId || (method === 'DELIVERY' && !addressId)) {
+      this.setData({
+        quote: null,
+        quoting: false,
+        errorMessage: !storeId
+          ? '当前没有可用的履约门店，请重新加载或先核对已有订单。'
+          : '请先添加配送地址，或改为到店自提。',
+      });
+      return;
+    }
     this.setData({ quoting: true, errorMessage: '' });
     try {
       const quote = await quoteFulfillment(
@@ -106,6 +193,7 @@ Page({
         method === 'DELIVERY' ? addressId : undefined,
       );
       if (quoteSequence !== this.quoteSequence) return;
+      if (consumerToken() !== session) throw new Error('SESSION_CHANGED');
       if (!matchingQuote(quote, method, storeId)) {
         throw new Error('QUOTE_CONTEXT_MISMATCH');
       }
@@ -113,11 +201,14 @@ Page({
     } catch (error) {
       if (quoteSequence !== this.quoteSequence) return;
       this.setData({
+        ...(consumerToken() !== session ? { addresses: [] } : {}),
         quote: null,
         errorMessage:
-          error instanceof Error && error.message === 'DELIVERY_UNAVAILABLE'
-            ? '该门店暂不支持所选地址的同城配送，请改为到店自提或选择其他门店。'
-            : '当前无法计算履约方式，请稍后重试。',
+          consumerToken() !== session
+            ? '登录状态已变化，请重新进入结算。'
+            : error instanceof Error && error.message === 'DELIVERY_UNAVAILABLE'
+              ? '该门店暂不支持所选地址的同城配送，请改为到店自提或选择其他门店。'
+              : '当前无法计算履约方式，请稍后重试。',
       });
     } finally {
       if (quoteSequence === this.quoteSequence) this.setData({ quoting: false });
@@ -127,25 +218,90 @@ Page({
   async create() {
     if (this.data.creating || this.data.quoting || !this.data.quote || !this.data.clientRequestId)
       return;
+    const session = consumerToken();
+    if (!session || session !== this.loadedSession) {
+      this.setData({
+        addresses: [],
+        quote: null,
+        errorMessage: '登录状态已变化，请重新进入结算。',
+      });
+      return;
+    }
+    if (this.data.orderAttempted && this.orderAttemptSession !== session) {
+      this.setData({
+        addresses: [],
+        quote: null,
+        errorMessage: '登录账号已切换，请先核对原账号的订单。',
+      });
+      return;
+    }
     const method = this.data.method === 'DELIVERY' ? 'DELIVERY' : 'PICKUP';
     if (!matchingQuote(this.data.quote, method, this.data.storeId)) {
       this.setData({ quote: null, errorMessage: '门店或报价已变化，请重新获取金额。' });
       return;
     }
-    this.setData({ creating: true, errorMessage: '' });
+    const context: SubmittedCheckout = {
+      method,
+      storeId: this.data.storeId,
+      addressId: method === 'DELIVERY' ? this.data.addressId : '',
+      totalMinor: this.data.quote.totalMinor,
+    };
+    if (this.data.orderAttempted) {
+      if (
+        !this.attemptedContext ||
+        this.attemptedContext.method !== context.method ||
+        this.attemptedContext.storeId !== context.storeId ||
+        this.attemptedContext.addressId !== context.addressId ||
+        this.attemptedContext.totalMinor !== context.totalMinor
+      ) {
+        this.setData({
+          quote: null,
+          errorMessage: '原订单请求的金额或履约信息已变化，请先核对我的订单。',
+        });
+        return;
+      }
+    } else {
+      this.attemptedContext = context;
+    }
+    this.orderAttemptSession = session;
+    this.setData({ creating: true, orderAttempted: true, errorMessage: '' });
     try {
       const result = await createFulfillmentOrder(
-        method,
-        this.data.storeId,
+        context.method,
+        context.storeId,
         this.data.clientRequestId,
-        method === 'DELIVERY' ? this.data.addressId : undefined,
-        this.data.quote.totalMinor,
+        context.method === 'DELIVERY' ? context.addressId : undefined,
+        context.totalMinor,
       );
+      if (consumerToken() !== session) {
+        this.setData({
+          addresses: [],
+          quote: null,
+          errorMessage: '登录状态已变化，请核对我的订单。',
+        });
+        return;
+      }
       void wx.redirectTo({ url: `/pages/order-detail/order-detail?id=${result.orderId}` });
     } catch {
-      this.setData({ errorMessage: '创建订单失败，请不要重复点击，可稍后重试。' });
+      if (consumerToken() !== session) {
+        this.setData({
+          addresses: [],
+          quote: null,
+          errorMessage: '登录状态已变化，请先核对原账号的订单。',
+        });
+      } else {
+        this.setData({
+          errorMessage: '订单结果未确认，请先核对我的订单；可使用原请求重试，勿重复创建。',
+        });
+      }
     } finally {
       this.setData({ creating: false });
     }
+  },
+  openOrders() {
+    void wx.navigateTo({ url: '/pages/orders/orders' });
+  },
+  goToLogin() {
+    void wx.switchTab({ url: '/pages/me/me' });
   },
 });

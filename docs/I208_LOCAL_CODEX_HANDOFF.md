@@ -82,3 +82,9 @@ API 单元 **233**、Store Web **59**、HQ Web **86**、Miniapp **167**、Config
 - 负责人随后明确选用**与 Staging 共用现有 ECS**，并告知第四个独立网站 `orientalsourcepress.com` 已购域名、准备上线。已备手动选择的 `production-cohost.compose.yml` 与 `staging-cohost.override.yml`、共用入口 Caddyfile 和独立生产 Postgres/Redis/Worker/Web/数据卷；无第二个公网端口绑定、无生产请求回退 Staging。正常 Staging 部署默认不启用覆盖层；单独的 `cohost.enabled` 及保留其他网站路由文件、生产预检/资源和恢复证据是启动前强制条件。该架构仍需 Fred 安全复审和独立操作授权；当前 2 核/4G/50G 服务器能否承载全部服务尚未现场确认。详见 `deploy/PRODUCTION_COHOST_RUNBOOK.md` 和 `docs/ADR_PRODUCTION_STAGING_COHOST.md`。没有配置或启动第四个网站，也没有触碰服务器。
 - 本轮源码验证：共机/独立方案预检、Staging 发布兼容与镜像保留隔离的合成测试通过；小程序 175、Store Web 68、HQ Web 88、API 237 项单测通过，Store/HQ 构建、API/Worker/Miniapp 类型检查及小程序结构检查通过。宿主环境没有 Docker/Caddy 可执行文件，**Compose 真实配置合并、Caddy 语法/路由、云主机容量、真实服务、WeChat 真机均未在 ECS 验证，不得记为 PASS**。生产与 Staging 共用 GHCR API/Worker 镜像仓库，旧 Staging 镜像清理在共机激活时默认硬停止，不能因磁盘紧张绕过。
 - 已获得宿主机只读证据：这是阿里云**轻量应用服务器（非标准 ECS）**，2 vCPU、3.4 GiB RAM、无 Swap、49 GiB 文件系统仅剩 15 GiB；53 个 Docker 镜像约 30.66 GB，Staging 5 容器正常，Caddy 独占 80/443。升级报价超出负责人预算，**未批准购买/升级/重启或删除镜像**。为减少部署峰值磁盘和 CPU 占用，共机 Web 改成只拉取固定 SHA 的 GHCR 静态运行镜像，新增手动 GitHub runner 打包工作流（只构建、不部署）。生产实际容量及可恢复备份仍未通过，`COHOST_CAPACITY_EVIDENCE_VERIFIED` 必须保持关闭。详见 `deploy/PRODUCTION_COHOST_RUNBOOK.md`。
+
+## 2026-11-25 小程序消费者会话与弱网安全补充
+
+- 购物车、订单列表、订单详情、结算页均按当前消费者会话和请求顺序接收异步结果。旧响应、登出或切换账号后的库存/订单/地址/报价不会回填到新账号界面；离开结算页清理地址和报价，返回后重新读取。购物车未登录时显示明确登录入口，避免将认证失败当作空购物车。
+- 订单详情在原会话失效时拒绝再次发起支付或取消。结算请求一旦发出，就锁定履约方式、门店、地址和原请求键；网络结果不明确时只允许以相同参数重试，并提供“查看我的订单”入口。若切换账号则拒绝沿用该请求键；正式订单创建仍由服务端事务/幂等校验裁决。
+- 本轮小程序 **43 个单测文件、187/187 PASS**，miniapp typecheck、lint 及结构校验通过；增加了旧查询后返回、登出中途响应、换账号、支付/取消拒绝和弱网重放场景。未运行 WeChat 真机或真实支付，不能将这些离线测试当作运营放行。

@@ -2,6 +2,7 @@
   <text class="page-heading">购物车</text>
   <text class="state-copy">当前为参考价；结算时选择门店后，按该店售价重新核对。</text>
   <view wx:if="{{loading}}" class="state-card">正在加载购物车…</view>
+  <view wx:elif="{{needsLogin}}" class="state-card"><text class="state-title">登录后查看购物车</text><text class="state-copy">购物车属于个人账户，请先微信登录。</text><button class="primary-btn" bindtap="goToLogin">去登录</button></view>
   <view wx:elif="{{error}}" class="state-card"><text class="state-title">购物车暂时不可用</text><button bindtap="load">重试</button></view>
   <view wx:elif="{{!cart || cart.items.length===0}}" class="state-card"><text class="state-title">购物车还空着</text><text class="state-copy">去挑选喜欢的商品吧。</text></view>
   <block wx:else>

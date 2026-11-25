@@ -24,6 +24,7 @@ type State = {
   needsLogin: boolean;
 };
 type TestPage = {
+  readSequence: number;
   data: State;
   setData(changes: Partial<State>): void;
   load(): Promise<void>;
@@ -42,12 +43,13 @@ beforeAll(async () => {
 afterAll(() => vi.unstubAllGlobals());
 
 beforeEach(() => {
-  vi.clearAllMocks();
+  vi.resetAllMocks();
   vi.stubGlobal('wx', { switchTab: mocks.switchTab });
 });
 
 function createPage(): TestPage {
   const page: TestPage = {
+    readSequence: 0,
     data: { orders: [], loading: true, error: false, needsLogin: false },
     setData(changes) {
       Object.assign(page.data, changes);
@@ -63,6 +65,58 @@ function createPage(): TestPage {
 }
 
 describe('orders: protected list states', () => {
+  it('never lets an older order response overwrite a newer refresh', async () => {
+    mocks.token.mockReturnValue('account-a');
+    const resolve: Array<(value: { orders: Array<{ id: string }> }) => void> = [];
+    mocks.listOrders.mockImplementation(() => new Promise((accept) => resolve.push(accept)));
+    const page = createPage();
+    const older = page.load();
+    const newer = page.load();
+    resolve[1]!({ orders: [{ id: 'current-order' }] });
+    await newer;
+    resolve[0]!({ orders: [{ id: 'obsolete-order' }] });
+    await older;
+    expect(page.data.orders).toEqual([{ id: 'current-order' }]);
+    expect(page.data.loading).toBe(false);
+  });
+
+  it('does not show orders from a session that logged out during the request', async () => {
+    mocks.token.mockReturnValue('account-a');
+    let resolve: (value: { orders: Array<{ id: string }> }) => void = () => {};
+    mocks.listOrders.mockImplementationOnce(
+      () =>
+        new Promise((accept) => {
+          resolve = accept;
+        }),
+    );
+    const page = createPage();
+    const pending = page.load();
+    mocks.token.mockReturnValue('');
+    resolve({ orders: [{ id: 'private-order' }] });
+    await pending;
+    expect(page.data).toMatchObject({ orders: [], loading: false, needsLogin: true });
+  });
+
+  it('fetches the new account when an old account response returns late', async () => {
+    mocks.token.mockReturnValue('account-a');
+    let resolve: (value: { orders: Array<{ id: string }> }) => void = () => {};
+    mocks.listOrders
+      .mockImplementationOnce(
+        () =>
+          new Promise((accept) => {
+            resolve = accept;
+          }),
+      )
+      .mockResolvedValueOnce({ orders: [{ id: 'new-account-order' }] });
+    const page = createPage();
+    const pending = page.load();
+    mocks.token.mockReturnValue('account-b');
+    resolve({ orders: [{ id: 'old-account-order' }] });
+    await pending;
+    await vi.waitFor(() => expect(page.data.orders).toEqual([{ id: 'new-account-order' }]));
+    expect(mocks.listOrders).toHaveBeenCalledTimes(2);
+  });
+
   it('shows a login action and skips the protected API when signed out', async () => {
     mocks.token.mockReturnValue('');
     const page = createPage();
