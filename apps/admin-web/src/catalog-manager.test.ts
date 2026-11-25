@@ -1,10 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import {
+  CatalogManager,
   applyCatalogDraftDefaults,
   bookLookupPolicy,
   isPreviewableProductImage,
   parseYuanToMinor,
 } from './catalog-manager';
+
+describe('HQ catalog session scope', () => {
+  it('remounts product and store editors when the login session changes', () => {
+    expect(CatalogManager({ token: 'staff-session-a' }).key).toBe('staff-session-a');
+    expect(CatalogManager({ token: 'staff-session-b' }).key).toBe('staff-session-b');
+  });
+});
 
 describe('HQ new-book price input', () => {
   it.each([

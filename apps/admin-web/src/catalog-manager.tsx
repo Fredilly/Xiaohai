@@ -74,6 +74,10 @@ export function applyCatalogDraftDefaults(input: AdminProductInput, editingExist
   return { ...input, status: 'DRAFT' as const, sku: { ...input.sku, availableForSale: false } };
 }
 export function CatalogManager({ token }: { token: string }) {
+  return <CatalogSession key={token} token={token} />;
+}
+
+function CatalogSession({ token }: { token: string }) {
   const [products, setProducts] = useState<Product[]>([]);
   const [state, setState] = useState('loading');
   const [q, setQ] = useState('');
@@ -82,6 +86,7 @@ export function CatalogManager({ token }: { token: string }) {
   const [editing, setEditing] = useState<Product | null>(null);
   const [photoProduct, setPhotoProduct] = useState<Product | null>(null);
   const [creating, setCreating] = useState(false);
+  const listVersion = useRef(0);
   useEffect(() => {
     if (!creating && !editing && !photoProduct) return;
     function handleEscape(event: KeyboardEvent) {
@@ -96,13 +101,16 @@ export function CatalogManager({ token }: { token: string }) {
   }, [creating, editing, photoProduct]);
 
   async function load() {
+    const version = ++listVersion.current;
     setState('loading');
     try {
       const page = await listAdminProducts(token, q, offset, 30);
+      if (version !== listVersion.current) return;
       setProducts(page.products);
       setHasMore(page.hasMore);
       setState('ready');
     } catch (e) {
+      if (version !== listVersion.current) return;
       setState(
         e instanceof CatalogApiError && e.status === 403
           ? 'forbidden'
@@ -114,6 +122,9 @@ export function CatalogManager({ token }: { token: string }) {
   }
   useEffect(() => {
     void load();
+    return () => {
+      listVersion.current++;
+    };
   }, [token, offset]);
   if (state === 'forbidden') return <section className="panel">当前账号没有商品管理权限。</section>;
   if (state === 'unauthorized')
@@ -292,20 +303,34 @@ export function CatalogManager({ token }: { token: string }) {
 }
 
 function HqStoreCatalogEditor({ token }: { token: string }) {
+  return <HqStoreCatalogSession key={token} token={token} />;
+}
+
+function HqStoreCatalogSession({ token }: { token: string }) {
   const [stores, setStores] = useState<StaffStore[]>([]);
   const [storeId, setStoreId] = useState('');
   const [items, setItems] = useState<StoreCatalogItem[]>([]);
   const [editing, setEditing] = useState<StoreCatalogItem | null>(null);
   const [status, setStatus] = useState('加载总部可管理门店…');
   const [reloadNonce, setReloadNonce] = useState(0);
+  const storeReadVersion = useRef(0);
+  const selectedStore = useRef(storeId);
+  selectedStore.current = storeId;
 
   useEffect(() => {
+    let active = true;
     void loadHqStores(token)
       .then((result) => {
+        if (!active) return;
         setStores(result.stores);
         setStoreId((current) => current || result.stores[0]?.id || '');
       })
-      .catch(() => setStatus('无法读取总部门店范围'));
+      .catch(() => {
+        if (active) setStatus('无法读取总部门店范围');
+      });
+    return () => {
+      active = false;
+    };
   }, [token]);
 
   useEffect(() => {
@@ -319,24 +344,34 @@ function HqStoreCatalogEditor({ token }: { token: string }) {
 
   useEffect(() => {
     if (!storeId) return;
+    const version = ++storeReadVersion.current;
+    setItems([]);
     setStatus('加载门店商品资料…');
     void listHqStoreCatalog(token, storeId)
       .then((result) => {
+        if (version !== storeReadVersion.current || selectedStore.current !== storeId) return;
         setItems(result.items);
         setStatus(
           result.hasMore ? '仅显示前 30 条，请使用门店端分页继续查看' : '已加载当前门店商品资料',
         );
       })
       .catch(() => {
+        if (version !== storeReadVersion.current || selectedStore.current !== storeId) return;
         setItems([]);
         setStatus('无法读取门店商品资料');
       });
+    return () => {
+      storeReadVersion.current++;
+    };
   }, [token, storeId, reloadNonce]);
 
   async function openLatest(item: StoreCatalogItem) {
+    const openingStore = storeId;
+    const version = storeReadVersion.current;
     setStatus('正在读取商品最新版本…');
     try {
-      const result = await listHqStoreCatalog(token, storeId);
+      const result = await listHqStoreCatalog(token, openingStore);
+      if (version !== storeReadVersion.current || selectedStore.current !== openingStore) return;
       const current = result.items.find((candidate) => candidate.skuId === item.skuId);
       if (!current) {
         setStatus('商品已不在当前门店列表中，请重新加载。');
@@ -346,6 +381,7 @@ function HqStoreCatalogEditor({ token }: { token: string }) {
       setEditing(current);
       setStatus('已读取商品最新版本，可开始编辑。');
     } catch (error) {
+      if (version !== storeReadVersion.current || selectedStore.current !== openingStore) return;
       setStatus(error instanceof Error ? error.message : '读取最新资料失败');
     }
   }
@@ -361,8 +397,11 @@ function HqStoreCatalogEditor({ token }: { token: string }) {
         <select
           value={storeId}
           onChange={(event) => {
+            storeReadVersion.current++;
+            selectedStore.current = event.target.value;
             setStoreId(event.target.value);
             setEditing(null);
+            setItems([]);
           }}
         >
           {stores.map((store) => (
