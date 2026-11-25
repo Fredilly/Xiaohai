@@ -65,6 +65,8 @@ test('production services never publish host ports or mount staging data and edg
     .filter((line) => !line.trimStart().startsWith('#'))
     .join('\n');
   assert.match(active, /name: xiaohai-production-cohost/u);
+  assert.match(active, /image: ghcr\.io\/fredilly\/xiaohai-production-web:\$\{WEB_REVISION:\?/u);
+  assert.doesNotMatch(active, /^\s*build:/mu, 'live SWAS must never build the full workspace');
   assert.doesNotMatch(
     active,
     /\bports:|80:80|443:443|staging\.env|staging_private|staging_postgres|staging_redis/u,
@@ -81,6 +83,30 @@ test('production services never publish host ports or mount staging data and edg
   assert.match(active, /data:\s*\n\s*internal: true/u);
   assert.match(active, /external: true\s*\n\s*name: xiaohai-production-edge/u);
   assert.doesNotMatch(active, /\bmigrate\b|\bseed\b/u);
+});
+
+test('production web is packaged off-host with a manually triggered pinned GitHub workflow', async () => {
+  const workflow = await readFile(
+    new URL('../.github/workflows/production-web-package.yml', import.meta.url),
+    'utf8',
+  );
+  const triggers = workflow.match(/^on:\n([\s\S]*?)^permissions:/mu)?.[1];
+  assert.ok(triggers);
+  assert.match(triggers, /workflow_dispatch:/u);
+  assert.doesNotMatch(triggers, /^\s+(?:push|schedule|pull_request):/mu);
+  assert.match(workflow, /ref: \$\{\{ github\.sha \}\}/u);
+  assert.match(workflow, /test "\$\(git rev-parse HEAD\)" = "\$EXPECTED_REVISION"/u);
+  assert.match(workflow, /docker\/build-push-action@v6/u);
+  assert.match(workflow, /file: deploy\/Dockerfile\.production-web/u);
+  assert.match(
+    workflow,
+    /tags: ghcr\.io\/fredilly\/xiaohai-production-web:\$\{\{ github\.sha \}\}/u,
+  );
+  assert.match(workflow, /IMAGE_DIGEST/u);
+  assert.doesNotMatch(
+    workflow,
+    /ssh|staging\.env|production\.env|docker compose up|migrate|seed|scp /u,
+  );
 });
 
 test('shared proxy preserves original staging plus unknown sites and production never falls back to staging', async () => {

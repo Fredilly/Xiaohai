@@ -50,10 +50,9 @@ services:
         condition: service_started
     networks: [data, outbound]
   web:
-    build:
-      context: ..
-      dockerfile: deploy/Dockerfile.production-web
-    image: xiaohai-production-cohost-web:${WEB_REVISION:?Pin reviewed source revision}
+    # Pull an immutable, prebuilt Caddy runtime image. Never build the Node/pnpm
+    # workspace on this constrained 50 GiB live Staging machine.
+    image: ghcr.io/fredilly/xiaohai-production-web:${WEB_REVISION:?Pin reviewed web image revision}
     restart: unless-stopped
     volumes:
       - ./Caddyfile.production-cohost-web:/etc/caddy/Caddyfile:ro
