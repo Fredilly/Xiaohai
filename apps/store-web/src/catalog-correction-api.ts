@@ -6,8 +6,7 @@ import {
 } from '@xiaohai/contracts/commerce';
 
 const env = import.meta.env as { readonly VITE_API_BASE_URL?: unknown };
-const base =
-  typeof env.VITE_API_BASE_URL === 'string' ? env.VITE_API_BASE_URL : 'http://127.0.0.1:3000';
+const base = typeof env.VITE_API_BASE_URL === 'string' ? env.VITE_API_BASE_URL : '';
 
 function endpoint(storeId: string) {
   return base + '/api/v1/staff/stores/' + encodeURIComponent(storeId) + '/catalog-corrections';

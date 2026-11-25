@@ -23,8 +23,7 @@ import { rentalListResponseSchema } from '@xiaohai/contracts/rental';
 import { staffStoresResponseSchema } from '@xiaohai/contracts/stores';
 
 const env = import.meta.env as { readonly VITE_API_BASE_URL?: unknown };
-const base =
-  typeof env.VITE_API_BASE_URL === 'string' ? env.VITE_API_BASE_URL : 'http://127.0.0.1:3000';
+const base = typeof env.VITE_API_BASE_URL === 'string' ? env.VITE_API_BASE_URL : '';
 
 async function request(path: string, token: string, method = 'GET', body?: unknown) {
   const response = await fetch(`${base}${path}`, {

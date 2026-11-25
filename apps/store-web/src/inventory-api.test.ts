@@ -26,6 +26,8 @@ describe('store opening stock HTTP adapter', () => {
     vi.stubGlobal('fetch', request);
     const result = await findOpeningStockCandidates('staff-token', storeId, '童话');
     const [url, options] = request.mock.calls[0] as [string, RequestInit];
+    expect(url).toMatch(/^\/api\//);
+    expect(url).not.toContain('127.0.0.1');
     expect(url).toContain(`/opening-candidates?storeId=${storeId}`);
     expect(url).toContain('q=%E7%AB%A5%E8%AF%9D');
     expect(options.headers).toMatchObject({ authorization: 'Bearer staff-token' });

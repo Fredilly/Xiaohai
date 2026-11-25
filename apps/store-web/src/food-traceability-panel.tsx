@@ -19,7 +19,7 @@ function Session({ token, storeId, permissions }: Props) {
   const retry = useRef<{ fingerprint: string; key: string } | null>(null);
   async function request(path: string, body?: unknown) {
     const r = await fetch(
-      `${env.VITE_API_BASE_URL ?? 'http://127.0.0.1:3000'}/api/v1/staff/inventory/food-stock${path}`,
+      `${env.VITE_API_BASE_URL ?? ''}/api/v1/staff/inventory/food-stock${path}`,
       {
         method: body ? 'POST' : 'GET',
         headers: {

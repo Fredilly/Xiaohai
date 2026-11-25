@@ -1,8 +1,7 @@
 import { staffStoresResponseSchema } from '@xiaohai/contracts/stores';
 
 const env = import.meta.env as { readonly VITE_API_BASE_URL?: unknown };
-const base =
-  typeof env.VITE_API_BASE_URL === 'string' ? env.VITE_API_BASE_URL : 'http://127.0.0.1:3000';
+const base = typeof env.VITE_API_BASE_URL === 'string' ? env.VITE_API_BASE_URL : '';
 
 export async function loadStaffStores(token: string) {
   const response = await fetch(`${base}/api/v1/staff/stores`, {

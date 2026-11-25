@@ -7,9 +7,7 @@ import {
 
 const viteEnvironment = import.meta.env as { readonly VITE_API_BASE_URL?: unknown };
 const apiBaseUrl =
-  typeof viteEnvironment.VITE_API_BASE_URL === 'string'
-    ? viteEnvironment.VITE_API_BASE_URL
-    : 'http://127.0.0.1:3000';
+  typeof viteEnvironment.VITE_API_BASE_URL === 'string' ? viteEnvironment.VITE_API_BASE_URL : '';
 
 export async function loginStaff(
   loginIdentifier: string,

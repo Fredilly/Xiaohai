@@ -16,7 +16,7 @@ import {
 } from '@xiaohai/contracts/content';
 
 const configuredBase: unknown = import.meta.env.VITE_API_BASE_URL;
-const base = typeof configuredBase === 'string' ? configuredBase : 'http://127.0.0.1:3000';
+const base = typeof configuredBase === 'string' ? configuredBase : '';
 
 export class ContentApiError extends Error {
   constructor(readonly status: number) {

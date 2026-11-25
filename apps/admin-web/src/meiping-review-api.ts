@@ -120,8 +120,7 @@ export type ReviewDecisionInput =
     };
 
 const configuredBase: unknown = import.meta.env.VITE_API_BASE_URL;
-const base =
-  typeof configuredBase === 'string' ? configuredBase.replace(/\/$/, '') : 'http://127.0.0.1:3000';
+const base = typeof configuredBase === 'string' ? configuredBase.replace(/\/$/, '') : '';
 const root = base + '/api/v1/staff/migrations/meiping/review-sessions';
 
 export class MeipingReviewApiError extends Error {

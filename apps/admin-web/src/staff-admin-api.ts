@@ -11,8 +11,7 @@ import {
 } from '@xiaohai/contracts/staff-admin';
 
 const env = import.meta.env as { readonly VITE_API_BASE_URL?: unknown };
-const base =
-  typeof env.VITE_API_BASE_URL === 'string' ? env.VITE_API_BASE_URL : 'http://127.0.0.1:3000';
+const base = typeof env.VITE_API_BASE_URL === 'string' ? env.VITE_API_BASE_URL : '';
 
 async function request(path: string, token: string, init: RequestInit = {}) {
   const headers = new Headers(init.headers);

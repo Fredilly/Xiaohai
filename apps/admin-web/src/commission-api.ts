@@ -5,7 +5,7 @@ import type {
 } from '@xiaohai/contracts/commission';
 
 const configuredBase: unknown = import.meta.env.VITE_API_BASE_URL;
-const base = typeof configuredBase === 'string' ? configuredBase : 'http://127.0.0.1:3000';
+const base = typeof configuredBase === 'string' ? configuredBase : '';
 async function call<T>(token: string, path: string, method = 'GET', body?: unknown): Promise<T> {
   const response = await fetch(`${base}${path}`, {
     method,

@@ -8,7 +8,7 @@ import {
 import { displayStatus, money } from './display';
 
 const configuredBase: unknown = import.meta.env.VITE_API_BASE_URL;
-const base = typeof configuredBase === 'string' ? configuredBase : 'http://127.0.0.1:3000';
+const base = typeof configuredBase === 'string' ? configuredBase : '';
 export function PaymentsManager({ token }: { token: string }) {
   const [rows, setRows] = useState<PaymentStatus[]>([]);
   const [message, setMessage] = useState('');

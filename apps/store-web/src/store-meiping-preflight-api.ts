@@ -1,8 +1,7 @@
 import { MEIPING_PREFLIGHT_MAX_BYTES } from '@xiaohai/contracts/meiping';
 
 const env = import.meta.env as { readonly VITE_API_BASE_URL?: unknown };
-const base =
-  typeof env.VITE_API_BASE_URL === 'string' ? env.VITE_API_BASE_URL : 'http://127.0.0.1:3000';
+const base = typeof env.VITE_API_BASE_URL === 'string' ? env.VITE_API_BASE_URL : '';
 
 export type StoreMeipingPreflight = {
   sourceStoreId: string;

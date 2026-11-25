@@ -28,7 +28,7 @@ describe('system-api', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
     const [url] = fetchMock.mock.calls[0] ?? [];
-    expect(fetchUrl(url)).toContain('/health');
+    expect(fetchUrl(url)).toBe('/health');
   });
 
   it('sends Staff bearer token and bounded audit filters', async () => {

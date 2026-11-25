@@ -18,17 +18,14 @@ function Session({ token, storeId, permissions }: Props) {
   const read = useRef(0);
   const path = `/api/v1/staff/stores/${storeId}`;
   async function call(suffix: string, body?: unknown) {
-    const response = await fetch(
-      `${env.VITE_API_BASE_URL ?? 'http://127.0.0.1:3000'}${path}${suffix}`,
-      {
-        method: body ? 'POST' : 'GET',
-        headers: {
-          authorization: `Bearer ${token}`,
-          ...(body ? { 'content-type': 'application/json' } : {}),
-        },
-        body: body ? JSON.stringify(body) : undefined,
+    const response = await fetch(`${env.VITE_API_BASE_URL ?? ''}${path}${suffix}`, {
+      method: body ? 'POST' : 'GET',
+      headers: {
+        authorization: `Bearer ${token}`,
+        ...(body ? { 'content-type': 'application/json' } : {}),
       },
-    );
+      body: body ? JSON.stringify(body) : undefined,
+    });
     if (!response.ok) throw new Error(`HTTP_${response.status}`);
     return (await response.json()) as unknown;
   }
