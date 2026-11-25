@@ -29,12 +29,14 @@ API 单元 **233**、Store Web **59**、HQ Web **86**、Miniapp **167**、Config
 
 门店端单测 **62 PASS**（新增 3 项响应身份负例），门店端 typecheck、lint、build 通过。之前 API/其他端与 PostgreSQL 数字是前轮证据，不代表本轮重新运行了所有真实数据库用例。
 
-本执行环境已实际尝试 `pnpm test:inventory-web` 两次：默认缺少 Playwright 自带 Chromium；改用 `/usr/bin/chromium` 后，Chromium 在进程启动阶段因本地 socket `Operation not permitted (1)` 直接退出。9 项均未执行到页面断言，故 **9 NOT TESTED（环境门禁）**，不能记为业务 FAIL 或 PASS。不得通过权限绕过、共享服务或放宽测试的 `/api/**` 默认阻断来制造绿色结果；需在允许本地浏览器进程的隔离环境按下列统一清单复测。
+此前受限环境实际尝试 `pnpm test:inventory-web` 两次，因 Chromium 本地 socket `Operation not permitted (1)` 未进入断言。**随后在独立本机 worktree 完成复测：`485be755aa8743b7d38c478a9a497e379cb3099c` 上 9/9 PASS**。修复仅涉及测试定位器（提交 `485be75`），不涉及业务逻辑；API 233、门店 62、总部 86 单元测试及 lint/typecheck/Prettier 通过。该结果只证明合成浏览器交互，不代表真实业务环境 UAT。未 mock API 仍全局中止，Service Worker 仍禁用。不得通过权限绕过或共享服务制造绿色结果。
+
+已增加独立 `inventory-browser` CI 检查：在 GitHub Actions 隔离 runner 安装 Playwright Chromium，执行 `pnpm test:inventory-web`，纳入 merge gate。CI 实际运行状态须以提交后 GitHub 检查结果为准，不能预先记作通过。
 
 ## 本机统一执行
 
 1. 核对最新分支 SHA/干净状态、专属合成测试环境及非生产 Provider；**禁止复用 #111 Gate B、原 Mac 数据库、真实商品库或共享资源**。
-2. `pnpm test:inventory-web`，共 **9** 项（原 6 项库存/Excel/切店/权限 + 食品入库断网同键重试、实物接收成功后刷新失败仍同键、错店溯源不展示）。未 mock API 全局中止，Service Worker 禁用，不允许漏到 Vite 本机 3000 代理。云端只 discovery；既有 Chromium socket 限制未绕过，**9 项均 NOT TESTED**。
+2. `pnpm test:inventory-web`，共 **9** 项（原 6 项库存/Excel/切店/权限 + 食品入库断网同键重试、实物接收成功后刷新失败仍同键、错店溯源不展示）。独立本机环境已 **9/9 PASS**；CI 自动重跑为新增门禁。未 mock API 全局中止，Service Worker 禁用，不允许漏到 Vite 本机 3000 代理。
 3. 在另建的 #208 专属应用/数据库中验证：两店名称/售价一致性、旧入口拒绝、同购物车并发下单；食品有效/到期/冻结、原批次自提/配送、取消/退款与实物接收分离、调拨在途及两端清点、召回传递、断网重试；门店只读/错店/单权限拒绝。
 4. 门店支付 UAT：只读员工不能退款；获授权本店经理可以对账/整单退款；猜另一店 paymentId 拒绝；退款不增加实物库存；总部原 GLOBAL 入口不变。只用模拟支付，不发送真实退款。
 5. 食品开关保持 false，单独验证东门合成 Excel 预检→审核→人工实盘→独立批准→执行/对账，南门普通商品草稿→首次库存→重复请求/权限/流水；普通商品不用批次。真实 Excel 及实盘另有资源与操作授权后才导入，禁止把每行默认 1 件当实盘。

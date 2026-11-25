@@ -142,6 +142,23 @@ jobs:
       - name: Validate Drizzle journal, SQL and legacy upgrade repair
         run: node scripts/check-migration-chain.mjs
 
+  inventory-browser:
+    name: isolated inventory browser acceptance
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Install isolated Playwright Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Inventory and food browser acceptance (synthetic API only)
+        run: pnpm test:inventory-web
+
   critical:
     name: critical integration
     needs: changes
@@ -209,7 +226,8 @@ jobs:
   gate:
     name: merge gate
     if: always()
-    needs: [changes, review-scope, fast, migration-guard, migration-chain, critical]
+    needs:
+      [changes, review-scope, fast, migration-guard, migration-chain, inventory-browser, critical]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -221,6 +239,7 @@ jobs:
           FAST: ${{ needs.fast.result }}
           MIGRATION: ${{ needs.migration-guard.result }}
           MIGRATION_CHAIN: ${{ needs.migration-chain.result }}
+          INVENTORY_BROWSER: ${{ needs.inventory-browser.result }}
           CRITICAL: ${{ needs.critical.result }}
         run: |
           set -euo pipefail
@@ -229,6 +248,7 @@ jobs:
           [ "$FAST" = "success" ]
           [ "$MIGRATION" = "success" ]
           [ "$MIGRATION_CHAIN" = "success" ]
+          [ "$INVENTORY_BROWSER" = "success" ]
           if [ "$CRITICAL" != "success" ] && [ "$CRITICAL" != "skipped" ]; then
             echo "::error::Critical integration checks did not pass."
             exit 1
