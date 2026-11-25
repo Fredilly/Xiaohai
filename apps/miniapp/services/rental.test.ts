@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { createRental, listRentals } from './rental';
+import { cancelRental, createRental, listRentals } from './rental';
 
 describe('Mini Program M15 rental service', () => {
   let requestMock: ReturnType<typeof vi.fn>;
@@ -44,6 +44,24 @@ describe('Mini Program M15 rental service', () => {
     expect(request.data).toMatchObject({ items: [{ quantity: 1 }] });
     expect(request.data).not.toHaveProperty('status');
     expect(request.data).not.toHaveProperty('dueAt');
+  });
+  it('passes a caller-supplied idempotency key unchanged on rental retry', async () => {
+    const requestKey = '55555555-5555-4555-8555-555555555555';
+    await createRental(
+      '11111111-1111-4111-8111-111111111111',
+      '22222222-2222-4222-8222-222222222222',
+      requestKey,
+    );
+    const request = requestMock.mock.calls[0]?.[0] as WechatMiniprogram.RequestOption;
+    expect(request.data).toMatchObject({ idempotencyKey: requestKey });
+  });
+  it('replays an explicit cancellation idempotency key without substituting a new one', async () => {
+    const requestKey = '55555555-5555-4555-8555-555555555555';
+    await cancelRental('33333333-3333-4333-8333-333333333333', requestKey);
+    const request = requestMock.mock.calls[0]?.[0] as WechatMiniprogram.RequestOption;
+    expect(request.method).toBe('POST');
+    expect(request.url).toContain('/rentals/33333333-3333-4333-8333-333333333333/cancel');
+    expect(request.data).toMatchObject({ idempotencyKey: requestKey });
   });
   it('requires a stored session', async () => {
     storageMock.mockReturnValue('');

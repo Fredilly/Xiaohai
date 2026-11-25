@@ -91,7 +91,7 @@
         <view class="action-row">
           <button size="mini" class="action-btn" data-id="{{item.store.id}}" bindtap="openStore">门店</button>
           <button wx:if="{{item.sellAvailable}}" size="mini" class="action-btn primary" data-id="{{item.product.id}}" bindtap="openProduct">购买</button>
-          <button wx:if="{{item.rentAvailable}}" size="mini" class="action-btn" data-store-id="{{item.store.id}}" data-sku-id="{{item.sku.id}}" bindtap="reserveRental">租借</button>
+          <button wx:if="{{item.rentAvailable}}" size="mini" class="action-btn" disabled="{{reserving}}" data-store-id="{{item.store.id}}" data-sku-id="{{item.sku.id}}" bindtap="reserveRental">租借</button>
           <button size="mini" class="action-btn" data-flow="自提/配送" bindtap="showDeferredFlow">自提/配送</button>
         </view>
       </view>

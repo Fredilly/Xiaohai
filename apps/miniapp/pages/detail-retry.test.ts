@@ -8,6 +8,9 @@ const mocks = vi.hoisted(() => ({
   setNavigationBarTitle: vi.fn(),
 }));
 
+const rentalConsumerId = '11111111-1111-4111-8111-111111111111';
+const rentalId = '33333333-3333-4333-8333-333333333333';
+
 vi.mock('../services/commerce', () => ({
   getProduct: mocks.getProduct,
   addCartItem: vi.fn(),
@@ -52,7 +55,15 @@ afterAll(() => vi.unstubAllGlobals());
 
 beforeEach(() => {
   vi.clearAllMocks();
-  vi.stubGlobal('wx', { setNavigationBarTitle: mocks.setNavigationBarTitle });
+  vi.stubGlobal('wx', {
+    setNavigationBarTitle: mocks.setNavigationBarTitle,
+    getStorageSync: (key: string) =>
+      key === 'consumer_session_token'
+        ? 'test-consumer-session'
+        : key === 'consumer_user_id'
+          ? rentalConsumerId
+          : '',
+  });
 });
 
 function page(index: number): PageConfig {
@@ -170,9 +181,10 @@ describe('detail pages retry their original data reads', () => {
 
   it('allows rental detail to reload after its initial protected read fails', async () => {
     const instance = page(3);
-    instance.data.id = 'rental-1';
+    instance.data.id = rentalId;
     mocks.getRental.mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce({
-      id: 'rental-1',
+      id: rentalId,
+      consumerUserId: rentalConsumerId,
       status: 'BORROWED',
       dueAt: null,
     });
@@ -184,7 +196,7 @@ describe('detail pages retry their original data reads', () => {
     await vi.waitFor(() => {
       expect(mocks.getRental).toHaveBeenCalledTimes(2);
       expect(instance.data.error).toBe('');
-      expect(instance.data.rental).toMatchObject({ id: 'rental-1', statusText: '借阅中' });
+      expect(instance.data.rental).toMatchObject({ id: rentalId, statusText: '借阅中' });
     });
   });
 
@@ -215,7 +227,7 @@ describe('detail pages retry their original data reads', () => {
     expect(mocks.getStore).toHaveBeenCalledTimes(1);
 
     const rental = page(3);
-    rental.data.id = 'private-rental';
+    rental.data.id = rentalId;
     rental.data.rental = { id: 'stale-private-rental' };
     mocks.getRental.mockRejectedValueOnce(new Error('AUTH_REQUIRED'));
     await rental.load?.call(rental);
@@ -227,7 +239,7 @@ describe('detail pages retry their original data reads', () => {
 
   it('ignores repeated rental retry taps while the same GET is in flight', async () => {
     const rental = page(3);
-    rental.data.id = 'rental-inflight';
+    rental.data.id = rentalId;
     mocks.getRental.mockRejectedValueOnce(new Error('offline'));
     await rental.load?.call(rental);
 
@@ -244,10 +256,15 @@ describe('detail pages retry their original data reads', () => {
     rental.retry?.call(rental);
     expect(mocks.getRental).toHaveBeenCalledTimes(2);
 
-    resolveRead({ id: 'rental-inflight', status: 'BORROWED', dueAt: null });
+    resolveRead({
+      id: rentalId,
+      consumerUserId: rentalConsumerId,
+      status: 'BORROWED',
+      dueAt: null,
+    });
     await vi.waitFor(() => {
       expect(rental.data.loading).toBe(false);
-      expect(rental.data.rental).toMatchObject({ id: 'rental-inflight' });
+      expect(rental.data.rental).toMatchObject({ id: rentalId });
     });
     expect(mocks.getRental).toHaveBeenCalledTimes(2);
   });

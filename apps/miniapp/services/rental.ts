@@ -29,17 +29,17 @@ async function request<T>(
   }
   return response.data as T;
 }
-export const createRental = (storeId: string, skuId: string) =>
+export const createRental = (storeId: string, skuId: string, idempotencyKey = randomId()) =>
   request<RentalView>('/api/v1/rentals', 'POST', {
     storeId,
     items: [{ skuId, quantity: 1 }],
-    idempotencyKey: randomId(),
+    idempotencyKey,
   });
 export const listRentals = () => request<{ items: RentalView[] }>('/api/v1/rentals');
 export const getRental = (id: string) => request<RentalView>(`/api/v1/rentals/${id}`);
-export const cancelRental = (id: string) =>
-  request<RentalView>(`/api/v1/rentals/${id}/cancel`, 'POST', { idempotencyKey: randomId() });
-function randomId() {
+export const cancelRental = (id: string, idempotencyKey = randomId()) =>
+  request<RentalView>(`/api/v1/rentals/${id}/cancel`, 'POST', { idempotencyKey });
+export function randomId() {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
     const r = Math.floor(Math.random() * 16);
     return (c === 'x' ? r : (r & 3) | 8).toString(16);

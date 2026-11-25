@@ -1,6 +1,7 @@
 <view class="page pangzhu">
   <view wx:if="{{loading}}" class="state-card">正在加载…</view>
-  <view wx:if="{{error}}" class="demo-note">
+  <view wx:elif="{{needsLogin}}" class="state-card"><text class="state-title">登录后查看租借详情</text><button class="primary-btn" bindtap="goToLogin">去登录</button></view>
+  <view wx:elif="{{error}}" class="demo-note">
     <text>{{accessMessage || error}}</text>
     <button wx:if="{{id && !loading && !accessMessage}}" class="secondary-btn" bindtap="retry">重新加载</button>
   </view>

@@ -1,8 +1,19 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { searchInventory } from '../../services/inventory';
+import { consumerToken, storedConsumerId } from '../../services/consumer-session';
+import { createRental, randomId } from '../../services/rental';
 
 vi.mock('../../services/inventory', () => ({ searchInventory: vi.fn() }));
-vi.mock('../../services/rental', () => ({ createRental: vi.fn() }));
+vi.mock('../../services/rental', () => ({ createRental: vi.fn(), randomId: vi.fn() }));
+vi.mock('../../services/consumer-session', () => ({
+  consumerToken: vi.fn(),
+  storedConsumerId: vi.fn(),
+}));
+
+const rentalConsumer = '11111111-1111-4111-8111-111111111111';
+const rentalStore = '22222222-2222-4222-8222-222222222222';
+const rentalSku = '33333333-3333-4333-8333-333333333333';
+const rentalKey = '44444444-4444-4444-8444-444444444444';
 
 type SearchPage = {
   data: {
@@ -15,15 +26,18 @@ type SearchPage = {
     latitude: number | null;
     longitude: number | null;
     items: Array<{ key: string; displayCoverUrl: string }>;
+    reserving: boolean;
   };
   searchRequestVersion: number;
   locationRequestVersion: number;
   pageClosed: boolean;
+  rentalReservationInFlight: boolean;
   setData(changes: Record<string, unknown>): void;
   submitSearch(): Promise<void>;
   useNearby(): Promise<void>;
   disableNearby(): Promise<void>;
   onUnload(): void;
+  reserveRental(event: WechatMiniprogram.TouchEvent): Promise<void>;
 };
 
 const read = vi.mocked(searchInventory);
@@ -51,10 +65,12 @@ function page(): SearchPage {
       latitude: null,
       longitude: null,
       items: [],
+      reserving: false,
     },
     searchRequestVersion: 0,
     locationRequestVersion: 0,
     pageClosed: false,
+    rentalReservationInFlight: false,
     setData(changes: Record<string, unknown>) {
       Object.assign(this.data, changes);
     },
@@ -71,6 +87,118 @@ afterEach(() => vi.resetAllMocks());
 afterAll(() => vi.unstubAllGlobals());
 
 describe('inventory book-search weak-network and permission recovery (#32/#70)', () => {
+  it('serializes reservation taps before the confirmation modal can complete', async () => {
+    const storage = new Map<string, unknown>();
+    let confirm: (result: { confirm: boolean }) => void = () => {};
+    const showModal = vi.fn((options: { success: typeof confirm }) => {
+      confirm = options.success;
+    });
+    vi.stubGlobal('wx', {
+      getStorageSync: (key: string) => storage.get(key),
+      setStorageSync: (key: string, value: unknown) => storage.set(key, value),
+      removeStorageSync: (key: string) => storage.delete(key),
+      showModal,
+      navigateTo: vi.fn(),
+      showToast: vi.fn(),
+    });
+    vi.mocked(consumerToken).mockReturnValue('consumer-session');
+    vi.mocked(storedConsumerId).mockReturnValue(rentalConsumer);
+    vi.mocked(randomId).mockReturnValue(rentalKey);
+    vi.mocked(createRental).mockResolvedValue({
+      id: '55555555-5555-4555-8555-555555555555',
+      consumerUserId: rentalConsumer,
+      storeId: rentalStore,
+      items: [{ skuId: rentalSku, quantity: 1 }],
+    } as never);
+    const event = {
+      currentTarget: { dataset: { storeId: rentalStore, skuId: rentalSku } },
+    } as never;
+    const search = page();
+    const first = search.reserveRental(event);
+    await search.reserveRental(event);
+    expect(showModal).toHaveBeenCalledTimes(1);
+    expect(createRental).not.toHaveBeenCalled();
+    expect(search.data.reserving).toBe(true);
+    confirm({ confirm: true });
+    await first;
+    expect(createRental).toHaveBeenCalledTimes(1);
+    expect(search.data.reserving).toBe(false);
+  });
+
+  it('reuses one persisted rental request key after a lost response and blocks double taps', async () => {
+    const storage = new Map<string, unknown>();
+    const navigateTo = vi.fn();
+    const showToast = vi.fn();
+    const showModal = vi.fn((options: { success: (result: { confirm: boolean }) => void }) =>
+      options.success({ confirm: true }),
+    );
+    vi.stubGlobal('wx', {
+      getStorageSync: (key: string) => storage.get(key),
+      setStorageSync: (key: string, value: unknown) => storage.set(key, value),
+      removeStorageSync: (key: string) => storage.delete(key),
+      showModal,
+      navigateTo,
+      showToast,
+    });
+    vi.mocked(consumerToken).mockReturnValue('consumer-session');
+    vi.mocked(storedConsumerId).mockReturnValue(rentalConsumer);
+    vi.mocked(randomId).mockReturnValue(rentalKey);
+    vi.mocked(createRental)
+      .mockRejectedValueOnce(new Error('request:fail timeout'))
+      .mockResolvedValueOnce({
+        id: '55555555-5555-4555-8555-555555555555',
+        consumerUserId: rentalConsumer,
+        storeId: rentalStore,
+        items: [{ skuId: rentalSku, quantity: 1 }],
+      } as never);
+    const event = {
+      currentTarget: { dataset: { storeId: rentalStore, skuId: rentalSku } },
+    } as never;
+    const search = page();
+    await search.reserveRental(event);
+    expect(createRental).toHaveBeenCalledWith(rentalStore, rentalSku, rentalKey);
+    expect(storage.size).toBe(1);
+
+    await search.reserveRental(event);
+    expect(createRental).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(createRental).mock.calls[1]).toEqual(vi.mocked(createRental).mock.calls[0]);
+    expect(storage.size).toBe(0);
+    expect(navigateTo).toHaveBeenCalledWith({
+      url: '/pages/rental-detail/rental-detail?id=55555555-5555-4555-8555-555555555555',
+    });
+    expect(showModal).toHaveBeenCalledTimes(2);
+    expect(search.data.reserving).toBe(false);
+  });
+
+  it('refuses cross-account rental results and never clears a pending key without matching identity', async () => {
+    const storage = new Map<string, unknown>();
+    const navigateTo = vi.fn();
+    vi.stubGlobal('wx', {
+      getStorageSync: (key: string) => storage.get(key),
+      setStorageSync: (key: string, value: unknown) => storage.set(key, value),
+      removeStorageSync: (key: string) => storage.delete(key),
+      showModal: (options: { success: (result: { confirm: boolean }) => void }) =>
+        options.success({ confirm: true }),
+      navigateTo,
+      showToast: vi.fn(),
+    });
+    vi.mocked(consumerToken).mockReturnValue('consumer-session');
+    vi.mocked(storedConsumerId).mockReturnValue(rentalConsumer);
+    vi.mocked(randomId).mockReturnValue(rentalKey);
+    vi.mocked(createRental).mockResolvedValue({
+      id: '55555555-5555-4555-8555-555555555555',
+      consumerUserId: '66666666-6666-4666-8666-666666666666',
+      storeId: rentalStore,
+      items: [{ skuId: rentalSku, quantity: 1 }],
+    } as never);
+    const search = page();
+    await search.reserveRental({
+      currentTarget: { dataset: { storeId: rentalStore, skuId: rentalSku } },
+    } as never);
+    expect(navigateTo).not.toHaveBeenCalled();
+    expect(storage.size).toBe(1);
+  });
+
   it('keeps the newest results when older catalog responses arrive late', async () => {
     let resolveOld: (value: Awaited<ReturnType<typeof searchInventory>>) => void = () => {};
     read.mockImplementationOnce(

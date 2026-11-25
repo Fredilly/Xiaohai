@@ -1,6 +1,8 @@
 import type { InventoryAvailability, PublicInventoryItem } from '@xiaohai/contracts/inventory';
 import { searchInventory } from '../../services/inventory';
-import { createRental } from '../../services/rental';
+import { consumerToken, storedConsumerId } from '../../services/consumer-session';
+import { createRental, randomId } from '../../services/rental';
+import { clearRentalKey, pendingRentalKey, persistRentalKey } from '../../services/rental-retry';
 import { clearFailedBookSearchCover, resolveBookSearchCover } from './book-search-display';
 
 type InputEvent = { detail: { value?: string } };
@@ -27,9 +29,11 @@ Page({
     latitude: null as number | null,
     longitude: null as number | null,
     items: [] as InventoryViewItem[],
+    reserving: false,
   },
   searchRequestVersion: 0,
   locationRequestVersion: 0,
+  rentalReservationInFlight: false,
   pageClosed: false,
 
   onUnload() {
@@ -177,30 +181,56 @@ Page({
   },
 
   async reserveRental(event: WechatMiniprogram.TouchEvent) {
+    if (this.rentalReservationInFlight || this.pageClosed) return;
     const storeId = String(event.currentTarget.dataset.storeId ?? '');
     const skuId = String(event.currentTarget.dataset.skuId ?? '');
-    if (!wx.getStorageSync('consumer_session_token')) {
+    const session = consumerToken();
+    const userId = storedConsumerId();
+    if (!session || !userId) {
       void wx.showToast({ title: '请先在“我的”完成微信登录', icon: 'none' });
       return;
     }
+    this.rentalReservationInFlight = true;
+    this.setData({ reserving: true });
     try {
+      const pending = pendingRentalKey(userId, storeId, skuId);
       const confirmed = await new Promise<boolean>((resolve) =>
         wx.showModal({
-          title: '预约租借',
-          content: '确认在该门店预约 1 本？',
+          title: pending ? '核对原预约' : '预约租借',
+          content: pending
+            ? '之前的预约结果未确认，继续会使用原请求重试，不会创建另一笔预约。'
+            : '确认在该门店预约 1 本？',
           success: (r) => resolve(r.confirm),
           fail: () => resolve(false),
         }),
       );
       if (!confirmed) return;
-      const rental = await createRental(storeId, skuId);
+      if (this.pageClosed || consumerToken() !== session || storedConsumerId() !== userId) return;
+      const key = pending ?? randomId();
+      if (!pending) persistRentalKey(userId, storeId, skuId, key);
+      const rental = await createRental(storeId, skuId, key);
+      if (
+        rental.consumerUserId !== userId ||
+        rental.storeId !== storeId ||
+        rental.items.length !== 1 ||
+        rental.items[0]?.skuId !== skuId ||
+        rental.items[0]?.quantity !== 1
+      )
+        throw new Error('RENTAL_CONTEXT_MISMATCH');
+      clearRentalKey(userId, storeId, skuId, key);
+      if (this.pageClosed || consumerToken() !== session || storedConsumerId() !== userId) return;
       void wx.navigateTo({ url: `/pages/rental-detail/rental-detail?id=${rental.id}` });
     } catch (error) {
       const code = error instanceof Error ? error.message : '';
-      void wx.showToast({
-        title: code === 'INSUFFICIENT_STOCK' ? '库存不足，预约失败' : '预约失败，请稍后重试',
-        icon: 'none',
-      });
+      if (!this.pageClosed && consumerToken() === session && storedConsumerId() === userId)
+        void wx.showToast({
+          title:
+            code === 'INSUFFICIENT_STOCK' ? '库存不足，预约失败' : '预约未确认，重试沿用原请求',
+          icon: 'none',
+        });
+    } finally {
+      this.rentalReservationInFlight = false;
+      if (!this.pageClosed) this.setData({ reserving: false });
     }
   },
 
