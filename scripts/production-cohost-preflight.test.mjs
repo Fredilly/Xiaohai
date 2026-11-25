@@ -66,6 +66,20 @@ test('production services never publish host ports or mount staging data and edg
     .join('\n');
   assert.match(active, /name: xiaohai-production-cohost/u);
   assert.match(active, /image: ghcr\.io\/fredilly\/xiaohai-production-web:\$\{WEB_REVISION:\?/u);
+  assert.match(active, /x-production-logging: &production-logging/u);
+  assert.match(active, /max-size: '10m'/u);
+  assert.match(active, /max-file: '3'/u);
+  assert.equal(
+    (active.match(/logging: \*production-logging/gu) ?? []).length,
+    5,
+    'all five production services require bounded Docker log rotation',
+  );
+  for (const role of ['POSTGRES', 'REDIS', 'API', 'WORKER', 'WEB']) {
+    assert.ok(
+      active.includes(`mem_limit: \${PRODUCTION_${role}_MEM_LIMIT:?`),
+      `${role} memory cap must be explicitly reviewed, never assumed`,
+    );
+  }
   assert.doesNotMatch(active, /^\s*build:/mu, 'live SWAS must never build the full workspace');
   assert.doesNotMatch(
     active,
@@ -155,6 +169,11 @@ test('shared proxy preserves original staging plus unknown sites and production 
   assert.match(stagingCompose, /name: xiaohai-staging/u);
   assert.match(sharedCaddy, /import \/etc\/caddy\/Caddyfile\.staging-base/u);
   assert.match(sharedCaddy, /import \/etc\/caddy\/Caddyfile\.preserved/u);
+  assert.doesNotMatch(
+    sharedCaddy,
+    /orientalsourcepress\.com/u,
+    'the independently hosted publisher website must not be added to Xiaohai ingress',
+  );
   for (const host of ['api.pamboo.asia', 'store.pamboo.asia', 'admin.pamboo.asia']) {
     assert.ok(sharedCaddy.includes(`${host} {`));
   }
