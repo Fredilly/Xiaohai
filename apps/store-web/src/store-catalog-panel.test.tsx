@@ -7,6 +7,20 @@ import {
   skuStatus,
 } from './store-catalog-panel';
 describe('Store catalog direct-edit module', () => {
+  it('remounts the entire editor session on a store or login switch', () => {
+    const props = {
+      token: 'session-a',
+      storeId: '11111111-1111-4111-8111-111111111111',
+      storeName: '东门',
+    };
+    const east = StoreCatalogPanel(props);
+    const south = StoreCatalogPanel({ ...props, storeId: '33333333-3333-4333-8333-333333333333' });
+    const anotherLogin = StoreCatalogPanel({ ...props, token: 'session-b' });
+    expect(east.key).toBe('session-a:11111111-1111-4111-8111-111111111111');
+    expect(south.key).not.toBe(east.key);
+    expect(anotherLogin.key).not.toBe(east.key);
+  });
+
   it('describes store-scoped product data and guarded direct writes', () => {
     const html = renderToStaticMarkup(
       <StoreCatalogPanel

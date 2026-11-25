@@ -23,15 +23,20 @@ export function parseStorePriceToMinor(value: string): number | null {
   return minor <= 2147483647n ? Number(minor) : null;
 }
 
-export function StoreCatalogPanel({
-  token,
-  storeId,
-  storeName,
-}: {
+type StoreCatalogProps = {
   token: string;
   storeId: string;
   storeName: string;
-}) {
+};
+
+// A store switch must discard open editors, draft request keys and pending
+// image uploads. Shared SKUs can exist at both stores, so retaining an editor
+// would otherwise risk applying an old store's values to the new selection.
+export function StoreCatalogPanel(props: StoreCatalogProps) {
+  return <StoreCatalogSession key={`${props.token}:${props.storeId}`} {...props} />;
+}
+
+function StoreCatalogSession({ token, storeId, storeName }: StoreCatalogProps) {
   const [query, setQuery] = useState('');
   const [applied, setApplied] = useState('');
   const [offset, setOffset] = useState(0);
