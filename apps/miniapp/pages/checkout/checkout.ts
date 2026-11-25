@@ -11,6 +11,19 @@ import { listStores } from '../../services/stores';
 type PickerEvent = { detail: { value: string } };
 type MethodEvent = { currentTarget: { dataset: { method?: FulfillmentMethod } } };
 
+function matchingQuote(quote: FulfillmentQuote, method: FulfillmentMethod, storeId: string) {
+  return (
+    quote.method === method &&
+    quote.store?.id === storeId &&
+    Number.isSafeInteger(quote.subtotalMinor) &&
+    quote.subtotalMinor >= 0 &&
+    Number.isSafeInteger(quote.deliveryFeeMinor) &&
+    quote.deliveryFeeMinor >= 0 &&
+    Number.isSafeInteger(quote.totalMinor) &&
+    quote.totalMinor === quote.subtotalMinor + quote.deliveryFeeMinor
+  );
+}
+
 Page({
   quoteSequence: 0,
   data: {
@@ -93,6 +106,9 @@ Page({
         method === 'DELIVERY' ? addressId : undefined,
       );
       if (quoteSequence !== this.quoteSequence) return;
+      if (!matchingQuote(quote, method, storeId)) {
+        throw new Error('QUOTE_CONTEXT_MISMATCH');
+      }
       this.setData({ quote });
     } catch (error) {
       if (quoteSequence !== this.quoteSequence) return;
@@ -112,6 +128,10 @@ Page({
     if (this.data.creating || this.data.quoting || !this.data.quote || !this.data.clientRequestId)
       return;
     const method = this.data.method === 'DELIVERY' ? 'DELIVERY' : 'PICKUP';
+    if (!matchingQuote(this.data.quote, method, this.data.storeId)) {
+      this.setData({ quote: null, errorMessage: '门店或报价已变化，请重新获取金额。' });
+      return;
+    }
     this.setData({ creating: true, errorMessage: '' });
     try {
       const result = await createFulfillmentOrder(
