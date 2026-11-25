@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { addCartItem } from '../../services/commerce';
 
 const mocks = vi.hoisted(() => ({ getProduct: vi.fn() }));
 vi.mock('../../services/commerce', () => ({ getProduct: mocks.getProduct, addCartItem: vi.fn() }));
@@ -10,12 +11,15 @@ vi.mock('../../utils/real-visuals', () => ({
 type Detail = {
   id: string;
   gallery: Array<{ key: number; url: string }>;
+  skus?: Array<{ id: string; availableForSale: boolean }>;
 };
 type PageConfig = {
+  addInFlight: boolean;
   data: { product: Detail | null; [key: string]: unknown };
   setData(changes: Record<string, unknown>): void;
   load(id: string): Promise<void>;
   galleryError(event: WechatMiniprogram.TouchEvent): void;
+  add(event: WechatMiniprogram.TouchEvent): Promise<void>;
 };
 let definition: PageConfig;
 
@@ -31,6 +35,7 @@ beforeEach(() => vi.clearAllMocks());
 function makePage() {
   const instance: PageConfig = {
     ...definition,
+    addInFlight: false,
     data: { ...definition.data },
     setData(changes) {
       for (const [field, value] of Object.entries(changes)) {
@@ -99,5 +104,32 @@ describe('product detail media gallery (#208)', () => {
     expect(template).not.toContain("product.isbn || '—'");
     expect(template).toContain('binderror="galleryError"');
     expect(template).toContain('wx:if="{{item.url}}"');
+  });
+
+  it('blocks double taps while a cart add is pending and preserves uncertain-write feedback', async () => {
+    let rejectWrite: (reason: Error) => void = () => {};
+    vi.mocked(addCartItem).mockImplementationOnce(
+      () =>
+        new Promise((_, reject) => {
+          rejectWrite = reject;
+        }),
+    );
+    const page = makePage();
+    page.data.product = {
+      id: 'product-1',
+      gallery: [],
+      skus: [{ id: 'sku-1', availableForSale: true }],
+    };
+    const event = {
+      currentTarget: { dataset: { sku: 'sku-1' } },
+    } as unknown as WechatMiniprogram.TouchEvent;
+    const first = page.add.call(page, event);
+    await page.add.call(page, event);
+    expect(addCartItem).toHaveBeenCalledTimes(1);
+    expect(page.data.addingSku).toBe('sku-1');
+    rejectWrite(new Error('network timeout'));
+    await first;
+    expect(page.data.addingSku).toBe('');
+    expect(page.data.message).toContain('未确认');
   });
 });

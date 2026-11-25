@@ -23,6 +23,7 @@ function detailGallery(product: Product): DisplayProduct['gallery'] {
 }
 
 Page({
+  addInFlight: false,
   data: {
     id: '',
     product: null as DisplayProduct | null,
@@ -30,6 +31,7 @@ Page({
     error: false,
     accessMessage: '',
     message: '',
+    addingSku: '',
   },
   onLoad(q: Record<string, string | undefined>) {
     const id = q.id ?? '';
@@ -63,11 +65,19 @@ Page({
       void this.load(this.data.id);
   },
   async add(e: WechatMiniprogram.TouchEvent) {
+    if (this.addInFlight) return;
+    const skuId = String(e.currentTarget.dataset.sku ?? '');
+    if (!this.data.product?.skus.some((sku) => sku.id === skuId && sku.availableForSale)) return;
+    this.addInFlight = true;
+    this.setData({ addingSku: skuId, message: '' });
     try {
-      await addCartItem(String(e.currentTarget.dataset.sku), 1);
+      await addCartItem(skuId, 1);
       this.setData({ message: '已加入购物车' });
     } catch {
-      this.setData({ message: '加入失败；请先登录或检查商品状态' });
+      this.setData({ message: '加入结果未确认，请先查看购物车再重试，避免重复添加。' });
+    } finally {
+      this.addInFlight = false;
+      this.setData({ addingSku: '' });
     }
   },
   coverError(event: WechatMiniprogram.TouchEvent) {
@@ -112,6 +122,7 @@ Page({
     if (urls.includes(current)) void wx.previewImage({ current, urls });
   },
   openCart() {
+    if (this.addInFlight) return;
     void wx.navigateTo({ url: '/pages/cart/cart' });
   },
 });
