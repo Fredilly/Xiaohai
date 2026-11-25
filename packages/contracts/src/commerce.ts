@@ -223,6 +223,33 @@ export const merchantProductImageUploadResultSchema = z.object({
 });
 export type MerchantProductImageUpload = z.infer<typeof merchantProductImageUploadSchema>;
 
+/** IDs, never caller-supplied URLs, define the final order and cover. */
+export const merchantProductGalleryUpdateSchema = z
+  .object({
+    expectedProductVersion: z.number().int().nonnegative(),
+    imageIds: z.array(z.uuid()).max(12),
+    coverImageId: z.uuid().nullable(),
+  })
+  .strict()
+  .superRefine((input, ctx) => {
+    if (
+      new Set(input.imageIds).size !== input.imageIds.length ||
+      (input.imageIds.length === 0) !== (input.coverImageId === null) ||
+      (input.coverImageId !== null && !input.imageIds.includes(input.coverImageId))
+    ) {
+      ctx.addIssue({ code: 'custom', message: 'Invalid gallery order or cover' });
+    }
+  });
+export const merchantProductGalleryResponseSchema = z.object({
+  productId: z.uuid(),
+  productVersion: z.number().int().nonnegative(),
+  productStatus: productStatusSchema,
+  coverUrl: z.string().nullable(),
+  images: z.array(z.object({ id: z.uuid(), url: z.string(), displayOrder: z.number().int() })),
+});
+export type MerchantProductGalleryUpdate = z.infer<typeof merchantProductGalleryUpdateSchema>;
+export type MerchantProductGallery = z.infer<typeof merchantProductGalleryResponseSchema>;
+
 export const adminProductSchema = adminProductCreateInputSchema.extend({
   id: z.uuid(),
   skuId: z.uuid(),

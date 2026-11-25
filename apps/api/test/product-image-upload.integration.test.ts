@@ -43,9 +43,13 @@ describe('merchant photo file validation', () => {
 });
 
 suite('scoped draft photo upload transaction (disposable PostgreSQL only)', () => {
-  const db = database!.db;
+  if (!database) {
+    it('requires a disposable PostgreSQL database', () => {});
+    return;
+  }
+  const db = database.db;
   afterAll(async () => {
-    await database!.pool.end();
+    await database.pool.end();
   });
 
   it('creates an audited gallery image and refuses both shared and active goods', async () => {
@@ -138,24 +142,84 @@ suite('scoped draft photo upload transaction (disposable PostgreSQL only)', () =
       await expect(service.upload(request)).rejects.toMatchObject({ code: 'CONFLICT' });
       expect(remoteUploads).toBe(2);
 
+      const [secondary] = await db
+        .insert(productMedia)
+        .values({
+          productId: product!.id,
+          url: `https://merchant-test.cd.bcebos.com/products/${product!.id}/images/secondary.png`,
+          displayOrder: 1,
+        })
+        .returning({ id: productMedia.id });
+      expect((await service.listGallery(product!.id, first)).images).toHaveLength(2);
+      await expect(service.listGallery(product!.id, second)).rejects.toMatchObject({
+        code: 'NOT_FOUND',
+      });
+      const galleryInput = {
+        productId: product!.id,
+        expectedProductVersion: 1,
+        imageIds: [secondary!.id, firstImage.imageId],
+        coverImageId: secondary!.id,
+        scopedStoreId: first,
+        actorStaffAccountId: actor!.id,
+        requestId: randomUUID(),
+      };
+      const forgedImageId = randomUUID();
+      await expect(
+        service.updateGallery({
+          ...galleryInput,
+          imageIds: [forgedImageId],
+          coverImageId: forgedImageId,
+        }),
+      ).rejects.toMatchObject({ code: 'INVALID_IMAGE' });
+      const rearranged = await service.updateGallery(galleryInput);
+      expect(rearranged.productVersion).toBe(2);
+      expect(rearranged.images.map((image) => image.id)).toEqual(galleryInput.imageIds);
+      expect(rearranged.coverUrl).toContain('secondary.png');
+      const unchanged = await service.updateGallery({ ...galleryInput, expectedProductVersion: 2 });
+      expect(unchanged.productVersion).toBe(2);
+      const removed = await service.updateGallery({
+        ...galleryInput,
+        expectedProductVersion: 2,
+        imageIds: [firstImage.imageId],
+        coverImageId: firstImage.imageId,
+      });
+      expect(removed.productVersion).toBe(3);
+      expect(removed.coverUrl).toBe(firstImage.url);
+      expect(removed.images).toHaveLength(1);
+      await expect(service.updateGallery(galleryInput)).rejects.toMatchObject({ code: 'CONFLICT' });
+
       await db.insert(storeInventory).values({ storeId: second, skuId: sku!.id, onHand: 0 });
-      await expect(service.upload({ ...request, expectedProductVersion: 1 })).rejects.toMatchObject(
+      await expect(service.upload({ ...request, expectedProductVersion: 3 })).rejects.toMatchObject(
         { code: 'SHARED_FORBIDDEN' },
       );
+      await expect(service.listGallery(product!.id, second)).resolves.toMatchObject({
+        productId: product!.id,
+      });
+      await expect(
+        service.updateGallery({
+          ...galleryInput,
+          expectedProductVersion: 3,
+          imageIds: [],
+          coverImageId: null,
+        }),
+      ).rejects.toMatchObject({ code: 'SHARED_FORBIDDEN' });
       expect(remoteUploads).toBe(2);
       const audit = await db
         .select()
         .from(auditLogs)
         .where(eq(auditLogs.actorStaffAccountId, actor!.id));
-      expect(audit).toHaveLength(1);
-      expect(audit[0]).toMatchObject({
+      expect(audit).toHaveLength(3);
+      expect(audit.find((row) => row.actionKey === 'catalog.product_image_upload')).toMatchObject({
         actionKey: 'catalog.product_image_upload',
         resourceId: product!.id,
       });
+      expect(
+        audit.filter((row) => row.actionKey === 'catalog.product_gallery_update'),
+      ).toHaveLength(2);
 
       await db.update(products).set({ status: 'ACTIVE' }).where(eq(products.id, product!.id));
       await expect(
-        service.upload({ ...request, expectedProductVersion: 1, scopedStoreId: null }),
+        service.upload({ ...request, expectedProductVersion: 3, scopedStoreId: null }),
       ).rejects.toMatchObject({ code: 'CONFLICT' });
       expect(remoteUploads).toBe(2);
     } finally {

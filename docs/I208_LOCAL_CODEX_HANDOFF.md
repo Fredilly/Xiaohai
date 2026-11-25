@@ -57,3 +57,11 @@ API 单元 **233**、Store Web **59**、HQ Web **86**、Miniapp **167**、Config
 6. 证据记录 SHA、环境、用例、预期/实际、PASS/FAIL/NOT TESTED、脱敏截图/trace。禁令牌、DSN、签名 URL 和个人数据。浏览器、WeChat 真机、真实照片/数据、共享环境迁移及部署尚未通过，不能宣布 #208 上线或关闭 Issue。
 
 规则与迁移/恢复门禁见 `ADR_FOOD_ORDER_AND_PHYSICAL_FLOW.md`、`FOOD_STOCK_OPERATIONS_RUNBOOK.md`。已同步维护 #114 经营证据矩阵；#114 已关闭并不证明本轮增量已在真实环境验收。#116/#32–#35 的剩余现场条件不可用自动化冒充。
+
+## 2026-11-25 商品图库经营闭环增量
+
+- Store Web 的草稿图库支持读取现有图片、继续上传、调整顺序、指定主图、移除图片引用及明确保存；上传、保存出现网络异常时，关闭编辑器会重新读取门店商品，避免用旧版本继续操作。
+- API 为门店及总部共用的 `products` / `product_media` 提供受 Staff RBAC + Store Scope 或 HQ GLOBAL 权限保护的图库读取与版本化调整。写入仅允许 `DRAFT`，只接受已有图片 UUID，严格校验唯一性、公开 HTTPS URL、关联门店、产品版本，使用产品及全部 SKU 行锁、事务和审计日志。移除关联不会删除不可变 BOS 对象；图库管理不会自动发布商品。
+- 路由单测及单店/共享店/伪造 ID/版本冲突的隔离 PostgreSQL 集成用例已补齐。新增 2 个 Playwright 合成浏览器用例加入原 `inventory-browser` CI：主图/排序/移除，以及断网不自动重试和错商品回填拒绝（总计 11 项）。
+- 本容器的 PostgreSQL 环境变量未配置，专用集成套件按门禁跳过，不记为 PASS。浏览器实测尝试被本环境缺失 Chromium 实际二进制阻断（`/usr/bin/chromium` 也只是缺少目标文件的包装脚本）；等待原分支 CI 的隔离 Chromium 结果，不把新用例记作通过。
+- 未访问真实 BOS、修改真实图片或上架商品；食品、支付及其他运营开关保持默认关闭。

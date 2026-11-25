@@ -11,12 +11,28 @@
       import { createRoot } from 'react-dom/client';
       import { InventoryPanel } from '../src/inventory-panel.tsx';
       import { StoreMeipingPreflightPanel } from '../src/store-meiping-preflight-panel.tsx';
+      import { StoreProductImageUploader } from '../src/merchant-image-uploader.tsx';
       const root = createRoot(document.getElementById('root'));
       window.addEventListener('inventory-props', ({ detail }) => {
+        const selected = detail.gallery
+          ? StoreProductImageUploader
+          : detail.preflight
+            ? StoreMeipingPreflightPanel
+            : InventoryPanel;
         root.render(
           React.createElement(
-            detail.preflight ? StoreMeipingPreflightPanel : InventoryPanel,
-            detail,
+            selected,
+            detail.gallery
+              ? {
+                  ...detail,
+                  onUploaded: () => {
+                    window.gallerySaved = true;
+                  },
+                  onCancel: () => {
+                    window.galleryCancelled = true;
+                  },
+                }
+              : detail,
           ),
         );
       });

@@ -1,5 +1,8 @@
 import { z } from 'zod';
-import { merchantProductImageUploadSchema } from '@xiaohai/contracts/commerce';
+import {
+  merchantProductGalleryUpdateSchema,
+  merchantProductImageUploadSchema,
+} from '@xiaohai/contracts/commerce';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { ConsumerAuthError } from '../auth/errors.js';
 import type { StaffAuthorizationService } from '../auth/staff-authorization.js';
@@ -75,6 +78,73 @@ export function registerProductImageUploadRoutes(
       }
     },
   );
+
+  const storePath = '/api/v1/staff/stores/:storeId/catalog/products/:productId/images';
+  const hqPath = '/api/v1/staff/catalog/products/:productId/images';
+  app.get(storePath, async (request, reply) => {
+    const params = storeParams.safeParse(request.params);
+    if (!params.success) return invalid(request, reply);
+    try {
+      const actor = await options.staffAuthorization.authenticate(request.headers.authorization);
+      options.staffAuthorization.requirePermission(actor, 'stores.read');
+      options.staffAuthorization.requirePermission(actor, 'catalog.edit');
+      await options.stores.getStaffStore(params.data.storeId, actor);
+      return await options.images.listGallery(params.data.productId, params.data.storeId);
+    } catch (error) {
+      return fail(request, reply, error);
+    }
+  });
+  app.patch(storePath, async (request, reply) => {
+    const params = storeParams.safeParse(request.params);
+    const input = merchantProductGalleryUpdateSchema.safeParse(request.body);
+    if (!params.success || !input.success) return invalid(request, reply);
+    try {
+      const actor = await options.staffAuthorization.authenticate(request.headers.authorization);
+      options.staffAuthorization.requirePermission(actor, 'stores.read');
+      options.staffAuthorization.requirePermission(actor, 'catalog.edit');
+      await options.stores.getStaffStore(params.data.storeId, actor);
+      return await options.images.updateGallery({
+        ...input.data,
+        productId: params.data.productId,
+        scopedStoreId: params.data.storeId,
+        actorStaffAccountId: actor.staffAccountId,
+        requestId: request.id,
+      });
+    } catch (error) {
+      return fail(request, reply, error);
+    }
+  });
+  app.get(hqPath, async (request, reply) => {
+    const params = productParams.safeParse(request.params);
+    if (!params.success) return invalid(request, reply);
+    try {
+      const actor = await options.staffAuthorization.authenticate(request.headers.authorization);
+      options.staffAuthorization.requirePermission(actor, 'catalog.manage');
+      options.staffAuthorization.requireDataScope(actor, 'GLOBAL', null);
+      return await options.images.listGallery(params.data.productId, null);
+    } catch (error) {
+      return fail(request, reply, error);
+    }
+  });
+  app.patch(hqPath, async (request, reply) => {
+    const params = productParams.safeParse(request.params);
+    const input = merchantProductGalleryUpdateSchema.safeParse(request.body);
+    if (!params.success || !input.success) return invalid(request, reply);
+    try {
+      const actor = await options.staffAuthorization.authenticate(request.headers.authorization);
+      options.staffAuthorization.requirePermission(actor, 'catalog.manage');
+      options.staffAuthorization.requireDataScope(actor, 'GLOBAL', null);
+      return await options.images.updateGallery({
+        ...input.data,
+        productId: params.data.productId,
+        scopedStoreId: null,
+        actorStaffAccountId: actor.staffAccountId,
+        requestId: request.id,
+      });
+    } catch (error) {
+      return fail(request, reply, error);
+    }
+  });
 }
 
 function invalid(request: FastifyRequest, reply: FastifyReply) {

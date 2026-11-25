@@ -3,6 +3,11 @@ import { expect, test, type Page } from '@playwright/test';
 const storeId = '11111111-1111-4111-8111-111111111111';
 const otherStoreId = '33333333-3333-4333-8333-333333333333';
 const skuId = '22222222-2222-4222-8222-222222222222';
+const galleryProductId = '77777777-7777-4777-8777-777777777777';
+const imageAId = '88888888-8888-4888-8888-888888888888';
+const imageBId = '99999999-9999-4999-8999-999999999999';
+const imageAUrl = 'https://public.cd.bcebos.com/images/first.png';
+const imageBUrl = 'https://public.cd.bcebos.com/images/second.png';
 const balance = {
   storeId,
   skuId,
@@ -60,10 +65,112 @@ async function upload(page: Page) {
     buffer: Buffer.from('fixture'),
   });
 }
+async function mountGallery(page: Page) {
+  await page.goto('/test/inventory.html');
+  await page.waitForFunction(() => 'fixtureReady' in window);
+  await page.evaluate(
+    (props) => {
+      window.dispatchEvent(new CustomEvent('inventory-props', { detail: props }));
+    },
+    {
+      gallery: true,
+      token: 'synthetic-staff-session',
+      storeId,
+      productId: galleryProductId,
+      productVersion: 1,
+    },
+  );
+}
 
 // An omitted mock must never fall through Vite's /api proxy to a local real API.
 test.beforeEach(async ({ page }) => {
   await page.route('**/api/**', (route) => route.abort('blockedbyclient'));
+});
+
+test('store gallery reorders, chooses cover and removes only image IDs in one versioned write', async ({
+  page,
+}) => {
+  const gallery = {
+    productId: galleryProductId,
+    productVersion: 1,
+    productStatus: 'DRAFT',
+    coverUrl: imageAUrl,
+    images: [
+      { id: imageAId, url: imageAUrl, displayOrder: 0 },
+      { id: imageBId, url: imageBUrl, displayOrder: 1 },
+    ],
+  };
+  const writes: unknown[] = [];
+  await page.route('**/api/v1/staff/stores/*/catalog/products/*/images', (route) => {
+    if (route.request().method() === 'GET') return route.fulfill({ json: gallery });
+    if (route.request().method() === 'PATCH') {
+      writes.push(route.request().postDataJSON());
+      return route.fulfill({
+        json: { ...gallery, productVersion: 2, coverUrl: imageBUrl, images: [gallery.images[1]] },
+      });
+    }
+    return route.abort('blockedbyclient');
+  });
+  await mountGallery(page);
+  await expect(page.getByRole('list', { name: '商品图库排序与主图' }).locator('li')).toHaveCount(2);
+  await page.getByRole('button', { name: '下移' }).first().click();
+  await page.getByRole('button', { name: '设为主图' }).first().click();
+  await page
+    .getByRole('list', { name: '商品图库排序与主图' })
+    .locator('li')
+    .filter({ hasText: '2 / 2' })
+    .getByRole('button', { name: '移除' })
+    .click();
+  await page.getByRole('button', { name: '保存图库调整' }).click();
+  await expect
+    .poll(() => writes)
+    .toEqual([
+      {
+        expectedProductVersion: 1,
+        imageIds: [imageBId],
+        coverImageId: imageBId,
+      },
+    ]);
+  await expect
+    .poll(() =>
+      page.evaluate(() => Boolean((window as Window & { gallerySaved?: boolean }).gallerySaved)),
+    )
+    .toBe(true);
+});
+
+test('store gallery does not retry an ambiguous write or accept a foreign product response', async ({
+  page,
+}) => {
+  const gallery = {
+    productId: galleryProductId,
+    productVersion: 2,
+    productStatus: 'DRAFT',
+    coverUrl: imageAUrl,
+    images: [{ id: imageAId, url: imageAUrl, displayOrder: 0 }],
+  };
+  let writes = 0;
+  await page.route('**/api/v1/staff/stores/*/catalog/products/*/images', (route) => {
+    if (route.request().method() === 'GET') return route.fulfill({ json: gallery });
+    writes++;
+    return route.abort('failed');
+  });
+  await mountGallery(page);
+  await expect(page.getByRole('list', { name: '商品图库排序与主图' }).locator('li')).toHaveCount(1);
+  await page.getByRole('button', { name: '移除' }).click();
+  await page.getByRole('button', { name: '保存图库调整' }).click();
+  await expect(page.getByRole('status')).toContainText('Failed to fetch');
+  expect(writes).toBe(1);
+  await page.getByRole('button', { name: '关闭' }).click();
+  await expect
+    .poll(() =>
+      page.evaluate(() => Boolean((window as Window & { gallerySaved?: boolean }).gallerySaved)),
+    )
+    .toBe(true);
+
+  gallery.productId = otherStoreId;
+  await mountGallery(page);
+  await expect(page.getByRole('status')).toContainText('身份不一致');
+  await expect(page.getByRole('button', { name: '保存图库调整' })).toBeDisabled();
 });
 
 test('a late inventory search never overwrites the newer result', async ({ page }) => {

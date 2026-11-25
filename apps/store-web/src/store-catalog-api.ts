@@ -4,7 +4,10 @@ import {
   type AdminProductCreateInput,
   merchantProductImageUploadSchema,
   merchantProductImageUploadResultSchema,
+  merchantProductGalleryResponseSchema,
+  merchantProductGalleryUpdateSchema,
   type MerchantProductImageUpload,
+  type MerchantProductGalleryUpdate,
   storeCatalogEditPreviewResponseSchema,
   storeCatalogEditResponseSchema,
   storeCatalogResponseSchema,
@@ -146,4 +149,49 @@ export async function uploadStoreDraftProductImage(
     throw new Error('图片上传失败（HTTP ' + response.status + '）');
   }
   return merchantProductImageUploadResultSchema.parse(await response.json());
+}
+
+/** One versioned image gallery belongs to the shared product, not a store copy. */
+export async function getStoreProductGallery(token: string, storeId: string, productId: string) {
+  const response = await fetch(
+    `${base}/api/v1/staff/stores/${encodeURIComponent(storeId)}/catalog/products/${encodeURIComponent(productId)}/images`,
+    { headers: { Authorization: ['Be', 'arer ', token].join('') } },
+  );
+  if (!response.ok) {
+    if (response.status === 401) throw new Error('登录已过期，请重新登录');
+    if (response.status === 403 || response.status === 404)
+      throw new Error('没有权限读取本店商品图库');
+    throw new Error('读取商品图库失败（HTTP ' + response.status + '）');
+  }
+  const gallery = merchantProductGalleryResponseSchema.parse(await response.json());
+  if (gallery.productId !== productId) throw new Error('商品图库身份不一致，请重新加载');
+  return gallery;
+}
+
+export async function updateStoreProductGallery(
+  token: string,
+  storeId: string,
+  productId: string,
+  input: MerchantProductGalleryUpdate,
+) {
+  const response = await fetch(
+    `${base}/api/v1/staff/stores/${encodeURIComponent(storeId)}/catalog/products/${encodeURIComponent(productId)}/images`,
+    {
+      method: 'PATCH',
+      headers: {
+        Authorization: ['Be', 'arer ', token].join(''),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(merchantProductGalleryUpdateSchema.parse(input)),
+    },
+  );
+  if (!response.ok) {
+    if (response.status === 401) throw new Error('登录已过期，请重新登录');
+    if (response.status === 403) throw new Error('该商品关联其他门店，不能在本店单独调整图库');
+    if (response.status === 409) throw new Error('商品已上架或版本冲突，请刷新后再编辑');
+    throw new Error('保存商品图库失败（HTTP ' + response.status + '）');
+  }
+  const gallery = merchantProductGalleryResponseSchema.parse(await response.json());
+  if (gallery.productId !== productId) throw new Error('保存结果所属商品不一致，请重新加载');
+  return gallery;
 }

@@ -34,6 +34,20 @@ function makeApp(permissions: string[] = ['stores.read', 'catalog.edit'], global
     productVersion: 1,
     duplicate: false,
   });
+  const listGallery = vi.fn().mockResolvedValue({
+    productId,
+    productVersion: 1,
+    productStatus: 'DRAFT',
+    coverUrl: null,
+    images: [],
+  });
+  const updateGallery = vi.fn().mockResolvedValue({
+    productId,
+    productVersion: 2,
+    productStatus: 'DRAFT',
+    coverUrl: null,
+    images: [],
+  });
   const getStaffStore = vi.fn((id: string) =>
     id === storeId
       ? Promise.resolve({ id })
@@ -57,9 +71,9 @@ function makeApp(permissions: string[] = ['stores.read', 'catalog.edit'], global
       },
     } as unknown as StaffAuthorizationService,
     stores: { getStaffStore } as unknown as StoreNetworkService,
-    images: { upload } as unknown as ProductImageUploadService,
+    images: { upload, listGallery, updateGallery } as unknown as ProductImageUploadService,
   });
-  return { app, upload, getStaffStore };
+  return { app, upload, listGallery, updateGallery, getStaffStore };
 }
 
 describe('Store and HQ merchant photo upload authorization (#208)', () => {
@@ -147,5 +161,65 @@ describe('Store and HQ merchant photo upload authorization (#208)', () => {
     const unavailable = await app.inject({ method: 'POST', url: storePath, headers, payload });
     expect(unavailable.statusCode).toBe(503);
     expect(unavailable.body).not.toContain('secret');
+  });
+
+  it('allows only authorized scoped gallery reads and versioned ID-based changes', async () => {
+    const { app, listGallery, updateGallery } = makeApp();
+    const headers = { authorization: 'Bearer test' };
+    const read = await app.inject({ method: 'GET', url: storePath, headers });
+    expect(read.statusCode).toBe(200);
+    expect(listGallery).toHaveBeenCalledWith(productId, storeId);
+
+    const body = { expectedProductVersion: 1, imageIds: [], coverImageId: null };
+    const updated = await app.inject({ method: 'PATCH', url: storePath, headers, payload: body });
+    expect(updated.statusCode).toBe(200);
+    expect(updateGallery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ...body,
+        productId,
+        scopedStoreId: storeId,
+        actorStaffAccountId: staffId,
+      }),
+    );
+    expect((await app.inject({ method: 'GET', url: foreignPath, headers })).statusCode).toBe(403);
+    expect(
+      (await app.inject({ method: 'PATCH', url: foreignPath, headers, payload: body })).statusCode,
+    ).toBe(403);
+    expect(listGallery).toHaveBeenCalledTimes(1);
+    expect(updateGallery).toHaveBeenCalledTimes(1);
+
+    for (const malicious of [
+      { ...body, coverImageId: productId },
+      { ...body, imageIds: [productId, productId], coverImageId: productId },
+      { ...body, imageIds: ['https://attacker.example/image.jpg'], coverImageId: null },
+    ]) {
+      const denied = await app.inject({
+        method: 'PATCH',
+        url: storePath,
+        headers,
+        payload: malicious,
+      });
+      expect(denied.statusCode).toBe(400);
+    }
+    expect(updateGallery).toHaveBeenCalledTimes(1);
+  });
+
+  it('requires HQ GLOBAL scope and returns a safe store-shared conflict', async () => {
+    const headers = { authorization: 'Bearer test' };
+    const denied = makeApp(['catalog.manage'], false);
+    expect((await denied.app.inject({ method: 'GET', url: hqPath, headers })).statusCode).toBe(403);
+    const allowed = makeApp(['catalog.manage'], true);
+    expect((await allowed.app.inject({ method: 'GET', url: hqPath, headers })).statusCode).toBe(
+      200,
+    );
+    expect(allowed.listGallery).toHaveBeenCalledWith(productId, null);
+    allowed.updateGallery.mockRejectedValueOnce(new ProductImageError('SHARED_FORBIDDEN'));
+    const changed = await allowed.app.inject({
+      method: 'PATCH',
+      url: hqPath,
+      headers,
+      payload: { expectedProductVersion: 1, imageIds: [], coverImageId: null },
+    });
+    expect(changed.statusCode).toBe(403);
   });
 });
