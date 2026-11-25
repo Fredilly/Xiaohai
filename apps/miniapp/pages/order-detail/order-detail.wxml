@@ -11,6 +11,12 @@
       </view>
     </view>
 
+    <view wx:if="{{fulfillmentError}}" class="state-card">
+      <text class="state-title">自提／配送信息暂时无法确认</text>
+      <text class="state-copy">请刷新订单，确认取货码或配送状态后再操作。</text>
+      <button bindtap="load">重新读取履约信息</button>
+    </view>
+
     <view wx:if="{{fulfillment}}" class="section card">
       <text class="card-title">{{fulfillment.method === 'PICKUP' ? '到店自提' : '同城配送'}}</text>
       <text class="list-meta">履约门店：{{fulfillment.store.name}}</text>

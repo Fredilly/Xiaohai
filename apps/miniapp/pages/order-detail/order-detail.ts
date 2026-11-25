@@ -9,6 +9,7 @@ Page({
   data: {
     order: null as Awaited<ReturnType<typeof getOrder>> | null,
     fulfillment: null as FulfillmentView | null,
+    fulfillmentError: false,
     loading: true,
     error: false,
     id: '',
@@ -36,13 +37,18 @@ Page({
     try {
       const order = await getOrder(orderId);
       let fulfillment: FulfillmentView | null = null;
+      let fulfillmentError = false;
       try {
         fulfillment = await getFulfillment(orderId);
-      } catch {
-        // Legacy M5 orders legitimately have no M16 fulfillment record.
+        if (fulfillment.orderId !== orderId) throw new Error('FULFILLMENT_CONTEXT_MISMATCH');
+      } catch (error) {
+        // A legacy M5 order can lack an M16 record. Network, auth and mismatched
+        // responses must remain visible errors rather than hiding pickup details.
+        fulfillment = null;
+        fulfillmentError = !(error instanceof Error && error.message === 'NOT_FOUND');
       }
       if (sequence !== this.readSequence || orderId !== this.data.id) return;
-      this.setData({ order, fulfillment, loading: false, error: false });
+      this.setData({ order, fulfillment, fulfillmentError, loading: false, error: false });
     } catch {
       if (sequence === this.readSequence && orderId === this.data.id)
         this.setData({ loading: false, error: true });

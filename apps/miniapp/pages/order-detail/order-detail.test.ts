@@ -85,4 +85,22 @@ describe('consumer order detail transitions', () => {
     expect(mocks.getOrder).toHaveBeenCalledWith('order-a');
     expect(detail.data.order?.status).toBe('CANCELLED');
   });
+
+  it('distinguishes legacy missing fulfillment from network errors and wrong-order responses', async () => {
+    const detail = page();
+    mocks.getFulfillment.mockRejectedValueOnce(new Error('NOT_FOUND'));
+    await detail.load();
+    expect(detail.data.fulfillmentError).toBe(false);
+    expect(detail.data.fulfillment).toBeNull();
+
+    mocks.getFulfillment.mockRejectedValueOnce(new Error('HTTP_503'));
+    await detail.load();
+    expect(detail.data.fulfillmentError).toBe(true);
+    expect(detail.data.fulfillment).toBeNull();
+
+    mocks.getFulfillment.mockResolvedValueOnce({ orderId: 'another-order', method: 'PICKUP' });
+    await detail.load();
+    expect(detail.data.fulfillmentError).toBe(true);
+    expect(detail.data.fulfillment).toBeNull();
+  });
 });
