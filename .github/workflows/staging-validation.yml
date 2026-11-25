@@ -12,10 +12,17 @@ on:
       - 'pnpm-lock.yaml'
       - 'package.json'
   workflow_dispatch:
+    inputs:
+      package_candidate_sha:
+        description: 'Manual-only, exact reviewed production candidate SHA; leave empty to validate staging'
+        required: false
+        type: string
+        default: ''
 permissions:
   contents: read
 jobs:
   build-and-compose:
+    if: github.event_name != 'workflow_dispatch' || inputs.package_candidate_sha == ''
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -48,3 +55,74 @@ jobs:
           docker run --rm --entrypoint sh xiaohai-api:check -c "cd apps/api && node --input-type=module -e \"await import('@xiaohai/domain')\""
           docker run --rm --entrypoint sh xiaohai-api:check -c 'test ! -d /app/benchmarks && test ! -d /app/apps/worker/dist'
           docker run --rm --entrypoint sh xiaohai-worker:check -c 'test ! -d /app/benchmarks && test ! -d /app/apps/api/dist'
+
+  package-reviewed-candidate:
+    # The workflow is already registered on the default branch, so a manual
+    # dispatch can run this branch-specific job without modifying main.
+    # This job packages only an already green, exact source SHA, with the
+    # repository-scoped GITHUB_TOKEN. It has no ECS, DNS or production secrets.
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.ref == 'refs/heads/codex/local-release-integration' &&
+      inputs.package_candidate_sha == '21b5220849e975227e4079edb50b3cb738006c08'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: api
+            dockerfile: deploy/Dockerfile
+            build_args: SERVICE=api
+            image: xiaohai-api
+          - name: worker
+            dockerfile: deploy/Dockerfile
+            build_args: SERVICE=worker
+            image: xiaohai-worker
+          - name: web
+            dockerfile: deploy/Dockerfile.production-web
+            build_args: ''
+            image: xiaohai-production-web
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.package_candidate_sha }}
+      - name: Verify exact reviewed source
+        env:
+          EXPECTED_REVISION: ${{ inputs.package_candidate_sha }}
+        run: |
+          set -euo pipefail
+          test "$EXPECTED_REVISION" = '21b5220849e975227e4079edb50b3cb738006c08'
+          test "$(git rev-parse HEAD)" = "$EXPECTED_REVISION"
+          test -z "$(git status --porcelain)"
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and publish immutable candidate image off-host
+        id: image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          build-args: ${{ matrix.build_args }}
+          platforms: linux/amd64
+          push: true
+          tags: ghcr.io/fredilly/${{ matrix.image }}:${{ inputs.package_candidate_sha }}
+          labels: org.opencontainers.image.source=https://github.com/Fredilly/Xiaohai
+      - name: Verify published digest and reference
+        env:
+          IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+          IMAGE_NAME: ${{ matrix.image }}
+          EXPECTED_REVISION: ${{ inputs.package_candidate_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$IMAGE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
+          ref="ghcr.io/fredilly/$IMAGE_NAME:$EXPECTED_REVISION"
+          docker buildx imagetools inspect "$ref" | grep -F "$IMAGE_DIGEST"
+          echo "Published candidate image: $ref@$IMAGE_DIGEST"

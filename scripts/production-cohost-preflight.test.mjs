@@ -109,6 +109,37 @@ test('production web is packaged off-host with a manually triggered pinned GitHu
   );
 });
 
+test('registered manual workflow packages only the pinned integration candidate with repository credentials', async () => {
+  const workflow = await readFile(
+    new URL('../.github/workflows/staging-validation.yml', import.meta.url),
+    'utf8',
+  );
+  assert.match(workflow, /workflow_dispatch:\s*\n\s*inputs:\s*\n\s*package_candidate_sha:/u);
+  assert.match(
+    workflow,
+    /build-and-compose:\s*\n\s*if: github\.event_name != 'workflow_dispatch' \|\| inputs\.package_candidate_sha == ''/u,
+  );
+  const packageJob = workflow.split('  package-reviewed-candidate:\n')[1];
+  assert.ok(packageJob, 'candidate packaging must be an explicitly separate job');
+  assert.match(packageJob, /github\.event_name == 'workflow_dispatch'/u);
+  assert.match(packageJob, /github\.ref == 'refs\/heads\/codex\/local-release-integration'/u);
+  assert.match(packageJob, /21b5220849e975227e4079edb50b3cb738006c08/u);
+  assert.match(packageJob, /packages: write/u);
+  assert.match(packageJob, /password: \$\{\{ secrets\.GITHUB_TOKEN \}\}/u);
+  assert.match(packageJob, /ref: \$\{\{ inputs\.package_candidate_sha \}\}/u);
+  assert.match(packageJob, /test "\$\(git rev-parse HEAD\)" = "\$EXPECTED_REVISION"/u);
+  assert.match(packageJob, /platforms: linux\/amd64/u);
+  assert.match(packageJob, /docker\/build-push-action@v6/u);
+  for (const image of ['xiaohai-api', 'xiaohai-worker', 'xiaohai-production-web']) {
+    assert.ok(packageJob.includes(`image: ${image}`));
+  }
+  assert.match(packageJob, /IMAGE_DIGEST/u);
+  assert.doesNotMatch(
+    packageJob,
+    /\bssh\b|staging\.env|production\.env|docker compose up|migrate|seed|scp /u,
+  );
+});
+
 test('shared proxy preserves original staging plus unknown sites and production never falls back to staging', async () => {
   const [sharedCaddy, webCaddy, override, stagingCaddy, stagingCompose, workflow, remote] =
     await Promise.all([
