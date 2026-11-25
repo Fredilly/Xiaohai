@@ -140,9 +140,13 @@ export const updateAdminProduct = async (
 
 export async function listHqStoreCatalog(token: string, storeId: string) {
   const query = new URLSearchParams({ offset: '0', limit: '30' });
-  return storeCatalogResponseSchema.parse(
+  const result = storeCatalogResponseSchema.parse(
     await call(`/api/v1/staff/catalog/stores/${encodeURIComponent(storeId)}/items?${query}`, token),
   );
+  if (result.storeId !== storeId || result.items.some((item) => item.storeId !== storeId)) {
+    throw new Error('总部商品列表的门店上下文不一致');
+  }
+  return result;
 }
 
 export async function previewHqStoreCatalogEdit(

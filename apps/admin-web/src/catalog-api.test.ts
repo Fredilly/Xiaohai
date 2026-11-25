@@ -1,8 +1,32 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createAdminProduct, getAdminProduct, listAdminProducts, lookupBook } from './catalog-api';
+import {
+  createAdminProduct,
+  getAdminProduct,
+  listAdminProducts,
+  listHqStoreCatalog,
+  lookupBook,
+} from './catalog-api';
 
 describe('M5 Admin catalog adapter', () => {
   afterEach(() => vi.unstubAllGlobals());
+
+  it('rejects an otherwise valid catalog response for a different store', async () => {
+    const requested = '11111111-1111-4111-8111-111111111111';
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => ({
+          storeId: '33333333-3333-4333-8333-333333333333',
+          offset: 0,
+          limit: 30,
+          hasMore: false,
+          items: [],
+        }),
+      }),
+    );
+    await expect(listHqStoreCatalog('staff-token', requested)).rejects.toThrow('门店上下文不一致');
+  });
 
   it('preserves unauthorized and forbidden errors', async () => {
     for (const status of [401, 403]) {
