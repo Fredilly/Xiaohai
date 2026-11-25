@@ -24,6 +24,7 @@ function detailGallery(product: Product): DisplayProduct['gallery'] {
 
 Page({
   addInFlight: false,
+  readSequence: 0,
   data: {
     id: '',
     product: null as DisplayProduct | null,
@@ -40,9 +41,12 @@ Page({
     else this.setData({ loading: false, error: true });
   },
   async load(id: string) {
+    const sequence = ++this.readSequence;
     this.setData({ loading: true, error: false, accessMessage: '', message: '' });
     try {
       const product = await getProduct(id);
+      if (sequence !== this.readSequence || this.data.id !== id) return;
+      if (product.id !== id) throw new Error('PRODUCT_CONTEXT_MISMATCH');
       this.setData({
         product: {
           ...presentCatalogProduct(product),
@@ -52,6 +56,7 @@ Page({
         error: false,
       });
     } catch (error) {
+      if (sequence !== this.readSequence || this.data.id !== id) return;
       this.setData({
         loading: false,
         error: true,

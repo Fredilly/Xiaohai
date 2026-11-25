@@ -3,6 +3,7 @@ import { getStore } from '../../services/stores';
 import { detailAccessMessage } from '../../utils/detail-read-error';
 
 Page({
+  readSequence: 0,
   data: {
     id: '',
     store: null as PublicStore | null,
@@ -27,9 +28,12 @@ Page({
   },
 
   async loadStore(id: string) {
+    const sequence = ++this.readSequence;
     this.setData({ loading: true, error: false, accessMessage: '' });
     try {
       const store = await getStore(id);
+      if (sequence !== this.readSequence || this.data.id !== id) return;
+      if (store.id !== id) throw new Error('STORE_CONTEXT_MISMATCH');
       this.setData({
         store,
         loading: false,
@@ -47,6 +51,7 @@ Page({
       });
       void wx.setNavigationBarTitle({ title: store.name });
     } catch (error) {
+      if (sequence !== this.readSequence || this.data.id !== id) return;
       this.setData({
         loading: false,
         error: true,

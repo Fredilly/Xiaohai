@@ -27,6 +27,7 @@ vi.mock('../services/rental', () => ({
 }));
 
 type PageConfig = {
+  readSequence?: number;
   data: Record<string, unknown>;
   setData(changes: Record<string, unknown>): void;
   load?(id?: string): Promise<void>;
@@ -59,6 +60,7 @@ function page(index: number): PageConfig {
   if (!definition) throw new Error('Page module was not registered');
   const instance: PageConfig = {
     ...definition,
+    readSequence: 0,
     data: { ...definition.data },
     setData(changes) {
       for (const [key, value] of Object.entries(changes)) {
@@ -248,5 +250,38 @@ describe('detail pages retry their original data reads', () => {
       expect(rental.data.rental).toMatchObject({ id: 'rental-inflight' });
     });
     expect(mocks.getRental).toHaveBeenCalledTimes(2);
+  });
+
+  it('discards late product/store results and rejects a response for another ID', async () => {
+    const product = page(0);
+    product.data.id = 'product-new';
+    let resolveOldProduct: (value: unknown) => void = () => {};
+    mocks.getProduct
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveOldProduct = resolve;
+          }),
+      )
+      .mockResolvedValueOnce({ id: 'product-new', name: '新商品', skus: [] });
+    const firstProduct = product.load?.call(product, 'product-old');
+    await product.load?.call(product, 'product-new');
+    resolveOldProduct({ id: 'product-old', name: '旧商品', skus: [] });
+    await firstProduct;
+    expect(product.data.product).toMatchObject({ id: 'product-new' });
+
+    const store = page(2);
+    store.data.id = 'store-a';
+    mocks.getStore.mockResolvedValueOnce({
+      id: 'store-b',
+      name: '错店',
+      latitude: 30,
+      longitude: 104,
+    });
+    await store.loadStore?.call(store, 'store-a');
+    expect(store.data.error).toBe(true);
+    expect(store.data.store).toBeNull();
+    expect(store.data.markers).toEqual([]);
+    expect(mocks.setNavigationBarTitle).not.toHaveBeenCalled();
   });
 });

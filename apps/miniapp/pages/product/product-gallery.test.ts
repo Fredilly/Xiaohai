@@ -15,6 +15,7 @@ type Detail = {
 };
 type PageConfig = {
   addInFlight: boolean;
+  readSequence: number;
   data: { product: Detail | null; [key: string]: unknown };
   setData(changes: Record<string, unknown>): void;
   load(id: string): Promise<void>;
@@ -36,6 +37,7 @@ function makePage() {
   const instance: PageConfig = {
     ...definition,
     addInFlight: false,
+    readSequence: 0,
     data: { ...definition.data },
     setData(changes) {
       for (const [field, value] of Object.entries(changes)) {
@@ -75,6 +77,7 @@ describe('product detail media gallery (#208)', () => {
       skus: [],
     });
     const page = makePage();
+    page.data.id = 'product-1';
     await page.load.call(page, 'product-1');
     expect(page.data.product?.gallery).toEqual([
       { key: 0, url: 'https://bos.example.com/detail-1.jpg' },
