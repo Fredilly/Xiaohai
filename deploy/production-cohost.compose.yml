@@ -3,10 +3,21 @@
 # Requires a separately approved ingress override, backed-up data and host capacity.
 name: xiaohai-production-cohost
 
+# Bound only the new production containers. Never change Staging's logging
+# driver or limits as a side effect of adopting this Compose project.
+x-production-logging: &production-logging
+  driver: json-file
+  options:
+    max-size: '10m'
+    max-file: '3'
+
 services:
   postgres:
     image: postgres:17-alpine
     restart: unless-stopped
+    # Operator-selected limits require measured peak/capacity evidence.
+    mem_limit: ${PRODUCTION_POSTGRES_MEM_LIMIT:?Set reviewed PostgreSQL memory cap}
+    logging: *production-logging
     environment:
       POSTGRES_DB: ${POSTGRES_DB:?Production database name required}
       POSTGRES_USER: ${POSTGRES_USER:?Production database user required}
@@ -22,12 +33,16 @@ services:
     image: redis:7.4-alpine
     command: ['redis-server', '--appendonly', 'yes']
     restart: unless-stopped
+    mem_limit: ${PRODUCTION_REDIS_MEM_LIMIT:?Set reviewed Redis memory cap}
+    logging: *production-logging
     volumes:
       - production_redis_data:/data
     networks: [data]
   production_api:
     image: ghcr.io/fredilly/xiaohai-api:${API_REVISION:?Pin reviewed API image}
     restart: unless-stopped
+    mem_limit: ${PRODUCTION_API_MEM_LIMIT:?Set reviewed API memory cap}
+    logging: *production-logging
     env_file: production.env
     depends_on:
       postgres:
@@ -42,6 +57,8 @@ services:
   worker:
     image: ghcr.io/fredilly/xiaohai-worker:${API_REVISION:?Pin reviewed Worker image}
     restart: unless-stopped
+    mem_limit: ${PRODUCTION_WORKER_MEM_LIMIT:?Set reviewed Worker memory cap}
+    logging: *production-logging
     env_file: production.env
     depends_on:
       postgres:
@@ -54,6 +71,8 @@ services:
     # workspace on this constrained 50 GiB live Staging machine.
     image: ghcr.io/fredilly/xiaohai-production-web:${WEB_REVISION:?Pin reviewed web image revision}
     restart: unless-stopped
+    mem_limit: ${PRODUCTION_WEB_MEM_LIMIT:?Set reviewed Web memory cap}
+    logging: *production-logging
     volumes:
       - ./Caddyfile.production-cohost-web:/etc/caddy/Caddyfile:ro
     networks:
