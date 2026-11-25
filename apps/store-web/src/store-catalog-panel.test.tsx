@@ -35,7 +35,7 @@ describe('Store catalog direct-edit module', () => {
     expect(html).toContain('店铺账号可编辑');
     expect(html).toContain('库存数量仍须通过库存盘点或调整流程变更');
     expect(html).toContain(
-      '可编辑本店关联商品的名称、SKU 编码、规格、上架状态、售价及本店陈列信息',
+      '可编辑本店关联商品的名称、简介、SKU 编码、规格、上架状态、售价及本店陈列信息',
     );
     expect(html).toContain('新增非图书商品草稿');
     expect(html).toContain('新商品默认未上架、不可售、库存为 0');
@@ -68,6 +68,7 @@ describe('Store catalog direct-edit module', () => {
       productId: '22222222-2222-4222-8222-222222222222',
       skuId: '33333333-3333-4333-8333-333333333333',
       productName: '南门样品',
+      description: '描述',
       productStatus: 'DRAFT',
       skuCode: 'SOUTH-SAMPLE',
       skuName: '标准',
@@ -103,6 +104,7 @@ describe('Store catalog direct-edit module', () => {
       />,
     );
     expect(html).toContain('SKU 编码 / 条码');
+    expect(html).toContain('商品简介（最多 4000 字）');
     expect(html).toContain('商品规格 / SKU 名称');
     expect(html).toContain('草稿（不展示）');
     expect(html).toContain('已上架（可展示）');

@@ -93,6 +93,7 @@ suite('single-store shared-catalog editing (disposable PostgreSQL only)', () => 
         expectedSkuVersion: 0,
         expectedLocalVersion: 0,
         productName: 'Renamed store-only item',
+        description: '门店独立商品介绍',
         productStatus: 'ACTIVE' as const,
         skuCode: 'STORE-ONLY-EDITED-' + suffix,
         skuName: 'Edited standard',
@@ -135,7 +136,14 @@ suite('single-store shared-catalog editing (disposable PostgreSQL only)', () => 
       }
       const preview = await editor.preview(first, sku!.id, initial, actor!.id, 'STORE_ONLY');
       expect(preview.impact).toMatchObject({
-        sharedFields: ['productName', 'productStatus', 'skuCode', 'skuName', 'availableForSale'],
+        sharedFields: [
+          'productName',
+          'description',
+          'productStatus',
+          'skuCode',
+          'skuName',
+          'availableForSale',
+        ],
         affectedStoreCount: 1,
         affectedStoreIds: [first],
       });
@@ -155,6 +163,7 @@ suite('single-store shared-catalog editing (disposable PostgreSQL only)', () => 
         preview.previewToken!,
       );
       expect(updated.item.productName).toBe('Renamed store-only item');
+      expect(updated.item.description).toBe('门店独立商品介绍');
       expect(updated.item.productStatus).toBe('ACTIVE');
       expect(updated.item.skuCode).toBe('STORE-ONLY-EDITED-' + suffix);
       expect(updated.item.skuName).toBe('Edited standard');
@@ -197,6 +206,7 @@ suite('single-store shared-catalog editing (disposable PostgreSQL only)', () => 
       const secondAfter = await reader.get(second, sku!.id);
       expect(firstAfter?.productName).toBe('Renamed store-only item');
       expect(secondAfter?.productName).toBe('Renamed store-only item');
+      expect(secondAfter?.description).toBe('门店独立商品介绍');
       expect(firstAfter?.productStatus).toBe('ACTIVE');
       expect(secondAfter?.productStatus).toBe('ACTIVE');
       expect(firstAfter?.availableForSale).toBe(true);
@@ -216,6 +226,7 @@ suite('single-store shared-catalog editing (disposable PostgreSQL only)', () => 
         affectedStoreCount: 1,
         changedFields: [
           'productName',
+          'description',
           'productStatus',
           'skuCode',
           'skuName',

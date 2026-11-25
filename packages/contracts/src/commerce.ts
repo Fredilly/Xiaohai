@@ -264,6 +264,7 @@ export const storeCatalogItemSchema = z.object({
   storeId: z.uuid(),
   productId: z.uuid(),
   productName: z.string(),
+  description: z.string().nullable().default(null),
   productStatus: productStatusSchema,
   coverUrl: z.string().nullable(),
   bookTitle: z.string().nullable(),
@@ -309,6 +310,7 @@ export const storeCatalogEditRequestSchema = z
     expectedSkuVersion: z.number().int().nonnegative(),
     expectedLocalVersion: z.number().int().nonnegative(),
     productName: z.string().trim().min(1).max(160).optional(),
+    description: z.string().trim().max(4000).nullable().optional(),
     productStatus: productStatusSchema.optional(),
     skuCode: z.string().trim().min(1).max(80).optional(),
     skuName: z.string().trim().min(1).max(120).optional(),
@@ -327,6 +329,7 @@ export const storeCatalogEditRequestSchema = z
   .superRefine((value, ctx) => {
     const fields = [
       'productName',
+      'description',
       'productStatus',
       'skuCode',
       'skuName',

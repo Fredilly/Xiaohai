@@ -32,6 +32,7 @@ export class StoreCatalogReadService {
         storeId: storeInventory.storeId,
         productId: products.id,
         productName: products.name,
+        description: products.description,
         productStatus: products.status,
         productVersion: products.version,
         coverUrl: products.coverUrl,

@@ -286,6 +286,7 @@ describe('authorized direct catalog editing', () => {
       expectedLocalVersion: 0,
       skuCode: 'STORE-12345',
       skuName: '瓶装 500ml',
+      description: '真实商品说明',
       productStatus: 'ACTIVE',
       skuStatus: 'ACTIVE',
       availableForSale: true,

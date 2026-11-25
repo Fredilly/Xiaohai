@@ -36,6 +36,7 @@ type Source = {
   skuId: string;
   productId: string;
   productName: string;
+  description: string | null;
   productVersion: number;
   productStatus: 'DRAFT' | 'ACTIVE' | 'INACTIVE';
   skuCode: string;
@@ -185,7 +186,9 @@ export class CatalogEditService {
           }
         }
 
-        if (changed.includes('productName') || changed.includes('productStatus')) {
+        if (
+          changed.some((field) => ['productName', 'description', 'productStatus'].includes(field))
+        ) {
           await this.updateProduct(tx, source, canonicalInput);
         }
         if (
@@ -327,6 +330,7 @@ export class CatalogEditService {
       'expectedSkuVersion',
       'expectedLocalVersion',
       'productName',
+      'description',
       'productStatus',
       'skuCode',
       'skuName',
@@ -383,6 +387,7 @@ export class CatalogEditService {
         skuId: skus.id,
         productId: products.id,
         productName: products.name,
+        description: products.description,
         productVersion: products.version,
         productStatus: products.status,
         skuCode: skus.code,
@@ -500,6 +505,8 @@ export class CatalogEditService {
     const changed: string[] = [];
     if (input.productName !== undefined && input.productName !== source.productName)
       changed.push('productName');
+    if (input.description !== undefined && input.description !== source.description)
+      changed.push('description');
     if (input.productStatus !== undefined && input.productStatus !== source.productStatus)
       changed.push('productStatus');
     if (input.skuCode !== undefined && input.skuCode !== source.skuCode) changed.push('skuCode');
@@ -530,6 +537,7 @@ export class CatalogEditService {
       .update(products)
       .set({
         ...(input.productName !== undefined ? { name: input.productName } : {}),
+        ...(input.description !== undefined ? { description: input.description } : {}),
         ...(input.productStatus !== undefined ? { status: input.productStatus } : {}),
         version: sql`${products.version} + 1`,
         updatedAt: new Date(),
@@ -617,7 +625,7 @@ export class CatalogEditService {
 
   private async findAffectedStores(tx: QueryContext, source: Source, fields: string[]) {
     const conditions = [];
-    if (fields.some((field) => ['productName', 'productStatus'].includes(field)))
+    if (fields.some((field) => ['productName', 'description', 'productStatus'].includes(field)))
       conditions.push(eq(skus.productId, source.productId));
     if (
       fields.some((field) =>

@@ -97,7 +97,7 @@ function StoreCatalogSession({ token, storeId, storeName }: StoreCatalogProps) {
         。仅显示与本店库存记录关联的商品及其基础资料。库存数量仍须通过库存盘点或调整流程变更。
       </p>
       <p>
-        可编辑本店关联商品的名称、SKU
+        可编辑本店关联商品的名称、简介、SKU
         编码、规格、上架状态、售价及本店陈列信息。若商品资料还影响其他门店，
         系统会拒绝直接修改，避免未经确认覆盖其他门店的共享数据。
       </p>
@@ -439,6 +439,7 @@ export function StoreCatalogEditForm({
 }) {
   const [draft, setDraft] = useState(() => draftFor(item));
   const [name, setName] = useState(item.productName);
+  const [description, setDescription] = useState(item.description ?? '');
   const [skuCode, setSkuCode] = useState(item.skuCode);
   const [skuName, setSkuName] = useState(item.skuName);
   const [productStatusValue, setProductStatusValue] = useState(item.productStatus);
@@ -470,6 +471,9 @@ export function StoreCatalogEditForm({
     const input: StoreCatalogEditRequest = {
       ...draft,
       ...(name.trim() !== item.productName ? { productName: name.trim() } : {}),
+      ...(description.trim() !== (item.description ?? '')
+        ? { description: description.trim() || null }
+        : {}),
       ...(productStatusValue !== item.productStatus ? { productStatus: productStatusValue } : {}),
       ...(skuCode.trim() !== item.skuCode ? { skuCode: skuCode.trim() } : {}),
       ...(skuName.trim() !== item.skuName ? { skuName: skuName.trim() } : {}),
@@ -479,6 +483,7 @@ export function StoreCatalogEditForm({
     };
     const editsShared =
       input.productName !== undefined ||
+      input.description !== undefined ||
       input.productStatus !== undefined ||
       input.skuCode !== undefined ||
       input.skuName !== undefined ||
@@ -528,7 +533,7 @@ export function StoreCatalogEditForm({
     <form className="catalog-correction-form" onSubmit={(event) => void save(event)}>
       <h3>编辑商品资料：{item.bookTitle ?? item.productName}</h3>
       <p>
-        名称、SKU
+        名称、简介、SKU
         编码、规格和上下架状态是共享资料，变更需核对影响范围。售价只修改当前门店，不影响其他门店。
       </p>
       <label>
@@ -539,6 +544,15 @@ export function StoreCatalogEditForm({
           value={name}
           disabled={saving}
           onChange={(event) => setName(event.target.value)}
+        />
+      </label>
+      <label>
+        商品简介（最多 4000 字）
+        <textarea
+          maxLength={4000}
+          value={description}
+          disabled={saving}
+          onChange={(event) => setDescription(event.target.value)}
         />
       </label>
       <label>
