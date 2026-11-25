@@ -110,8 +110,8 @@ test('lost write response retries the identical request and duplicate submit is 
   });
   await mount(page);
   const form = page
-    .locator('form')
-    .filter({ has: page.getByRole('button', { name: '提交库存操作' }) });
+    .locator('form.operation-form')
+    .filter({ has: page.locator('[name=operation]') });
   await form.locator('select').first().selectOption(`${storeId}:${skuId}`);
   await form.locator('[name=quantity]').fill('2');
   await form.locator('[name=reason]').fill('实盘出库');
@@ -288,7 +288,7 @@ test('food intake network retry retains the original operation key', async ({ pa
     else await route.fulfill({ status: 201, json: { replayed: true } });
   });
   await mount(page);
-  await page.getByLabel('本店 SKU', { exact: true }).selectOption(skuId);
+  await page.getByRole('combobox', { name: '本店 SKU', exact: true }).selectOption(skuId);
   const form = page.getByRole('group', { name: '新批次入库（新食品须先建草稿、关联零库存）' });
   await form.getByLabel('批号', { exact: true }).fill('SYNTHETIC-NEW');
   await form.getByLabel('到期日').fill('2099-12-31');
