@@ -155,6 +155,11 @@ test('shared proxy preserves original staging plus unknown sites and production 
   assert.match(stagingCompose, /name: xiaohai-staging/u);
   assert.match(sharedCaddy, /import \/etc\/caddy\/Caddyfile\.staging-base/u);
   assert.match(sharedCaddy, /import \/etc\/caddy\/Caddyfile\.preserved/u);
+  assert.doesNotMatch(
+    sharedCaddy,
+    /orientalsourcepress\.com/u,
+    'the independently hosted publisher website must not be added to Xiaohai ingress',
+  );
   for (const host of ['api.pamboo.asia', 'store.pamboo.asia', 'admin.pamboo.asia']) {
     assert.ok(sharedCaddy.includes(`${host} {`));
   }
