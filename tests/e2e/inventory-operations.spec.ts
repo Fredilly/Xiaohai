@@ -8,6 +8,26 @@ const imageAId = '88888888-8888-4888-8888-888888888888';
 const imageBId = '99999999-9999-4999-8999-999999999999';
 const imageAUrl = 'https://public.cd.bcebos.com/images/first.png';
 const imageBUrl = 'https://public.cd.bcebos.com/images/second.png';
+const rentalId = '55555555-5555-4555-8555-555555555555';
+const staffId = '66666666-6666-4666-8666-666666666666';
+const rentalRecord = {
+  id: rentalId,
+  consumerUserId: '77777777-7777-4777-8777-777777777777',
+  storeId,
+  storeName: '东门',
+  rentalNumber: 'RN-TEST-001',
+  status: 'RESERVED',
+  version: 1,
+  reservedAt: '2026-01-01T00:00:00.000Z',
+  borrowedAt: null,
+  dueAt: null,
+  returnedAt: null,
+  cancelledAt: null,
+  isOverdue: false,
+  pickupCode: null,
+  items: [],
+  events: [],
+};
 const balance = {
   storeId,
   skuId,
@@ -90,6 +110,22 @@ async function mountCatalog(page: Page) {
       window.dispatchEvent(new CustomEvent('inventory-props', { detail: props }));
     },
     { catalog: true, token: 'synthetic-staff-session', storeId, storeName: '南门' },
+  );
+}
+
+async function mountRental(page: Page, selectedStoreId = storeId) {
+  await page.goto('/test/inventory.html');
+  await page.waitForFunction(() => 'fixtureReady' in window);
+  await page.evaluate(
+    (props) => {
+      window.dispatchEvent(new CustomEvent('inventory-props', { detail: props }));
+    },
+    {
+      rental: true,
+      token: 'synthetic-staff-session',
+      staffAccountId: staffId,
+      storeId: selectedStoreId,
+    },
   );
 }
 
@@ -644,4 +680,58 @@ test('a mismatched store trace response is never displayed', async ({ page }) =>
   await panel.getByRole('button', { name: '查询批次来源' }).click();
   await expect(panel.getByRole('status')).toContainText('未确认成功');
   await expect(panel).not.toContainText('OTHER_STORE_MUST_NOT_RENDER');
+});
+
+test('staff rental borrow retries the same key after a timeout and browser reload', async ({
+  page,
+}) => {
+  let serverStatus: 'RESERVED' | 'BORROWED' = 'RESERVED';
+  await page.route('**/api/v1/staff/rentals?*', (route) =>
+    route.fulfill({ json: { items: [{ ...rentalRecord, status: serverStatus }] } }),
+  );
+  const attempts: Array<{ idempotencyKey: string; pickupCode: string }> = [];
+  await page.route(`**/api/v1/staff/rentals/${rentalId}/borrow`, (route) => {
+    const body = route.request().postDataJSON() as {
+      idempotencyKey: string;
+      pickupCode: string;
+    };
+    attempts.push(body);
+    if (attempts.length === 1) return route.abort('failed');
+    serverStatus = 'BORROWED';
+    return route.fulfill({ json: { ...rentalRecord, status: 'BORROWED' } });
+  });
+
+  await mountRental(page);
+  await expect(page.getByText('RN-TEST-001')).toBeVisible();
+  await page.getByPlaceholder('6 位取书码').fill('123456');
+  await page.getByRole('button', { name: '核验并借出' }).click();
+  await expect(page.getByRole('status')).toContainText('未确认');
+
+  await mountRental(page);
+  await expect(page.getByText('RN-TEST-001')).toBeVisible();
+  await page.getByPlaceholder('6 位取书码').fill('123456');
+  await page.getByRole('button', { name: '核验并借出' }).click();
+  await expect(page.getByRole('status')).toContainText('租借记录已加载');
+
+  expect(attempts).toHaveLength(2);
+  expect(attempts[0]?.idempotencyKey).toMatch(/^[0-9a-f-]{36}$/);
+  expect(attempts[0]).toEqual(attempts[1]);
+  const pendingKeys = await page.evaluate(() =>
+    Array.from({ length: sessionStorage.length }, (_, i) => sessionStorage.key(i)).filter((key) =>
+      key?.startsWith('xiaohai.staff.rental.pending.'),
+    ),
+  );
+  expect(pendingKeys).toHaveLength(0);
+});
+
+test('staff rental panel refuses a valid response carrying another store', async ({ page }) => {
+  await page.route('**/api/v1/staff/rentals?*', (route) =>
+    route.fulfill({
+      json: { items: [{ ...rentalRecord, storeId: otherStoreId, storeName: '南门' }] },
+    }),
+  );
+  await mountRental(page);
+  await expect(page.getByRole('status')).toContainText('租借记录与当前门店不符');
+  await expect(page.getByText('RN-TEST-001')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '核验并借出' })).toHaveCount(0);
 });

@@ -13,15 +13,18 @@
       import { StoreMeipingPreflightPanel } from '../src/store-meiping-preflight-panel.tsx';
       import { StoreProductImageUploader } from '../src/merchant-image-uploader.tsx';
       import { StoreCatalogPanel } from '../src/store-catalog-panel.tsx';
+      import { RentalPanel } from '../src/rental-panel.tsx';
       const root = createRoot(document.getElementById('root'));
       window.addEventListener('inventory-props', ({ detail }) => {
-        const selected = detail.gallery
-          ? StoreProductImageUploader
-          : detail.catalog
-            ? StoreCatalogPanel
-            : detail.preflight
-              ? StoreMeipingPreflightPanel
-              : InventoryPanel;
+        const selected = detail.rental
+          ? RentalPanel
+          : detail.gallery
+            ? StoreProductImageUploader
+            : detail.catalog
+              ? StoreCatalogPanel
+              : detail.preflight
+                ? StoreMeipingPreflightPanel
+                : InventoryPanel;
         root.render(
           React.createElement(
             selected,

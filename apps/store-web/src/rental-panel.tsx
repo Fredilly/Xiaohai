@@ -1,6 +1,11 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { RentalView } from '@xiaohai/contracts/rental';
 import { loadRentals, rentalAction } from './rental-api';
+import {
+  clearRentalActionKey,
+  getOrCreateRentalActionKey,
+  pendingRentalActionKey,
+} from './rental-retry';
 
 const labels: Record<string, string> = {
   RESERVED: '已预约',
@@ -10,43 +15,120 @@ const labels: Record<string, string> = {
   CANCELLED: '已取消',
 };
 
-export function RentalPanel({ token, storeId }: { token: string; storeId: string }) {
+export function RentalPanel({
+  token,
+  storeId,
+  staffAccountId,
+}: {
+  token: string;
+  storeId: string;
+  staffAccountId: string;
+}) {
   const [items, setItems] = useState<RentalView[]>([]);
   const [status, setStatus] = useState('正在加载…');
   const [busy, setBusy] = useState('');
   const [pickupCodes, setPickupCodes] = useState<Record<string, string>>({});
+  const mounted = useRef(false);
+  const requestSequence = useRef(0);
+  const actionInFlight = useRef(false);
+  const scope = `${staffAccountId}:${storeId}:${token}`;
+  const visibleScope = useRef(scope);
+  visibleScope.current = scope;
 
-  const refresh = useCallback(async () => {
-    try {
-      const result = await loadRentals(token, storeId);
-      setItems(result.items);
-      setStatus(result.items.length ? '当前门店租借记录已加载' : '当前门店暂无租借记录');
-    } catch (e) {
-      setStatus(e instanceof Error ? `加载失败：${e.message}` : '加载失败');
-    }
-  }, [storeId, token]);
+  const refresh = useCallback(
+    async (confirmedAction = false) => {
+      const sequence = ++requestSequence.current;
+      const accept = () =>
+        mounted.current && visibleScope.current === scope && sequence === requestSequence.current;
+      try {
+        const result = await loadRentals(token, storeId);
+        if (!accept()) return;
+        if (result.items.some((item) => item.storeId !== storeId))
+          throw new Error('租借记录与当前门店不符');
+        for (const item of result.items) {
+          for (const action of ['borrow', 'return'] as const) {
+            if (
+              (action === 'borrow' && item.status !== 'BORROWED') ||
+              (action === 'return' && item.status !== 'RETURNED')
+            )
+              continue;
+            const pendingKey = pendingRentalActionKey(staffAccountId, storeId, item.id, action);
+            if (pendingKey)
+              clearRentalActionKey(staffAccountId, storeId, item.id, action, pendingKey);
+          }
+        }
+        setItems(result.items);
+        setStatus(result.items.length ? '当前门店租借记录已加载' : '当前门店暂无租借记录');
+      } catch (e) {
+        if (!accept()) return;
+        setItems([]);
+        setStatus(
+          confirmedAction
+            ? '操作已成功确认，但列表刷新失败；请点击刷新记录。'
+            : e instanceof Error
+              ? `加载失败：${e.message}`
+              : '加载失败',
+        );
+      }
+    },
+    [staffAccountId, storeId, token, scope],
+  );
 
   useEffect(() => {
+    mounted.current = true;
+    setItems([]);
+    setBusy('');
+    setStatus('正在加载…');
     setPickupCodes({});
     void refresh();
+    return () => {
+      mounted.current = false;
+      requestSequence.current++;
+    };
   }, [refresh]);
 
   const act = async (id: string, action: 'borrow' | 'return') => {
+    if (actionInFlight.current) return;
+    const item = items.find((row) => row.id === id && row.storeId === storeId);
+    if (
+      !item ||
+      (action === 'borrow' && item.status !== 'RESERVED') ||
+      (action === 'return' && item.status !== 'BORROWED' && item.status !== 'OVERDUE')
+    )
+      return;
     const pickupCode = pickupCodes[id]?.trim();
     if (action === 'borrow' && !/^\d{6}$/.test(pickupCode ?? '')) {
       setStatus('借出前请输入顾客出示的 6 位取书码');
       return;
     }
+    actionInFlight.current = true;
     setBusy(id);
+    let submitted = false;
     try {
-      await rentalAction(token, id, action, pickupCode);
+      const key = getOrCreateRentalActionKey(staffAccountId, storeId, id, action);
+      submitted = true;
+      const result = await rentalAction(token, id, action, key, pickupCode);
+      if (
+        result.id !== id ||
+        result.storeId !== storeId ||
+        result.status !== (action === 'borrow' ? 'BORROWED' : 'RETURNED')
+      )
+        throw new Error('RENTAL_ACTION_CONTEXT_MISMATCH');
+      clearRentalActionKey(staffAccountId, storeId, id, action, key);
+      if (!mounted.current || visibleScope.current !== scope) return;
       setStatus('操作成功');
       setPickupCodes((current) => ({ ...current, [id]: '' }));
-      await refresh();
-    } catch (e) {
-      setStatus(e instanceof Error ? `操作失败：${e.message}` : '操作失败');
+      await refresh(true);
+    } catch {
+      if (mounted.current && visibleScope.current === scope)
+        setStatus(
+          !submitted
+            ? '无法安全保存操作请求键，已阻止提交；请检查浏览器会话存储。'
+            : '操作结果未确认，请先刷新记录；若仍可操作，重试将沿用原请求键。',
+        );
     } finally {
-      setBusy('');
+      actionInFlight.current = false;
+      if (mounted.current && visibleScope.current === scope) setBusy('');
     }
   };
 
@@ -58,6 +140,9 @@ export function RentalPanel({ token, storeId }: { token: string; storeId: string
         当前只加载工作台选中的门店。取书码只由顾客端显示；员工现场输入 6
         位码，服务端再次校验门店范围、库存与状态。
       </p>
+      <button type="button" disabled={Boolean(busy)} onClick={() => void refresh()}>
+        刷新记录
+      </button>
       <div className="data-table-scroll" role="region" aria-label="门店租借记录表格" tabIndex={0}>
         <table className="data-table data-table-compact">
           <thead>

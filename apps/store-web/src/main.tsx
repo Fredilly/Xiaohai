@@ -224,7 +224,12 @@ function Shell({
           )
         ) : current === 'rental' ? (
           currentStore ? (
-            <RentalPanel token={token} storeId={currentStore.id} />
+            <RentalPanel
+              key={`${me.staff.id}:${currentStore.id}`}
+              token={token}
+              storeId={currentStore.id}
+              staffAccountId={me.staff.id}
+            />
           ) : (
             <StoreRequired />
           )

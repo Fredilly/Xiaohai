@@ -1,4 +1,4 @@
-import { rentalListResponseSchema } from '@xiaohai/contracts/rental';
+import { rentalListResponseSchema, rentalViewSchema } from '@xiaohai/contracts/rental';
 const env = import.meta.env as { readonly VITE_API_BASE_URL?: unknown };
 const base = typeof env.VITE_API_BASE_URL === 'string' ? env.VITE_API_BASE_URL : '';
 async function request(path: string, token: string, method = 'GET', body?: unknown) {
@@ -28,10 +28,14 @@ export async function rentalAction(
   token: string,
   id: string,
   action: 'borrow' | 'return',
+  idempotencyKey: string,
   pickupCode?: string,
 ) {
-  return request(`/api/v1/staff/rentals/${id}/${action}`, token, 'POST', {
-    idempotencyKey: crypto.randomUUID(),
-    ...(action === 'borrow' ? { pickupCode } : {}),
-  });
+  if (!idempotencyKey) throw new Error('RENTAL_ACTION_KEY_REQUIRED');
+  return rentalViewSchema.parse(
+    await request(`/api/v1/staff/rentals/${id}/${action}`, token, 'POST', {
+      idempotencyKey,
+      ...(action === 'borrow' ? { pickupCode } : {}),
+    }),
+  );
 }
