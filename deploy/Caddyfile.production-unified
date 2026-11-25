@@ -1,0 +1,40 @@
+# One dedicated production host for all three HTTPS origins.
+# All API traffic stays on the private Compose network; no staging fallback.
+
+(production_ui_common) {
+  encode zstd gzip
+  header {
+    X-Content-Type-Options "nosniff"
+    X-Frame-Options "DENY"
+    Referrer-Policy "strict-origin-when-cross-origin"
+  }
+  @api path /api /api/* /health /ready
+  handle @api {
+    reverse_proxy api:3000
+  }
+}
+
+api.pamboo.asia {
+  encode zstd gzip
+  reverse_proxy api:3000
+}
+
+store.pamboo.asia {
+  import production_ui_common
+  handle {
+    root * /srv/store
+    try_files {path} /index.html
+    header Cache-Control "no-cache"
+    file_server
+  }
+}
+
+admin.pamboo.asia {
+  import production_ui_common
+  handle {
+    root * /srv/admin
+    try_files {path} /index.html
+    header Cache-Control "no-cache"
+    file_server
+  }
+}

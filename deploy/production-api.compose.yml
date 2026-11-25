@@ -1,0 +1,35 @@
+# Manual-only production API/Worker process definition.
+# Production database, Redis and secrets are provisioned independently and
+# must never reuse staging. No migration, seed or real inventory operation here.
+name: xiaohai-production-api
+services:
+  api:
+    image: ghcr.io/fredilly/xiaohai-api:${API_REVISION:?Pin a reviewed API image revision}
+    restart: unless-stopped
+    env_file: production.env
+    networks: [private]
+  worker:
+    image: ghcr.io/fredilly/xiaohai-worker:${API_REVISION:?Pin a reviewed Worker image revision}
+    restart: unless-stopped
+    env_file: production.env
+    networks: [private]
+  proxy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '443:443'
+      - '443:443/udp'
+    volumes:
+      - ./Caddyfile.production-api:/etc/caddy/Caddyfile:ro
+      - production_api_caddy_data:/data
+      - production_api_caddy_config:/config
+    depends_on: [api]
+    networks: [private]
+
+networks:
+  private:
+
+volumes:
+  production_api_caddy_data:
+  production_api_caddy_config:

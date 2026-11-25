@@ -114,3 +114,9 @@ locations or full Meiping source files into GitHub evidence.
 environment-specific evidence and signed product/operations GO decision.
 The current evidence register is **NO-GO / blocked**. Moving the status to PASS
 requires new evidence and explicit human review, not editing this heading alone.
+
+## 2026-11-25 domain selection update (not a production acceptance)
+
+The owner approved `store.pamboo.asia` for Store Web, `admin.pamboo.asia` for HQ Admin Web and `api.pamboo.asia` for the production API. The Mini Program `release` source configuration now selects `https://api.pamboo.asia`; `develop` / `trial` remain on the separate staging origin. Code-only, isolated Caddy/Compose specifications exist under `deploy/`.
+
+This changes the **hostname decision** only. DNS/TLS, server and production database/Redis isolation, WeChat account allowlists, real-device journeys, security review, payment, food enablement and the signed go/no-go remain **NOT VERIFIED / BLOCKED**. The October historical baseline table above is preserved as recorded; no gate is upgraded to PASS by a config edit.

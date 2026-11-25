@@ -21,9 +21,11 @@ describe('Issue #76 Mini Program device API environment mapping', () => {
     },
   );
 
-  it('keeps release pointed at an intentionally non-functional placeholder', () => {
+  it('uses only the explicitly approved production HTTPS API in a release build', () => {
     useWeChatEnvironment('release');
-    expect(getApiBaseUrl()).toBe('https://api.example.invalid');
+    expect(getApiBaseUrl()).toBe('https://api.pamboo.asia');
+    expect(getApiBaseUrl()).not.toBe('https://staging-api.pamboo.asia');
+    expect(getApiBaseUrl()).toMatch(/^https:\/\//);
   });
 
   it('fails closed on unknown WeChat environment instead of selecting live production', () => {

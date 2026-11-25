@@ -38,7 +38,8 @@
     "preflight:private-bos": "node --env-file-if-exists .env scripts/private-bos-staging-smoke.mjs",
     "test:picture-book-quality": "node --test benchmarks/picture-book-quality/review.test.mjs",
     "preflight:release": "node --env-file-if-exists .env scripts/release-preflight.mjs",
-    "preflight:production-web": "node scripts/production-web-preflight.mjs"
+    "preflight:production-web": "node scripts/production-web-preflight.mjs",
+    "preflight:production-unified": "node scripts/production-unified-preflight.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.35.0",

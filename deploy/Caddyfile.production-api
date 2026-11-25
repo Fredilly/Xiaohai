@@ -1,0 +1,5 @@
+# Separate production API HTTPS endpoint. No staging fallback.
+api.pamboo.asia {
+  encode zstd gzip
+  reverse_proxy api:3000
+}

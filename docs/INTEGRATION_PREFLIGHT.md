@@ -59,8 +59,10 @@ This issue does not duplicate that implementation.
 ## Current staging prerequisites (after PR #171)
 
 PR #171 merged the Mini Program configuration fix from #76: `develop` and
-`trial` now point at `https://staging-api.pamboo.asia`. The `release` domain
-remains deliberately blocked (`.invalid`) pending separate production approval.
+`trial` now point at `https://staging-api.pamboo.asia`. On 2026-11-25 the owner
+confirmed `https://api.pamboo.asia` as the release API hostname, now reflected
+in code. Domain selection does not authorize a production rollout or prove DNS,
+TLS, WeChat console registration or server readiness.
 
 This is **source configuration only**, not proof of WeChat request-domain
 allowlisting, iOS/Android device connectivity, actual `/ready` health or BOS

@@ -10,7 +10,7 @@ const deploymentEnvironmentByWeChatVersion = {
 const apiBaseUrlByEnvironment: Record<DeploymentEnvironment, string> = {
   dev: 'https://staging-api.pamboo.asia',
   staging: 'https://staging-api.pamboo.asia',
-  production: 'https://api.example.invalid',
+  production: 'https://api.pamboo.asia',
 };
 
 export function getApiBaseUrl(): string {

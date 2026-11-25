@@ -34,9 +34,18 @@ for (const environment of ['dev', 'staging', 'production']) {
 if (
   !miniappConfig.includes("dev: 'https://staging-api.pamboo.asia'") ||
   !miniappConfig.includes("staging: 'https://staging-api.pamboo.asia'") ||
-  !miniappConfig.includes("production: 'https://api.example.invalid'")
+  !miniappConfig.includes("production: 'https://api.pamboo.asia'")
 ) {
   throw new Error('Mini Program API endpoints must keep safe environment-specific defaults.');
+}
+if (
+  /\bproduction:\s*['"]https?:\/\/(?:staging-|127\.0\.0\.1|localhost|[^'"]*\.invalid)/u.test(
+    miniappConfig,
+  )
+) {
+  throw new Error(
+    'Production Mini Program API must not reuse staging, localhost or a placeholder.',
+  );
 }
 if (
   /\bdev:\s*['"]http:\/\//.test(miniappConfig) ||

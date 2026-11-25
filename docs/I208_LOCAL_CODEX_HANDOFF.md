@@ -72,3 +72,9 @@ API 单元 **233**、Store Web **59**、HQ Web **86**、Miniapp **167**、Config
 - 已建图书可在门店资料页编辑书名、作者、出版社和 ISBN；只提交变更字段与对应 `bookVersion` / `editionVersion`。共享变更仍须先经签名影响预览，涉及其他门店则拒绝本店直接写入；本店售价及库存操作未改。现有 ISBN 不允许从此入口直接清空。
 - 增补 API 授权门禁测试、隔离 PostgreSQL 图书创建测试代码，以及 2 个合成 Playwright 交互场景（图书草稿断网原键重试、跨店影响拦截与带签名令牌版本写入）。浏览器套件现共 13 项；本容器尝试启动时全部在断言前因 Playwright Chromium 实际二进制缺失而失败，**不得计作已通过**，需由 CI 的 `inventory-browser` runner 实测。PostgreSQL 集成用例此处无授权隔离实例，未执行。
 - 本轮 Store Web 单测 68/68 PASS，API 单测 237/237 PASS；Store Web 与 API typecheck、lint、Store Web build、全仓 Prettier PASS。这是离线代码证据，不代表真实门店、微信真机、图片存储或生产验收。
+
+## 2026-11-25 正式域名与三端接入配置
+
+- 负责人确认正式门店站 `store.pamboo.asia`、总部站 `admin.pamboo.asia`、API `api.pamboo.asia`。小程序 release 已由无效占位地址切至 `https://api.pamboo.asia`；develop/trial 仍指向 `https://staging-api.pamboo.asia`，保持数据隔离。
+- `deploy/` 已备生产网站（仅静态构建及 HTTPS 反代）和独立 API/Worker 的人工部署定义。没有生产数据库/Redis 自动创建、迁移或清理；生产 Web 通过同源 `/api` 转发，API 上游需要显式配置。生产凭据文件在 Git/Docker ignore 清单中，食品写入/交易和微信支付示例保持关闭。
+- 这只是源代码/配置接通：尚未修改 DNS、申请真实 TLS、获取可用生产服务器或发布官方 AppID，也未进行微信真机、真实支付、真实库存或运营验收。必须由环境负责人提供生产隔离基础设施和微信后台配置，Fred 独立安全审计及 UI 设计不由本轮替代。

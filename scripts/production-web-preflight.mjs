@@ -2,8 +2,6 @@ import process from 'node:process';
 import { pathToFileURL } from 'node:url';
 import { execFileSync } from 'node:child_process';
 
-const WEB_HOSTS = new Set(['store.pamboo.asia', 'admin.pamboo.asia']);
-
 /** Pure local validation. This never connects to or changes remote infrastructure. */
 export function validateProductionWebEnvironment(env) {
   const failures = [];
@@ -33,19 +31,8 @@ export function validateProductionWebEnvironment(env) {
     failures.push('PRODUCTION_API_UPSTREAM must not contain credentials');
   }
   const host = upstream.hostname.replace(/\.$/u, '').toLowerCase();
-  if (
-    WEB_HOSTS.has(host) ||
-    host === 'pamboo.asia' ||
-    host === 'staging-api.pamboo.asia' ||
-    host.startsWith('staging-') ||
-    host.endsWith('.invalid') ||
-    host === 'localhost' ||
-    host === '127.0.0.1' ||
-    host === '[::1]'
-  ) {
-    failures.push(
-      'PRODUCTION_API_UPSTREAM must be a separate approved production API, not staging, a website host or a placeholder',
-    );
+  if (host !== 'api.pamboo.asia') {
+    failures.push('PRODUCTION_API_UPSTREAM must match the approved api.pamboo.asia hostname');
   }
   return failures;
 }

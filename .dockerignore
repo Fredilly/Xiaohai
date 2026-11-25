@@ -1,6 +1,7 @@
 .git
 .env
 .env.*
+deploy/production.env
 !.env.example
 !.env.staging.example
 !.env.production.example

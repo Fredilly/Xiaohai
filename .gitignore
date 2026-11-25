@@ -8,6 +8,7 @@ test-results/
 
 .env
 .env.*
+deploy/production.env
 benchmarks/story/raw/*.json
 benchmarks/image/raw/*.json
 benchmarks/image/outputs/*

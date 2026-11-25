@@ -1,0 +1,37 @@
+# Manual-only three-origin production option for ONE dedicated server.
+# Never run next to staging Caddy; production DB/Redis live outside Compose.
+name: xiaohai-production
+services:
+  api:
+    image: ghcr.io/fredilly/xiaohai-api:${API_REVISION:?Pin a reviewed API image revision}
+    restart: unless-stopped
+    env_file: production.env
+    networks: [private]
+  worker:
+    image: ghcr.io/fredilly/xiaohai-worker:${API_REVISION:?Pin a reviewed Worker image revision}
+    restart: unless-stopped
+    env_file: production.env
+    networks: [private]
+  web:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.production-web
+    image: xiaohai-production-web:${WEB_REVISION:?Pin a reviewed web source revision}
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '443:443'
+      - '443:443/udp'
+    volumes:
+      - ./Caddyfile.production-unified:/etc/caddy/Caddyfile:ro
+      - production_caddy_data:/data
+      - production_caddy_config:/config
+    depends_on: [api]
+    networks: [private]
+
+networks:
+  private:
+
+volumes:
+  production_caddy_data:
+  production_caddy_config:
