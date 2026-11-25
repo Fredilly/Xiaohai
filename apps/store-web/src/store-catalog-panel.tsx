@@ -5,6 +5,7 @@ import type {
   StoreCatalogEditRequest,
   StoreCatalogItem,
 } from '@xiaohai/contracts/commerce';
+import { isValidIsbn, normalizeIsbn } from '@xiaohai/contracts/commerce';
 import {
   createStoreDraftProduct,
   listStoreCatalog,
@@ -97,13 +98,13 @@ function StoreCatalogSession({ token, storeId, storeName }: StoreCatalogProps) {
         。仅显示与本店库存记录关联的商品及其基础资料。库存数量仍须通过库存盘点或调整流程变更。
       </p>
       <p>
-        可编辑本店关联商品的名称、简介、SKU
+        可编辑本店关联商品的名称、简介、图书资料、SKU
         编码、规格、上架状态、售价及本店陈列信息。若商品资料还影响其他门店，
         系统会拒绝直接修改，避免未经确认覆盖其他门店的共享数据。
       </p>
       <div className="meiping-store-actions">
         <button type="button" onClick={() => setCreating(true)}>
-          新增非图书商品草稿
+          新增图书 / 普通商品草稿
         </button>
         <small>新商品默认未上架、不可售、库存为 0，须核对资料与库存后显式上架。</small>
       </div>
@@ -228,7 +229,7 @@ function StoreCatalogSession({ token, storeId, storeName }: StoreCatalogProps) {
             className="catalog-editor-dialog"
             role="dialog"
             aria-modal="true"
-            aria-label="新增非图书商品草稿"
+            aria-label="新增商品草稿"
           >
             <button
               className="catalog-editor-close"
@@ -291,7 +292,7 @@ function StoreCatalogSession({ token, storeId, storeName }: StoreCatalogProps) {
   );
 }
 
-function StoreCatalogDraftCreateForm({
+export function StoreCatalogDraftCreateForm({
   token,
   storeId,
   onCancel,
@@ -303,7 +304,12 @@ function StoreCatalogDraftCreateForm({
   onSaved: () => void;
 }) {
   const [idempotencyKey] = useState(() => crypto.randomUUID());
+  const [kind, setKind] = useState<'BOOK' | 'OTHER'>('BOOK');
   const [name, setName] = useState('');
+  const [bookTitle, setBookTitle] = useState('');
+  const [author, setAuthor] = useState('');
+  const [publisher, setPublisher] = useState('');
+  const [isbn, setIsbn] = useState('');
   const [skuName, setSkuName] = useState('标准');
   const [skuCode, setSkuCode] = useState('');
   const [priceYuan, setPriceYuan] = useState('');
@@ -316,8 +322,18 @@ function StoreCatalogDraftCreateForm({
     event.preventDefault();
     if (saving) return;
     const priceMinor = parseStorePriceToMinor(priceYuan);
-    if (!name.trim() || !skuName.trim() || priceMinor === null) {
+    const productName = kind === 'BOOK' ? bookTitle.trim() : name.trim();
+    if (!productName || !skuName.trim() || priceMinor === null) {
       setStatus('请填写商品名称、规格及有效的价格（最多两位小数）。');
+      return;
+    }
+    if (kind === 'BOOK' && (!author.trim() || !bookTitle.trim())) {
+      setStatus('图书草稿必须填写书名和作者。');
+      return;
+    }
+    const canonicalIsbn = normalizeIsbn(isbn);
+    if (kind === 'BOOK' && canonicalIsbn && !isValidIsbn(canonicalIsbn)) {
+      setStatus('ISBN 须为 10 位或 13 位有效格式；没有 ISBN 可以留空。');
       return;
     }
     const cover = coverUrl.trim();
@@ -334,11 +350,19 @@ function StoreCatalogDraftCreateForm({
       }
     }
     const input: AdminProductCreateInput = {
-      name: name.trim(),
+      name: productName,
       description: description.trim() || null,
       coverUrl: cover || null,
       status: 'DRAFT',
-      book: null,
+      book:
+        kind === 'BOOK'
+          ? {
+              title: bookTitle.trim(),
+              author: author.trim(),
+              publisher: publisher.trim() || null,
+              isbn: canonicalIsbn,
+            }
+          : null,
       sku: {
         ...(skuCode.trim() ? { code: skuCode.trim() } : {}),
         name: skuName.trim(),
@@ -362,12 +386,58 @@ function StoreCatalogDraftCreateForm({
 
   return (
     <form className="catalog-correction-form" onSubmit={(event) => void save(event)}>
-      <h3>新增非图书商品</h3>
+      <h3>新增商品草稿</h3>
       <p>可先录入真实商品资料，但默认不会公开上架或产生任何库存数量。</p>
       <label>
-        商品名称
-        <input required maxLength={160} value={name} onChange={(e) => setName(e.target.value)} />
+        商品类型
+        <select
+          value={kind}
+          disabled={saving}
+          onChange={(e) => setKind(e.target.value as 'BOOK' | 'OTHER')}
+        >
+          <option value="BOOK">图书</option>
+          <option value="OTHER">非图书商品（食品仍须走批次入库）</option>
+        </select>
       </label>
+      {kind === 'BOOK' ? (
+        <>
+          <label>
+            书名（同时作为商品名称）
+            <input
+              required
+              maxLength={160}
+              value={bookTitle}
+              onChange={(e) => setBookTitle(e.target.value)}
+            />
+          </label>
+          <label>
+            作者
+            <input
+              required
+              maxLength={160}
+              value={author}
+              onChange={(e) => setAuthor(e.target.value)}
+            />
+          </label>
+          <label>
+            出版社（可留空）
+            <input
+              maxLength={160}
+              value={publisher}
+              onChange={(e) => setPublisher(e.target.value)}
+            />
+          </label>
+          <label>
+            ISBN（可留空；有值时校验格式和全库去重）
+            <input maxLength={32} value={isbn} onChange={(e) => setIsbn(e.target.value)} />
+          </label>
+        </>
+      ) : (
+        <label>
+          商品名称
+          <input required maxLength={160} value={name} onChange={(e) => setName(e.target.value)} />
+        </label>
+      )}
       <label>
         商品规格 / SKU 名称
         <input
@@ -395,7 +465,7 @@ function StoreCatalogDraftCreateForm({
         <textarea value={description} onChange={(e) => setDescription(e.target.value)} />
       </label>
       <label>
-        商品封面 HTTPS URL（上传功能另行接入）
+        商品封面 HTTPS URL（也可先保存草稿，再用图片管理上传）
         <input type="url" value={coverUrl} onChange={(e) => setCoverUrl(e.target.value)} />
       </label>
       <p className="dashboard-status" role="status">
@@ -424,6 +494,34 @@ function draftFor(item: StoreCatalogItem): StoreCatalogEditRequest {
   };
 }
 
+type StoreBookFields = { title: string; author: string; publisher: string; isbn: string };
+
+/** Book/edition versions are sent only for changed fields, never for non-book SKUs. */
+export function changedStoreBookFields(
+  item: StoreCatalogItem,
+  fields: StoreBookFields,
+): Partial<StoreCatalogEditRequest> {
+  if (item.bookTitle === null) return {};
+  const title = fields.title.trim();
+  const author = fields.author.trim();
+  const publisher = fields.publisher.trim() || null;
+  const isbn = normalizeIsbn(fields.isbn);
+  if (!title || !author) throw new Error('请填写非空的书名和作者。');
+  if (isbn !== normalizeIsbn(item.isbn) && !isValidIsbn(isbn)) {
+    throw new Error('变更 ISBN 需要提供 10 位或 13 位有效格式，不能直接清空已有 ISBN。');
+  }
+  const bookChanged = title !== item.bookTitle || author !== item.author;
+  const editionChanged = publisher !== item.publisher || isbn !== normalizeIsbn(item.isbn);
+  return {
+    ...(bookChanged ? { expectedBookVersion: item.bookVersion } : {}),
+    ...(editionChanged ? { expectedEditionVersion: item.editionVersion } : {}),
+    ...(title !== item.bookTitle ? { bookTitle: title } : {}),
+    ...(author !== item.author ? { author } : {}),
+    ...(publisher !== item.publisher ? { publisher } : {}),
+    ...(isbn !== normalizeIsbn(item.isbn) ? { isbn } : {}),
+  };
+}
+
 export function StoreCatalogEditForm({
   token,
   storeId,
@@ -439,6 +537,10 @@ export function StoreCatalogEditForm({
 }) {
   const [draft, setDraft] = useState(() => draftFor(item));
   const [name, setName] = useState(item.productName);
+  const [bookTitle, setBookTitle] = useState(item.bookTitle ?? '');
+  const [author, setAuthor] = useState(item.author ?? '');
+  const [publisher, setPublisher] = useState(item.publisher ?? '');
+  const [isbn, setIsbn] = useState(item.isbn ?? '');
   const [description, setDescription] = useState(item.description ?? '');
   const [skuCode, setSkuCode] = useState(item.skuCode);
   const [skuName, setSkuName] = useState(item.skuName);
@@ -468,8 +570,16 @@ export function StoreCatalogEditForm({
       setStatus('上下架或可售状态变更前，须确认已经核对商品资料、图片与库存。');
       return;
     }
+    let bookFields: Partial<StoreCatalogEditRequest>;
+    try {
+      bookFields = changedStoreBookFields(item, { title: bookTitle, author, publisher, isbn });
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : '图书资料无效');
+      return;
+    }
     const input: StoreCatalogEditRequest = {
       ...draft,
+      ...bookFields,
       ...(name.trim() !== item.productName ? { productName: name.trim() } : {}),
       ...(description.trim() !== (item.description ?? '')
         ? { description: description.trim() || null }
@@ -488,7 +598,11 @@ export function StoreCatalogEditForm({
       input.skuCode !== undefined ||
       input.skuName !== undefined ||
       input.skuStatus !== undefined ||
-      input.availableForSale !== undefined;
+      input.availableForSale !== undefined ||
+      input.bookTitle !== undefined ||
+      input.author !== undefined ||
+      input.publisher !== undefined ||
+      input.isbn !== undefined;
     setSaving(true);
     setStatus(editsShared ? '正在核对商品对其他门店的影响…' : '正在保存本店资料…');
     try {
@@ -533,8 +647,8 @@ export function StoreCatalogEditForm({
     <form className="catalog-correction-form" onSubmit={(event) => void save(event)}>
       <h3>编辑商品资料：{item.bookTitle ?? item.productName}</h3>
       <p>
-        名称、简介、SKU
-        编码、规格和上下架状态是共享资料，变更需核对影响范围。售价只修改当前门店，不影响其他门店。
+        名称、简介、图书资料、SKU
+        编码、规格和上下架状态是共享资料，变更需核对影响范围；若涉及其他门店则拒绝本店直接修改。售价只修改当前门店。
       </p>
       <label>
         商品名称
@@ -555,6 +669,48 @@ export function StoreCatalogEditForm({
           onChange={(event) => setDescription(event.target.value)}
         />
       </label>
+      {item.bookTitle !== null && (
+        <>
+          <label>
+            书名
+            <input
+              required
+              maxLength={200}
+              value={bookTitle}
+              disabled={saving}
+              onChange={(event) => setBookTitle(event.target.value)}
+            />
+          </label>
+          <label>
+            作者
+            <input
+              required
+              maxLength={160}
+              value={author}
+              disabled={saving}
+              onChange={(event) => setAuthor(event.target.value)}
+            />
+          </label>
+          <label>
+            出版社
+            <input
+              maxLength={160}
+              value={publisher}
+              disabled={saving}
+              onChange={(event) => setPublisher(event.target.value)}
+            />
+          </label>
+          <label>
+            ISBN（不可直接清空已存在的 ISBN）
+            <input
+              maxLength={32}
+              value={isbn}
+              disabled={saving}
+              onChange={(event) => setIsbn(event.target.value)}
+            />
+          </label>
+        </>
+      )}
       <label>
         SKU 编码 / 条码
         <input

@@ -65,3 +65,10 @@ API 单元 **233**、Store Web **59**、HQ Web **86**、Miniapp **167**、Config
 - 路由单测及单店/共享店/伪造 ID/版本冲突的隔离 PostgreSQL 集成用例已补齐。新增 2 个 Playwright 合成浏览器用例加入原 `inventory-browser` CI：主图/排序/移除，以及断网不自动重试和错商品回填拒绝（总计 11 项）。
 - 本容器的 PostgreSQL 环境变量未配置，专用集成套件按门禁跳过，不记为 PASS。浏览器实测尝试被本环境缺失 Chromium 实际二进制阻断（`/usr/bin/chromium` 也只是缺少目标文件的包装脚本）；等待原分支 CI 的隔离 Chromium 结果，不把新用例记作通过。
 - 未访问真实 BOS、修改真实图片或上架商品；食品、支付及其他运营开关保持默认关闭。
+
+## 2026-11-25 门店图书建档与资料维护增量
+
+- 门店工作台的商品草稿入口支持选择图书或非图书商品。图书录入书名、作者、出版社、可选 ISBN，ISBN 空格和连字符规范化、格式及重复值由服务端进一步核验；保持 `DRAFT`、`availableForSale=false`、本店零库存绑定、原有请求键防重复。食品虽属非图书商品，仍须使用独立批次入库流程，不因建档变为可售。
+- 已建图书可在门店资料页编辑书名、作者、出版社和 ISBN；只提交变更字段与对应 `bookVersion` / `editionVersion`。共享变更仍须先经签名影响预览，涉及其他门店则拒绝本店直接写入；本店售价及库存操作未改。现有 ISBN 不允许从此入口直接清空。
+- 增补 API 授权门禁测试、隔离 PostgreSQL 图书创建测试代码，以及 2 个合成 Playwright 交互场景（图书草稿断网原键重试、跨店影响拦截与带签名令牌版本写入）。浏览器套件现共 13 项；本容器尝试启动时全部在断言前因 Playwright Chromium 实际二进制缺失而失败，**不得计作已通过**，需由 CI 的 `inventory-browser` runner 实测。PostgreSQL 集成用例此处无授权隔离实例，未执行。
+- 本轮 Store Web 单测 68/68 PASS，API 单测 237/237 PASS；Store Web 与 API typecheck、lint、Store Web build、全仓 Prettier PASS。这是离线代码证据，不代表真实门店、微信真机、图片存储或生产验收。

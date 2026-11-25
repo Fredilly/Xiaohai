@@ -82,9 +82,176 @@ async function mountGallery(page: Page) {
   );
 }
 
+async function mountCatalog(page: Page) {
+  await page.goto('/test/inventory.html');
+  await page.waitForFunction(() => 'fixtureReady' in window);
+  await page.evaluate(
+    (props) => {
+      window.dispatchEvent(new CustomEvent('inventory-props', { detail: props }));
+    },
+    { catalog: true, token: 'synthetic-staff-session', storeId, storeName: '南门' },
+  );
+}
+
 // An omitted mock must never fall through Vite's /api proxy to a local real API.
 test.beforeEach(async ({ page }) => {
   await page.route('**/api/**', (route) => route.abort('blockedbyclient'));
+});
+
+test('store book draft creates an unsellable zero-stock product and reuses its retry key', async ({
+  page,
+}) => {
+  await page.route('**/api/v1/staff/stores/*/catalog?*', (route) =>
+    route.fulfill({ json: { storeId, offset: 0, limit: 30, hasMore: false, items: [] } }),
+  );
+  const writes: Array<{ body: Record<string, unknown>; key: string | undefined }> = [];
+  await page.route('**/api/v1/staff/stores/*/catalog/products', (route) => {
+    const body = route.request().postDataJSON() as Record<string, unknown>;
+    writes.push({ body, key: route.request().headers()['idempotency-key'] });
+    if (writes.length === 1) return route.abort('failed');
+    return route.fulfill({
+      status: 201,
+      json: {
+        ...body,
+        id: '44444444-4444-4444-8444-444444444444',
+        skuId,
+        bookId: '55555555-5555-4555-8555-555555555555',
+        editionId: '66666666-6666-4666-8666-666666666666',
+        productVersion: 0,
+        bookVersion: 0,
+        editionVersion: 0,
+        skuVersion: 0,
+        sku: { ...(body.sku as object), code: 'AUTO-BOOK-1' },
+      },
+    });
+  });
+  await mountCatalog(page);
+  await page.getByRole('button', { name: '新增图书 / 普通商品草稿' }).click();
+  const editor = page.getByRole('dialog', { name: '新增商品草稿' });
+  await editor.getByLabel('书名（同时作为商品名称）').fill(' 南门合成绘本 ');
+  await editor.getByLabel('作者', { exact: true }).fill('合成作者');
+  await editor.getByLabel('出版社（可留空）').fill('合成出版社');
+  await editor.getByLabel('ISBN（可留空；有值时校验格式和全库去重）').fill('978-3-16-148410-0');
+  await editor.getByLabel('售价（元）').fill('36.50');
+  await editor.getByRole('button', { name: '保存草稿' }).click();
+  await expect(editor.getByRole('status')).toContainText('Failed to fetch');
+  await editor.getByRole('button', { name: '保存草稿' }).click();
+  await expect(editor).toHaveCount(0);
+  expect(writes).toHaveLength(2);
+  expect(writes[0].key).toBeTruthy();
+  expect(writes[0].key).toBe(writes[1].key);
+  expect(writes[1].body).toEqual(writes[0].body);
+  expect(writes[0].body).toMatchObject({
+    name: '南门合成绘本',
+    status: 'DRAFT',
+    book: { title: '南门合成绘本', author: '合成作者', isbn: '9783161484100' },
+    sku: { priceMinor: 3650, availableForSale: false },
+  });
+});
+
+test('store book fields require a scoped impact preview and never write across stores', async ({
+  page,
+}) => {
+  const item = {
+    storeId,
+    productId: galleryProductId,
+    skuId,
+    productName: '旧绘本',
+    description: null,
+    productStatus: 'DRAFT',
+    skuCode: 'BOOK-OLD',
+    skuName: '标准',
+    skuStatus: 'ACTIVE',
+    availableForSale: false,
+    priceMinor: 2350,
+    coverUrl: null,
+    bookTitle: '旧绘本',
+    author: '旧作者',
+    isbn: '9783161484100',
+    publisher: '旧出版社',
+    onHand: 0,
+    reserved: 0,
+    rentalReserved: 0,
+    available: 0,
+    inventoryVersion: 0,
+    productVersion: 2,
+    bookVersion: 3,
+    editionVersion: 4,
+    skuVersion: 5,
+    localVersion: 6,
+    shelfLocation: null,
+    storeNote: null,
+    displayInfo: null,
+  };
+  await page.route('**/api/v1/staff/stores/*/catalog?*', (route) =>
+    route.fulfill({ json: { storeId, offset: 0, limit: 30, hasMore: false, items: [item] } }),
+  );
+  let rejectSharedEdit = true;
+  const previews: unknown[] = [];
+  const writes: unknown[] = [];
+  await page.route('**/api/v1/staff/stores/*/catalog/*/preview', (route) => {
+    previews.push(route.request().postDataJSON());
+    if (rejectSharedEdit)
+      return route.fulfill({ status: 403, json: { error: 'SHARED_FORBIDDEN' } });
+    return route.fulfill({
+      json: {
+        impact: {
+          sharedFields: ['bookTitle', 'publisher'],
+          affectedStoreCount: 1,
+          affectedStoreIds: [storeId],
+        },
+        previewToken: 'synthetic-scoped-impact-token',
+      },
+    });
+  });
+  await page.route(`**/api/v1/staff/stores/*/catalog/${skuId}`, (route) => {
+    writes.push({
+      body: route.request().postDataJSON(),
+      token: route.request().headers()['x-catalog-preview-token'],
+    });
+    return route.fulfill({
+      json: {
+        item: {
+          ...item,
+          bookTitle: '新绘本',
+          publisher: '新出版社',
+          bookVersion: 4,
+          editionVersion: 5,
+        },
+        impact: {
+          sharedFields: ['bookTitle', 'publisher'],
+          affectedStoreCount: 1,
+          affectedStoreIds: [storeId],
+        },
+      },
+    });
+  });
+  await mountCatalog(page);
+  await page.getByRole('button', { name: '编辑商品资料' }).click();
+  const editor = page.getByRole('dialog', { name: '编辑商品资料：旧绘本' });
+  await editor.getByLabel('书名', { exact: true }).fill('新绘本');
+  await editor.getByLabel('出版社', { exact: true }).fill('新出版社');
+  await editor.getByRole('button', { name: '保存商品资料' }).click();
+  await expect(editor.getByRole('status')).toContainText('商品变更影响其他门店');
+  expect(writes).toHaveLength(0);
+  rejectSharedEdit = false;
+  await editor.getByRole('button', { name: '保存商品资料' }).click();
+  await expect(editor).toHaveCount(0);
+  expect(previews).toHaveLength(2);
+  expect(writes).toHaveLength(1);
+  expect(writes[0]).toMatchObject({
+    token: 'synthetic-scoped-impact-token',
+    body: {
+      expectedProductVersion: 2,
+      expectedSkuVersion: 5,
+      expectedLocalVersion: 6,
+      expectedBookVersion: 3,
+      expectedEditionVersion: 4,
+      bookTitle: '新绘本',
+      publisher: '新出版社',
+    },
+  });
+  expect(JSON.stringify(writes[0])).not.toContain('"isbn"');
 });
 
 test('store gallery reorders, chooses cover and removes only image IDs in one versioned write', async ({

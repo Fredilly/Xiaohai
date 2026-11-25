@@ -3,6 +3,8 @@ import { afterAll, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import {
   auditLogs,
+  bookEditions,
+  books,
   createDatabase,
   products,
   regions,
@@ -64,6 +66,10 @@ suite('Store draft product creation on disposable PostgreSQL', () => {
 
     let productId: string | null = null;
     let skuId: string | null = null;
+    let bookProductId: string | null = null;
+    let bookSkuId: string | null = null;
+    let bookId: string | null = null;
+    let editionId: string | null = null;
     try {
       const input = {
         name: 'Store draft non-book ' + suffix,
@@ -148,8 +154,54 @@ suite('Store draft product creation on disposable PostgreSQL', () => {
         initialOnHand: 0,
         skuCount: 1,
       });
+
+      const bookDraft = await commerce.createStoreDraftProduct(
+        {
+          name: 'South book ' + suffix,
+          description: null,
+          coverUrl: null,
+          status: 'DRAFT',
+          book: {
+            title: 'South book ' + suffix,
+            author: 'Fixture author',
+            publisher: 'Fixture publisher',
+            isbn: null,
+          },
+          sku: {
+            name: '标准',
+            priceMinor: 3600,
+            status: 'ACTIVE',
+            availableForSale: false,
+          },
+        },
+        actor!.id,
+        randomUUID(),
+        store!.id,
+        'store-book-draft-' + suffix,
+      );
+      bookProductId = bookDraft.id;
+      bookSkuId = bookDraft.skuId;
+      bookId = bookDraft.bookId;
+      editionId = bookDraft.editionId;
+      expect(bookDraft.book).toMatchObject({
+        title: 'South book ' + suffix,
+        author: 'Fixture author',
+        publisher: 'Fixture publisher',
+      });
+      expect(bookDraft.sku.availableForSale).toBe(false);
+      expect(bookDraft.status).toBe('DRAFT');
+      expect(
+        await db.select().from(storeInventory).where(eq(storeInventory.skuId, bookSkuId)),
+      ).toMatchObject([{ storeId: store!.id, onHand: 0, reserved: 0 }]);
     } finally {
       await db.delete(auditLogs).where(eq(auditLogs.actorStaffAccountId, actor!.id));
+      if (bookSkuId) {
+        await db.delete(storeInventory).where(eq(storeInventory.skuId, bookSkuId));
+        await db.delete(skus).where(eq(skus.id, bookSkuId));
+      }
+      if (bookProductId) await db.delete(products).where(eq(products.id, bookProductId));
+      if (editionId) await db.delete(bookEditions).where(eq(bookEditions.id, editionId));
+      if (bookId) await db.delete(books).where(eq(books.id, bookId));
       if (skuId) {
         await db.delete(storeInventory).where(eq(storeInventory.skuId, skuId));
         await db.delete(skus).where(eq(skus.id, skuId));

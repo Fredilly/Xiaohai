@@ -134,4 +134,36 @@ describe('store-scoped catalog draft creation (#208)', () => {
       headers['idempotency-key'],
     );
   });
+
+  it('accepts a scoped book draft without granting public sale or changing another store', async () => {
+    const { app, getStaffStore, createStoreDraftProduct } = fixture();
+    const bookPayload = {
+      ...payload,
+      name: '南门新书',
+      book: {
+        title: '南门新书',
+        author: '测试作者',
+        publisher: '测试出版社',
+        isbn: '978-3-16-148410-0',
+      },
+    };
+    const response = await app.inject({ method: 'POST', url, headers, payload: bookPayload });
+    expect(response.statusCode).toBe(201);
+    expect(getStaffStore).toHaveBeenCalledWith(own, expect.anything());
+    expect(createStoreDraftProduct).toHaveBeenCalledExactlyOnceWith(
+      { ...bookPayload, book: { ...bookPayload.book, isbn: '9783161484100' } },
+      actor,
+      expect.any(String),
+      own,
+      headers['idempotency-key'],
+    );
+    const foreignResponse = await app.inject({
+      method: 'POST',
+      url: `/api/v1/staff/stores/${foreign}/catalog/products`,
+      headers,
+      payload: bookPayload,
+    });
+    expect(foreignResponse.statusCode).toBe(403);
+    expect(createStoreDraftProduct).toHaveBeenCalledTimes(1);
+  });
 });

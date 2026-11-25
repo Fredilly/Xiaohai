@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { StoreCatalogItem } from '@xiaohai/contracts/commerce';
 import {
+  StoreCatalogDraftCreateForm,
   StoreCatalogEditForm,
   StoreCatalogPanel,
+  changedStoreBookFields,
   parseStorePriceToMinor,
   productStatus,
   skuStatus,
@@ -35,9 +37,9 @@ describe('Store catalog direct-edit module', () => {
     expect(html).toContain('店铺账号可编辑');
     expect(html).toContain('库存数量仍须通过库存盘点或调整流程变更');
     expect(html).toContain(
-      '可编辑本店关联商品的名称、简介、SKU 编码、规格、上架状态、售价及本店陈列信息',
+      '可编辑本店关联商品的名称、简介、图书资料、SKU 编码、规格、上架状态、售价及本店陈列信息',
     );
-    expect(html).toContain('新增非图书商品草稿');
+    expect(html).toContain('新增图书 / 普通商品草稿');
     expect(html).toContain('新商品默认未上架、不可售、库存为 0');
     expect(html).toContain('若商品资料还影响其他门店');
     expect(html).toContain('操作');
@@ -60,6 +62,93 @@ describe('Store catalog direct-edit module', () => {
     expect(productStatus('DRAFT')).toBe('草稿');
     expect(productStatus('INACTIVE')).toBe('已停用');
     expect(skuStatus('ACTIVE')).toBe('有效');
+  });
+
+  it('offers book-first store draft entry with ISBN and publisher, still unsellable', () => {
+    const html = renderToStaticMarkup(
+      <StoreCatalogDraftCreateForm
+        token="synthetic"
+        storeId="11111111-1111-4111-8111-111111111111"
+        onCancel={() => {}}
+        onSaved={() => {}}
+      />,
+    );
+    expect(html).toContain('图书</option>');
+    expect(html).toContain('非图书商品（食品仍须走批次入库）');
+    expect(html).toContain('书名（同时作为商品名称）');
+    expect(html).toContain('作者');
+    expect(html).toContain('出版社（可留空）');
+    expect(html).toContain('ISBN（可留空；有值时校验格式和全库去重）');
+    expect(html).toContain('默认不会公开上架或产生任何库存数量');
+  });
+
+  it('includes only modified book/edition fields and their own optimistic versions', () => {
+    const item: StoreCatalogItem = {
+      storeId: '11111111-1111-4111-8111-111111111111',
+      productId: '22222222-2222-4222-8222-222222222222',
+      skuId: '33333333-3333-4333-8333-333333333333',
+      productName: '小书',
+      description: null,
+      productStatus: 'DRAFT',
+      skuCode: 'BOOK-001',
+      skuName: '标准',
+      skuStatus: 'ACTIVE',
+      availableForSale: false,
+      priceMinor: 2300,
+      coverUrl: null,
+      bookTitle: '小书',
+      author: '张老师',
+      isbn: '9783161484100',
+      publisher: '童话出版社',
+      onHand: 0,
+      reserved: 0,
+      rentalReserved: 0,
+      available: 0,
+      inventoryVersion: 0,
+      productVersion: 4,
+      skuVersion: 5,
+      bookVersion: 6,
+      editionVersion: 7,
+      localVersion: 8,
+      shelfLocation: null,
+      storeNote: null,
+      displayInfo: null,
+    };
+    const original = {
+      title: '小书',
+      author: '张老师',
+      isbn: '9783161484100',
+      publisher: '童话出版社',
+    };
+    expect(changedStoreBookFields(item, original)).toEqual({});
+    expect(changedStoreBookFields(item, { ...original, title: '新书名' })).toEqual({
+      expectedBookVersion: 6,
+      bookTitle: '新书名',
+    });
+    expect(changedStoreBookFields(item, { ...original, publisher: '' })).toEqual({
+      expectedEditionVersion: 7,
+      publisher: null,
+    });
+    expect(changedStoreBookFields(item, { ...original, isbn: '978-0-306-40615-7' })).toEqual({
+      expectedEditionVersion: 7,
+      isbn: '9780306406157',
+    });
+    expect(() => changedStoreBookFields(item, { ...original, isbn: '' })).toThrow('不能直接清空');
+    expect(() => changedStoreBookFields(item, { ...original, isbn: '123' })).toThrow('有效格式');
+    expect(() => changedStoreBookFields(item, { ...original, title: '   ' })).toThrow('非空');
+    expect(changedStoreBookFields({ ...item, bookTitle: null }, original)).toEqual({});
+    const html = renderToStaticMarkup(
+      <StoreCatalogEditForm
+        token="synthetic"
+        storeId={item.storeId}
+        item={item}
+        onCancel={() => {}}
+        onSaved={() => {}}
+      />,
+    );
+    expect(html).toContain('ISBN（不可直接清空已存在的 ISBN）');
+    expect(html).toContain('value="童话出版社"');
+    expect(html).toContain('value="9783161484100"');
   });
 
   it('requires a visible manual confirmation for draft publication and SKU availability', () => {
