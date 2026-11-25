@@ -1,0 +1,74 @@
+# Manual-only, SAME ECS as staging: no host ports or staging networks/volumes.
+# This project is separate from xiaohai-staging and cannot auto-migrate/seed.
+# Requires a separately approved ingress override, backed-up data and host capacity.
+name: xiaohai-production-cohost
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?Production database name required}
+      POSTGRES_USER: ${POSTGRES_USER:?Production database user required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Production database password required}
+    volumes:
+      - production_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 10s
+      retries: 10
+    networks: [data]
+  redis:
+    image: redis:7.4-alpine
+    command: ['redis-server', '--appendonly', 'yes']
+    restart: unless-stopped
+    volumes:
+      - production_redis_data:/data
+    networks: [data]
+  production_api:
+    image: ghcr.io/fredilly/xiaohai-api:${API_REVISION:?Pin reviewed API image}
+    restart: unless-stopped
+    env_file: production.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      data: {}
+      outbound: {}
+      production_edge:
+        aliases: [production-api]
+  worker:
+    image: ghcr.io/fredilly/xiaohai-worker:${API_REVISION:?Pin reviewed Worker image}
+    restart: unless-stopped
+    env_file: production.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks: [data, outbound]
+  web:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.production-web
+    image: xiaohai-production-cohost-web:${WEB_REVISION:?Pin reviewed source revision}
+    restart: unless-stopped
+    volumes:
+      - ./Caddyfile.production-cohost-web:/etc/caddy/Caddyfile:ro
+    networks:
+      production_edge:
+        aliases: [production-web]
+
+networks:
+  data:
+    internal: true
+  outbound: {}
+  production_edge:
+    external: true
+    name: xiaohai-production-edge
+
+volumes:
+  production_postgres_data:
+  production_redis_data:

@@ -1,0 +1,17 @@
+# Opt-in override: never supplied to the normal staging Compose invocation
+# unless an operator has enabled cohost ingress with a durable local marker.
+# The existing staging private network and database volumes are unchanged.
+services:
+  proxy:
+    volumes:
+      - ./Caddyfile.cohost:/etc/caddy/Caddyfile:ro
+      - ./Caddyfile:/etc/caddy/Caddyfile.staging-base:ro
+      - ./Caddyfile.preserved:/etc/caddy/Caddyfile.preserved:ro
+    networks:
+      private: {}
+      production_edge: {}
+
+networks:
+  production_edge:
+    external: true
+    name: xiaohai-production-edge

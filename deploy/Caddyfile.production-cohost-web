@@ -1,0 +1,27 @@
+# Only an internal HTTP static-file server; public TLS belongs to staging's
+# separately approved shared-ingress override. Never publish 8080 on the host.
+:8080 {
+  encode zstd gzip
+  header {
+    X-Content-Type-Options "nosniff"
+    X-Frame-Options "DENY"
+    Referrer-Policy "strict-origin-when-cross-origin"
+  }
+  @store host store.pamboo.asia
+  handle @store {
+    root * /srv/store
+    try_files {path} /index.html
+    header Cache-Control "no-cache"
+    file_server
+  }
+  @admin host admin.pamboo.asia
+  handle @admin {
+    root * /srv/admin
+    try_files {path} /index.html
+    header Cache-Control "no-cache"
+    file_server
+  }
+  handle {
+    respond "Unknown host" 404
+  }
+}

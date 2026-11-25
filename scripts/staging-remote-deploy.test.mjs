@@ -14,13 +14,31 @@ async function fixture({
   pullFailure = false,
   upFailure = false,
   lockFailure = false,
+  cohost = false,
+  prodRunning = false,
+  networkInternal = true,
+  missingIngress = false,
+  missingPreservedSites = false,
+  psFailure = false,
+  caddyValidationFailure = false,
 } = {}) {
   const dir = await mkdtemp(join(tmpdir(), 'xiaohai-auth-guard-'));
   const events = join(dir, 'events.log');
   const configPathFile = join(dir, 'config-path');
+  const composeArgsFile = join(dir, 'compose-args');
   await writeFile(events, '');
   await writeFile(join(dir, 'staging.env'), 'APP_ENV=staging\n');
   await writeFile(join(dir, 'staging.compose.yml'), 'services: {}\n');
+  if (cohost) {
+    await writeFile(join(dir, 'cohost.enabled'), 'operator-approved\n');
+    await writeFile(join(dir, 'staging-cohost.override.yml'), 'services: {}\n');
+    if (!missingIngress) {
+      await writeFile(join(dir, 'Caddyfile.cohost'), 'test.local {}\n');
+      if (!missingPreservedSites) {
+        await writeFile(join(dir, 'Caddyfile.preserved'), '# additional approved site routes\n');
+      }
+    }
+  }
   await writeFile(join(dir, 'revision.env'), 'REVISION=old\n');
   const gate = join(dir, 'staging-disk-gate.sh');
   await writeFile(gate, '#!/bin/sh\necho gate >> "$MOCK_EVENTS"\n[ "$MOCK_GATE_FAILURE" != 1 ]\n');
@@ -44,8 +62,21 @@ case "$1" in
   logout)
     echo logout >> "$MOCK_EVENTS"
     ;;
+  ps)
+    [ "$MOCK_PS_FAILURE" != 1 ] || exit 78
+    [ "$MOCK_PROD_RUNNING" != 1 ] || echo xiaohai-production-cohost-api-1
+    ;;
+  network)
+    [ "$MOCK_NETWORK_INTERNAL" != 1 ] || echo true
+    ;;
+  run)
+    echo validate >> "$MOCK_EVENTS"
+    [ "$MOCK_CADDY_VALIDATION_FAILURE" != 1 ] || exit 79
+    ;;
   compose)
+    echo "$*" >> "$MOCK_COMPOSE_ARGS_FILE"
     case " $* " in
+      *" config --quiet "*) echo config >> "$MOCK_EVENTS" ;;
       *" pull "*) echo pull >> "$MOCK_EVENTS"; [ "$MOCK_PULL_FAILURE" != 1 ] || exit 73 ;;
       *" up -d "*) echo up >> "$MOCK_EVENTS"; [ "$MOCK_UP_FAILURE" != 1 ] || exit 74 ;;
       *) exit 75 ;;
@@ -65,6 +96,7 @@ esac
     dir,
     events,
     configPathFile,
+    composeArgsFile,
     run: () =>
       spawnSync('bash', [script], {
         cwd: dir,
@@ -81,6 +113,11 @@ esac
           MOCK_LOGIN_FAILURE: loginFailure ? '1' : '0',
           MOCK_PULL_FAILURE: pullFailure ? '1' : '0',
           MOCK_UP_FAILURE: upFailure ? '1' : '0',
+          MOCK_PROD_RUNNING: prodRunning ? '1' : '0',
+          MOCK_PS_FAILURE: psFailure ? '1' : '0',
+          MOCK_CADDY_VALIDATION_FAILURE: caddyValidationFailure ? '1' : '0',
+          MOCK_NETWORK_INTERNAL: networkInternal ? '1' : '0',
+          MOCK_COMPOSE_ARGS_FILE: composeArgsFile,
         },
       }),
   };
@@ -148,4 +185,65 @@ test('successful deployment also cleans isolated registry credentials', async ()
   assert.equal(await readFile(join(fx.dir, 'revision.env'), 'utf8'), `REVISION=${revision}\n`);
   await assertCleaned(fx);
   assert.doesNotMatch(result.stdout + result.stderr, /synthetic-token-never-log/u);
+});
+
+test('approved cohost marker persists ingress override across staging image updates', async () => {
+  const fx = await fixture({ cohost: true });
+  const result = fx.run();
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual((await readFile(fx.events, 'utf8')).trim().split('\n'), [
+    'gate',
+    'config',
+    'validate',
+    'login',
+    'pull',
+    'up',
+    'logout',
+  ]);
+  const compose = (await readFile(fx.composeArgsFile, 'utf8')).trim().split('\n');
+  assert.equal(compose.length, 3);
+  for (const args of compose) assert.match(args, /-f staging-cohost\.override\.yml/u);
+  await assertCleaned(fx);
+});
+
+test('cohost marker without ingress files or private network stops before login', async () => {
+  for (const settings of [
+    { missingIngress: true },
+    { missingPreservedSites: true },
+    { networkInternal: false },
+  ]) {
+    const fx = await fixture({ cohost: true, ...settings });
+    const result = fx.run();
+    assert.notEqual(result.status, 0);
+    assert.equal(await readFile(fx.events, 'utf8'), 'gate\n');
+    assert.equal(await readFile(join(fx.dir, 'revision.env'), 'utf8'), 'REVISION=old\n');
+  }
+});
+
+test('invalid merged Caddy route configuration stops before staging registry login', async () => {
+  const fx = await fixture({ cohost: true, caddyValidationFailure: true });
+  const result = fx.run();
+  assert.notEqual(result.status, 0);
+  assert.deepEqual((await readFile(fx.events, 'utf8')).trim().split('\n'), [
+    'gate',
+    'config',
+    'validate',
+  ]);
+  assert.match(result.stderr, /Caddy configuration syntax invalid/u);
+});
+
+test('running cohost production without marker stops staging update before login', async () => {
+  const fx = await fixture({ prodRunning: true });
+  const result = fx.run();
+  assert.notEqual(result.status, 0);
+  assert.equal(await readFile(fx.events, 'utf8'), 'gate\n');
+  assert.match(result.stderr, /ingress marker is missing/u);
+});
+
+test('unavailable production container inventory fails closed before staging login', async () => {
+  const fx = await fixture({ psFailure: true });
+  const result = fx.run();
+  assert.notEqual(result.status, 0);
+  assert.equal(await readFile(fx.events, 'utf8'), 'gate\n');
+  assert.match(result.stderr, /cannot enumerate production cohost containers/u);
 });

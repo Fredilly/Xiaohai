@@ -18,6 +18,8 @@ Target: purchased Ubuntu 24.04 Hong Kong VM, 2 vCPU / 4 GiB. Only public ports 8
 
 Production must use separate compute, database, volumes, secrets, domain, and a manual protected GitHub environment approval. **Do not deploy production from this staging workflow.**
 
+**Owner-requested exception (code-only, 2026-11-25):** a separately gated cohost architecture has been prepared for the existing ECS, which will also support the planned independent `orientalsourcepress.com` website. The separate-compute rule above remains the baseline; this exception is not active and does not waive protected production data/secrets, shared-Staging operation approval, capacity, live ingress inventory, backups or Fred's independent review. See [shared-host runbook](PRODUCTION_COHOST_RUNBOOK.md) and [ADR](../docs/ADR_PRODUCTION_STAGING_COHOST.md).
+
 ## Risks before enabling workflow
 
 - For private GHCR packages, the ephemeral GITHUB_TOKEN used by this workflow must be authorized to pull them from this repository. Test registry permissions once.

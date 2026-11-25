@@ -126,6 +126,18 @@ else
 fi
 [[ "$(docker context show)" == default ]] || fail 'unexpected Docker context'
 
+# Cohost production uses the same API/Worker image repositories. Its stopped
+# rollback images must never become staging-only retention candidates.
+# Until an independently approved cross-environment retention policy exists,
+# disable all staging-only image-retention modes on a cohost ECS.
+cohost_dir="${STAGING_DEPLOY_CONFIG_DIR:-/home/admin/xiaohai-deploy}"
+[[ ! -f "$cohost_dir/cohost.enabled" ]] ||
+  fail 'production cohost marker present: staging-only image retention is disabled'
+cohost_containers=$(docker ps -a --format '{{.Names}}' --filter label=com.docker.compose.project=xiaohai-production-cohost) ||
+  fail 'cannot enumerate production cohost containers'
+[[ -z "$cohost_containers" ]] ||
+  fail 'production cohost containers exist: staging-only image retention is disabled'
+
 api_repo='ghcr.io/fredilly/xiaohai-api'
 worker_repo='ghcr.io/fredilly/xiaohai-worker'
 declare -A protected_ids=()

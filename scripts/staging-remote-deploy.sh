@@ -17,6 +17,31 @@ flock -n 9 || fail 'deployment or retention operation already holds lock'
 # No registry token may be persisted until all read-only capacity gates pass.
 bash staging-disk-gate.sh pre
 
+# The opt-in file preserves shared ingress across future staging releases.
+# Never detach a running cohost production stack from its public route.
+# These checks run before registry authentication or revision writes.
+if [[ -f cohost.enabled ]]; then
+  [[ ! -L cohost.enabled && -f staging-cohost.override.yml && -f Caddyfile.cohost && -f Caddyfile.preserved && ! -L Caddyfile.preserved ]] ||
+    fail 'cohost marker exists but approved ingress files are missing'
+  [[ "$(docker network inspect --format '{{.Internal}}' xiaohai-production-edge 2>/dev/null)" == true ]] ||
+    fail 'cohost shared network missing or not internal'
+  docker compose --env-file staging.env -f staging.compose.yml -f staging-cohost.override.yml config --quiet ||
+    fail 'cohost merged ingress config invalid'
+  # Syntax-check the complete Caddy imports in a disposable, offline container.
+  # No live proxy reload or production network connection occurs here.
+  docker run --rm --network none --entrypoint caddy \
+    -v "$PWD/Caddyfile.cohost:/etc/caddy/Caddyfile:ro" \
+    -v "$PWD/Caddyfile:/etc/caddy/Caddyfile.staging-base:ro" \
+    -v "$PWD/Caddyfile.preserved:/etc/caddy/Caddyfile.preserved:ro" \
+    caddy:2-alpine validate --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null ||
+    fail 'cohost Caddy configuration syntax invalid'
+else
+  cohost_containers=$(docker ps --format '{{.Names}}' --filter label=com.docker.compose.project=xiaohai-production-cohost) ||
+    fail 'cannot enumerate production cohost containers'
+  [[ -z "$cohost_containers" ]] ||
+    fail 'production cohost containers exist but ingress marker is missing; stop to protect routing'
+fi
+
 # Never reuse ~/.docker/config.json or overwrite a deployer's existing credentials.
 # Docker Compose inherits this isolated config for the registry pull.
 docker_config=$(mktemp -d "${TMPDIR:-/tmp}/xiaohai-docker-auth.XXXXXXXX") ||
@@ -41,6 +66,11 @@ trap 'exit 143' TERM
 docker login ghcr.io -u xiaohai-deploy --password-stdin >/dev/null
 
 printf 'REVISION=%s\n' "$REVISION" > revision.env
-docker compose --env-file staging.env --env-file revision.env -f staging.compose.yml pull
-docker compose --env-file staging.env --env-file revision.env -f staging.compose.yml up -d --remove-orphans
+if [[ -f cohost.enabled ]]; then
+  docker compose --env-file staging.env --env-file revision.env -f staging.compose.yml -f staging-cohost.override.yml pull
+  docker compose --env-file staging.env --env-file revision.env -f staging.compose.yml -f staging-cohost.override.yml up -d --remove-orphans
+else
+  docker compose --env-file staging.env --env-file revision.env -f staging.compose.yml pull
+  docker compose --env-file staging.env --env-file revision.env -f staging.compose.yml up -d --remove-orphans
+fi
 echo 'STAGING_DEPLOY_OK: registry session will be cleaned on exit'

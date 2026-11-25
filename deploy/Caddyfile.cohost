@@ -1,0 +1,35 @@
+# Shared public ingress only after operator opt-in via staging-cohost.override.yml.
+# Preserve the EXACT reviewed staging Caddyfile and all pre-existing third-party
+# site routes in separately mounted read-only files. Unknown sites block cutover.
+# Production endpoints NEVER fall back to staging.
+import /etc/caddy/Caddyfile.staging-base
+import /etc/caddy/Caddyfile.preserved
+
+api.pamboo.asia {
+  encode zstd gzip
+  reverse_proxy production-api:3000
+}
+
+(production_ui_cohost) {
+  encode zstd gzip
+  header {
+    X-Content-Type-Options "nosniff"
+    X-Frame-Options "DENY"
+    Referrer-Policy "strict-origin-when-cross-origin"
+  }
+  @api path /api /api/* /health /ready
+  handle @api {
+    reverse_proxy production-api:3000
+  }
+  handle {
+    reverse_proxy production-web:8080
+  }
+}
+
+store.pamboo.asia {
+  import production_ui_cohost
+}
+
+admin.pamboo.asia {
+  import production_ui_cohost
+}

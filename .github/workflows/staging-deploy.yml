@@ -200,7 +200,7 @@ jobs:
         run: |
           set -eu
           ssh "$USER@$HOST" 'mkdir -p ~/xiaohai-deploy'
-          scp deploy/staging.compose.yml deploy/Caddyfile scripts/staging-disk-gate.sh scripts/staging-image-retention.sh scripts/staging-remote-deploy.sh "$USER@$HOST:~/xiaohai-deploy/"
+          scp deploy/staging.compose.yml deploy/Caddyfile deploy/staging-cohost.override.yml deploy/Caddyfile.cohost scripts/staging-disk-gate.sh scripts/staging-image-retention.sh scripts/staging-remote-deploy.sh "$USER@$HOST:~/xiaohai-deploy/"
           # Send the token through stdin only; the remote script first acquires
           # the shared lock and passes the capacity gate, then uses isolated
           # Docker credentials and an EXIT trap for success/failure cleanup.

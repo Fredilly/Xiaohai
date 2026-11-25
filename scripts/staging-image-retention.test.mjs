@@ -53,6 +53,9 @@ async function runRetention({
   rollback = `${rollbackA} ${rollbackB}`,
   mode = '--dry-run',
   env = {},
+  cohost = false,
+  prodContainers = false,
+  prodInventoryFailure = false,
 } = {}) {
   const dir = await mkdtemp(join(tmpdir(), 'xiaohai-retention-'));
   const deployDir = join(dir, 'xiaohai-deploy');
@@ -68,6 +71,7 @@ async function runRetention({
   ]) {
     await writeFile(join(deployDir, file), '# fixture deployment config\\n');
   }
+  if (cohost) await writeFile(join(deployDir, 'cohost.enabled'), 'operator-approved\\n');
   const docker = join(dir, 'docker');
   await writeFile(
     docker,
@@ -77,6 +81,10 @@ const model = JSON.parse(process.env.DOCKER_FIXTURE);
 const images = model.images;
 const out = (s) => process.stdout.write(String(s) + '\\n');
 if (a[0] === 'context' && a[1] === 'show') out('default');
+else if (a[0] === 'ps' && a.includes('--filter')) {
+  if (model.prodInventoryFailure) process.exit(2);
+  if (model.prodContainers) out('xiaohai-production-cohost-production_api-1');
+}
 else if (a[0] === 'ps' && a[1] === '-aq') model.containers.forEach(c => out(c.name));
 else if (a[0] === 'image' && a[1] === 'ls') Object.keys(images).forEach(out);
 else if (a[0] === 'image' && a[1] === 'inspect') {
@@ -119,7 +127,13 @@ else process.exit(2);
     env: {
       ...process.env,
       PATH: `${dir}:${process.env.PATH}`,
-      DOCKER_FIXTURE: JSON.stringify({ images, containers, aliases }),
+      DOCKER_FIXTURE: JSON.stringify({
+        images,
+        containers,
+        aliases,
+        prodContainers,
+        prodInventoryFailure,
+      }),
       STAGING_CURRENT_REVISION: current,
       STAGING_ROLLBACK_REVISIONS: rollback,
       STAGING_EXTRA_PROTECTED_REVISION: extraProtected,
@@ -140,6 +154,23 @@ test('dry-run emits exact API+worker IDs and never calls removal', async () => {
   assert.match(r.stdout, /deleted_pairs=0/);
   assert.doesNotMatch(r.stdout, /UNEXPECTED_DELETE/);
   assert.doesNotMatch(r.stderr, /STOP/); // grep exit 1 means no match, not an error
+});
+
+test('shared production marker or stopped production containers block staging-only retention', async () => {
+  for (const input of [{ cohost: true }, { prodContainers: true }]) {
+    const r = await runRetention(input);
+    assert.notEqual(r.status, 0);
+    assert.match(r.stderr, /staging-only image retention is disabled/u);
+    assert.doesNotMatch(r.stdout, /UNEXPECTED_DELETE|PLAN revision=/u);
+    assert.equal(r.lockCreated, false);
+  }
+});
+
+test('unknown cohost container inventory prevents retention assessment', async () => {
+  const r = await runRetention({ prodInventoryFailure: true });
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /cannot enumerate production cohost containers/u);
+  assert.doesNotMatch(r.stdout, /PLAN revision=|UNEXPECTED_DELETE/u);
 });
 
 test('dry-run leaves no lock file behind and excludes extra protected release', async () => {

@@ -2,6 +2,8 @@
 .env
 .env.*
 deploy/production.env
+deploy/Caddyfile.preserved
+deploy/cohost.enabled
 !.env.example
 !.env.staging.example
 !.env.production.example

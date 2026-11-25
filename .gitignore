@@ -9,6 +9,8 @@ test-results/
 .env
 .env.*
 deploy/production.env
+deploy/Caddyfile.preserved
+deploy/cohost.enabled
 benchmarks/story/raw/*.json
 benchmarks/image/raw/*.json
 benchmarks/image/outputs/*
