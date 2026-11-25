@@ -37,6 +37,11 @@ type Source = {
   productId: string;
   productName: string;
   productVersion: number;
+  productStatus: 'DRAFT' | 'ACTIVE' | 'INACTIVE';
+  skuCode: string;
+  skuName: string;
+  skuStatus: 'ACTIVE' | 'INACTIVE';
+  availableForSale: boolean;
   bookId: string | null;
   bookTitle: string | null;
   bookVersion: number | null;
@@ -77,6 +82,8 @@ export class CatalogEditService {
     if (!source) throw new CatalogEditError('NOT_FOUND');
     const canonicalInput = this.canonicalizeIsbn(source, input);
     this.assertExpectedVersions(source, canonicalInput);
+    this.assertPublicationState(source, canonicalInput);
+    await this.assertStorePublicationScope(this.db, source, canonicalInput, sharedAllowed);
     const changed = this.changedFields(source, canonicalInput);
     const sharedFields = changed.filter((field) => !isLocalField(field));
     if (sharedFields.length && !sharedAllowed) throw new CatalogEditError('SHARED_FORBIDDEN');
@@ -140,6 +147,8 @@ export class CatalogEditService {
           throw new CatalogEditError('CONFLICT');
         const canonicalInput = this.canonicalizeIsbn(source, input);
         this.assertExpectedVersions(source, canonicalInput);
+        this.assertPublicationState(source, canonicalInput);
+        await this.assertStorePublicationScope(tx, source, canonicalInput, sharedAllowed);
 
         const changed = this.changedFields(source, canonicalInput);
         if (!changed.length) return { impact: emptyImpact(), changed };
@@ -176,8 +185,15 @@ export class CatalogEditService {
           }
         }
 
-        if (changed.includes('productName')) {
-          await this.updateProduct(tx, source, canonicalInput.productName!);
+        if (changed.includes('productName') || changed.includes('productStatus')) {
+          await this.updateProduct(tx, source, canonicalInput);
+        }
+        if (
+          changed.some((field) =>
+            ['skuCode', 'skuName', 'skuStatus', 'availableForSale'].includes(field),
+          )
+        ) {
+          await this.updateSku(tx, source, canonicalInput);
         }
         if (changed.includes('bookTitle') || changed.includes('author')) {
           await this.updateBook(tx, source, canonicalInput);
@@ -311,6 +327,11 @@ export class CatalogEditService {
       'expectedSkuVersion',
       'expectedLocalVersion',
       'productName',
+      'productStatus',
+      'skuCode',
+      'skuName',
+      'skuStatus',
+      'availableForSale',
       'bookTitle',
       'author',
       'publisher',
@@ -363,6 +384,11 @@ export class CatalogEditService {
         productId: products.id,
         productName: products.name,
         productVersion: products.version,
+        productStatus: products.status,
+        skuCode: skus.code,
+        skuName: skus.name,
+        skuStatus: skus.status,
+        availableForSale: skus.availableForSale,
         bookId: books.id,
         bookTitle: books.title,
         bookVersion: books.version,
@@ -394,7 +420,12 @@ export class CatalogEditService {
       .for('update', { of: storeInventory })
       .limit(1);
     if (!row) return null;
-    return { ...row, localVersion: row.localVersion ?? 0 };
+    return {
+      ...row,
+      productStatus: row.productStatus as Source['productStatus'],
+      skuStatus: row.skuStatus as Source['skuStatus'],
+      localVersion: row.localVersion ?? 0,
+    };
   }
 
   private assertExpectedVersions(source: Source, input: StoreCatalogEditRequest) {
@@ -426,10 +457,57 @@ export class CatalogEditService {
     return { ...input, isbn };
   }
 
+  private assertPublicationState(source: Source, input: StoreCatalogEditRequest) {
+    if (
+      input.productStatus === undefined &&
+      input.skuStatus === undefined &&
+      input.availableForSale === undefined
+    )
+      return;
+    const available = input.availableForSale ?? source.availableForSale;
+    const productStatus = input.productStatus ?? source.productStatus;
+    const skuStatus = input.skuStatus ?? source.skuStatus;
+    if (available && (productStatus !== 'ACTIVE' || skuStatus !== 'ACTIVE')) {
+      throw new CatalogEditError('INVALID_REFERENCE');
+    }
+  }
+
+  private async assertStorePublicationScope(
+    tx: QueryContext,
+    source: Source,
+    input: StoreCatalogEditRequest,
+    scope: boolean | 'STORE_ONLY',
+  ) {
+    if (
+      scope !== 'STORE_ONLY' ||
+      input.productStatus !== 'ACTIVE' ||
+      source.productStatus === 'ACTIVE'
+    )
+      return;
+    // Activating a product exposes ALL of its active SKUs, not only the SKU
+    // selected in the store editor. Require an unambiguous single-SKU draft.
+    const related = await tx
+      .select({ id: skus.id })
+      .from(skus)
+      .where(eq(skus.productId, source.productId))
+      .limit(2);
+    if (related.length !== 1 || related[0]?.id !== source.skuId) {
+      throw new CatalogEditError('SHARED_FORBIDDEN');
+    }
+  }
+
   private changedFields(source: Source, input: StoreCatalogEditRequest): string[] {
     const changed: string[] = [];
     if (input.productName !== undefined && input.productName !== source.productName)
       changed.push('productName');
+    if (input.productStatus !== undefined && input.productStatus !== source.productStatus)
+      changed.push('productStatus');
+    if (input.skuCode !== undefined && input.skuCode !== source.skuCode) changed.push('skuCode');
+    if (input.skuName !== undefined && input.skuName !== source.skuName) changed.push('skuName');
+    if (input.skuStatus !== undefined && input.skuStatus !== source.skuStatus)
+      changed.push('skuStatus');
+    if (input.availableForSale !== undefined && input.availableForSale !== source.availableForSale)
+      changed.push('availableForSale');
     if (input.bookTitle !== undefined && input.bookTitle !== source.bookTitle)
       changed.push('bookTitle');
     if (input.author !== undefined && input.author !== source.author) changed.push('author');
@@ -447,12 +525,35 @@ export class CatalogEditService {
     return changed;
   }
 
-  private async updateProduct(tx: Tx, source: Source, name: string) {
+  private async updateProduct(tx: Tx, source: Source, input: StoreCatalogEditRequest) {
     const [updated] = await tx
       .update(products)
-      .set({ name, version: sql`${products.version} + 1`, updatedAt: new Date() })
+      .set({
+        ...(input.productName !== undefined ? { name: input.productName } : {}),
+        ...(input.productStatus !== undefined ? { status: input.productStatus } : {}),
+        version: sql`${products.version} + 1`,
+        updatedAt: new Date(),
+      })
       .where(and(eq(products.id, source.productId), eq(products.version, source.productVersion)))
       .returning({ id: products.id });
+    if (!updated) throw new CatalogEditError('CONFLICT');
+  }
+
+  private async updateSku(tx: Tx, source: Source, input: StoreCatalogEditRequest) {
+    const [updated] = await tx
+      .update(skus)
+      .set({
+        ...(input.skuCode !== undefined ? { code: input.skuCode } : {}),
+        ...(input.skuName !== undefined ? { name: input.skuName } : {}),
+        ...(input.skuStatus !== undefined ? { status: input.skuStatus } : {}),
+        ...(input.availableForSale !== undefined
+          ? { availableForSale: input.availableForSale }
+          : {}),
+        version: sql`${skus.version} + 1`,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(skus.id, source.skuId), eq(skus.version, source.skuVersion)))
+      .returning({ id: skus.id });
     if (!updated) throw new CatalogEditError('CONFLICT');
   }
 
@@ -516,7 +617,15 @@ export class CatalogEditService {
 
   private async findAffectedStores(tx: QueryContext, source: Source, fields: string[]) {
     const conditions = [];
-    if (fields.includes('productName')) conditions.push(eq(skus.productId, source.productId));
+    if (fields.some((field) => ['productName', 'productStatus'].includes(field)))
+      conditions.push(eq(skus.productId, source.productId));
+    if (
+      fields.some((field) =>
+        ['skuCode', 'skuName', 'skuStatus', 'availableForSale'].includes(field),
+      )
+    ) {
+      conditions.push(eq(skus.id, source.skuId));
+    }
     // Book title and author live on books and affect every edition of that book.
     if (source.bookId && fields.some((field) => ['bookTitle', 'author'].includes(field))) {
       conditions.push(eq(bookEditions.bookId, source.bookId));

@@ -22,11 +22,16 @@ const database = assertMeipingApplyDisposableDatabase(process.env)
 const suite = database ? describe : describe.skip;
 
 suite('single-store shared-catalog editing (disposable PostgreSQL only)', () => {
-  const db = database!.db;
+  // Vitest still evaluates the callback of describe.skip while collecting tests.
+  if (!database) {
+    it('requires an isolated PostgreSQL database', () => {});
+    return;
+  }
+  const db = database.db;
   const editor = new CatalogEditService(db, 'isolated-store-only-catalog-preview-signature-secret');
   const reader = new StoreCatalogReadService(db);
   afterAll(async () => {
-    await database!.pool.end();
+    await database.pool.end();
   });
 
   it('permits an isolated store item but rejects a newly shared item before any write', async () => {
@@ -88,11 +93,49 @@ suite('single-store shared-catalog editing (disposable PostgreSQL only)', () => 
         expectedSkuVersion: 0,
         expectedLocalVersion: 0,
         productName: 'Renamed store-only item',
+        productStatus: 'ACTIVE' as const,
+        skuCode: 'STORE-ONLY-EDITED-' + suffix,
+        skuName: 'Edited standard',
+        availableForSale: true,
         priceMinor: 1500,
       };
+      await expect(
+        editor.preview(
+          first,
+          sku!.id,
+          {
+            expectedProductVersion: 0,
+            expectedSkuVersion: 0,
+            expectedLocalVersion: 0,
+            availableForSale: true,
+          },
+          actor!.id,
+          'STORE_ONLY',
+        ),
+      ).rejects.toMatchObject({ code: 'INVALID_REFERENCE' });
+
+      // Activating one SKU must not silently publish sibling SKUs of the
+      // same product, even when no second store has linked them yet.
+      const [sibling] = await db
+        .insert(skus)
+        .values({
+          productId: product!.id,
+          code: 'STORE-ONLY-SIBLING-' + suffix,
+          name: 'Sibling',
+          priceMinor: 900,
+          availableForSale: true,
+        })
+        .returning({ id: skus.id });
+      try {
+        await expect(
+          editor.preview(first, sku!.id, initial, actor!.id, 'STORE_ONLY'),
+        ).rejects.toMatchObject({ code: 'SHARED_FORBIDDEN' });
+      } finally {
+        await db.delete(skus).where(eq(skus.id, sibling!.id));
+      }
       const preview = await editor.preview(first, sku!.id, initial, actor!.id, 'STORE_ONLY');
       expect(preview.impact).toMatchObject({
-        sharedFields: ['productName'],
+        sharedFields: ['productName', 'productStatus', 'skuCode', 'skuName', 'availableForSale'],
         affectedStoreCount: 1,
         affectedStoreIds: [first],
       });
@@ -112,15 +155,22 @@ suite('single-store shared-catalog editing (disposable PostgreSQL only)', () => 
         preview.previewToken!,
       );
       expect(updated.item.productName).toBe('Renamed store-only item');
+      expect(updated.item.productStatus).toBe('ACTIVE');
+      expect(updated.item.skuCode).toBe('STORE-ONLY-EDITED-' + suffix);
+      expect(updated.item.skuName).toBe('Edited standard');
+      expect(updated.item.availableForSale).toBe(true);
+      expect(updated.item.available).toBe(0);
       expect(updated.item.priceMinor).toBe(1500);
       expect(updated.item.productVersion).toBe(1);
-      expect(updated.item.skuVersion).toBe(0);
+      expect(updated.item.skuVersion).toBe(1);
 
       const proposed = {
         expectedProductVersion: 1,
-        expectedSkuVersion: 0,
+        expectedSkuVersion: 1,
         expectedLocalVersion: 1,
-        productName: 'Must never overwrite the second store',
+        productStatus: 'INACTIVE' as const,
+        skuName: 'Must never overwrite the second store',
+        availableForSale: false,
       };
       const stalePreview = await editor.preview(first, sku!.id, proposed, actor!.id, 'STORE_ONLY');
       expect(stalePreview.impact.affectedStoreCount).toBe(1);
@@ -147,6 +197,12 @@ suite('single-store shared-catalog editing (disposable PostgreSQL only)', () => 
       const secondAfter = await reader.get(second, sku!.id);
       expect(firstAfter?.productName).toBe('Renamed store-only item');
       expect(secondAfter?.productName).toBe('Renamed store-only item');
+      expect(firstAfter?.productStatus).toBe('ACTIVE');
+      expect(secondAfter?.productStatus).toBe('ACTIVE');
+      expect(firstAfter?.availableForSale).toBe(true);
+      expect(secondAfter?.availableForSale).toBe(true);
+      expect(firstAfter?.skuName).toBe('Edited standard');
+      expect(secondAfter?.skuName).toBe('Edited standard');
       expect(firstAfter?.priceMinor).toBe(1500);
       expect(secondAfter?.priceMinor).toBe(1000);
       expect(firstAfter?.onHand).toBe(0);
@@ -158,7 +214,14 @@ suite('single-store shared-catalog editing (disposable PostgreSQL only)', () => 
       expect(logs).toHaveLength(1);
       expect(logs[0]?.metadata).toMatchObject({
         affectedStoreCount: 1,
-        changedFields: ['productName', 'priceMinor'],
+        changedFields: [
+          'productName',
+          'productStatus',
+          'skuCode',
+          'skuName',
+          'availableForSale',
+          'priceMinor',
+        ],
       });
     } finally {
       // Fixture-only deletes, guarded by the same local DB allowlist.

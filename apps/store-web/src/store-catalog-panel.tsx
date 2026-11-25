@@ -97,14 +97,15 @@ function StoreCatalogSession({ token, storeId, storeName }: StoreCatalogProps) {
         。仅显示与本店库存记录关联的商品及其基础资料。库存数量仍须通过库存盘点或调整流程变更。
       </p>
       <p>
-        可编辑本店关联商品的名称、售价及本店陈列信息。若商品资料还影响其他门店，
+        可编辑本店关联商品的名称、SKU
+        编码、规格、上架状态、售价及本店陈列信息。若商品资料还影响其他门店，
         系统会拒绝直接修改，避免未经确认覆盖其他门店的共享数据。
       </p>
       <div className="meiping-store-actions">
         <button type="button" onClick={() => setCreating(true)}>
           新增非图书商品草稿
         </button>
-        <small>新商品默认未上架、不可售、库存为 0，须经过后续正式上架流程。</small>
+        <small>新商品默认未上架、不可售、库存为 0，须核对资料与库存后显式上架。</small>
       </div>
       <form className="book-search-form" onSubmit={search}>
         <input
@@ -423,7 +424,7 @@ function draftFor(item: StoreCatalogItem): StoreCatalogEditRequest {
   };
 }
 
-function StoreCatalogEditForm({
+export function StoreCatalogEditForm({
   token,
   storeId,
   item,
@@ -438,6 +439,12 @@ function StoreCatalogEditForm({
 }) {
   const [draft, setDraft] = useState(() => draftFor(item));
   const [name, setName] = useState(item.productName);
+  const [skuCode, setSkuCode] = useState(item.skuCode);
+  const [skuName, setSkuName] = useState(item.skuName);
+  const [productStatusValue, setProductStatusValue] = useState(item.productStatus);
+  const [skuStatusValue, setSkuStatusValue] = useState(item.skuStatus);
+  const [availableForSale, setAvailableForSale] = useState(item.availableForSale);
+  const [publicationConfirmed, setPublicationConfirmed] = useState(false);
   const [priceYuan, setPriceYuan] = useState(() => (item.priceMinor / 100).toFixed(2));
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState(
@@ -448,16 +455,35 @@ function StoreCatalogEditForm({
     event.preventDefault();
     if (saving) return;
     const priceMinor = parseStorePriceToMinor(priceYuan);
-    if (priceMinor === null || !name.trim()) {
-      setStatus('请填写有效的商品名称及价格（最多两位小数）。');
+    if (priceMinor === null || !name.trim() || !skuCode.trim() || !skuName.trim()) {
+      setStatus('请填写有效的商品名称、SKU 编码、规格及价格（最多两位小数）。');
+      return;
+    }
+    const publicationChanged =
+      productStatusValue !== item.productStatus ||
+      skuStatusValue !== item.skuStatus ||
+      availableForSale !== item.availableForSale;
+    if (publicationChanged && !publicationConfirmed) {
+      setStatus('上下架或可售状态变更前，须确认已经核对商品资料、图片与库存。');
       return;
     }
     const input: StoreCatalogEditRequest = {
       ...draft,
       ...(name.trim() !== item.productName ? { productName: name.trim() } : {}),
+      ...(productStatusValue !== item.productStatus ? { productStatus: productStatusValue } : {}),
+      ...(skuCode.trim() !== item.skuCode ? { skuCode: skuCode.trim() } : {}),
+      ...(skuName.trim() !== item.skuName ? { skuName: skuName.trim() } : {}),
+      ...(skuStatusValue !== item.skuStatus ? { skuStatus: skuStatusValue } : {}),
+      ...(availableForSale !== item.availableForSale ? { availableForSale } : {}),
       ...(priceMinor !== item.priceMinor ? { priceMinor } : {}),
     };
-    const editsShared = input.productName !== undefined;
+    const editsShared =
+      input.productName !== undefined ||
+      input.productStatus !== undefined ||
+      input.skuCode !== undefined ||
+      input.skuName !== undefined ||
+      input.skuStatus !== undefined ||
+      input.availableForSale !== undefined;
     setSaving(true);
     setStatus(editsShared ? '正在核对商品对其他门店的影响…' : '正在保存本店资料…');
     try {
@@ -501,7 +527,10 @@ function StoreCatalogEditForm({
   return (
     <form className="catalog-correction-form" onSubmit={(event) => void save(event)}>
       <h3>编辑商品资料：{item.bookTitle ?? item.productName}</h3>
-      <p>名称是共享资料，变更需核对影响范围。售价只修改当前门店，不影响其他门店。</p>
+      <p>
+        名称、SKU
+        编码、规格和上下架状态是共享资料，变更需核对影响范围。售价只修改当前门店，不影响其他门店。
+      </p>
       <label>
         商品名称
         <input
@@ -511,6 +540,80 @@ function StoreCatalogEditForm({
           disabled={saving}
           onChange={(event) => setName(event.target.value)}
         />
+      </label>
+      <label>
+        SKU 编码 / 条码
+        <input
+          required
+          maxLength={80}
+          value={skuCode}
+          disabled={saving}
+          onChange={(event) => setSkuCode(event.target.value)}
+        />
+      </label>
+      <label>
+        商品规格 / SKU 名称
+        <input
+          required
+          maxLength={120}
+          value={skuName}
+          disabled={saving}
+          onChange={(event) => setSkuName(event.target.value)}
+        />
+      </label>
+      <label>
+        商品状态
+        <select
+          disabled={saving}
+          value={productStatusValue}
+          onChange={(event) => {
+            const value = event.target.value as StoreCatalogItem['productStatus'];
+            setProductStatusValue(value);
+            if (value !== 'ACTIVE') setAvailableForSale(false);
+            setPublicationConfirmed(false);
+          }}
+        >
+          <option value="DRAFT">草稿（不展示）</option>
+          <option value="ACTIVE">已上架（可展示）</option>
+          <option value="INACTIVE">已停用（不展示）</option>
+        </select>
+      </label>
+      <label>
+        SKU 状态
+        <select
+          disabled={saving}
+          value={skuStatusValue}
+          onChange={(event) => {
+            const value = event.target.value as StoreCatalogItem['skuStatus'];
+            setSkuStatusValue(value);
+            if (value !== 'ACTIVE') setAvailableForSale(false);
+            setPublicationConfirmed(false);
+          }}
+        >
+          <option value="ACTIVE">有效</option>
+          <option value="INACTIVE">停用</option>
+        </select>
+      </label>
+      <label>
+        <input
+          type="checkbox"
+          disabled={saving || productStatusValue !== 'ACTIVE' || skuStatusValue !== 'ACTIVE'}
+          checked={availableForSale}
+          onChange={(event) => {
+            setAvailableForSale(event.target.checked);
+            setPublicationConfirmed(false);
+          }}
+        />
+        允许销售（仍受真实库存、食品安全开关和结算门禁限制）
+      </label>
+      <label>
+        <input
+          type="checkbox"
+          disabled={saving}
+          checked={publicationConfirmed}
+          onChange={(event) => setPublicationConfirmed(event.target.checked)}
+        />
+        我已核对商品资料、图片及库存，确认本次上下架或可售状态变更
       </label>
       <label>
         售价（元）

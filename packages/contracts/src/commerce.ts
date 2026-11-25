@@ -309,6 +309,11 @@ export const storeCatalogEditRequestSchema = z
     expectedSkuVersion: z.number().int().nonnegative(),
     expectedLocalVersion: z.number().int().nonnegative(),
     productName: z.string().trim().min(1).max(160).optional(),
+    productStatus: productStatusSchema.optional(),
+    skuCode: z.string().trim().min(1).max(80).optional(),
+    skuName: z.string().trim().min(1).max(120).optional(),
+    skuStatus: skuStatusSchema.optional(),
+    availableForSale: z.boolean().optional(),
     bookTitle: z.string().trim().min(1).max(200).optional(),
     author: z.string().trim().min(1).max(160).optional(),
     publisher: editableText(160),
@@ -322,6 +327,11 @@ export const storeCatalogEditRequestSchema = z
   .superRefine((value, ctx) => {
     const fields = [
       'productName',
+      'productStatus',
+      'skuCode',
+      'skuName',
+      'skuStatus',
+      'availableForSale',
       'bookTitle',
       'author',
       'publisher',

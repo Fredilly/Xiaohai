@@ -276,6 +276,65 @@ describe('authorized direct catalog editing', () => {
     );
   });
 
+  it('accepts versioned SKU and explicit publication edits through the same scoped preview flow', async () => {
+    const { app, preview, update } = setup(['stores.read', 'catalog.edit']);
+    const headers = { authorization: ['Be', 'arer ', 'fake-staff-session'].join('') };
+    const url = `/api/v1/staff/stores/${own}/catalog/${own}`;
+    const skuInput = {
+      expectedProductVersion: 0,
+      expectedSkuVersion: 0,
+      expectedLocalVersion: 0,
+      skuCode: 'STORE-12345',
+      skuName: '瓶装 500ml',
+      productStatus: 'ACTIVE',
+      skuStatus: 'ACTIVE',
+      availableForSale: true,
+    };
+    const proposed = await app.inject({
+      method: 'POST',
+      url: url + '/preview',
+      headers,
+      payload: skuInput,
+    });
+    expect(proposed.statusCode).toBe(200);
+    expect(preview).toHaveBeenCalledWith(own, own, skuInput, context.staffAccountId, 'STORE_ONLY');
+
+    const saved = await app.inject({
+      method: 'PATCH',
+      url,
+      headers: { ...headers, 'x-catalog-preview-token': 'signed-test-token' },
+      payload: skuInput,
+    });
+    expect(saved.statusCode).toBe(200);
+    expect(update).toHaveBeenCalledWith(
+      own,
+      own,
+      context.staffAccountId,
+      expect.any(String),
+      skuInput,
+      'STORE_ONLY',
+      'signed-test-token',
+    );
+
+    const invalid = await app.inject({
+      method: 'PATCH',
+      url,
+      headers,
+      payload: { ...skuInput, skuCode: '   ' },
+    });
+    expect(invalid.statusCode).toBe(400);
+    expect(update).toHaveBeenCalledTimes(1);
+
+    const forbiddenShape = await app.inject({
+      method: 'PATCH',
+      url,
+      headers,
+      payload: { ...skuInput, productStatus: 'UNREVIEWED' },
+    });
+    expect(forbiddenShape.statusCode).toBe(400);
+    expect(update).toHaveBeenCalledTimes(1);
+  });
+
   it('returns safe 403 when the store editor rejects cross-store impact', async () => {
     const { app, preview, update } = setup(['stores.read', 'catalog.edit']);
     const headers = { authorization: ['Be', 'arer ', 'fake-staff-session'].join('') };
