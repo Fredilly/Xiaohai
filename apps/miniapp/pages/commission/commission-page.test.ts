@@ -1,7 +1,17 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CommerceApiError } from '../../services/commerce';
 import { createReferralLink, createWithdrawal } from '../../services/commission';
+import { consumerToken, storedConsumerId } from '../../services/consumer-session';
+import { persistPendingWithdrawal, readPendingWithdrawal } from './withdrawal-retry';
 import { canUseCommissionActions, type CommissionAccountStatus } from './commission-state';
+
+const consumerId = '11111111-1111-4111-8111-111111111111';
+const storage = new Map<string, unknown>();
+
+vi.mock('../../services/consumer-session', () => ({
+  consumerToken: vi.fn(),
+  storedConsumerId: vi.fn(),
+}));
 
 vi.mock('../../services/commission', () => ({
   createReferralLink: vi.fn(),
@@ -22,9 +32,11 @@ type CommissionTestData = {
   links: unknown[];
   withdrawals: unknown[];
   amountYuan: string;
+  pendingWithdrawal: boolean;
 };
 
 type CommissionTestPage = {
+  accountUserId: string;
   data: CommissionTestData;
   setData(update: Partial<CommissionTestData>): void;
   createLink(): Promise<void>;
@@ -49,11 +61,20 @@ afterAll(() => {
 
 beforeEach(() => {
   vi.resetAllMocks();
+  storage.clear();
+  vi.mocked(consumerToken).mockReturnValue('session-a');
+  vi.mocked(storedConsumerId).mockReturnValue(consumerId);
+  vi.stubGlobal('wx', {
+    getStorageSync: (key: string) => storage.get(key),
+    setStorageSync: (key: string, value: unknown) => storage.set(key, value),
+    removeStorageSync: (key: string) => storage.delete(key),
+  });
 });
 
 function readyPage(): CommissionTestPage {
   const page: CommissionTestPage = {
     ...pageDefinition,
+    accountUserId: consumerId,
     data: { ...pageDefinition.data },
     setData(update) {
       Object.assign(this.data, update);
@@ -89,10 +110,99 @@ describe('commission action failures', () => {
     await page.withdraw();
 
     expect(createWithdrawal).toHaveBeenCalledOnce();
-    expect(page.data.error).toBe('提现申请失败，请检查可用余额或稍后重试。');
+    expect(page.data.error).toContain('提现结果未确认');
     expect(page.data.accountStatus).toBe('ready');
     expect(page.data.amountYuan).toBe('10');
+    expect(page.data.pendingWithdrawal).toBe(true);
+    expect(readPendingWithdrawal(consumerId)?.amountMinor).toBe(1000);
     expect(page.data.busy).toBe(false);
+  });
+
+  it('retries the original withdrawal key after an ambiguous response and clears it only on confirmation', async () => {
+    const page = readyPage();
+    vi.mocked(createWithdrawal).mockRejectedValueOnce(new Error('network'));
+    await page.withdraw();
+    const first = vi.mocked(createWithdrawal).mock.calls[0]!;
+    expect(first[0]).toBe(1000);
+    expect(readPendingWithdrawal(consumerId)?.clientRequestId).toBe(first[1]);
+
+    const freshPage = readyPage();
+    vi.mocked(createWithdrawal).mockImplementationOnce((amountMinor, clientRequestId) =>
+      Promise.resolve({
+        amountMinor,
+        clientRequestId,
+      } as never),
+    );
+    const { getCommissionAccount, listReferralLinks, listWithdrawals } =
+      await import('../../services/commission');
+    vi.mocked(getCommissionAccount).mockResolvedValue({
+      frozenMinor: 0,
+      availableMinor: 1000,
+      entries: [],
+    });
+    vi.mocked(listReferralLinks).mockResolvedValue({ links: [] });
+    vi.mocked(listWithdrawals).mockResolvedValue({ withdrawals: [] });
+    await freshPage.withdraw();
+    expect(vi.mocked(createWithdrawal).mock.calls[1]).toEqual(first);
+    expect(readPendingWithdrawal(consumerId)).toBeNull();
+    expect(freshPage.data.pendingWithdrawal).toBe(false);
+    expect(freshPage.data.amountYuan).toBe('');
+  });
+
+  it('reconciles a lost POST response from authoritative withdrawal records on reload', async () => {
+    persistPendingWithdrawal(consumerId, {
+      amountMinor: 1000,
+      clientRequestId: 'replayed-request-1',
+    });
+    const { getCommissionAccount, listReferralLinks, listWithdrawals } =
+      await import('../../services/commission');
+    vi.mocked(getCommissionAccount).mockResolvedValue({
+      frozenMinor: 0,
+      availableMinor: 0,
+      entries: [],
+    });
+    vi.mocked(listReferralLinks).mockResolvedValue({ links: [] });
+    vi.mocked(listWithdrawals).mockResolvedValue({
+      withdrawals: [
+        {
+          id: 'withdrawal-a',
+          amountMinor: 1000,
+          clientRequestId: 'replayed-request-1',
+          status: 'REQUESTED',
+        },
+      ],
+    } as never);
+    const page = readyPage();
+    await (page as CommissionTestPage & { load: () => Promise<void> }).load();
+    expect(readPendingWithdrawal(consumerId)).toBeNull();
+    expect(page.data.pendingWithdrawal).toBe(false);
+    expect(createWithdrawal).not.toHaveBeenCalled();
+  });
+
+  it('blocks different amounts, account switches and missing safe storage before POST', async () => {
+    const page = readyPage();
+    vi.mocked(createWithdrawal).mockRejectedValueOnce(new Error('timeout'));
+    await page.withdraw();
+    page.data.amountYuan = '20';
+    await page.withdraw();
+    expect(createWithdrawal).toHaveBeenCalledTimes(1);
+    expect(page.data.error).toContain('原金额');
+
+    vi.mocked(storedConsumerId).mockReturnValue('22222222-2222-4222-8222-222222222222');
+    await page.withdraw();
+    expect(createWithdrawal).toHaveBeenCalledTimes(1);
+    vi.mocked(storedConsumerId).mockReturnValue(consumerId);
+    const newPage = readyPage();
+    storage.clear();
+    vi.stubGlobal('wx', {
+      getStorageSync: () => undefined,
+      setStorageSync: () => {
+        throw new Error('storage unavailable');
+      },
+    });
+    await newPage.withdraw();
+    expect(createWithdrawal).toHaveBeenCalledTimes(1);
+    expect(newPage.data.error).toContain('无法安全保存');
   });
 
   it.each(['link', 'withdraw'] as const)(

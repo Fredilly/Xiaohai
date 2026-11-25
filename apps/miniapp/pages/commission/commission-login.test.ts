@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 
 const mocks = vi.hoisted(() => ({
   token: vi.fn(),
+  userId: vi.fn(),
   getCommissionAccount: vi.fn(),
   listReferralLinks: vi.fn(),
   listWithdrawals: vi.fn(),
@@ -10,7 +11,10 @@ const mocks = vi.hoisted(() => ({
   switchTab: vi.fn(),
 }));
 
-vi.mock('../../services/consumer-session', () => ({ consumerToken: mocks.token }));
+vi.mock('../../services/consumer-session', () => ({
+  consumerToken: mocks.token,
+  storedConsumerId: mocks.userId,
+}));
 vi.mock('../../services/commission', () => ({
   getCommissionAccount: mocks.getCommissionAccount,
   listReferralLinks: mocks.listReferralLinks,
@@ -59,8 +63,14 @@ beforeAll(async () => {
 afterAll(() => vi.unstubAllGlobals());
 
 beforeEach(() => {
-  vi.clearAllMocks();
-  vi.stubGlobal('wx', { switchTab: mocks.switchTab });
+  vi.resetAllMocks();
+  mocks.userId.mockReturnValue('11111111-1111-4111-8111-111111111111');
+  vi.stubGlobal('wx', {
+    switchTab: mocks.switchTab,
+    getStorageSync: () => undefined,
+    setStorageSync: vi.fn(),
+    removeStorageSync: vi.fn(),
+  });
 });
 
 function page(): TestPage {
@@ -80,6 +90,52 @@ function page(): TestPage {
 }
 
 describe('Commission login-required UI and request guard', () => {
+  it('discards a previous account financial response received after a login switch', async () => {
+    mocks.token.mockReturnValue('session-a');
+    let resolve: (value: unknown) => void = () => {};
+    mocks.getCommissionAccount.mockImplementationOnce(
+      () =>
+        new Promise((accept) => {
+          resolve = accept;
+        }),
+    );
+    mocks.listReferralLinks.mockResolvedValue({ links: [{ id: 'old-link' }] });
+    mocks.listWithdrawals.mockResolvedValue({ withdrawals: [] });
+    const current = page();
+    const pending = current.load();
+    mocks.token.mockReturnValue('session-b');
+    mocks.userId.mockReturnValue('22222222-2222-4222-8222-222222222222');
+    resolve({ frozenMinor: 100, availableMinor: 500, entries: [{ id: 'old-ledger' }] });
+    await pending;
+    expect(current.data).toMatchObject({
+      accountStatus: 'unauthenticated',
+      frozenMinor: 0,
+      availableMinor: 0,
+      entries: [],
+      links: [],
+      loading: false,
+    });
+  });
+
+  it('only accepts the latest of two overlapping balance refreshes', async () => {
+    mocks.token.mockReturnValue('session-a');
+    const resolvers: Array<(value: unknown) => void> = [];
+    mocks.getCommissionAccount.mockImplementation(
+      () => new Promise((accept) => resolvers.push(accept)),
+    );
+    mocks.listReferralLinks.mockResolvedValue({ links: [] });
+    mocks.listWithdrawals.mockResolvedValue({ withdrawals: [] });
+    const current = page();
+    const first = current.load();
+    const second = current.load();
+    resolvers[1]!({ frozenMinor: 0, availableMinor: 200, entries: [] });
+    await second;
+    resolvers[0]!({ frozenMinor: 0, availableMinor: 100, entries: [] });
+    await first;
+    expect(current.data.accountStatus).toBe('ready');
+    expect(current.data.availableMinor).toBe(200);
+  });
+
   it('skips all protected GETs when signed out and clears previous account data', async () => {
     mocks.token.mockReturnValue('');
     const current = page();
