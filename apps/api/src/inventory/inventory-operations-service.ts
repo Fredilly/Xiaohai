@@ -212,7 +212,11 @@ export class InventoryOperationsService {
             previous.storeId !== input.storeId ||
             previous.skuId !== input.skuId ||
             previous.quantityDelta !== input.initialQuantity ||
+            previous.balanceAfter !== input.initialQuantity ||
+            previous.transactionType !== 'ADJUSTMENT_IN' ||
+            previous.referenceType !== 'INVENTORY_ADJUSTMENT' ||
             previous.reason !== input.reason ||
+            previous.createdByStaffAccountId !== context.staffAccountId ||
             previous.metadata?.source !== 'STORE_OPENING_COUNT'
           )
             throw new InventoryOperationsError('CONFLICT');

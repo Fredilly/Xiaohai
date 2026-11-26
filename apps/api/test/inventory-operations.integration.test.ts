@@ -310,6 +310,17 @@ suite('M14 inventory operations PostgreSQL integration', () => {
     });
     expect(replay.statusCode).toBe(201);
     expect(replay.json()).toEqual(first.json());
+    const anotherOperator = await staff([inventoryPermissions.read, inventoryPermissions.adjust], {
+      type: 'STORE',
+      id: d.storeB.id,
+    });
+    const borrowedKey = await app.inject({
+      method: 'POST',
+      url: '/api/v1/staff/inventory/opening-stock',
+      headers: auth(anotherOperator.token),
+      payload,
+    });
+    expect(borrowedKey.statusCode).toBe(409);
     const overwrite = await app.inject({
       method: 'POST',
       url: '/api/v1/staff/inventory/opening-stock',

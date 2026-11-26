@@ -45,6 +45,28 @@ function serviceWithReplay(existing: object) {
   return { service, tx };
 }
 
+function serviceWithOpeningReplay(existing: object) {
+  // Opening first checks that the SKU has no food batch, then reads the
+  // immutable positive-opening transaction by the original request key.
+  const limit = vi.fn().mockResolvedValueOnce([]).mockResolvedValueOnce([existing]);
+  const tx = {
+    select: () => ({ from: () => ({ where: () => ({ limit }) }) }),
+    execute: vi.fn(),
+    insert: vi.fn(),
+    update: vi.fn(),
+  };
+  const db = { transaction: async (run: (value: typeof tx) => unknown) => await run(tx) };
+  const service = new InventoryOperationsService(
+    db as unknown as ReturnType<typeof createDatabase>['db'],
+  );
+  vi.spyOn(service, 'requireStoreAccess').mockResolvedValue({
+    id: input.storeId,
+    regionId: 'synthetic-region',
+    franchiseeId: null,
+  });
+  return { service, tx, limit };
+}
+
 describe('inventory idempotency replay binding (no database connection)', () => {
   it('replays an identical issue without locking or mutating a second balance', async () => {
     const { service, tx } = serviceWithReplay(original);
@@ -87,5 +109,71 @@ describe('inventory idempotency replay binding (no database connection)', () => 
     const { service } = serviceWithReplay(original);
     vi.spyOn(service, 'requireStoreAccess').mockRejectedValue(new Error('FORBIDDEN'));
     await expect(service.issue(context, input)).rejects.toThrow('FORBIDDEN');
+  });
+});
+
+describe('first stock opening replay belongs to the original staff and ledger', () => {
+  const opening = {
+    storeId: input.storeId,
+    skuId: input.skuId,
+    initialQuantity: 7,
+    reason: 'Synthetic first physical count',
+    idempotencyKey: input.idempotencyKey,
+  };
+  const record = {
+    storeId: opening.storeId,
+    skuId: opening.skuId,
+    idempotencyKey: opening.idempotencyKey,
+    transactionType: 'ADJUSTMENT_IN',
+    quantityDelta: 7,
+    balanceAfter: 7,
+    referenceType: 'INVENTORY_ADJUSTMENT',
+    reason: opening.reason,
+    metadata: { source: 'STORE_OPENING_COUNT' },
+    createdByStaffAccountId: context.staffAccountId,
+  };
+
+  it('replays the same staff count without a second inventory row, transaction or audit', async () => {
+    const { service, tx, limit } = serviceWithOpeningReplay(record);
+    expect(await service.registerOpeningStock(context, opening, 'synthetic')).toEqual({
+      storeId: input.storeId,
+      skuId: input.skuId,
+      onHand: 7,
+      version: 1,
+    });
+    expect(limit).toHaveBeenCalledTimes(2);
+    expect(tx.insert).not.toHaveBeenCalled();
+    expect(tx.update).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { storeId: 'another-store' },
+    { skuId: 'another-sku' },
+    { quantityDelta: 8 },
+    { balanceAfter: 8 },
+    { transactionType: 'ADJUSTMENT_OUT' },
+    { referenceType: 'STOCK_ISSUE' },
+    { reason: 'another count' },
+    { createdByStaffAccountId: 'other-staff' },
+    { metadata: { source: 'ANOTHER_WORKFLOW' } },
+  ])('rejects a mismatched original opening ledger: %j', async (change) => {
+    const { service, tx } = serviceWithOpeningReplay({ ...record, ...change });
+    await expect(service.registerOpeningStock(context, opening, 'synthetic')).rejects.toMatchObject(
+      {
+        code: 'CONFLICT',
+      },
+    );
+    expect(tx.insert).not.toHaveBeenCalled();
+    expect(tx.update).not.toHaveBeenCalled();
+  });
+
+  it('requires current store authorization even for an exact historical replay', async () => {
+    const { service, tx } = serviceWithOpeningReplay(record);
+    vi.spyOn(service, 'requireStoreAccess').mockRejectedValue(new Error('FORBIDDEN'));
+    await expect(service.registerOpeningStock(context, opening, 'synthetic')).rejects.toThrow(
+      'FORBIDDEN',
+    );
+    expect(tx.execute).not.toHaveBeenCalled();
+    expect(tx.insert).not.toHaveBeenCalled();
   });
 });
