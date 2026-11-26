@@ -1,0 +1,54 @@
+# CANDIDATE ONLY — NOT mounted by the normal staging deployment.
+# Activate only with the separately approved staging-web.compose.yml overlay.
+staging-api.pamboo.asia {
+  encode zstd gzip
+  reverse_proxy api:3000
+}
+
+staging-store.pamboo.asia {
+  encode zstd gzip
+  header {
+    X-Content-Type-Options nosniff
+    X-Frame-Options DENY
+    X-Robots-Tag "noindex, nofollow, noarchive"
+    Referrer-Policy strict-origin-when-cross-origin
+  }
+  @api path /api/*
+  handle @api {
+    reverse_proxy api:3000
+  }
+  @assets path /assets/*
+  handle @assets {
+    root * /srv/xiaohai-web/store/current
+    file_server
+  }
+  handle {
+    root * /srv/xiaohai-web/store/current
+    try_files {path} /index.html
+    file_server
+  }
+}
+
+staging-admin.pamboo.asia {
+  encode zstd gzip
+  header {
+    X-Content-Type-Options nosniff
+    X-Frame-Options DENY
+    X-Robots-Tag "noindex, nofollow, noarchive"
+    Referrer-Policy strict-origin-when-cross-origin
+  }
+  @api path /api/*
+  handle @api {
+    reverse_proxy api:3000
+  }
+  @assets path /assets/*
+  handle @assets {
+    root * /srv/xiaohai-web/admin/current
+    file_server
+  }
+  handle {
+    root * /srv/xiaohai-web/admin/current
+    try_files {path} /index.html
+    file_server
+  }
+}
