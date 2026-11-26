@@ -1,0 +1,31 @@
+.settings-page {
+  background: #fff9ef;
+}
+.settings-hero {
+  background: #e3f1e6;
+}
+.settings-card {
+  margin-top: 20rpx;
+  padding: 28rpx;
+}
+.settings-note {
+  display: block;
+  margin-top: 14rpx;
+  color: #697783;
+  font-size: 22rpx;
+  line-height: 1.6;
+}
+.settings-button {
+  margin: 22rpx 0 0;
+  border: 1rpx solid #d0ddcf;
+  border-radius: 16rpx;
+  background: #f1f7ee;
+  color: #245940;
+  font-size: 27rpx;
+}
+.settings-notice {
+  display: block;
+  margin-top: 22rpx;
+  color: #245940;
+  font-size: 24rpx;
+}

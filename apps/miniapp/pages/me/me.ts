@@ -1,7 +1,6 @@
 import { loginWithWeChat } from '../../services/auth';
 import { storedConsumerId } from '../../services/consumer-session';
-
-const AVATAR_STORAGE_KEY = 'xiaohai.consumer.avatar';
+import { CONSUMER_AVATAR_STORAGE_KEY } from '../../services/consumer-avatar';
 
 type ChooseAvatarEvent = { detail: { avatarUrl?: string } };
 
@@ -43,7 +42,7 @@ Page({
   onShow() {
     try {
       const consumerUserId = storedConsumerId();
-      const avatarUrl = String(wx.getStorageSync(AVATAR_STORAGE_KEY) || '');
+      const avatarUrl = String(wx.getStorageSync(CONSUMER_AVATAR_STORAGE_KEY) || '');
       this.setData({
         consumerUserId,
         consumerDisplayId: shortId(consumerUserId),
@@ -90,11 +89,11 @@ Page({
     wx.saveFile({
       tempFilePath,
       success: ({ savedFilePath }) => {
-        wx.setStorageSync(AVATAR_STORAGE_KEY, savedFilePath);
+        wx.setStorageSync(CONSUMER_AVATAR_STORAGE_KEY, savedFilePath);
         this.setData({ avatarUrl: savedFilePath });
       },
       fail: () => {
-        wx.setStorageSync(AVATAR_STORAGE_KEY, tempFilePath);
+        wx.setStorageSync(CONSUMER_AVATAR_STORAGE_KEY, tempFilePath);
         this.setData({ avatarUrl: tempFilePath });
       },
     });
@@ -113,6 +112,7 @@ Page({
     else if (key === 'animations') void wx.navigateTo({ url: '/pages/animations/animations' });
     else if (key === 'my-rental') void wx.navigateTo({ url: '/pages/rentals/rentals' });
     else if (key === 'commission') void wx.navigateTo({ url: '/pages/commission/commission' });
+    else if (key === 'settings') void wx.navigateTo({ url: '/pages/settings/settings' });
     else if (key)
       void wx.navigateTo({ url: `/pages/feature/feature?key=${encodeURIComponent(key)}` });
   },

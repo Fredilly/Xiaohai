@@ -1,0 +1,20 @@
+<view class="page settings-page">
+  <view class="hero settings-hero">
+    <text class="hero-title">设置</text>
+    <text class="hero-subtitle">管理当前设备的登录状态与本机头像</text>
+  </view>
+
+  <view class="state-card settings-card">
+    <text class="card-title">账号</text>
+    <text class="state-copy">{{isLoggedIn ? '已登录 · ID ' + consumerDisplayId : '当前未登录'}}</text>
+    <text class="settings-note">退出登录只会清除本机登录凭证；不会注销账号或撤销已完成的订单。</text>
+    <button wx:if="{{isLoggedIn}}" class="settings-button" bindtap="logout">退出登录</button>
+  </view>
+
+  <view class="state-card settings-card">
+    <text class="card-title">本机头像</text>
+    <text class="state-copy">{{avatarSaved ? '此设备已保存头像' : '此设备没有保存头像'}}</text>
+    <button class="settings-button" disabled="{{!avatarSaved}}" bindtap="clearAvatar">清除本机头像</button>
+  </view>
+  <text wx:if="{{notice}}" class="settings-notice">{{notice}}</text>
+</view>

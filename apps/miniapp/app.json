@@ -3,6 +3,7 @@
     "pages/index/index",
     "pages/global/global",
     "pages/me/me",
+    "pages/settings/settings",
     "pages/feature/feature",
     "pages/shop/shop",
     "pages/product/product",

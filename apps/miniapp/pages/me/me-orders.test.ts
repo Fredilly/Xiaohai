@@ -45,4 +45,9 @@ describe('Me order actions', () => {
     tap('orders');
     expect(mocks.navigateTo).toHaveBeenCalledWith({ url: '/pages/orders/orders' });
   });
+
+  it('opens the functional device settings page', () => {
+    tap('settings');
+    expect(mocks.navigateTo).toHaveBeenCalledWith({ url: '/pages/settings/settings' });
+  });
 });
