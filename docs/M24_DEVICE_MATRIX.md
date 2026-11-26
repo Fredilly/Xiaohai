@@ -14,6 +14,12 @@
 - The AI Animation list has an explicit login-required state and does not call its protected list endpoint while signed out. Picture Book cover failures are bound to the exact current cover URL, preventing a previous signed media URL failure from hiding a refreshed cover.
 - Deterministic Mini Program tests cover concurrent responses, account changes, hide/show, unloaded pages, retry and navigation. These are **offline regression tests**, not DevTools, iOS, Android, paid-AI or production acceptance. The runtime matrix below remains BLOCKED until separate evidence exists.
 
+## 2026-11-26 authorized DevTools attempt (blocked)
+
+- The installed WeChat DevTools CLI was found at `/Applications/wechatwebdevtools.app/Contents/MacOS/cli`.
+- Opening `apps/miniapp/` with the configured local AppID was not executed because the IDE service port is disabled. The official CLI returned the fixed instruction to enable **设置 → 安全设置 → 服务端口**; no project compile, network request, preview, or device session was started.
+- This is an environment prerequisite failure, not a Mini Program runtime result. No AppID, token, request payload, or customer data was logged.
+
 ## Evidence fields
 
 For each execution record **device/model, OS, WeChat version, DevTools version, environment/AppID (no secret), date, flow, expected, actual, PASS/FAIL/BLOCKED, screenshot or sanitized log reference, bug commit**. `BLOCKED` means untested, never passed. Do not capture tokens, payment credentials, precise location or customer PII in screenshots.
