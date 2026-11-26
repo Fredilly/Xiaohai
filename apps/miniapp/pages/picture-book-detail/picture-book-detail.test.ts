@@ -6,6 +6,7 @@ import {
   getPictureBook,
   listCharacterReferences,
   PictureBookApiError,
+  updatePictureBookCharacter,
 } from '../../services/picture-book';
 
 vi.mock('../../services/picture-book', () => ({
@@ -13,6 +14,7 @@ vi.mock('../../services/picture-book', () => ({
   listCharacterReferences: vi.fn(),
   generateCharacterReference: vi.fn(),
   generateIllustration: vi.fn(),
+  updatePictureBookCharacter: vi.fn(),
   PictureBookApiError: class PictureBookApiError extends Error {
     constructor(readonly status: number) {
       super(`Picture Book API ${status}`);
@@ -30,6 +32,7 @@ type DetailPage = {
     error: string;
     imageError: boolean;
     loading: boolean;
+    unsavedCharacterIds: Record<string, boolean>;
   };
   refreshAfterHide: boolean;
   pageClosed: boolean;
@@ -37,6 +40,12 @@ type DetailPage = {
   pollingToken: number;
   setData: (changes: Record<string, unknown>) => void;
   load: () => Promise<void>;
+  refresh: () => Promise<void>;
+  editCharacterField: (event: {
+    currentTarget: { dataset: Record<string, string> };
+    detail: { value: string };
+  }) => void;
+  saveCharacter: (event: WechatMiniprogram.TouchEvent) => Promise<void>;
   onHide: () => void;
   onShow: () => void;
   onUnload: () => void;
@@ -49,6 +58,7 @@ const readDetail = vi.mocked(getPictureBook);
 const readReferences = vi.mocked(listCharacterReferences);
 const submitReference = vi.mocked(generateCharacterReference);
 const submitIllustration = vi.mocked(generateIllustration);
+const saveCharacter = vi.mocked(updatePictureBookCharacter);
 const oldUrl = 'https://private.invalid/cover.png?authorization=old-secret';
 const newUrl = 'https://private.invalid/cover.png?authorization=new-secret';
 let definition: DetailPage;
@@ -79,6 +89,7 @@ function instance(): DetailPage {
       busy: false,
       polling: false,
       imageError: false,
+      unsavedCharacterIds: {},
     },
     refreshAfterHide: false,
     pageClosed: false,
@@ -89,6 +100,22 @@ function instance(): DetailPage {
     },
   } as DetailPage;
   return page;
+}
+
+function editableBook(name = '旧角色名'): PictureBookDetail {
+  const original = book(oldUrl);
+  return {
+    ...original,
+    characters: [
+      {
+        ...original.characters[0]!,
+        name,
+        description: '简介',
+        canonicalVisualPrompt: '外观',
+        locked: false,
+      },
+    ],
+  };
 }
 
 function touch(dataset: Record<string, string>) {
@@ -110,6 +137,132 @@ afterEach(() => {
 afterAll(() => vi.unstubAllGlobals());
 
 describe('picture-book detail owner-scoped media refresh (#189)', () => {
+  it('blocks refresh while character edits are unsaved, without issuing another GET', async () => {
+    readDetail.mockResolvedValue(editableBook());
+    readReferences.mockResolvedValue({ references: [] });
+    const page = instance();
+    await page.load();
+    page.editCharacterField({
+      currentTarget: { dataset: { index: '0', field: 'name' } },
+      detail: { value: '本地未保存的新角色' },
+    });
+
+    await page.refresh();
+
+    expect(readDetail).toHaveBeenCalledTimes(1);
+    expect(page.data.detail?.characters[0]?.name).toBe('本地未保存的新角色');
+    expect(page.data.error).toContain('尚未保存');
+    expect(page.data.busy).toBe(false);
+  });
+
+  it('holds mutation controls while manual refresh is reading and prevents stale updates after saving', async () => {
+    const initial = editableBook();
+    let releaseRead: (detail: PictureBookDetail) => void = () => {};
+    readDetail.mockResolvedValueOnce(initial).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          releaseRead = resolve;
+        }),
+    );
+    readReferences.mockResolvedValue({ references: [] });
+    saveCharacter.mockResolvedValue(editableBook('已保存的新角色'));
+    const page = instance();
+    await page.load();
+    const pending = page.refresh();
+    expect(page.data.busy).toBe(true);
+    await page.saveCharacter(touch({ index: '0' }));
+    expect(saveCharacter).not.toHaveBeenCalled();
+    releaseRead(initial);
+    await pending;
+    expect(page.data.busy).toBe(false);
+
+    page.editCharacterField({
+      currentTarget: { dataset: { index: '0', field: 'name' } },
+      detail: { value: '已保存的新角色' },
+    });
+    await page.saveCharacter(touch({ index: '0' }));
+    expect(saveCharacter).toHaveBeenCalledTimes(1);
+    expect(page.data.detail?.characters[0]?.name).toBe('已保存的新角色');
+    expect(page.data.unsavedCharacterIds['character-1']).toBe(false);
+  });
+
+  it('invalidates a pending owner GET when a character is edited', async () => {
+    let releaseRead: (detail: PictureBookDetail) => void = () => {};
+    readDetail.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          releaseRead = resolve;
+        }),
+    );
+    const page = instance();
+    page.data.detail = editableBook();
+    const pending = page.load();
+    page.editCharacterField({
+      currentTarget: { dataset: { index: '0', field: 'name' } },
+      detail: { value: '写到一半' },
+    });
+    releaseRead(editableBook('过期远端版本'));
+    await pending;
+    expect(page.data.detail?.characters[0]?.name).toBe('写到一半');
+  });
+
+  it('never overwrites a newer save with an older owner GET', async () => {
+    let releaseRead: (detail: PictureBookDetail) => void = () => {};
+    readDetail.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          releaseRead = resolve;
+        }),
+    );
+    saveCharacter.mockResolvedValueOnce(editableBook('服务器已保存的新名字'));
+    const page = instance();
+    page.data.detail = editableBook('本地原始名字');
+    const pending = page.load();
+    await page.saveCharacter(touch({ index: '0' }));
+    releaseRead(editableBook('旧 GET 快照'));
+    await pending;
+
+    expect(page.data.detail?.characters[0]?.name).toBe('服务器已保存的新名字');
+    expect(readReferences).not.toHaveBeenCalled();
+  });
+
+  it('never overwrites a completed illustration with an older owner GET', async () => {
+    let releaseRead: (detail: PictureBookDetail) => void = () => {};
+    readDetail
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            releaseRead = resolve;
+          }),
+      )
+      .mockResolvedValueOnce({
+        ...book(newUrl, false),
+        pages: [
+          {
+            ...book(newUrl, false).pages[0]!,
+            illustrations: [{ id: 'revision-new', status: 'READY', playbackUrl: newUrl }],
+          },
+        ],
+      } as PictureBookDetail);
+    submitIllustration.mockResolvedValueOnce({
+      pictureBookId: 'owned-book',
+      pageId: 'page-1',
+      illustrationId: 'revision-new',
+      revisionNumber: 1,
+      status: 'QUEUED',
+    });
+    const page = instance();
+    page.data.detail = book(oldUrl);
+    const pending = page.load();
+    await page.illustrate(touch({ pageId: 'page-1' }));
+    releaseRead(book(oldUrl, false));
+    await pending;
+
+    expect(page.data.detail?.pages[0]?.illustrations[0]?.playbackUrl).toBe(newUrl);
+    expect(readReferences).not.toHaveBeenCalled();
+    expect(submitIllustration).toHaveBeenCalledTimes(1);
+  });
+
   it('does not duplicate initial load but re-reads detail and references after hide/show', async () => {
     readDetail.mockResolvedValueOnce(book(oldUrl)).mockResolvedValueOnce(book(newUrl));
     readReferences
@@ -209,6 +362,52 @@ describe('picture-book detail owner-scoped media refresh (#189)', () => {
 });
 
 describe('picture-book background image job recovery (#112)', () => {
+  it.each([401, 403])(
+    'clears private book and references on denied illustration polling (%i)',
+    async (status) => {
+      submitIllustration.mockResolvedValueOnce({
+        pictureBookId: 'owned-book',
+        pageId: 'page-1',
+        illustrationId: 'revision-1',
+        revisionNumber: 1,
+        status: 'QUEUED',
+      });
+      readDetail.mockRejectedValueOnce(new PictureBookApiError(status));
+      const page = instance();
+      page.data.detail = book(oldUrl);
+      page.data.references = { 'character-1': [{ playbackUrl: oldUrl }] };
+      await page.illustrate(touch({ pageId: 'page-1' }));
+      expect(page.data.detail).toBeNull();
+      expect(page.data.references).toEqual({});
+      expect(page.data.error).toContain('登录状态已失效');
+      expect(page.data.busy).toBe(false);
+      expect(page.data.polling).toBe(false);
+    },
+  );
+
+  it.each([401, 403])(
+    'clears private book and references on denied reference polling (%i)',
+    async (status) => {
+      submitReference.mockResolvedValueOnce({
+        pictureBookId: 'owned-book',
+        characterId: 'character-1',
+        referenceRevisionId: 'reference-1',
+        revisionNumber: 1,
+        status: 'QUEUED',
+      });
+      readReferences.mockRejectedValueOnce(new PictureBookApiError(status));
+      const page = instance();
+      page.data.detail = book(oldUrl);
+      page.data.references = { 'character-1': [{ playbackUrl: oldUrl }] };
+      await page.reference(touch({ characterId: 'character-1' }));
+      expect(page.data.detail).toBeNull();
+      expect(page.data.references).toEqual({});
+      expect(page.data.error).toContain('登录状态已失效');
+      expect(page.data.busy).toBe(false);
+      expect(page.data.polling).toBe(false);
+    },
+  );
+
   it('reports an illustration polling timeout without submitting another paid job', async () => {
     vi.spyOn(Date, 'now').mockReturnValueOnce(0).mockReturnValue(620_001);
     submitIllustration.mockResolvedValue({
