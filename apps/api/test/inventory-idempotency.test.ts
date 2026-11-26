@@ -85,6 +85,7 @@ describe('inventory idempotency replay binding (no database connection)', () => 
     { createdByStaffAccountId: 'another-staff' },
     { referenceType: 'ORDER' },
     { metadata: { source: 'STORE_OPENING_COUNT' } },
+    { metadata: { source: 'ANOTHER_INVENTORY_WORKFLOW' } },
   ])('rejects an unrelated ledger entry sharing the same key: %j', async (change) => {
     const { service, tx } = serviceWithReplay({ ...original, ...change });
     await expect(service.issue(context, input)).rejects.toMatchObject({ code: 'CONFLICT' });
@@ -103,6 +104,38 @@ describe('inventory idempotency replay binding (no database connection)', () => 
       referenceType: 'INVENTORY_ADJUSTMENT',
     };
     expect(await serviceWithReplay(matching).service.adjust(context, adjustment)).toEqual(matching);
+  });
+
+  it('binds new manual stock ledger replays to the original version precondition', async () => {
+    const newer = {
+      ...original,
+      metadata: { source: 'STORE_MANUAL_STOCK', expectedVersion: input.expectedVersion },
+    };
+    expect(await serviceWithReplay(newer).service.issue(context, input)).toEqual(newer);
+    await expect(
+      serviceWithReplay(newer).service.issue(context, { ...input, expectedVersion: 2 }),
+    ).rejects.toMatchObject({ code: 'CONFLICT' });
+    await expect(
+      serviceWithReplay({
+        ...newer,
+        metadata: { source: 'STORE_MANUAL_STOCK', expectedVersion: '1' },
+      }).service.issue(context, input),
+    ).rejects.toMatchObject({ code: 'CONFLICT' });
+    const adjustment = { ...input, quantityDelta: -2 };
+    const adjustedLedger = {
+      ...newer,
+      transactionType: 'ADJUSTMENT_OUT',
+      referenceType: 'INVENTORY_ADJUSTMENT',
+    };
+    expect(await serviceWithReplay(adjustedLedger).service.adjust(context, adjustment)).toEqual(
+      adjustedLedger,
+    );
+    await expect(
+      serviceWithReplay(adjustedLedger).service.adjust(context, {
+        ...adjustment,
+        expectedVersion: 2,
+      }),
+    ).rejects.toMatchObject({ code: 'CONFLICT' });
   });
 
   it('still checks current store authorization before returning an old result', async () => {

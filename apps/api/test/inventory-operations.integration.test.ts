@@ -579,27 +579,45 @@ suite('M14 inventory operations PostgreSQL integration', () => {
       idempotencyKey: key,
       reason: '并发出库',
     });
+    const keys = [crypto.randomUUID(), crypto.randomUUID()];
     const [one, two] = await Promise.all([
       app.inject({
         method: 'POST',
         url: '/api/v1/staff/inventory/issues',
         headers: auth(user.token),
-        payload: body(crypto.randomUUID()),
+        payload: body(keys[0]!),
       }),
       app.inject({
         method: 'POST',
         url: '/api/v1/staff/inventory/issues',
         headers: auth(user.token),
-        payload: body(crypto.randomUUID()),
+        payload: body(keys[1]!),
       }),
     ]);
     expect([one.statusCode, two.statusCode].sort()).toEqual([201, 409]);
+    const originalKey = keys[one.statusCode === 201 ? 0 : 1]!;
+    const replay = await app.inject({
+      method: 'POST',
+      url: '/api/v1/staff/inventory/issues',
+      headers: auth(user.token),
+      payload: body(originalKey),
+    });
+    expect(replay.statusCode).toBe(201);
+    const changedVersion = await app.inject({
+      method: 'POST',
+      url: '/api/v1/staff/inventory/issues',
+      headers: auth(user.token),
+      payload: { ...body(originalKey), expectedVersion: 1 },
+    });
+    expect(changedVersion.statusCode).toBe(409);
     const [balance] = await database!.db
       .select()
       .from(storeInventory)
       .where(and(eq(storeInventory.storeId, d.storeA.id), eq(storeInventory.skuId, d.skuA.id)));
     expect(balance).toMatchObject({ onHand: 3, version: 1 });
-    expect(await database!.db.select().from(inventoryTransactions)).toHaveLength(1);
+    expect(await database!.db.select().from(inventoryTransactions)).toMatchObject([
+      { metadata: { source: 'STORE_MANUAL_STOCK', expectedVersion: 0 } },
+    ]);
     const stale = await app.inject({
       method: 'POST',
       url: '/api/v1/staff/inventory/issues',
