@@ -16,6 +16,9 @@ type ContinueItem = {
 
 Page({
   readSequence: 0,
+  loadedSession: '',
+  wasHidden: false,
+  pageClosed: false,
   data: {
     needsLogin: false,
     loading: false,
@@ -25,19 +28,29 @@ Page({
     continueError: false,
   },
   onShow() {
+    if (this.pageClosed) return;
+    this.wasHidden = false;
     void this.load();
   },
   onHide() {
+    this.wasHidden = true;
     this.readSequence++;
+    this.loadedSession = '';
     // Neither account's private viewing history should linger on a hidden page.
-    this.setData({ purchased: [], continueItems: [] });
+    this.setData({ purchased: [], continueItems: [], loading: false });
   },
   onUnload() {
+    this.wasHidden = true;
+    this.pageClosed = true;
     this.readSequence++;
+    this.loadedSession = '';
+    this.setData({ purchased: [], continueItems: [] });
   },
   async load() {
+    if (this.wasHidden || this.pageClosed) return;
     const version = ++this.readSequence;
     const session = consumerToken();
+    this.loadedSession = '';
     if (!session) {
       this.setData({
         needsLogin: true,
@@ -59,7 +72,7 @@ Page({
       continueError: false,
     });
     const results = await Promise.allSettled([getEntitlements(), getContinueWatching()]);
-    if (version !== this.readSequence) return;
+    if (version !== this.readSequence || this.wasHidden || this.pageClosed) return;
     const currentSession = consumerToken();
     if (currentSession !== session) {
       this.setData({
@@ -75,6 +88,7 @@ Page({
     }
 
     const [entitlements, watching] = results;
+    this.loadedSession = session;
     this.setData({
       loading: false,
       purchasedError: entitlements.status === 'rejected',
@@ -102,15 +116,38 @@ Page({
   },
   openSeries(event: WechatMiniprogram.TouchEvent) {
     const id = String(event.currentTarget.dataset.id || '');
-    if (id && !this.data.needsLogin)
+    if (
+      id &&
+      !this.wasHidden &&
+      !this.pageClosed &&
+      !this.data.needsLogin &&
+      this.loadedSession &&
+      this.loadedSession === consumerToken() &&
+      this.data.purchased.some((item) => item.id === id)
+    )
       void wx.navigateTo({ url: `/pages/story-detail/story-detail?id=${encodeURIComponent(id)}` });
   },
   resume(event: WechatMiniprogram.TouchEvent) {
     const id = String(event.currentTarget.dataset.id || '');
-    if (id && !this.data.needsLogin)
+    if (
+      id &&
+      !this.wasHidden &&
+      !this.pageClosed &&
+      !this.data.needsLogin &&
+      this.loadedSession &&
+      this.loadedSession === consumerToken() &&
+      this.data.continueItems.some((item) => item.episodeId === id)
+    )
       void wx.navigateTo({ url: `/pages/playback/playback?id=${encodeURIComponent(id)}` });
   },
   coverError(event: WechatMiniprogram.TouchEvent) {
+    if (
+      this.wasHidden ||
+      this.pageClosed ||
+      !this.loadedSession ||
+      this.loadedSession !== consumerToken()
+    )
+      return;
     const { section, id, src } = event.currentTarget.dataset as {
       section?: string;
       id?: string;

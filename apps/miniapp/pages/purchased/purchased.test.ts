@@ -29,6 +29,9 @@ type PageData = {
 };
 type PurchasedPage = {
   readSequence: number;
+  loadedSession: string;
+  wasHidden: boolean;
+  pageClosed: boolean;
   data: PageData;
   setData(changes: Partial<PageData>): void;
   onShow(): void;
@@ -69,6 +72,9 @@ function page(): PurchasedPage {
   const instance: PurchasedPage = {
     ...definition,
     readSequence: 0,
+    loadedSession: '',
+    wasHidden: false,
+    pageClosed: false,
     data: { ...definition.data, purchased: [], continueItems: [] },
     setData(changes) {
       Object.assign(instance.data, changes);
@@ -188,7 +194,9 @@ describe('Purchased animation and continue-watching page', () => {
     await work;
     expect(instance.data.purchased).toEqual([]);
     await instance.load();
-    expect(instance.data.purchased).toHaveLength(1);
+    expect(mocks.getEntitlements).toHaveBeenCalledTimes(1);
+    instance.onShow();
+    await vi.waitFor(() => expect(instance.data.purchased).toHaveLength(1));
     instance.onUnload();
     expect(instance.readSequence).toBe(4);
   });
@@ -205,5 +213,39 @@ describe('Purchased animation and continue-watching page', () => {
     );
     expect(instance.data.purchased[0]?.displayCoverUrl).toBe('');
     expect(instance.data.continueItems[0]?.displayCoverUrl).toBe('https://bos.example/w.png');
+  });
+
+  it('refuses stale-account or invented item taps even if rows remain in memory', async () => {
+    const instance = page();
+    await instance.load();
+    instance.openSeries(tap({ id: 'not-purchased' }));
+    instance.resume(tap({ id: 'not-resumable' }));
+    expect(mocks.navigateTo).not.toHaveBeenCalled();
+
+    mocks.consumerToken.mockReturnValue('session-B');
+    instance.openSeries(tap({ id: '小熊' }));
+    instance.resume(tap({ id: 'episode-小熊' }));
+    instance.coverError(
+      tap({ section: 'purchased', id: '小熊', src: 'https://bos.example/c.png' }),
+    );
+    expect(mocks.navigateTo).not.toHaveBeenCalled();
+    expect(instance.data.purchased[0]?.displayCoverUrl).toBe('https://bos.example/c.png');
+  });
+
+  it('blocks navigation and image callbacks while hidden or after disposal', async () => {
+    const instance = page();
+    await instance.load();
+    instance.onHide();
+    instance.openSeries(tap({ id: '小熊' }));
+    instance.resume(tap({ id: 'episode-小熊' }));
+    instance.coverError(
+      tap({ section: 'continue', id: 'episode-小熊', src: 'https://bos.example/w.png' }),
+    );
+    expect(mocks.navigateTo).not.toHaveBeenCalled();
+    expect(instance.data.purchased).toEqual([]);
+    expect(instance.data.continueItems).toEqual([]);
+    instance.onUnload();
+    instance.onShow();
+    expect(mocks.getEntitlements).toHaveBeenCalledOnce();
   });
 });
