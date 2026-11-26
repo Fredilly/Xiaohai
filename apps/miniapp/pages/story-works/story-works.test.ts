@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   token: vi.fn(),
   listStoryWorks: vi.fn(),
   switchTab: vi.fn(),
+  navigateTo: vi.fn(),
 }));
 
 vi.mock('../../services/consumer-session', () => ({ consumerToken: mocks.token }));
@@ -24,13 +25,20 @@ type State = {
   needsLogin: boolean;
 };
 type TestPage = {
+  readSequence: number;
+  wasHidden: boolean;
+  loadedSession: string;
   data: State;
   setData(changes: Partial<State>): void;
+  onShow(): void;
+  onHide(): void;
+  onUnload(): void;
   load(): Promise<void>;
   goToLogin(): void;
+  openWork(event: WechatMiniprogram.TouchEvent): void;
 };
 
-let definition: Pick<TestPage, 'load' | 'goToLogin'>;
+let definition: TestPage;
 
 beforeAll(async () => {
   vi.stubGlobal('Page', (page: typeof definition) => {
@@ -43,23 +51,29 @@ afterAll(() => vi.unstubAllGlobals());
 
 beforeEach(() => {
   vi.clearAllMocks();
-  vi.stubGlobal('wx', { switchTab: mocks.switchTab });
+  vi.stubGlobal('wx', { switchTab: mocks.switchTab, navigateTo: mocks.navigateTo });
 });
 
 function createPage(): TestPage {
   const page: TestPage = {
+    ...definition,
+    readSequence: 0,
+    wasHidden: false,
+    loadedSession: '',
     data: { works: [], loading: true, error: false, needsLogin: false },
     setData(changes) {
       Object.assign(page.data, changes);
     },
-    load() {
-      return definition.load.call(page);
-    },
-    goToLogin() {
-      definition.goToLogin.call(page);
-    },
   };
   return page;
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
 }
 
 describe('AI story works: protected list states', () => {
@@ -109,5 +123,74 @@ describe('AI story works: protected list states', () => {
     await page.load();
 
     expect(page.data).toMatchObject({ loading: false, error: true, needsLogin: false });
+  });
+
+  it('discards a previous account read when a newer account finishes first', async () => {
+    const old = deferred<{ works: State['works'] }>();
+    mocks.token.mockReturnValue('session-A');
+    mocks.listStoryWorks.mockReturnValueOnce(old.promise).mockResolvedValueOnce({
+      works: [{ id: 'new-work' }],
+    });
+    const page = createPage();
+    const first = page.load();
+    mocks.token.mockReturnValue('session-B');
+    await page.load();
+    old.resolve({ works: [{ id: 'old-private-work' }] });
+    await first;
+
+    expect(page.data.works).toEqual([{ id: 'new-work' }]);
+    expect(page.loadedSession).toBe('session-B');
+  });
+
+  it('retries with the current account when it changes during the only pending read', async () => {
+    const old = deferred<{ works: State['works'] }>();
+    mocks.token.mockReturnValue('session-A');
+    mocks.listStoryWorks.mockReturnValueOnce(old.promise).mockResolvedValueOnce({
+      works: [{ id: 'new-work' }],
+    });
+    const page = createPage();
+    const first = page.load();
+    mocks.token.mockReturnValue('session-B');
+    old.resolve({ works: [{ id: 'old-private-work' }] });
+    await first;
+    await vi.waitFor(() => expect(page.data.works).toEqual([{ id: 'new-work' }]));
+
+    expect(mocks.listStoryWorks).toHaveBeenCalledTimes(2);
+  });
+
+  it('clears private works on hide and ignores a late response or error', async () => {
+    const old = deferred<{ works: State['works'] }>();
+    mocks.token.mockReturnValue('valid-token');
+    mocks.listStoryWorks.mockReturnValueOnce(old.promise).mockResolvedValueOnce({
+      works: [{ id: 'visible-work' }],
+    });
+    const page = createPage();
+    const first = page.load();
+    page.onHide();
+    old.resolve({ works: [{ id: 'stale-work' }] });
+    await first;
+    expect(page.data.works).toEqual([]);
+    page.onShow();
+    await vi.waitFor(() => expect(page.data.works).toEqual([{ id: 'visible-work' }]));
+    page.onUnload();
+    expect(page.wasHidden).toBe(true);
+    expect(page.loadedSession).toBe('');
+  });
+
+  it('blocks navigation to a previous account work', async () => {
+    mocks.token.mockReturnValue('session-A');
+    mocks.listStoryWorks.mockResolvedValue({ works: [{ id: 'story with / slash' }] });
+    const page = createPage();
+    await page.load();
+    const tap = {
+      currentTarget: { dataset: { id: 'story with / slash' } },
+    } as unknown as WechatMiniprogram.TouchEvent;
+    page.openWork(tap);
+    expect(mocks.navigateTo).toHaveBeenCalledWith({
+      url: '/pages/story-work/story-work?id=story%20with%20%2F%20slash',
+    });
+    mocks.token.mockReturnValue('session-B');
+    page.openWork(tap);
+    expect(mocks.navigateTo).toHaveBeenCalledOnce();
   });
 });

@@ -8,6 +8,12 @@
 - Checkout reuses its server idempotency key and ignores outdated quote responses; order detail reloads on foreground entry and never infers `PAID` from `wx.requestPayment`. Story, picture-book and animation terminal failures are reported; video reports playback errors and saves the current position only on full playback completion.
 - Location is requested only after the user taps nearby. Denial leaves the non-location store list available; no location is fabricated. The map's default viewport is not a device position.
 
+## 2026-11-26 AI works list isolation regression (offline only)
+
+- The consumer-owned Story, Picture Book and AI Animation list pages now clear personal rows when hidden or while a new request is pending, reject superseded responses, and re-read the current account after a token change. A stale result or image load failure cannot repopulate another session's work. Detail navigation is limited to works loaded for the currently active session.
+- The AI Animation list has an explicit login-required state and does not call its protected list endpoint while signed out. Picture Book cover failures are bound to the exact current cover URL, preventing a previous signed media URL failure from hiding a refreshed cover.
+- Deterministic Mini Program tests cover concurrent responses, account changes, hide/show, unloaded pages, retry and navigation. These are **offline regression tests**, not DevTools, iOS, Android, paid-AI or production acceptance. The runtime matrix below remains BLOCKED until separate evidence exists.
+
 ## Evidence fields
 
 For each execution record **device/model, OS, WeChat version, DevTools version, environment/AppID (no secret), date, flow, expected, actual, PASS/FAIL/BLOCKED, screenshot or sanitized log reference, bug commit**. `BLOCKED` means untested, never passed. Do not capture tokens, payment credentials, precise location or customer PII in screenshots.

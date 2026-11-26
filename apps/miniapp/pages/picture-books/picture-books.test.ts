@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   token: vi.fn(),
   listPictureBooks: vi.fn(),
   switchTab: vi.fn(),
+  navigateTo: vi.fn(),
 }));
 
 vi.mock('../../services/consumer-session', () => ({ consumerToken: mocks.token }));
@@ -29,13 +30,19 @@ type TestPage = {
   data: TestState;
   requestVersion: number;
   pageClosed: boolean;
+  wasHidden: boolean;
+  loadedSession: string;
   setData(changes: Partial<TestState>): void;
   load(): Promise<void>;
+  onShow(): void;
+  onHide(): void;
   onUnload(): void;
   goToLogin(): void;
+  open(event: WechatMiniprogram.TouchEvent): void;
+  onCoverError(event: WechatMiniprogram.CustomEvent<{ errMsg?: string }>): void;
 };
 
-let definition: Pick<TestPage, 'load' | 'onUnload' | 'goToLogin'>;
+let definition: TestPage;
 
 beforeAll(async () => {
   vi.stubGlobal('Page', (page: typeof definition) => {
@@ -48,25 +55,19 @@ afterAll(() => vi.unstubAllGlobals());
 
 beforeEach(() => {
   vi.clearAllMocks();
-  vi.stubGlobal('wx', { switchTab: mocks.switchTab });
+  vi.stubGlobal('wx', { switchTab: mocks.switchTab, navigateTo: mocks.navigateTo });
 });
 
 function createPage(): TestPage {
   const page: TestPage = {
+    ...definition,
     data: { books: [], imageErrors: {}, loading: true, error: '', needsLogin: false },
     requestVersion: 0,
     pageClosed: false,
+    wasHidden: false,
+    loadedSession: '',
     setData(changes) {
       Object.assign(page.data, changes);
-    },
-    load() {
-      return definition.load.call(page);
-    },
-    onUnload() {
-      definition.onUnload.call(page);
-    },
-    goToLogin() {
-      definition.goToLogin.call(page);
     },
   };
   return page;
@@ -206,5 +207,73 @@ describe('picture books: login-required state', () => {
     expect(page.pageClosed).toBe(true);
     expect(page.data.books).toEqual([]);
     expect(page.requestVersion).toBe(2);
+  });
+
+  it('clears works on hide and reloads after return without stale private results', async () => {
+    mocks.token.mockReturnValue('session-A');
+    let resolveOld: (value: { pictureBooks: TestState['books'] }) => void = () => {};
+    mocks.listPictureBooks
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveOld = resolve;
+          }),
+      )
+      .mockResolvedValueOnce({ pictureBooks: [{ id: 'current-book' }] });
+    const page = createPage();
+    const old = page.load();
+    page.onHide();
+    resolveOld({ pictureBooks: [{ id: 'previous-book' }] });
+    await old;
+    expect(page.data.books).toEqual([]);
+    page.onShow();
+    await vi.waitFor(() => expect(page.data.books).toEqual([{ id: 'current-book' }]));
+  });
+
+  it('does not publish an old response if the account changes in flight', async () => {
+    let resolveOld: (value: { pictureBooks: TestState['books'] }) => void = () => {};
+    mocks.token.mockReturnValue('session-A');
+    mocks.listPictureBooks
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveOld = resolve;
+          }),
+      )
+      .mockResolvedValueOnce({ pictureBooks: [{ id: 'account-B-book' }] });
+    const page = createPage();
+    const old = page.load();
+    mocks.token.mockReturnValue('session-B');
+    resolveOld({ pictureBooks: [{ id: 'account-A-book' }] });
+    await old;
+    await vi.waitFor(() => expect(page.data.books).toEqual([{ id: 'account-B-book' }]));
+    expect(page.loadedSession).toBe('session-B');
+  });
+
+  it('ignores an outdated cover failure and prevents cross-account navigation', async () => {
+    mocks.token.mockReturnValue('session-A');
+    mocks.listPictureBooks.mockResolvedValue({
+      pictureBooks: [{ id: 'book/id', coverPlaybackUrl: 'https://bos.example/new.png' }],
+    });
+    const page = createPage();
+    await page.load();
+    const coverFailure = (src: string) =>
+      ({
+        currentTarget: { dataset: { id: 'book/id', src } },
+      }) as unknown as WechatMiniprogram.CustomEvent<{ errMsg?: string }>;
+    page.onCoverError(coverFailure('https://bos.example/old.png'));
+    expect(page.data.imageErrors).toEqual({});
+    page.onCoverError(coverFailure('https://bos.example/new.png'));
+    expect(page.data.imageErrors).toEqual({ 'book/id': true });
+    const tap = {
+      currentTarget: { dataset: { id: 'book/id' } },
+    } as unknown as WechatMiniprogram.TouchEvent;
+    page.open(tap);
+    expect(mocks.navigateTo).toHaveBeenCalledWith({
+      url: '/pages/picture-book-detail/picture-book-detail?id=book%2Fid',
+    });
+    mocks.token.mockReturnValue('session-B');
+    page.open(tap);
+    expect(mocks.navigateTo).toHaveBeenCalledOnce();
   });
 });
