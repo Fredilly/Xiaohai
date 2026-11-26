@@ -39,6 +39,19 @@ const balance = {
   available: 5,
   version: 1,
 };
+const inventoryIssueLedger = {
+  id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+  storeId,
+  skuId,
+  transactionType: 'ISSUE',
+  quantityDelta: -2,
+  balanceAfter: 3,
+  referenceType: 'STOCK_ISSUE',
+  referenceId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+  reason: '实盘出库',
+  createdByStaffAccountId: staffId,
+  createdAt: '2026-11-26T00:00:00.000Z',
+};
 const report = {
   sourceType: 'MEIPING_XLS',
   sourceStoreId: storeId,
@@ -437,7 +450,13 @@ test('lost write response retries the identical request and duplicate submit is 
       arrived.resolve();
       await pending.promise;
       await route.abort('failed');
-    } else await route.fulfill({ json: { id: 'synthetic-ledger-entry' } });
+    } else
+      await route.fulfill({
+        json: {
+          ...inventoryIssueLedger,
+          idempotencyKey: (writes[1] as { idempotencyKey: string }).idempotencyKey,
+        },
+      });
   });
   await mount(page);
   const form = page
@@ -454,11 +473,48 @@ test('lost write response retries the identical request and duplicate submit is 
   await expect(form.locator('[name=quantity]')).toBeDisabled();
   expect(writes).toHaveLength(1);
   pending.resolve();
-  await expect(page.getByRole('status').last()).toContainText('操作失败');
+  await expect(page.getByRole('status').last()).toContainText('结果未确认');
   await form.getByRole('button', { name: '提交库存操作' }).click();
   await expect.poll(() => writes.length).toBe(2);
   expect(writes[1]).toEqual(writes[0]);
   await expect(form.locator('[name=quantity]')).toHaveValue('');
+});
+
+test('inventory issue lost response survives reload and rejects a changed count', async ({
+  page,
+}) => {
+  await page.route('**/api/v1/staff/inventory?*', (route) =>
+    route.fulfill({ json: { items: [balance] } }),
+  );
+  const writes: Array<{ idempotencyKey: string; quantity: number }> = [];
+  await page.route('**/api/v1/staff/inventory/issues', (route) => {
+    const body = route.request().postDataJSON() as { idempotencyKey: string; quantity: number };
+    writes.push(body);
+    if (writes.length === 1) return route.abort('failed');
+    return route.fulfill({
+      json: { ...inventoryIssueLedger, idempotencyKey: body.idempotencyKey },
+    });
+  });
+  await mount(page);
+  const form = page
+    .locator('form.operation-form')
+    .filter({ has: page.locator('[name=operation]') });
+  await form.locator('select').first().selectOption(`${storeId}:${skuId}`);
+  await form.locator('[name=quantity]').fill('2');
+  await form.locator('[name=reason]').fill('实盘出库');
+  await form.getByRole('button', { name: '提交库存操作' }).click();
+  await expect(page.getByRole('status').last()).toContainText('结果未确认');
+  await form.locator('[name=quantity]').fill('3');
+  await form.getByRole('button', { name: '提交库存操作' }).click();
+  await expect(page.getByRole('status').last()).toContainText('已阻止新操作');
+  expect(writes).toHaveLength(1);
+  await page.reload();
+  await mount(page);
+  await expect(page.getByRole('alert')).toContainText('待确认库存操作');
+  await page.getByRole('button', { name: '按原库存请求键重试' }).click();
+  await expect.poll(() => writes.length).toBe(2);
+  expect(writes[1]).toEqual(writes[0]);
+  await expect(page.getByRole('alert')).toHaveCount(0);
 });
 
 test('switching stores discards opening candidates and their selected SKU', async ({ page }) => {

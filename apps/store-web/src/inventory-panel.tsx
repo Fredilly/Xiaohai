@@ -16,6 +16,13 @@ import {
   reserveOpeningStock,
   type PendingOpeningStock,
 } from './opening-stock-retry';
+import {
+  assertInventoryMutationResponse,
+  clearInventoryMutation,
+  pendingInventoryMutation,
+  reserveInventoryMutation,
+  type PendingInventoryMutation,
+} from './inventory-mutation-retry';
 
 type Balance = Awaited<ReturnType<typeof loadInventory>>['items'][number];
 type Candidate = Awaited<ReturnType<typeof findOpeningStockCandidates>>['items'][number];
@@ -40,7 +47,7 @@ function InventorySession({ token, storeId, staffAccountId, permissions }: Inven
   const [appliedInventoryQuery, setAppliedInventoryQuery] = useState('');
   const [status, setStatus] = useState('正在加载库存…');
   const [busy, setBusy] = useState(false);
-  const mutation = useRef<{ fingerprint: string; idempotencyKey: string } | null>(null);
+  const [pendingMutation, setPendingMutation] = useState<PendingInventoryMutation | null>(null);
   const mutationInFlight = useRef(false);
   const inventoryRead = useRef(0);
   const currentQuery = useRef(appliedInventoryQuery);
@@ -82,6 +89,16 @@ function InventorySession({ token, storeId, staffAccountId, permissions }: Inven
 
   useEffect(() => {
     try {
+      const previous = pendingInventoryMutation(staffAccountId, storeId);
+      setPendingMutation(previous);
+      if (previous) setStatus('上次出库／调整结果未确认；请先按原键恢复或核对库存流水。');
+    } catch {
+      setStatus('待确认库存操作记录损坏或存储不可用，已停止新库存写入；请人工核对流水。');
+    }
+  }, [staffAccountId, storeId]);
+
+  useEffect(() => {
+    try {
       const previous = pendingOpeningStock(staffAccountId, storeId);
       setPendingOpening(previous);
       if (previous)
@@ -107,49 +124,93 @@ function InventorySession({ token, storeId, staffAccountId, permissions }: Inven
     if ((operation === 'ISSUE' && !canIssue) || (operation === 'ADJUST' && !canAdjust)) return;
     if (operation !== 'ISSUE' && operation !== 'ADJUST') return;
     const reasonValue = form.get('reason');
-    const reason = typeof reasonValue === 'string' ? reasonValue : '门店库存操作';
-    if (!Number.isSafeInteger(quantity) || quantity === 0 || Math.abs(quantity) > 1_000_000) return;
-    const fingerprint = JSON.stringify([
-      storeId,
-      row.skuId,
-      row.version,
-      operation,
-      quantity,
-      reason,
-    ]);
-    if (mutation.current?.fingerprint !== fingerprint)
-      mutation.current = { fingerprint, idempotencyKey: crypto.randomUUID() };
+    const reason = typeof reasonValue === 'string' ? reasonValue.trim() : '';
+    if (
+      !Number.isSafeInteger(quantity) ||
+      quantity === 0 ||
+      Math.abs(quantity) > 1_000_000 ||
+      (operation === 'ISSUE' && quantity < 0) ||
+      !reason
+    )
+      return;
     const base: InventoryMutationRequest = {
       storeId: row.storeId,
       skuId: row.skuId,
       quantity: Math.abs(quantity),
       expectedVersion: row.version,
-      idempotencyKey: mutation.current.idempotencyKey,
+      idempotencyKey: crypto.randomUUID(),
       reason,
     };
-    setBusy(true);
-    mutationInFlight.current = true;
     try {
-      if (operation === 'ISSUE') await issueInventory(token, base);
-      else
-        await adjustInventory(token, {
-          storeId: base.storeId,
-          skuId: base.skuId,
-          expectedVersion: base.expectedVersion,
-          idempotencyKey: base.idempotencyKey,
-          reason: base.reason,
-          quantityDelta: quantity,
-        });
-      setStatus('操作成功，库存与流水已同步更新');
-      mutation.current = null;
+      const saved = reserveInventoryMutation(
+        staffAccountId,
+        storeId,
+        operation,
+        operation === 'ISSUE'
+          ? base
+          : {
+              storeId: base.storeId,
+              skuId: base.skuId,
+              expectedVersion: base.expectedVersion,
+              idempotencyKey: base.idempotencyKey,
+              reason: base.reason,
+              quantityDelta: quantity,
+            },
+      );
+      setPendingMutation(saved);
+      await postMutation(saved, formElement);
+    } catch {
+      setStatus('上次库存操作未确认或请求键无法保存；已阻止新操作，请先恢复原键或核对流水。');
+    }
+  }
+
+  async function postMutation(saved: PendingInventoryMutation, form?: HTMLFormElement) {
+    if (mutationInFlight.current) return;
+    mutationInFlight.current = true;
+    setBusy(true);
+    setStatus('按保存的原请求键执行库存操作…');
+    let confirmed = false;
+    try {
+      const result =
+        saved.operation === 'ISSUE'
+          ? await issueInventory(token, saved.input)
+          : await adjustInventory(token, saved.input);
+      assertInventoryMutationResponse(saved, staffAccountId, result);
+      confirmed = true;
+      clearInventoryMutation(staffAccountId, storeId, saved.input.idempotencyKey);
+      setPendingMutation(null);
+      setStatus('操作成功，服务端已确认原请求的库存流水');
       await refresh();
-      formElement.reset();
+      form?.reset();
       setSelectedKey('');
-    } catch (error) {
-      setStatus(error instanceof Error ? `操作失败：${error.message}` : '操作失败');
+    } catch {
+      setStatus(
+        confirmed
+          ? '库存流水已确认，但本地待确认记录无法清除，请核对后处理。'
+          : '出库／调整结果未确认，原请求已保留；禁止更换参数生成新操作。',
+      );
     } finally {
       mutationInFlight.current = false;
       setBusy(false);
+    }
+  }
+
+  async function retryPendingMutation() {
+    if (mutationInFlight.current) return;
+    try {
+      const saved = pendingInventoryMutation(staffAccountId, storeId);
+      if (!saved) {
+        setPendingMutation(null);
+        return;
+      }
+      if (
+        (saved.operation === 'ISSUE' && !canIssue) ||
+        (saved.operation === 'ADJUST' && !canAdjust)
+      )
+        throw new Error('INVENTORY_PERMISSION_CHANGED');
+      await postMutation(saved);
+    } catch {
+      setStatus('无法安全恢复原操作或当前权限不足；请核对库存流水。');
     }
   }
 
@@ -510,6 +571,21 @@ function InventorySession({ token, storeId, staffAccountId, permissions }: Inven
             <button disabled={busy}>{busy ? '提交中…' : '提交库存操作'}</button>
           </fieldset>
         </form>
+      )}
+      {pendingMutation && (canIssue || canAdjust) && (
+        <aside role="alert">
+          <p>
+            待确认库存操作：{pendingMutation.operation === 'ISSUE' ? '出库' : '调整'}，SKU{' '}
+            {pendingMutation.input.skuId}，数量{' '}
+            {pendingMutation.operation === 'ISSUE'
+              ? pendingMutation.input.quantity
+              : pendingMutation.input.quantityDelta}
+            。 仅允许原请求键重试，不能另建操作。
+          </p>
+          <button type="button" disabled={busy} onClick={() => void retryPendingMutation()}>
+            按原库存请求键重试
+          </button>
+        </aside>
       )}
       <p role="status">{status}</p>
     </section>
