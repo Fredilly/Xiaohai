@@ -24,6 +24,7 @@ Page({
     availabilityNames: ['全部有货', '可购买', '可租借'],
     selectedAvailabilityIndex: 0,
     nearbyMode: false,
+    locationPending: false,
     latitude: null as number | null,
     longitude: null as number | null,
     items: [] as InventoryViewItem[],
@@ -82,7 +83,7 @@ Page({
     if (this.pageClosed) return;
     const locationVersion = ++this.locationRequestVersion;
     let searchStarted = false;
-    this.setData({ loading: true, errorMessage: '' });
+    this.setData({ locationPending: true, loading: true, errorMessage: '' });
     try {
       const location = await new Promise<WechatMiniprogram.GetLocationSuccessCallbackResult>(
         (resolve, reject) =>
@@ -95,6 +96,7 @@ Page({
       if (this.pageClosed || locationVersion !== this.locationRequestVersion) return;
       this.setData({
         nearbyMode: true,
+        locationPending: false,
         latitude: location.latitude,
         longitude: location.longitude,
       });
@@ -104,15 +106,18 @@ Page({
       if (this.pageClosed || locationVersion !== this.locationRequestVersion) return;
       this.setData({ errorMessage: '无法获取位置，请检查微信定位权限。' });
     } finally {
-      if (!searchStarted && !this.pageClosed && locationVersion === this.locationRequestVersion) {
-        this.setData({ loading: false });
+      if (!this.pageClosed && locationVersion === this.locationRequestVersion) {
+        this.setData({
+          locationPending: false,
+          ...(!searchStarted ? { loading: false } : {}),
+        });
       }
     }
   },
 
   async disableNearby() {
     this.locationRequestVersion += 1;
-    this.setData({ nearbyMode: false, latitude: null, longitude: null });
+    this.setData({ locationPending: false, nearbyMode: false, latitude: null, longitude: null });
     if (this.data.searched) await this.submitSearch();
     else this.setData({ loading: false });
   },
@@ -128,7 +133,9 @@ Page({
       radiusKm: this.data.nearbyMode ? 50 : undefined,
       limit: 50,
     };
-    this.setData({ loading: true, errorMessage: '' });
+    // `searched` also means a first query is in flight: changing filters must
+    // supersede it even before the first response arrives.
+    this.setData({ searched: true, loading: true, errorMessage: '' });
     try {
       const items = await searchInventory(searchParams);
       if (this.pageClosed || version !== this.searchRequestVersion) return;

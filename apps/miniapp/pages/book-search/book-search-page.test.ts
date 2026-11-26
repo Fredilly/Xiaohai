@@ -1,4 +1,5 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { searchInventory } from '../../services/inventory';
 
 vi.mock('../../services/inventory', () => ({ searchInventory: vi.fn() }));
@@ -12,6 +13,7 @@ type SearchPage = {
     errorMessage: string;
     selectedAvailabilityIndex: number;
     nearbyMode: boolean;
+    locationPending: boolean;
     latitude: number | null;
     longitude: number | null;
     items: Array<{ key: string; displayCoverUrl: string }>;
@@ -21,6 +23,7 @@ type SearchPage = {
   pageClosed: boolean;
   setData(changes: Record<string, unknown>): void;
   submitSearch(): Promise<void>;
+  onAvailabilityChange(event: { detail: { value: string } }): Promise<void>;
   useNearby(): Promise<void>;
   disableNearby(): Promise<void>;
   onUnload(): void;
@@ -48,6 +51,7 @@ function page(): SearchPage {
       errorMessage: '',
       selectedAvailabilityIndex: 0,
       nearbyMode: false,
+      locationPending: false,
       latitude: null,
       longitude: null,
       items: [],
@@ -71,6 +75,29 @@ afterEach(() => vi.resetAllMocks());
 afterAll(() => vi.unstubAllGlobals());
 
 describe('inventory book-search weak-network and permission recovery (#32/#70)', () => {
+  it('switches the first pending ANY search to SALE before the old response can render', async () => {
+    let finishOld: (value: Awaited<ReturnType<typeof searchInventory>>) => void = () => {};
+    read.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishOld = resolve;
+        }),
+    );
+    read.mockResolvedValueOnce([inventoryItem('sale', 'https://bos.invalid/sale.jpg')] as never);
+    const search = page();
+    const first = search.submitSearch();
+    expect(search.data.searched).toBe(true);
+    await search.onAvailabilityChange({ detail: { value: '1' } });
+    finishOld([inventoryItem('any', 'https://bos.invalid/any.jpg')] as never);
+    await first;
+
+    expect(read).toHaveBeenCalledTimes(2);
+    expect(read).toHaveBeenNthCalledWith(1, expect.objectContaining({ availability: 'ANY' }));
+    expect(read).toHaveBeenNthCalledWith(2, expect.objectContaining({ availability: 'SALE' }));
+    expect(search.data.items).toMatchObject([{ key: 'sku-sale:store-sale' }]);
+    expect(search.data.selectedAvailabilityIndex).toBe(1);
+  });
+
   it('keeps the newest results when older catalog responses arrive late', async () => {
     let resolveOld: (value: Awaited<ReturnType<typeof searchInventory>>) => void = () => {};
     read.mockImplementationOnce(
@@ -126,7 +153,12 @@ describe('inventory book-search weak-network and permission recovery (#32/#70)',
     });
     const search = page();
     const pending = search.useNearby();
+    expect(search.data.locationPending).toBe(true);
+    // The real WXML must expose this handler while permission is still pending.
+    const markup = readFileSync(new URL('./book-search.wxml', import.meta.url), 'utf8');
+    expect(markup).toMatch(/wx:if="{{locationPending}}"[^>]+bindtap="disableNearby">取消定位/);
     await search.disableNearby();
+    expect(search.data.locationPending).toBe(false);
     locationReady({ latitude: 30.6, longitude: 104.1 });
     await pending;
 
