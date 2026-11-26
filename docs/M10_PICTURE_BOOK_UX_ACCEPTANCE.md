@@ -26,9 +26,9 @@ PDF/printing is described as future-facing capability ("预留 PDF/印刷"), so 
 | Full-book read-only preview | PASS | new `pages/picture-book-preview` route |
 | PDF / printing export | NOT IMPLEMENTED | no export/PDF route or Mini Program capability exists; PRD marks it future-facing |
 | Mock flow automated | PASS | Mini Program preview tests + PostgreSQL integration |
-| DevTools screen-by-screen manual evidence | PENDING MANUAL | requires opening the Mini Program UI and recording screenshots |
-| Real-device screen-by-screen evidence | BLOCKED / PENDING | #76 must provide a real public HTTPS API endpoint for device access |
-| Controlled real end-to-end paid flow | PENDING OWNER APPROVAL | requires server-side cap approval; no real provider call is made by this branch |
+| DevTools screen-by-screen manual evidence | PARTIAL PASS | 2026-11-13: storyboard apply persisted cover + 10 pages, read-only preview navigated successfully, and the saved book reopened; real illustration/failure states were not tested |
+| Real-device screen-by-screen evidence | BLOCKED / PENDING | #76 code supplies a candidate HTTPS staging endpoint; an authorized AppID, WeChat domain allowlist and real iOS/Android proof are still required |
+| Controlled real end-to-end paid flow | PENDING OPERATION AUTHORIZATION | requires current server-side cost cap, trustworthy runtime evidence and a separately scoped paid-operation grant |
 
 ## Read-only preview behavior
 
@@ -44,9 +44,34 @@ It:
 6. shows pending/failed/missing states without issuing another generation request;
 7. states clearly that PDF/printing export is not available in the current release scope.
 
+## Accepted partial DevTools run and remaining scope
+
+The [2026-11-13 Issue #112 checkpoint](https://github.com/Fredilly/Xiaohai/issues/112)
+records a real WeChat DevTools **local** run after #224 merged. An existing successful
+storyboard Job was applied **without another provider request** (HTTP 200), storing
+11 segments (cover + 10 content pages) and two locked characters. The user inspected
+the workbench, scrolled the full-book read-only preview, returned, and reopened the
+same saved work from “我的绘本”. Screenshots were viewed during the session but are
+not attached as an auditable artifact; the result is not real-device acceptance.
+
+The later offline regression coverage for #112 additionally verifies that timed-out
+illustration/reference jobs remain identified as potentially active; submission
+failure is distinguished from an accepted job's failed status read; a read-only
+refresh does not submit a second paid request; and stale list responses cannot
+replace newer signed cover URLs or restore private books after logout. Those checks
+do **not** substitute for a controlled real illustration/failure run.
+
+The create-page regression also allows one in-flight create request per page,
+and treats a timed-out or ambiguous create response as **unknown**, prompting the
+user to inspect “我的绘本” without automatically resubmitting. This is client-side
+duplicate mitigation, not server-side cross-session idempotency.
+
 ## Manual DevTools checklist
 
-When running the mock/local flow in WeChat DevTools, capture evidence for:
+The mock/local storyboard → preview → reopen steps below were exercised on
+2026-11-13. Preserve that partial result; rerun only if the environment or code
+changes invalidate it. The remaining failure/real-image cases still need runtime
+proof. The full verification sequence is:
 
 1. Story work with saved BODY → "从最新正文创建绘本".
 2. Picture Book creation opens the workbench.
@@ -63,6 +88,6 @@ When running the mock/local flow in WeChat DevTools, capture evidence for:
 
 Do not claim these are complete in this issue until evidence exists.
 
-- Real-device acceptance depends on #76 removing device dependence on `127.0.0.1` and providing a WeChat-allowlisted HTTPS API.
-- One real end-to-end flow may run only after explicit owner approval and the existing server-side budget cap/preflight checks.
+- Real-device acceptance requires an authorized test AppID, an actually WeChat-allowlisted HTTPS API domain and iOS/Android evidence. The #76 code change alone does not verify these conditions.
+- One real end-to-end flow may run only under a current, exact-scope paid-operation grant and the existing server-side budget cap/preflight checks.
 - Never include API keys, private prompts, signed URLs, or provider response bodies in screenshots/issues/PRs.

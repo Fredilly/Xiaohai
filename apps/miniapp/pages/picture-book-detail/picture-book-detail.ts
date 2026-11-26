@@ -24,6 +24,7 @@ const sleep = (milliseconds: number) =>
 // Worker enforces a 600s minimum image deadline; keep UI polling beyond it without retrying.
 const IMAGE_POLL_TIMEOUT_MS = 620_000;
 const IMAGE_POLL_INTERVAL_MS = 1_000;
+const emptyUnsavedCharacterIds: Record<string, boolean> = {};
 
 type PlaybackReference = { playbackUrl: string | null };
 
@@ -52,6 +53,7 @@ Page({
     polling: false,
     error: '',
     imageError: false,
+    unsavedCharacterIds: emptyUnsavedCharacterIds,
   },
   // A short-lived BOS GET signature must be reissued by the owned read API,
   // not logged, cached locally, or regenerated using a paid AI endpoint.
@@ -66,7 +68,7 @@ Page({
       return;
     }
     this.refreshAfterHide = false;
-    void this.load();
+    void this.refresh();
   },
   onLoad(query: Record<string, string | undefined>) {
     this.setData({ id: String(query.id || '') });
@@ -84,38 +86,97 @@ Page({
     this.setData({ imageError: true });
   },
   pollingToken: 0,
+  async refresh() {
+    if (this.pageClosed || this.data.busy || this.data.polling) return;
+    if (Object.values(this.data.unsavedCharacterIds).some(Boolean)) {
+      this.setData({ error: '角色设定尚未保存，请先保存修改后再刷新。' });
+      return;
+    }
+    // Keep user edits and mutations disabled until this read completes.
+    this.setData({ busy: true });
+    try {
+      await this.load();
+    } finally {
+      if (!this.pageClosed) this.setData({ busy: false });
+    }
+  },
+  revokePrivateContent(error: unknown) {
+    if (!(error instanceof PictureBookApiError) || (error.status !== 401 && error.status !== 403)) {
+      return false;
+    }
+    this.loadRevision += 1;
+    this.pollingToken += 1;
+    this.setData({
+      detail: null,
+      references: {},
+      characterBibleConfirmed: false,
+      imageError: false,
+      unsavedCharacterIds: {},
+      loading: false,
+      busy: false,
+      polling: false,
+      error: '登录状态已失效，请重新登录后查看绘本。',
+    });
+    return true;
+  },
   async load() {
+    if (Object.values(this.data.unsavedCharacterIds).some(Boolean)) {
+      this.setData({ error: '角色设定尚未保存，请先保存修改后再刷新。' });
+      return;
+    }
     const revision = ++this.loadRevision;
     try {
       const detail = await getPictureBook(this.data.id);
+      if (this.pageClosed || revision !== this.loadRevision) return;
       const references = await Promise.all(
-        detail.characters.map(
-          async (character) =>
-            [
-              character.characterId,
-              (await listCharacterReferences(this.data.id, character.characterId)).references,
-            ] as const,
-        ),
+        detail.characters.map(async (character) => {
+          try {
+            return {
+              characterId: character.characterId,
+              items: (await listCharacterReferences(this.data.id, character.characterId))
+                .references,
+              unavailable: false,
+            };
+          } catch (error) {
+            // Reference thumbnails must not make the owned book unreadable on a
+            // transient failure, but an auth denial must still hide its content.
+            if (
+              error instanceof PictureBookApiError &&
+              (error.status === 401 || error.status === 403)
+            ) {
+              throw error;
+            }
+            return { characterId: character.characterId, items: [], unavailable: true };
+          }
+        }),
       );
       if (this.pageClosed || revision !== this.loadRevision) return;
-      const freshReferences = Object.fromEntries(references);
+      const freshReferences = Object.fromEntries(
+        references.map(({ characterId, items }) => [characterId, items]),
+      );
       const previousUrls = playbackUrls(this.data.detail, this.data.references);
       const freshUrls = playbackUrls(detail, freshReferences);
       const urlChanged =
         previousUrls.length !== freshUrls.length ||
         previousUrls.some((url, index) => url !== freshUrls[index]);
+      const referencesUnavailable = references.some((item) => item.unavailable);
       this.setData({
         detail,
         references: freshReferences,
-        imageError: this.data.imageError && !urlChanged,
+        imageError: this.data.imageError && (!urlChanged || referencesUnavailable),
         characterBibleConfirmed:
           detail.characters.length > 0 &&
           detail.characters.every((character) => character.confirmed && character.locked),
-        error: '',
+        error: referencesUnavailable
+          ? '部分角色参考图未加载，绘本内容仍可查看；请刷新状态重试。'
+          : '',
       });
-    } catch {
-      if (!this.pageClosed && revision === this.loadRevision)
-        this.setData({ error: '绘本加载失败' });
+    } catch (error) {
+      if (!this.pageClosed && revision === this.loadRevision) {
+        if (!this.revokePrivateContent(error)) {
+          this.setData({ error: '绘本加载失败' });
+        }
+      }
     } finally {
       if (!this.pageClosed && revision === this.loadRevision) this.setData({ loading: false });
     }
@@ -123,14 +184,19 @@ Page({
   async reference(event: WechatMiniprogram.TouchEvent) {
     if (this.data.busy) return;
     const characterId = String(event.currentTarget.dataset.characterId || '');
+    this.loadRevision += 1;
     this.setData({ busy: true, error: '' });
     const pollingToken = ++this.pollingToken;
+    let acceptedByServer = false;
     try {
       const accepted = await generateCharacterReference(this.data.id, characterId);
+      acceptedByServer = true;
+      if (this.pageClosed || pollingToken !== this.pollingToken) return;
       this.setData({ polling: true });
       const deadline = Date.now() + IMAGE_POLL_TIMEOUT_MS;
       while (Date.now() < deadline && this.data.polling && pollingToken === this.pollingToken) {
         const result = (await listCharacterReferences(this.data.id, characterId)).references;
+        if (this.pageClosed || pollingToken !== this.pollingToken) return;
         this.setData({ [`references.${characterId}`]: result });
         const revision = result.find((item) => item.id === accepted.referenceRevisionId);
         if (revision?.status === 'READY') {
@@ -145,16 +211,33 @@ Page({
         }
         await sleep(IMAGE_POLL_INTERVAL_MS);
       }
-    } catch {
-      this.setData({ error: '参考图生成失败，请重试。' });
+      if (!this.pageClosed && pollingToken === this.pollingToken && this.data.polling) {
+        this.setData({ error: '参考图仍在后台处理中，请稍后返回绘本查看最新状态。' });
+      }
+    } catch (error) {
+      if (!this.pageClosed && pollingToken === this.pollingToken) {
+        if (!this.revokePrivateContent(error)) {
+          this.setData({
+            error:
+              error instanceof PictureBookApiError && error.status === 503 && !acceptedByServer
+                ? '参考图生成未开启（安全关闭）'
+                : acceptedByServer
+                  ? '参考图状态查询失败，请稍后查看任务结果。'
+                  : '参考图请求状态未确认，请稍后查看任务结果。',
+          });
+        }
+      }
     } finally {
-      this.setData({ busy: false, polling: false });
+      if (!this.pageClosed && pollingToken === this.pollingToken) {
+        this.setData({ busy: false, polling: false });
+      }
     }
   },
   async selectReference(event: WechatMiniprogram.TouchEvent) {
     if (this.data.busy) return;
     const characterId = String(event.currentTarget.dataset.characterId || '');
     const revisionId = String(event.currentTarget.dataset.revisionId || '');
+    this.loadRevision += 1;
     this.setData({ busy: true, error: '' });
     try {
       this.setData({
@@ -179,6 +262,7 @@ Page({
       return;
     }
     const operation = String(event.currentTarget.dataset.operation) as PictureBookTextOperation;
+    this.loadRevision += 1;
     this.setData({ busy: true, error: '' });
     try {
       const accepted = await generatePictureBookPlan(this.data.id, operation);
@@ -214,24 +298,42 @@ Page({
       'name' | 'description' | 'canonicalVisualPrompt';
     const value = String(event.detail.value || '');
     const detail = this.data.detail;
-    if (!detail || detail.characters[index]?.locked) return;
+    if (!detail || detail.characters[index]?.locked || this.data.busy) return;
+    const characterId = detail.characters[index]!.characterId;
+    this.loadRevision += 1;
     const characters = detail.characters.map((character, characterIndex) =>
       characterIndex === index ? { ...character, [field]: value } : character,
     );
-    this.setData({ detail: { ...detail, characters } });
+    this.setData({
+      detail: { ...detail, characters },
+      unsavedCharacterIds: { ...this.data.unsavedCharacterIds, [characterId]: true },
+    });
   },
   async saveCharacter(event: WechatMiniprogram.TouchEvent) {
     const index = Number(event.currentTarget.dataset.index);
     const character = this.data.detail?.characters[index];
     if (this.data.busy || !character || character.locked) return;
+    this.loadRevision += 1;
     this.setData({ busy: true, error: '' });
     try {
+      const saved = await updatePictureBookCharacter(this.data.id, character.characterId, {
+        name: character.name,
+        description: character.description,
+        canonicalVisualPrompt: character.canonicalVisualPrompt,
+      });
+      const editedCharacters = this.data.detail?.characters ?? [];
+      const remainingUnsaved = { ...this.data.unsavedCharacterIds, [character.characterId]: false };
       this.setData({
-        detail: await updatePictureBookCharacter(this.data.id, character.characterId, {
-          name: character.name,
-          description: character.description,
-          canonicalVisualPrompt: character.canonicalVisualPrompt,
-        }),
+        detail: {
+          ...saved,
+          characters: saved.characters.map((item) =>
+            remainingUnsaved[item.characterId]
+              ? (editedCharacters.find((current) => current.characterId === item.characterId) ??
+                item)
+              : item,
+          ),
+        },
+        unsavedCharacterIds: remainingUnsaved,
       });
     } catch {
       this.setData({ error: '角色设定保存失败，请重试。' });
@@ -241,6 +343,11 @@ Page({
   },
   async confirmCharacters() {
     if (this.data.busy) return;
+    if (Object.values(this.data.unsavedCharacterIds).some(Boolean)) {
+      this.setData({ error: '请先保存所有角色设定，再确认。' });
+      return;
+    }
+    this.loadRevision += 1;
     this.setData({ busy: true, error: '' });
     try {
       const detail = await confirmPictureBookCharacters(this.data.id);
@@ -258,6 +365,7 @@ Page({
   },
   async reopenCharacters() {
     if (this.data.busy) return;
+    this.loadRevision += 1;
     this.setData({ busy: true, error: '' });
     try {
       const detail = await reopenPictureBookCharacters(this.data.id);
@@ -279,15 +387,20 @@ Page({
     const pageId = String(event.currentTarget.dataset.pageId || '');
     const regenerate = String(event.currentTarget.dataset.regenerate || '') === 'true';
     if (!pageId) return;
+    this.loadRevision += 1;
     this.setData({ busy: true, error: '' });
+    const pollingToken = ++this.pollingToken;
+    let acceptedByServer = false;
     let failedErrorCode: string | null = null;
     try {
       const accepted = await generateIllustration(this.data.id, pageId, regenerate);
+      acceptedByServer = true;
+      if (this.pageClosed || pollingToken !== this.pollingToken) return;
       this.setData({ polling: true });
-      const pollingToken = ++this.pollingToken;
       const deadline = Date.now() + IMAGE_POLL_TIMEOUT_MS;
       while (Date.now() < deadline && this.data.polling && pollingToken === this.pollingToken) {
         const detail = await getPictureBook(this.data.id);
+        if (this.pageClosed || pollingToken !== this.pollingToken) return;
         this.setData({ detail });
         const page = detail.pages.find((item: PictureBookPage) => item.id === pageId);
         const latest = page?.illustrations.find((item) => item.id === accepted.illustrationId);
@@ -298,17 +411,28 @@ Page({
         }
         await sleep(IMAGE_POLL_INTERVAL_MS);
       }
+      if (!this.pageClosed && pollingToken === this.pollingToken && this.data.polling) {
+        this.setData({ error: '插画仍在后台处理中，请稍后返回绘本查看最新状态。' });
+      }
     } catch (error) {
-      this.setData({
-        error:
-          error instanceof PictureBookApiError && error.status === 503
-            ? '图片生成未开启（安全关闭）'
-            : error instanceof Error && error.message === 'ILLUSTRATION_FAILED'
-              ? `插画生成失败（${failedErrorCode || 'ILLUSTRATION_FAILED'}）`
-              : '插画任务失败，请稍后重试。',
-      });
+      if (!this.pageClosed && pollingToken === this.pollingToken) {
+        if (!this.revokePrivateContent(error)) {
+          this.setData({
+            error:
+              error instanceof PictureBookApiError && error.status === 503 && !acceptedByServer
+                ? '图片生成未开启（安全关闭）'
+                : error instanceof Error && error.message === 'ILLUSTRATION_FAILED'
+                  ? `插画生成失败（${failedErrorCode || 'ILLUSTRATION_FAILED'}）`
+                  : acceptedByServer
+                    ? '插画状态查询失败，请稍后查看任务结果。'
+                    : '插画请求状态未确认，请稍后查看任务结果。',
+          });
+        }
+      }
     } finally {
-      this.setData({ busy: false, polling: false });
+      if (!this.pageClosed && pollingToken === this.pollingToken) {
+        this.setData({ busy: false, polling: false });
+      }
     }
   },
 });

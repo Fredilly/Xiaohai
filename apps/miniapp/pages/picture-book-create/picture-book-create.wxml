@@ -3,7 +3,8 @@
   <view class="state-card creation-form">
     <text class="step-label">01　为绘本取名</text><text class="card-title">绘本标题</text>
     <input value="{{title}}" maxlength="120" bindinput="inputTitle" />
-    <text class="step-label">02　开始制作</text><button class="primary-btn" loading="{{submitting}}" disabled="{{submitting || !workId || !versionId}}" bindtap="submit">创建</button>
+    <text class="step-label">02　开始制作</text><button class="primary-btn" loading="{{submitting}}" disabled="{{submitting || creationUnknown || !workId || !versionId}}" bindtap="submit">创建</button>
     <text wx:if="{{error}}" class="error-note">{{error}}</text>
+    <button wx:if="{{creationUnknown}}" bindtap="viewExisting">前往我的绘本检查</button>
   </view>
 </view>
