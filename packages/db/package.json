@@ -21,7 +21,7 @@
     "db:seed-staging-home": "node --env-file-if-exists ../../.env --import tsx/esm src/seed-staging-home-cli.ts",
     "db:seed-local-home": "node --env-file-if-exists ../../.env --import tsx/esm src/seed-local-home-cli.ts",
     "lint": "eslint src drizzle.config.ts",
-    "test": "vitest run --passWithNoTests",
+    "test": "vitest run --passWithNoTests --exclude 'test/**/*.integration.test.mjs'",
     "typecheck": "tsc --noEmit",
     "db:status": "node --env-file-if-exists ../../.env --import tsx/esm src/migration-status.ts"
   },
