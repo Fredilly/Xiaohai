@@ -12,6 +12,9 @@ const rollbackB = 'd79ca0ff400f52f05a140235565b9c981163ead5';
 const extraProtected = 'b'.repeat(40);
 const old = '1138ce2734533ae64e37eaccb2a833d9fa847515';
 const oldB = '14d59d3cd209a400f397fdff1880b4f02ab26d54';
+const batch2A = '15bc9dadc32b30f55cbc5cbcb2cc410c1564433e';
+const batch2B = '3f0e3d0ad16352393cdeaa12e8f8482c9c9fcfeb';
+const batch2Owner = 'XIAOHAI-195-PHASEC-FIXTURE-ONLY';
 const extraOld = 'c'.repeat(40);
 const recentHolds = [
   '03f5ee0f3d364597739162ca8661ebc993523ead',
@@ -29,6 +32,10 @@ const recoveryIds = {
   [worker(old)]: 'sha256:80f9bebe35e74e43da0cf49ca03f5abef8229ec179e600c0bbc1767ca9c00001',
   [api(oldB)]: 'sha256:7fcd05927e19fe566301516fdce1d3ab2297c8ef88b27454c16299d2e321fb96',
   [worker(oldB)]: 'sha256:9d2b3678ad02365397724f7ea1a57fac77e6654e45e57c3c0031314fb728fe7f',
+  [api(batch2A)]: 'sha256:25dec94a82dfa4cee25cd5110fd857cc3785423cf0cba46c55711bda9e89bcac',
+  [worker(batch2A)]: 'sha256:6dfd97eec6928f3f26608dd0091a6f97d4be9b653057af0b619d6400cfffffb3',
+  [api(batch2B)]: 'sha256:3f6fa4334bc9dba8650a1ad68e3ee6c6f823429a6cadff8bef6f315987f75c76',
+  [worker(batch2B)]: 'sha256:c3092df879a8cc7a06980188527d17b425616f66e9d0aed4ad2551b9850c6c75',
 };
 
 async function fixture({
@@ -38,6 +45,8 @@ async function fixture({
   missingHold = null,
   candidateMismatch = false,
   candidateMismatchB = false,
+  candidateMismatchBatch2B = false,
+  candidateReferencedBatch2 = false,
   selfSourceUnexpectedRef = false,
   otherConfigReference = false,
 } = {}) {
@@ -55,13 +64,16 @@ async function fixture({
   ]) {
     let contents = '# fixture deployment config\\n';
     if (file === 'staging-image-retention.sh') {
-      contents = `known_recovery_a=${old}\nknown_recovery_b=${oldB}\n`;
+      contents = `known_recovery_a=${old}\nknown_recovery_b=${oldB}\nbatch2_recovery_a=${batch2A}\nbatch2_recovery_b=${batch2B}\n`;
       if (selfSourceUnexpectedRef) {
         contents += `echo "${old}"\n`;
       }
     }
     if (file === 'staging.compose.yml' && otherConfigReference) {
       contents += `# still deploying ${old}\n`;
+    }
+    if (file === 'staging.compose.yml' && candidateReferencedBatch2) {
+      contents += `# still deploying ${batch2A}\n`;
     }
     await writeFile(join(deployDir, file), contents);
   }
@@ -82,6 +94,10 @@ async function fixture({
     [worker(old), recoveryIds[worker(old)]],
     [api(oldB), recoveryIds[api(oldB)]],
     [worker(oldB), candidateMismatchB ? id('c') : recoveryIds[worker(oldB)]],
+    [api(batch2A), recoveryIds[api(batch2A)]],
+    [worker(batch2A), recoveryIds[worker(batch2A)]],
+    [api(batch2B), recoveryIds[api(batch2B)]],
+    [worker(batch2B), candidateMismatchBatch2B ? id('c') : recoveryIds[worker(batch2B)]],
     [api(extraOld), id('a')],
     [worker(extraOld), id('b')],
     ...recentHolds.flatMap((rev, i) => [
@@ -189,6 +205,29 @@ console.log('/dev/vda3 51200000 100000  ' + (5000000 + removed * 600000) + ' ' +
   };
   return {
     lock,
+    prepareBatch2: async () => {
+      await writeFile(
+        plan,
+        `${batch2A} ${recoveryIds[api(batch2A)]} ${recoveryIds[worker(batch2A)]}\n${batch2B} ${recoveryIds[api(batch2B)]} ${recoveryIds[worker(batch2B)]}\n`,
+      );
+      await writeFile(
+        evidence,
+        'snapshot=s-j6ccgk5wyg44gmzqgf5v status=Success\n' +
+          'workflow_run=41982285823 conclusion=failure reason=post_disk_gate\n' +
+          `owner_approval=${batch2Owner}\n` +
+          `batch=2 candidate_a=${batch2A} candidate_b=${batch2B}\n`,
+      );
+    },
+    runBatch2: (overrides = {}) =>
+      spawnSync('bash', [script, '--batch2-recovery-execute'], {
+        env: {
+          ...env,
+          STAGING_BATCH2_EXECUTE_ENABLED: 'true',
+          STAGING_RETENTION_APPROVAL_ID: batch2Owner,
+          ...overrides,
+        },
+        encoding: 'utf8',
+      }),
     run: (mode = '--recovery-execute', overrides = {}) =>
       spawnSync('bash', [script, mode], {
         env: { ...env, ...overrides },
@@ -313,5 +352,88 @@ test('steady-state mode requires genuinely successful latest deployment', async 
   const bad = fx.run('--steady-state-execute');
   assert.equal(bad.status, 1);
   assert.match(bad.stderr, /verified successful deployment revision is required/);
+  assert.deepEqual((await fx.state()).removed, []);
+});
+
+test('batch 2 mode defaults to denied and old Phase B approval never authorizes it', async () => {
+  const fx = await fixture();
+  await fx.prepareBatch2();
+  for (const overrides of [
+    { STAGING_BATCH2_EXECUTE_ENABLED: 'false' },
+    { STAGING_RETENTION_APPROVAL_ID: 'XIAOHAI-195-PHASEB-20261106-EXACT4' },
+    { STAGING_RETENTION_APPROVAL_ID: 'fixture-owner-approval' },
+  ]) {
+    const result = fx.runBatch2(overrides);
+    assert.equal(result.status, 1, result.stderr);
+    assert.deepEqual((await fx.state()).removed, []);
+  }
+});
+
+test('batch 2 code-only path accepts exactly its two approved pairs when all mock gates pass', async () => {
+  const fx = await fixture();
+  await fx.prepareBatch2();
+  const result = fx.runBatch2();
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /batch2=true historic_workflow_conclusion=failure/);
+  assert.match(result.stdout, /deleted_pairs=2/);
+  const removed = (await fx.state()).removed;
+  assert.deepEqual(removed, [api(batch2A), worker(batch2A), api(batch2B), worker(batch2B)]);
+  assert.ok(!removed.includes(api(old)));
+  assert.ok(!removed.includes(worker(oldB)));
+  for (const rev of recentHolds) {
+    assert.ok(!removed.includes(api(rev)));
+    assert.ok(!removed.includes(worker(rev)));
+  }
+});
+
+test('batch 2 refuses wrong or absent exact evidence, snapshot or success spoof', async () => {
+  const fx = await fixture();
+  await fx.prepareBatch2();
+  for (const overrides of [
+    { STAGING_RECOVERY_EVIDENCE_FILE: '/nonexistent' },
+    { STAGING_DEPLOY_SUCCEEDED_REVISION: current },
+    { STAGING_RECOVERY_FAILED_RUN_ID: '123' },
+    { STAGING_RECOVERY_RUNTIME_ACCEPTED: 'false' },
+    { STAGING_CONFIG_COVERAGE_CONFIRMED: 'false' },
+  ]) {
+    const result = fx.runBatch2(overrides);
+    assert.equal(result.status, 1, result.stderr);
+    assert.deepEqual((await fx.state()).removed, []);
+  }
+  await writeFile(fx.evidence, 'owner_approval=' + batch2Owner + '\n');
+  const result = fx.runBatch2();
+  assert.equal(result.status, 1, result.stderr);
+  assert.deepEqual((await fx.state()).removed, []);
+});
+
+test('batch 2 rejects a mismatched second worker ID before deleting first pair', async () => {
+  const fx = await fixture({ candidateMismatchBatch2B: true });
+  await fx.prepareBatch2();
+  const result = fx.runBatch2();
+  assert.equal(result.status, 1, result.stderr);
+  assert.match(result.stderr, /recovery Worker image ID differs from owner allowlist/);
+  assert.deepEqual((await fx.state()).removed, []);
+});
+
+test('batch 2 blocks active config references, unhealthy service and missing HOLD', async () => {
+  for (const opts of [
+    { candidateReferencedBatch2: true },
+    { ready: false },
+    { workerRunning: false },
+    { missingHold: api(recentHolds[0]) },
+  ]) {
+    const fx = await fixture(opts);
+    await fx.prepareBatch2();
+    const result = fx.runBatch2();
+    assert.equal(result.status, 1, result.stderr);
+    assert.deepEqual((await fx.state()).removed, []);
+  }
+});
+
+test('ordinary --recovery-execute rejects batch 2 manifest, even with original recovery switches', async () => {
+  const fx = await fixture();
+  await fx.prepareBatch2();
+  const result = fx.run('--recovery-execute');
+  assert.equal(result.status, 1, result.stderr);
   assert.deepEqual((await fx.state()).removed, []);
 });
