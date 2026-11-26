@@ -6,8 +6,14 @@ type DisplayProduct = Product & { displayCoverUrl: string };
 
 Page({
   data: { q: '', products: [] as DisplayProduct[], loading: true, error: false },
+  requestVersion: 0,
+  pageClosed: false,
   onLoad() {
     void this.load();
+  },
+  onUnload() {
+    this.pageClosed = true;
+    this.requestVersion += 1;
   },
   onInput(e: WechatMiniprogram.Input) {
     this.setData({ q: String(e.detail.value) });
@@ -16,9 +22,13 @@ Page({
     void this.load();
   },
   async load() {
+    if (this.pageClosed) return;
+    const version = ++this.requestVersion;
+    const query = this.data.q;
     this.setData({ loading: true, error: false });
     try {
-      const r = await listProducts(this.data.q);
+      const r = await listProducts(query);
+      if (this.pageClosed || version !== this.requestVersion) return;
       this.setData({
         products: r.products.map((product) => ({
           ...product,
@@ -30,6 +40,7 @@ Page({
         loading: false,
       });
     } catch {
+      if (this.pageClosed || version !== this.requestVersion) return;
       this.setData({ loading: false, error: true, products: [] });
     }
   },

@@ -55,8 +55,13 @@ Page({
       this.setData({ message: '加入失败；请先登录或检查商品状态' });
     }
   },
-  coverError() {
-    if (!this.data.product) return;
+  coverError(event: WechatMiniprogram.TouchEvent) {
+    const product = this.data.product;
+    const id = String(event.currentTarget.dataset.id ?? '');
+    const failedUrl = String(event.currentTarget.dataset.src ?? '');
+    // A previous image may fail after a new product/cover has already loaded.
+    if (!product || product.id !== id || !failedUrl || product.displayCoverUrl !== failedUrl)
+      return;
     this.setData({ 'product.displayCoverUrl': '' });
   },
   openCart() {

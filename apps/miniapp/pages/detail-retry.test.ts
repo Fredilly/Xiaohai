@@ -13,7 +13,7 @@ vi.mock('../services/commerce', () => ({
   addCartItem: vi.fn(),
 }));
 vi.mock('../utils/real-visuals', () => ({
-  resolveEditorialBookCover: () => '',
+  resolveEditorialBookCover: (_title: string, url: string | null) => url ?? '',
 }));
 vi.mock('../services/content', () => ({
   getSeries: mocks.getSeries,
@@ -32,6 +32,7 @@ type PageConfig = {
   load?(id?: string): Promise<void>;
   loadStore?(id: string): Promise<void>;
   retry?(): void;
+  coverError?(event: WechatMiniprogram.TouchEvent): void;
 };
 
 const captured: PageConfig[] = [];
@@ -60,7 +61,14 @@ function page(index: number): PageConfig {
     ...definition,
     data: { ...definition.data },
     setData(changes) {
-      Object.assign(instance.data, changes);
+      for (const [key, value] of Object.entries(changes)) {
+        if (key === 'product.displayCoverUrl') {
+          const product = instance.data.product as { displayCoverUrl: string } | null;
+          if (product) product.displayCoverUrl = String(value);
+        } else {
+          instance.data[key] = value;
+        }
+      }
     },
   };
   return instance;
@@ -86,6 +94,37 @@ describe('detail pages retry their original data reads', () => {
       expect(mocks.getProduct).toHaveBeenCalledTimes(2);
       expect(instance.data.error).toBe(false);
       expect(instance.data.loading).toBe(false);
+    });
+  });
+
+  it('keeps a refreshed product cover when a stale image-error event arrives', async () => {
+    const product = page(0);
+    product.data.id = 'product-1';
+    mocks.getProduct.mockResolvedValueOnce({
+      id: 'product-1',
+      name: '真实商品',
+      coverUrl: 'https://bos.invalid/new-cover.jpg',
+      skus: [{ id: 'sku-1', priceMinor: 999 }],
+    });
+    await product.load?.call(product, 'product-1');
+
+    const imageError = (id: string, src: string) =>
+      ({ currentTarget: { dataset: { id, src } } }) as unknown as WechatMiniprogram.TouchEvent;
+    product.coverError?.call(product, imageError('product-1', 'https://bos.invalid/old-cover.jpg'));
+    product.coverError?.call(
+      product,
+      imageError('other-product', 'https://bos.invalid/new-cover.jpg'),
+    );
+    expect(product.data.product).toMatchObject({
+      id: 'product-1',
+      displayCoverUrl: 'https://bos.invalid/new-cover.jpg',
+    });
+
+    product.coverError?.call(product, imageError('product-1', 'https://bos.invalid/new-cover.jpg'));
+    expect(product.data.product).toMatchObject({
+      id: 'product-1',
+      displayCoverUrl: '',
+      skus: [{ id: 'sku-1', priceMinor: 999 }],
     });
   });
 
