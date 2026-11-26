@@ -225,7 +225,12 @@ function FoodStockSession({ token, storeId, staffAccountId, permissions, items }
   return (
     <section aria-label="食品批次管理">
       <h3>预包装食品与瓶装饮料批次</h3>
-      <FoodTraceabilityPanel token={token} storeId={storeId} permissions={permissions} />
+      <FoodTraceabilityPanel
+        token={token}
+        storeId={storeId}
+        staffAccountId={staffAccountId}
+        permissions={permissions}
+      />
       <p>新批次默认冻结；不支持现制配方扣料。食品下单状态以服务端配置和实时批次校验为准。</p>
       <label>
         本店 SKU

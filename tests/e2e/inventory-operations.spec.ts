@@ -647,7 +647,7 @@ test('food intake persists its original operation through changed input and page
   expect(keys[0]).toBe(keys[1]);
   await expect(page.getByRole('alert')).toHaveCount(0);
 });
-test('physical receipt keeps the same key when the post-success refresh fails', async ({
+test('physical receipt does not retry a confirmed POST when the subsequent read fails', async ({
   page,
 }) => {
   await ordinaryInventoryFixture(page);
@@ -691,11 +691,65 @@ test('physical receipt keeps the same key when the post-success refresh fails', 
   await form.getByLabel('原因', { exact: true }).fill('Synthetic physical receipt');
   await form.getByLabel('内部接收凭证').fill('synthetic:return:1');
   await form.getByRole('button', { name: '接收为冻结批次' }).click();
-  await expect(panel.getByRole('status')).toContainText('未确认成功');
+  await expect(panel.getByRole('status')).toContainText('写入已成功响应，但订单批次读回失败');
+  await expect(form).toHaveCount(0);
+  await expect(panel.getByRole('alert')).toHaveCount(0);
+  expect(keys).toHaveLength(1);
+});
+
+test('physical return abort, reload and changed quantity never generate a second request key', async ({
+  page,
+}) => {
+  await ordinaryInventoryFixture(page);
+  await page.route(`**/api/v1/staff/inventory/food-stock/order/${orderId}`, (route) =>
+    route.fulfill({
+      json: {
+        orderId,
+        storeId,
+        status: 'COMPLETED',
+        allocations: [
+          {
+            id: allocationId,
+            skuId,
+            batchId: foodBatchId,
+            lotCode: 'SYNTHETIC',
+            quantity: 2,
+            status: 'SOLD',
+            returnedQuantity: 0,
+          },
+        ],
+      },
+    }),
+  );
+  const keys: string[] = [];
+  await page.route('**/api/v1/staff/inventory/food-stock/physical-returns', (route) => {
+    keys.push((route.request().postDataJSON() as { idempotencyKey: string }).idempotencyKey);
+    if (keys.length === 1) return route.abort('failed');
+    return route.fulfill({ json: { returnedBatchId: foodBatchId, replayed: true } });
+  });
+  await mount(page);
+  const panel = page.getByRole('region', { name: '食品退货与溯源' });
+  await panel.getByLabel('原订单 ID').fill(orderId);
+  await panel.getByRole('button', { name: '读取原订单批次' }).click();
+  const form = panel.getByRole('group', { name: '确认收到实物（与退款分开）' });
+  await form.getByLabel('实际收到数量').fill('1');
+  await form.getByLabel('原因', { exact: true }).fill('Synthetic physical receipt');
+  await form.getByLabel('内部接收凭证').fill('synthetic:return:1');
   await form.getByRole('button', { name: '接收为冻结批次' }).click();
-  await expect(panel.getByRole('status')).toContainText('没有自动退款');
-  expect(keys).toHaveLength(2);
+  await expect(panel.getByRole('status')).toContainText('实物接收结果未确认');
+  await form.getByLabel('实际收到数量').fill('2');
+  await form.getByRole('button', { name: '接收为冻结批次' }).click();
+  await expect(panel.getByRole('status')).toContainText('未确认或会话存储不可用');
+  expect(keys).toHaveLength(1);
+  await page.reload();
+  await mount(page);
+  const restored = page.getByRole('region', { name: '食品退货与溯源' });
+  await expect(restored.getByRole('alert')).toContainText(orderId);
+  await restored.getByRole('button', { name: '使用原实物接收请求重试' }).click();
+  await expect.poll(() => keys.length).toBe(2);
   expect(keys[0]).toBe(keys[1]);
+  await expect(restored.getByRole('alert')).toHaveCount(0);
+  await expect(restored.getByRole('status')).toContainText('没有自动退款');
 });
 test('a mismatched store trace response is never displayed', async ({ page }) => {
   await ordinaryInventoryFixture(page);

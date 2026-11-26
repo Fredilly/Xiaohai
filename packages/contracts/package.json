@@ -94,6 +94,12 @@
       "import": "./dist/food-operation-retry.js",
       "default": "./dist/food-operation-retry.js"
     },
+    "./food-return-retry": {
+      "types": "./src/food-return-retry.ts",
+      "development": "./src/food-return-retry.ts",
+      "import": "./dist/food-return-retry.js",
+      "default": "./dist/food-return-retry.js"
+    },
     "./inventory": {
       "types": "./src/inventory.ts",
       "development": "./src/inventory.ts",
