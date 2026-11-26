@@ -8,6 +8,9 @@ Page({
   readSequence: 0,
   visibleSession: '',
   cancelling: false,
+  wasHidden: false,
+  pageClosed: false,
+  reloadAfterOperation: false,
   data: {
     order: null as Awaited<ReturnType<typeof getOrder>> | null,
     fulfillment: null as FulfillmentView | null,
@@ -29,19 +32,35 @@ Page({
     }
   },
   onShow() {
+    if (this.pageClosed) return;
+    this.wasHidden = false;
+    if (this.cancelling || this.data.paying) {
+      this.reloadAfterOperation = true;
+      this.setData({ loading: true });
+      return;
+    }
     if (this.data.id) void this.load();
   },
   onHide() {
+    this.wasHidden = true;
     this.readSequence++;
     this.visibleSession = '';
     this.setData({ order: null, fulfillment: null, cancelMessage: '', paymentMessage: '' });
   },
   onUnload() {
+    this.pageClosed = true;
+    this.wasHidden = true;
     this.readSequence++;
     this.visibleSession = '';
+    this.setData({ order: null, fulfillment: null, cancelMessage: '', paymentMessage: '' });
   },
 
   async load() {
+    if (this.wasHidden || this.pageClosed) return;
+    if (this.cancelling || this.data.paying) {
+      this.reloadAfterOperation = true;
+      return;
+    }
     const sequence = ++this.readSequence;
     const orderId = this.data.id;
     const session = consumerToken();
@@ -53,7 +72,13 @@ Page({
     }
     try {
       const order = await getOrder(orderId);
-      if (sequence !== this.readSequence || orderId !== this.data.id) return;
+      if (
+        sequence !== this.readSequence ||
+        orderId !== this.data.id ||
+        this.wasHidden ||
+        this.pageClosed
+      )
+        return;
       if (consumerToken() !== session) {
         this.setData({ order: null, fulfillment: null, loading: false, error: true });
         return;
@@ -70,7 +95,13 @@ Page({
         fulfillment = null;
         fulfillmentError = !(error instanceof Error && error.message === 'NOT_FOUND');
       }
-      if (sequence !== this.readSequence || orderId !== this.data.id) return;
+      if (
+        sequence !== this.readSequence ||
+        orderId !== this.data.id ||
+        this.wasHidden ||
+        this.pageClosed
+      )
+        return;
       if (consumerToken() !== session) {
         this.setData({ order: null, fulfillment: null, loading: false, error: true });
         return;
@@ -78,62 +109,117 @@ Page({
       this.visibleSession = session;
       this.setData({ order, fulfillment, fulfillmentError, loading: false, error: false });
     } catch {
-      if (sequence === this.readSequence && orderId === this.data.id)
+      if (
+        sequence === this.readSequence &&
+        orderId === this.data.id &&
+        !this.wasHidden &&
+        !this.pageClosed
+      )
         this.setData({ order: null, fulfillment: null, loading: false, error: true });
     }
   },
 
   async cancel() {
-    if (this.cancelling || this.data.paying || this.data.order?.status !== 'UNPAID') return;
+    if (
+      this.wasHidden ||
+      this.pageClosed ||
+      this.cancelling ||
+      this.data.paying ||
+      this.data.order?.status !== 'UNPAID'
+    )
+      return;
     if (!this.visibleSession || consumerToken() !== this.visibleSession) {
       this.setData({ order: null, fulfillment: null, error: true });
       return;
     }
     const session = this.visibleSession;
+    const sequence = this.readSequence;
     this.cancelling = true;
     this.setData({ cancellingOrder: true, cancelMessage: '' });
     try {
       await cancelOrder(this.data.id);
-      if (this.visibleSession === session && consumerToken() === session)
+      if (
+        !this.wasHidden &&
+        !this.pageClosed &&
+        sequence === this.readSequence &&
+        this.visibleSession === session &&
+        consumerToken() === session
+      )
         this.setData({ cancelMessage: '取消请求已提交，请以最新订单状态为准。' });
     } catch {
-      if (this.visibleSession === session && consumerToken() === session)
+      if (
+        !this.wasHidden &&
+        !this.pageClosed &&
+        sequence === this.readSequence &&
+        this.visibleSession === session &&
+        consumerToken() === session
+      )
         this.setData({ cancelMessage: '取消结果未确认，请刷新订单后再操作。' });
     } finally {
       this.cancelling = false;
-      this.setData({ cancellingOrder: false });
-      if (this.visibleSession === session) {
-        if (consumerToken() === session) await this.load();
-        else {
-          this.visibleSession = '';
-          this.setData({ order: null, fulfillment: null, error: true });
+      if (!this.pageClosed) this.setData({ cancellingOrder: false });
+      if (!this.wasHidden && !this.pageClosed) {
+        if (this.reloadAfterOperation) {
+          this.reloadAfterOperation = false;
+          await this.load();
+        } else if (this.visibleSession === session) {
+          if (consumerToken() === session) await this.load();
+          else {
+            this.visibleSession = '';
+            this.setData({ order: null, fulfillment: null, error: true });
+          }
         }
       }
     }
   },
 
   async pay() {
-    if (this.data.paying || this.cancelling || this.data.order?.status !== 'UNPAID') return;
+    if (
+      this.wasHidden ||
+      this.pageClosed ||
+      this.data.paying ||
+      this.cancelling ||
+      this.data.order?.status !== 'UNPAID'
+    )
+      return;
     if (!this.visibleSession || consumerToken() !== this.visibleSession) {
       this.setData({ order: null, fulfillment: null, error: true });
       return;
     }
     const session = this.visibleSession;
+    const sequence = this.readSequence;
     this.setData({ paying: true, paymentMessage: '' });
     try {
       await payOrder(this.data.id);
-      if (this.visibleSession === session && consumerToken() === session)
+      if (
+        !this.wasHidden &&
+        !this.pageClosed &&
+        sequence === this.readSequence &&
+        this.visibleSession === session &&
+        consumerToken() === session
+      )
         this.setData({ paymentMessage: '支付结果以服务端订单状态为准，请刷新确认。' });
     } catch {
-      if (this.visibleSession === session && consumerToken() === session)
+      if (
+        !this.wasHidden &&
+        !this.pageClosed &&
+        sequence === this.readSequence &&
+        this.visibleSession === session &&
+        consumerToken() === session
+      )
         this.setData({ paymentMessage: '支付未完成或暂不可用。请刷新订单确认，勿重复付款。' });
     } finally {
-      this.setData({ paying: false });
-      if (this.visibleSession === session) {
-        if (consumerToken() === session) await this.load();
-        else {
-          this.visibleSession = '';
-          this.setData({ order: null, fulfillment: null, error: true });
+      if (!this.pageClosed) this.setData({ paying: false });
+      if (!this.wasHidden && !this.pageClosed) {
+        if (this.reloadAfterOperation) {
+          this.reloadAfterOperation = false;
+          await this.load();
+        } else if (this.visibleSession === session) {
+          if (consumerToken() === session) await this.load();
+          else {
+            this.visibleSession = '';
+            this.setData({ order: null, fulfillment: null, error: true });
+          }
         }
       }
     }

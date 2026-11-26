@@ -19,6 +19,9 @@ type DetailPage = {
   readSequence: number;
   visibleSession: string;
   cancelling: boolean;
+  wasHidden: boolean;
+  pageClosed: boolean;
+  reloadAfterOperation: boolean;
   data: {
     id: string;
     order: { status: string } | null;
@@ -31,7 +34,9 @@ type DetailPage = {
   load(): Promise<void>;
   cancel(): Promise<void>;
   pay(): Promise<void>;
+  onShow(): void;
   onHide(): void;
+  onUnload(): void;
 };
 let definition: DetailPage;
 function page(): DetailPage {
@@ -40,6 +45,9 @@ function page(): DetailPage {
     readSequence: 0,
     visibleSession: 'account-a',
     cancelling: false,
+    wasHidden: false,
+    pageClosed: false,
+    reloadAfterOperation: false,
     data: { id: 'order-a', order: { status: 'UNPAID' }, paying: false, cancellingOrder: false },
     setData(patch) {
       Object.assign(this.data, patch);
@@ -178,6 +186,49 @@ describe('consumer order detail transitions', () => {
     expect(detail.visibleSession).toBe('');
     expect(detail.data.paymentMessage).toBe('');
     expect(detail.data.paying).toBe(false);
+  });
+
+  it('waits for an in-flight cashier action before refreshing when the page returns', async () => {
+    let release: () => void = () => {};
+    mocks.payOrder.mockImplementationOnce(
+      () => new Promise<void>((resolve) => (release = resolve)),
+    );
+    mocks.getFulfillment.mockResolvedValue({ orderId: 'order-a', method: 'PICKUP' });
+    const detail = page();
+    const pending = detail.pay();
+    detail.onHide();
+    detail.onShow();
+    expect(mocks.getOrder).not.toHaveBeenCalled();
+    release();
+    await pending;
+    expect(mocks.getOrder).toHaveBeenCalledOnce();
+    expect(detail.data.order?.status).toBe('CANCELLED');
+    expect(detail.data.paymentMessage).toBe('');
+    expect(detail.data.paying).toBe(false);
+  });
+
+  it('does not refresh or show a late payment result after disposal', async () => {
+    let release: () => void = () => {};
+    mocks.payOrder.mockImplementationOnce(
+      () => new Promise<void>((resolve) => (release = resolve)),
+    );
+    const detail = page();
+    const pending = detail.pay();
+    detail.onUnload();
+    release();
+    await pending;
+    expect(detail.data.order).toBeNull();
+    expect(detail.data.paymentMessage).toBe('');
+    expect(mocks.getOrder).not.toHaveBeenCalled();
+    detail.onShow();
+    expect(mocks.getOrder).not.toHaveBeenCalled();
+  });
+
+  it('does not load an order while the detail page is hidden', async () => {
+    const detail = page();
+    detail.onHide();
+    await detail.load();
+    expect(mocks.getOrder).not.toHaveBeenCalled();
   });
 
   it('distinguishes legacy missing fulfillment from network errors and wrong-order responses', async () => {
