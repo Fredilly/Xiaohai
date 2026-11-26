@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   token: vi.fn(),
   listOrders: vi.fn(),
   switchTab: vi.fn(),
+  navigateTo: vi.fn(),
 }));
 
 vi.mock('../../services/consumer-session', () => ({ consumerToken: mocks.token }));
@@ -25,13 +26,20 @@ type State = {
 };
 type TestPage = {
   readSequence: number;
+  loadedSession: string;
+  wasHidden: boolean;
+  pageClosed: boolean;
   data: State;
   setData(changes: Partial<State>): void;
   load(): Promise<void>;
+  onShow(): void;
+  onHide(): void;
+  onUnload(): void;
+  open(event: WechatMiniprogram.TouchEvent): void;
   goToLogin(): void;
 };
 
-let definition: Pick<TestPage, 'load' | 'goToLogin'>;
+let definition: Pick<TestPage, 'load' | 'goToLogin' | 'onShow' | 'onHide' | 'onUnload' | 'open'>;
 
 beforeAll(async () => {
   vi.stubGlobal('Page', (page: typeof definition) => {
@@ -44,12 +52,15 @@ afterAll(() => vi.unstubAllGlobals());
 
 beforeEach(() => {
   vi.resetAllMocks();
-  vi.stubGlobal('wx', { switchTab: mocks.switchTab });
+  vi.stubGlobal('wx', { switchTab: mocks.switchTab, navigateTo: mocks.navigateTo });
 });
 
 function createPage(): TestPage {
   const page: TestPage = {
     readSequence: 0,
+    loadedSession: '',
+    wasHidden: false,
+    pageClosed: false,
     data: { orders: [], loading: true, error: false, needsLogin: false },
     setData(changes) {
       Object.assign(page.data, changes);
@@ -59,6 +70,18 @@ function createPage(): TestPage {
     },
     goToLogin() {
       definition.goToLogin.call(page);
+    },
+    onShow() {
+      definition.onShow.call(page);
+    },
+    onHide() {
+      definition.onHide.call(page);
+    },
+    onUnload() {
+      definition.onUnload.call(page);
+    },
+    open(event) {
+      definition.open.call(page, event);
     },
   };
   return page;
@@ -170,5 +193,42 @@ describe('orders: protected list states', () => {
     await page.load();
 
     expect(page.data).toMatchObject({ loading: false, error: true, needsLogin: false });
+  });
+
+  it('opens only a real order from the currently verified account list', async () => {
+    mocks.token.mockReturnValue('account-a');
+    mocks.listOrders.mockResolvedValue({ orders: [{ id: 'order-a' }] });
+    const page = createPage();
+    await page.load();
+    const tap = (id: string) =>
+      ({ currentTarget: { dataset: { id } } }) as unknown as WechatMiniprogram.TouchEvent;
+    page.open(tap('invented-order'));
+    expect(mocks.navigateTo).not.toHaveBeenCalled();
+    page.open(tap('order-a'));
+    expect(mocks.navigateTo).toHaveBeenCalledExactlyOnceWith({
+      url: '/pages/order-detail/order-detail?id=order-a',
+    });
+    mocks.token.mockReturnValue('account-b');
+    page.open(tap('order-a'));
+    expect(mocks.navigateTo).toHaveBeenCalledOnce();
+  });
+
+  it('clears order rows immediately on hide and ignores hidden navigation or old reads', async () => {
+    mocks.token.mockReturnValue('account-a');
+    let resolve: (value: { orders: Array<{ id: string }> }) => void = () => {};
+    mocks.listOrders.mockImplementationOnce(() => new Promise((accept) => (resolve = accept)));
+    const page = createPage();
+    const pending = page.load();
+    page.onHide();
+    resolve({ orders: [{ id: 'hidden-order' }] });
+    await pending;
+    expect(page.data.orders).toEqual([]);
+    page.open({ currentTarget: { dataset: { id: 'hidden-order' } } } as never);
+    expect(mocks.navigateTo).not.toHaveBeenCalled();
+    mocks.listOrders.mockResolvedValue({ orders: [{ id: 'new-order' }] });
+    page.onShow();
+    await vi.waitFor(() => expect(page.data.orders).toEqual([{ id: 'new-order' }]));
+    page.onUnload();
+    expect(page.data.orders).toEqual([]);
   });
 });

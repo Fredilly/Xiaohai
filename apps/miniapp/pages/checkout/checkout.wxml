@@ -46,6 +46,7 @@
     </view>
 
     <view wx:if="{{errorMessage}}" class="demo-note">{{errorMessage}}<button wx:if="{{needsLogin}}" bindtap="goToLogin">去登录</button><button wx:elif="{{orderAttempted}}" bindtap="openOrders">查看我的订单</button><button wx:elif="{{!quote}}" bindtap="load">重试加载</button></view>
+    <button wx:if="{{createdOrderId}}" class="primary-btn" bindtap="openCreatedOrder">查看已创建订单</button>
 
     <view wx:if="{{quote}}" class="section card order-amount">
       <text class="card-title">订单金额</text>
@@ -58,7 +59,7 @@
         class="primary-btn"
         bindtap="create"
         loading="{{creating}}"
-        disabled="{{creating || quoting}}"
+        disabled="{{creating || quoting || createdOrderId}}"
       >创建订单</button>
       <text class="muted">创建后请在订单详情查看并完成支付。</text>
     </view>

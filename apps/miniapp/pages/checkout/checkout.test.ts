@@ -233,7 +233,9 @@ describe('checkout quote under reordered network responses', () => {
     expect(vi.mocked(createFulfillmentOrder).mock.calls[0]).toEqual(
       vi.mocked(createFulfillmentOrder).mock.calls[1],
     );
-    expect(redirectTo).toHaveBeenCalledWith({ url: '/pages/order-detail/order-detail?id=order-a' });
+    expect(redirectTo).toHaveBeenCalledWith(
+      expect.objectContaining({ url: '/pages/order-detail/order-detail?id=order-a' }),
+    );
     expect(checkout.orderAttemptSession).toBe('account-a');
     vi.mocked(consumerToken).mockReturnValue('account-b');
     checkout.loadedSession = 'account-b';
