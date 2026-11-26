@@ -5,6 +5,7 @@ import {
   staffAdminListQuerySchema,
   staffAdminReplaceDataScopesSchema,
   staffAdminReplaceRolesSchema,
+  staffAdminResetPasswordSchema,
   staffAdminRolesResponseSchema,
 } from './staff-admin.js';
 
@@ -59,6 +60,14 @@ describe('M20 Staff admin contracts', () => {
         password: 'short',
       }).success,
     ).toBe(false);
+    expect(
+      staffAdminCreateAccountSchema.safeParse({
+        loginIdentifier: 'ops@example.com',
+        password: 'K7m!p2Qx',
+      }).success,
+    ).toBe(true);
+    expect(staffAdminResetPasswordSchema.safeParse({ password: 'K7m!p2Qx' }).success).toBe(true);
+    expect(staffAdminResetPasswordSchema.safeParse({ password: 'K7m!p2Q' }).success).toBe(false);
 
     const roleId = '33333333-3333-4333-8333-333333333333';
     expect(staffAdminReplaceRolesSchema.parse({ roleIds: [roleId] })).toEqual({

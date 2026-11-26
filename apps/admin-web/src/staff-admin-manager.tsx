@@ -228,7 +228,7 @@ export function StaffAdminManager({
             </label>
             <label>
               初始密码
-              <input name="password" type="password" required minLength={12} maxLength={128} />
+              <input name="password" type="password" required minLength={8} maxLength={128} />
             </label>
             <label>
               <input name="enabled" type="checkbox" defaultChecked /> 创建后立即启用
@@ -310,7 +310,7 @@ export function StaffAdminManager({
               <form className="ops-form" onSubmit={(event) => void resetPassword(event)}>
                 <label>
                   新密码
-                  <input name="password" type="password" required minLength={12} maxLength={128} />
+                  <input name="password" type="password" required minLength={8} maxLength={128} />
                 </label>
                 <button>重置密码</button>
               </form>

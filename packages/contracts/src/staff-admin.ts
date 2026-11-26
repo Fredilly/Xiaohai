@@ -63,7 +63,7 @@ export const staffAdminRolesResponseSchema = z.object({ items: z.array(staffAdmi
 export const staffAdminCreateAccountSchema = z
   .object({
     loginIdentifier: z.string().trim().min(3).max(120),
-    password: z.string().min(12).max(128),
+    password: z.string().min(8).max(128),
     enabled: z.boolean().default(true),
   })
   .strict();
@@ -71,7 +71,7 @@ export const staffAdminCreateAccountSchema = z
 export const staffAdminSetEnabledSchema = z.object({ enabled: z.boolean() }).strict();
 
 export const staffAdminResetPasswordSchema = z
-  .object({ password: z.string().min(12).max(128) })
+  .object({ password: z.string().min(8).max(128) })
   .strict();
 
 export const staffAdminReplaceRolesSchema = z
