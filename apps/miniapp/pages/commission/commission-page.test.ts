@@ -41,6 +41,7 @@ type CommissionTestData = {
 
 type CommissionTestPage = {
   accountUserId: string;
+  accountSession: string;
   data: CommissionTestData;
   setData(update: Partial<CommissionTestData>): void;
   createLink(): Promise<void>;
@@ -81,6 +82,7 @@ function readyPage(): CommissionTestPage {
   const page: CommissionTestPage = {
     ...pageDefinition,
     accountUserId: consumerId,
+    accountSession: 'session-a',
     data: { ...pageDefinition.data },
     setData(update) {
       Object.assign(this.data, update);
@@ -97,6 +99,16 @@ function readyPage(): CommissionTestPage {
 }
 
 describe('commission action failures', () => {
+  it('rejects a withdrawal after a same-user token rotation without posting', async () => {
+    const page = readyPage();
+    vi.mocked(consumerToken).mockReturnValue('session-new');
+    await page.withdraw();
+    expect(createWithdrawal).not.toHaveBeenCalled();
+    expect(readPendingWithdrawal(consumerId)).toBeNull();
+    expect(page.data.accountStatus).toBe('unauthenticated');
+    expect(page.data.availableMinor).toBe(0);
+    expect(page.accountSession).toBe('');
+  });
   it('does not reload a hidden account when a referral request completes', async () => {
     let resolveLink: () => void = () => {};
     vi.mocked(createReferralLink).mockImplementationOnce(
