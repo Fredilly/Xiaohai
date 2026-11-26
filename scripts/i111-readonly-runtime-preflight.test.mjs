@@ -71,7 +71,7 @@ function env() {
 }
 
 function migrationRows() {
-  return Array.from({ length: 42 }, (_, index) => ({
+  return Array.from({ length: 50 }, (_, index) => ({
     id: index + 1,
     hash: String(index).padStart(64, '0'),
     created_at: String(1_790_000_000_000 + index),

@@ -96,7 +96,9 @@ const EXPECTED = Object.freeze({
   mimiBytes: 1_843_161,
   pipSha256: 'af3845b30a28a82c7cbcc491b76c1291355009c347274437ff23968ee144c06d',
   pipBytes: 738_959,
-  migrationCount: 42,
+  // Integration branch includes the #208 food transaction migrations through 0049.
+  // This exact count remains fail-closed; independent review must re-attest the new source.
+  migrationCount: 50,
 });
 
 const DISKUTIL = '/usr/sbin/diskutil';
