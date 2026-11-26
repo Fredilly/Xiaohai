@@ -259,10 +259,12 @@ function App() {
       setAuthError(false);
       return;
     }
+    let cancelled = false;
     setChecking(true);
     setAuthError(false);
     void getStaffMe(token)
       .then((r) => {
+        if (cancelled) return;
         if (!r) {
           sessionStorage.removeItem(tokenKey);
           setToken(null);
@@ -270,10 +272,16 @@ function App() {
         } else setMe(r);
       })
       .catch(() => {
+        if (cancelled) return;
         setMe(null);
         setAuthError(true);
       })
-      .finally(() => setChecking(false));
+      .finally(() => {
+        if (!cancelled) setChecking(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [token, retryKey]);
   const logout = () => {
     sessionStorage.removeItem(tokenKey);
