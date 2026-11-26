@@ -59,6 +59,8 @@ Uses Node.js crypto RSA-SHA256 for request and Mini Program signatures. Response
 
 三个环境的 example 均默认 `WECHAT_PAY_ENABLED=false`。真实配置由 secret manager 注入：`WECHAT_APP_ID`、`WECHAT_PAY_MCH_ID`、`WECHAT_PAY_MERCHANT_SERIAL`、`WECHAT_PAY_PRIVATE_KEY_PATH`、`WECHAT_PAY_API_V3_KEY`（32 字节）、`WECHAT_PAY_PLATFORM_KEY_ID`、`WECHAT_PAY_PLATFORM_PUBLIC_KEY_PATH`、支付及退款 HTTPS notify URL。私钥、公钥/证书内容不提交 Git。启用但配置不完整时拒绝启动支付配置；关闭时接口返回 503，其他 M1–M5 能力仍可运行。
 
+两个通知 URL 必须是无需查询参数的 HTTPS 地址，路径固定为 `/api/v1/payments/wechat/notify`；API 当前只注册此共用回调路由。生产启用前，独立验证该域名真实解析、证书链、代理转发、商户回调验签和数据库提交；格式检查不代表网络或资金验收通过。
+
 All environment examples default to `WECHAT_PAY_ENABLED=false`. Inject actual configuration through a secret manager: `WECHAT_APP_ID`, `WECHAT_PAY_MCH_ID`, `WECHAT_PAY_MERCHANT_SERIAL`, `WECHAT_PAY_PRIVATE_KEY_PATH`, 32-byte `WECHAT_PAY_API_V3_KEY`, `WECHAT_PAY_PLATFORM_KEY_ID`, `WECHAT_PAY_PLATFORM_PUBLIC_KEY_PATH`, and HTTPS payment/refund notify URLs. Never commit private keys or public-key/certificate contents. Enabled but incomplete configuration fails startup validation; disabled payment endpoints return 503 while M1–M5 remain available.
 
 日志只记录 request ID、内部支付/退款 ID、员工 ID、状态或固定错误码，不记录密钥、签名、prepay_id、openid、回调原文、完整请求体或 provider 错误内容。`PAYMENT_REVIEW_REQUIRED`、对账 FAILED/REVIEW_REQUIRED 与固定失败日志作为告警接入点；外部告警投递、响应值班与告警阈值仍需部署配置。

@@ -24,8 +24,12 @@ import type {
 } from '../src/payments/wechat-pay.js';
 import { CommerceService } from '../src/commerce/commerce-service.js';
 import { backfillFinanceLedger } from '../src/finance/finance-ledger.js';
+import { assertMeipingApplyDisposableDatabase } from './meiping-apply-database-guard.js';
 
-const database = process.env.DATABASE_URL ? createDatabase(process.env) : null;
+// Cleanup below deletes finance/payment rows; never run it on a shared database.
+const database = assertMeipingApplyDisposableDatabase(process.env)
+  ? createDatabase(process.env)
+  : null;
 const suite = database ? describe : describe.skip;
 suite('M6 real PostgreSQL payment transactions', () => {
   const db = database?.db as NonNullable<typeof database>['db'];

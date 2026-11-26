@@ -89,6 +89,29 @@ export interface WeChatPayConfig {
   refundNotifyUrl: string;
 }
 
+// Both payment and refund events are handled by one strictly verified API route.
+// WeChat Pay callbacks must not contain query parameters, and an unrelated path
+// could accept the merchant request while silently losing financial events.
+export function validateWeChatPayNotificationUrl(value: string): string {
+  try {
+    const url = new URL(value);
+    if (
+      url.protocol !== 'https:' ||
+      !url.hostname ||
+      url.username ||
+      url.password ||
+      url.hash ||
+      url.search ||
+      url.pathname !== '/api/v1/payments/wechat/notify'
+    ) {
+      throw new Error('invalid callback URL');
+    }
+    return value;
+  } catch {
+    throw new PaymentError('PAYMENT_CONFIGURATION_INVALID', 503);
+  }
+}
+
 // Mounted secret files only; never place key material in the repository or a client bundle.
 export function loadWeChatPayProvider(env: NodeJS.ProcessEnv): WeChatPayProvider {
   if (env.WECHAT_PAY_ENABLED !== 'true') return new DisabledWeChatPayProvider();
@@ -99,13 +122,7 @@ export function loadWeChatPayProvider(env: NodeJS.ProcessEnv): WeChatPayProvider
         throw new Error('configuration');
       return value;
     };
-    const https = (key: string) => {
-      const value = required(key);
-      const url = new URL(value);
-      if (url.protocol !== 'https:' || url.username || url.password || url.hash)
-        throw new Error('configuration');
-      return value;
-    };
+    const https = (key: string) => validateWeChatPayNotificationUrl(required(key));
     const config = {
       appId: required('WECHAT_APP_ID'),
       merchantId: required('WECHAT_PAY_MCH_ID'),
