@@ -1,4 +1,4 @@
-import { consumerToken, clearConsumerSession } from './consumer-session';
+import { consumerToken, checkConsumerResponse } from './consumer-session';
 import type { RentalView } from '@xiaohai/contracts/rental';
 import { getApiBaseUrl } from '../config';
 
@@ -22,7 +22,7 @@ async function request<T>(
         fail: reject,
       }),
   );
-  if (response.statusCode === 401) clearConsumerSession();
+  checkConsumerResponse(session, response.statusCode);
   if (response.statusCode < 200 || response.statusCode >= 300) {
     const body = response.data as { error?: { code?: string } };
     throw new Error(body?.error?.code ?? `HTTP_${response.statusCode}`);

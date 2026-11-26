@@ -21,6 +21,12 @@ export function consumerToken(): string {
   return token;
 }
 
+// An old network response must not clear, or publish data into, a newer login.
+export function checkConsumerResponse(requestToken: string, statusCode: number): void {
+  if (consumerToken() !== requestToken) throw new Error('CONSUMER_SESSION_CHANGED');
+  if (statusCode === 401 && requestToken) clearConsumerSession();
+}
+
 export function saveConsumerSession(token: string, expiresAt: string, userId: string) {
   wx.setStorageSync(tokenKey, token);
   wx.setStorageSync(expiryKey, expiresAt);

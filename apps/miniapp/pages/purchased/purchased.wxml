@@ -1,0 +1,57 @@
+<view class="page">
+  <view class="hero hero-soft">
+    <text class="hero-title">我的动画</text>
+    <text class="hero-subtitle">查看当前账号的观看权益与播放进度。AI 创作的动画在「我的 AI 动画」中管理。</text>
+  </view>
+
+  <view wx:if="{{needsLogin}}" class="state-card">
+    <text class="state-title">请先登录</text>
+    <text class="state-copy">登录后才能查看属于当前账号的观看记录和内容权益。</text>
+    <button class="primary-btn action" bindtap="backToMe">返回我的页面</button>
+  </view>
+  <view wx:elif="{{loading}}" class="state-card">正在读取当前账号的动画…</view>
+  <block wx:else>
+    <view class="section">
+      <view class="section-head"><text class="section-title">继续观看</text></view>
+      <view wx:if="{{continueError}}" class="state-card">
+        <text class="state-copy">观看记录读取失败，请检查网络后重试。</text>
+        <button class="primary-btn action" bindtap="load">重新加载</button>
+      </view>
+      <view wx:elif="{{!continueItems.length}}" class="state-card">暂无未看完的动画</view>
+      <view wx:else class="book-list">
+        <view class="list-card media-row" wx:for="{{continueItems}}" wx:key="episodeId" data-id="{{item.episodeId}}" bindtap="resume">
+          <image wx:if="{{item.displayCoverUrl}}" class="media-cover" src="{{item.displayCoverUrl}}" mode="aspectFill" data-section="continue" data-id="{{item.episodeId}}" data-src="{{item.displayCoverUrl}}" catcherror="coverError" />
+          <view wx:else class="media-cover media-placeholder">暂无封面</view>
+          <view class="list-main">
+            <text class="list-title">{{item.seriesTitle}}</text>
+            <text class="list-meta">第{{item.episodeNumber}}集 · {{item.episodeTitle}}</text>
+            <text class="list-meta">已观看约 {{item.positionMinutes}} 分钟 · 继续播放</text>
+          </view>
+          <text class="arrow">›</text>
+        </view>
+      </view>
+    </view>
+
+    <view class="section">
+      <view class="section-head"><text class="section-title">我的已购与获赠</text></view>
+      <view wx:if="{{purchasedError}}" class="state-card">
+        <text class="state-copy">观看权益读取失败，请检查网络后重试。</text>
+        <button class="primary-btn action" bindtap="load">重新加载</button>
+      </view>
+      <view wx:elif="{{!purchased.length}}" class="state-card">暂无已购或获赠的动画权益</view>
+      <view wx:else class="book-list">
+        <view class="list-card media-row" wx:for="{{purchased}}" wx:key="id" data-id="{{item.id}}" bindtap="openSeries">
+          <image wx:if="{{item.displayCoverUrl}}" class="media-cover" src="{{item.displayCoverUrl}}" mode="aspectFill" data-section="purchased" data-id="{{item.id}}" data-src="{{item.displayCoverUrl}}" catcherror="coverError" />
+          <view wx:else class="media-cover media-placeholder">暂无封面</view>
+          <view class="list-main">
+            <text class="list-title">{{item.title}}</text>
+            <text class="list-meta">{{item.category}}</text>
+            <text class="list-meta">已获得观看权益 · 查看选集</text>
+          </view>
+          <text class="arrow">›</text>
+        </view>
+      </view>
+    </view>
+    <text class="footnote">权益与播放权限最终由服务端实时确认；退款或权益撤销后不会继续保证播放。</text>
+  </block>
+</view>

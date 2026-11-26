@@ -50,4 +50,9 @@ describe('Me order actions', () => {
     tap('settings');
     expect(mocks.navigateTo).toHaveBeenCalledWith({ url: '/pages/settings/settings' });
   });
+
+  it('opens the real purchased-content and continue-watching page', () => {
+    tap('purchased');
+    expect(mocks.navigateTo).toHaveBeenCalledWith({ url: '/pages/purchased/purchased' });
+  });
 });

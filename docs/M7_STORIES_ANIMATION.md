@@ -32,3 +32,11 @@ Production requires private object storage, CDN, HTTPS Mini Program-allowlisted 
 
 ## Next Step
 Run CI and fix only M7 failures. Complete PostgreSQL integration/security tests and Admin Web management UI, then perform DevTools/real-device playback validation. Do not begin M8 until M7 review/merge and unresolved commercial/media decisions are handled.
+
+## 2026-11-26 integration update — My Animations
+
+The consumer **我的动画** tile now opens `pages/purchased/purchased` instead of a placeholder. It reads the existing authenticated `GET /api/v1/content/my-entitlements` and `GET /api/v1/content/continue-watching` APIs, distinguishes entitled series from unfinished viewing history, and links to the existing series-detail/playback screens. It does not grant entitlements or invent a purchase/subscription flow; membership remains unavailable until its business rules and backend are implemented.
+
+The page handles logged-out, empty, partial-network-failure and retry states independently. It clears account-specific rows on hide, rejects late responses after a login change or unload, and never substitutes a logo for a broken cover. Shared consumer API request adapters now capture the token once and reject delayed responses from a different session; a late 401 from account A cannot clear account B's login.
+
+Automated Mini Program regressions cover the destination, server-backed list shape, partial failures, stale responses, account switching, expired sessions and image fallback. **No WeChat DevTools, physical-device, real entitlement issuance, media CDN, paid purchase or production acceptance is claimed.** These paths remain pending acceptance in the appropriate isolated environment and real devices.

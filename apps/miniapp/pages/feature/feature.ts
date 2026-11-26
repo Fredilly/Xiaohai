@@ -1,6 +1,5 @@
 const previewTitles: Record<string, string> = {
   member: '会员中心',
-  purchased: '我的动画',
   share: '分享与活动',
   fulfillment: '自提与配送',
 };

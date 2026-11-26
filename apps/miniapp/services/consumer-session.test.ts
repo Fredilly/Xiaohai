@@ -6,6 +6,7 @@ import {
   storedConsumerId,
 } from './consumer-session';
 import { request } from './commerce';
+import { getEntitlements } from './content';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -51,5 +52,39 @@ describe('Consumer session on weak networks and expiry', () => {
     await expect(request('/api/v1/commerce/cart')).rejects.toBeTruthy();
     expect(values.get('consumer_session_token')).toBe('token2');
     clearConsumerSession();
+  });
+
+  it('never lets a delayed 401 from account A log out account B', async () => {
+    const { values, requestMock, app } = storage();
+    saveConsumerSession('token-A', new Date(Date.now() + 60_000).toISOString(), 'user-A');
+    let respond!: (payload: unknown) => void;
+    requestMock.mockImplementationOnce((input: { success: (value: unknown) => void }) => {
+      respond = input.success;
+    });
+    const oldRequest = request('/api/v1/commerce/cart');
+    const sent = requestMock.mock.calls[0]?.[0] as { header: Record<string, string> } | undefined;
+    expect(sent?.header).toEqual({ Authorization: 'Bearer token-A' });
+    saveConsumerSession('token-B', new Date(Date.now() + 60_000).toISOString(), 'user-B');
+    respond({ statusCode: 401, data: {} });
+    await expect(oldRequest).rejects.toThrow('CONSUMER_SESSION_CHANGED');
+    expect(values.get('consumer_session_token')).toBe('token-B');
+    expect(storedConsumerId()).toBe('user-B');
+    expect(app.globalData.consumerUserId).toBe('user-B');
+  });
+
+  it('never returns an old account entitlement payload after switching accounts', async () => {
+    const { requestMock } = storage();
+    saveConsumerSession('token-A', new Date(Date.now() + 60_000).toISOString(), 'user-A');
+    let respond!: (payload: unknown) => void;
+    requestMock.mockImplementationOnce((input: { success: (value: unknown) => void }) => {
+      respond = input.success;
+    });
+    const oldRequest = getEntitlements();
+    const sent = requestMock.mock.calls[0]?.[0] as { header: Record<string, string> } | undefined;
+    expect(sent?.header).toEqual({ Authorization: 'Bearer token-A' });
+    saveConsumerSession('token-B', new Date(Date.now() + 60_000).toISOString(), 'user-B');
+    respond({ statusCode: 200, data: { series: [{ id: 'account-A-private' }] } });
+    await expect(oldRequest).rejects.toThrow('CONSUMER_SESSION_CHANGED');
+    expect(storedConsumerId()).toBe('user-B');
   });
 });

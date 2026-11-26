@@ -36,10 +36,10 @@ describe('Me order shortcut WXML wiring (PR #139 / PR #134 integration guard)', 
     expect(service).toContain('bindtap="openFeature"');
   });
 
-  it('labels only unfinished purchased-content and member tiles as not yet available', () => {
+  it('labels only the unfinished membership tile as not yet available', () => {
     const tile = openingTag('service-item');
     expect(tile).toContain('bindtap="openFeature"');
-    expect(template).toContain("item.key === 'purchased' || item.key === 'member'");
+    expect(template).toContain('wx:if="{{item.key === \'member\'}}"');
     expect(template).toContain('class="service-status">即将开放</text>');
   });
 });

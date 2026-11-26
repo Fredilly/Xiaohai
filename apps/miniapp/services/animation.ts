@@ -1,4 +1,4 @@
-import { consumerToken, clearConsumerSession } from './consumer-session';
+import { consumerToken, checkConsumerResponse } from './consumer-session';
 import type {
   Animation,
   AnimationCompositionAccepted,
@@ -33,7 +33,7 @@ async function request<T>(path: string, method: 'GET' | 'POST' = 'GET', data?: o
         fail: reject,
       }),
   );
-  if (response.statusCode === 401) clearConsumerSession();
+  checkConsumerResponse(sessionToken, response.statusCode);
   if (response.statusCode < 200 || response.statusCode >= 300)
     throw new AnimationApiError(response.statusCode);
   return response.data as T;

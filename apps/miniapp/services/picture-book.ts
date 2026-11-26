@@ -1,4 +1,4 @@
-import { consumerToken, clearConsumerSession } from './consumer-session';
+import { consumerToken, checkConsumerResponse } from './consumer-session';
 import type {
   CreatePictureBookRequest,
   PictureBook,
@@ -37,7 +37,7 @@ async function request<T>(
         fail: reject,
       }),
   );
-  if (response.statusCode === 401) clearConsumerSession();
+  checkConsumerResponse(sessionToken, response.statusCode);
   if (response.statusCode < 200 || response.statusCode >= 300) {
     throw new PictureBookApiError(response.statusCode);
   }

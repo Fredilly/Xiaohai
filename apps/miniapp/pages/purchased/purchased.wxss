@@ -1,0 +1,30 @@
+.media-row {
+  align-items: center;
+}
+.media-cover {
+  flex: none;
+  width: 144rpx;
+  height: 112rpx;
+  border-radius: 14rpx;
+}
+.media-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #e8eff3;
+  color: #6d7e88;
+  font-size: 21rpx;
+}
+.media-row .list-meta {
+  margin-top: 7rpx;
+}
+.action {
+  margin-top: 20rpx;
+}
+.footnote {
+  display: block;
+  margin: 28rpx 8rpx;
+  color: #7c8992;
+  font-size: 22rpx;
+  line-height: 1.6;
+}

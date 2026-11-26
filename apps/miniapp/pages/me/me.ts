@@ -110,6 +110,7 @@ Page({
     } else if (key === 'address') void wx.navigateTo({ url: '/pages/address/address' });
     else if (key === 'works') void wx.navigateTo({ url: '/pages/story-works/story-works' });
     else if (key === 'animations') void wx.navigateTo({ url: '/pages/animations/animations' });
+    else if (key === 'purchased') void wx.navigateTo({ url: '/pages/purchased/purchased' });
     else if (key === 'my-rental') void wx.navigateTo({ url: '/pages/rentals/rentals' });
     else if (key === 'commission') void wx.navigateTo({ url: '/pages/commission/commission' });
     else if (key === 'settings') void wx.navigateTo({ url: '/pages/settings/settings' });
