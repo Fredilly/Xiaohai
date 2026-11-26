@@ -26,12 +26,23 @@
 - Simulator/page automation did not produce a runtime result: the WeChatIDE skill client requested an additional local authorization handshake and timed out before `simulator_open_page`, screenshot, network, or console collection. No page was marked PASS and no real request was initiated by this attempt.
 - This is an automation authorization block, distinct from the previously closed service-port block. A human must complete the local WeChatIDE authorization prompt before the M24 matrix can record page or weak-network results.
 
+## 2026-11-26 owner-provided DevTools screen recording (manual UI evidence)
+
+- Evidence: owner-provided local screen recording titled `录屏2026-11-26 11.49.48.mov` (about 29 seconds); **not checked into Git**. The visible IDE is WeChat DevTools Stable `2.02.2608080`, running an iPhone simulator. Exact simulator/OS version, real-device environment and request-domain acceptance are not established by the recording.
+- **PASS, visible UI only:** the 首页, 我的 and 胖竹全球 TabBar destinations were displayed and navigated between; the home banner, My orders/services area and Pangzhu store search/map area rendered. This establishes those visible routes, not cold-start reliability, every deep link, backend data freshness or location-permission behavior.
+- **PASS, visible UI only:** the AI 动画 list displayed a sign-in-required state when unauthenticated. A later My page showed a transition from a sign-in prompt to a signed-in-looking profile. The recording does not expose the network response, token lifecycle or server-side consumer identity; authenticated API/login acceptance remains **BLOCKED**.
+- **Known unfinished service:** the 我的 → 会员中心 tile explicitly displays `即将开放`; its destination is a generic unavailable-service page. This is an implementation gap, **not** a runtime or AppID error. Do not label paid membership enabled.
+- Console visibly contained yellow runtime/tooling warnings (including a grey-release base-library notice and preload hints); no red exception is visible in the shown portion. The Network tab, request/response status, weak-network behavior and full console history were **not** captured. No claim is made that backend requests succeeded.
+- Owner recording is not a physical iOS/Android test, payment/AI-provider execution or production acceptance. Remaining end-to-end matrix rows stay **BLOCKED** until their own evidence exists.
+
 ## Evidence fields
 
 For each execution record **device/model, OS, WeChat version, DevTools version, environment/AppID (no secret), date, flow, expected, actual, PASS/FAIL/BLOCKED, screenshot or sanitized log reference, bug commit**. `BLOCKED` means untested, never passed. Do not capture tokens, payment credentials, precise location or customer PII in screenshots.
 
 | Platform | Flow | Expected | Actual | Status | Evidence / bug commit |
 |---|---|---|---|---|---|
+| DevTools | 首页 / 我的 / 胖竹全球 visible TabBar navigation | Tap each tab; destination view renders | All three destinations rendered in the owner recording; Pangzhu list/map UI visible | PASS (UI only) | Owner-provided 2026-11-26 11:49:48 local screen recording; not committed |
+| DevTools | AI 动画 list while signed out | Explicit sign-in-required state; no private work shown | Sign-in-required state visible before a separate My-page login interaction | PASS (UI only) | Same owner recording; network access not captured |
 | DevTools | Cold start, tabs, deep links and back stack | All registered pages open; invalid IDs show error and retry | Pending authorized DevTools run | BLOCKED | Pending |
 | DevTools | Login, expiry, duplicate tap, timeout, 401 | One login, recoverable error, expired session removed | Automated service tests only; runtime pending | BLOCKED | Pending |
 | DevTools | Catalog, cart, address, checkout, order, payment return | No duplicate order; payment status loaded from API | Automated checkout race test only; runtime pending | BLOCKED | Pending |
