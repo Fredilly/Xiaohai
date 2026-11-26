@@ -109,7 +109,13 @@ async function mountCatalog(page: Page) {
     (props) => {
       window.dispatchEvent(new CustomEvent('inventory-props', { detail: props }));
     },
-    { catalog: true, token: 'synthetic-staff-session', storeId, storeName: '南门' },
+    {
+      catalog: true,
+      token: 'synthetic-staff-session',
+      staffAccountId: staffId,
+      storeId,
+      storeName: '南门',
+    },
   );
 }
 
@@ -171,7 +177,21 @@ test('store book draft creates an unsellable zero-stock product and reuses its r
   await editor.getByLabel('售价（元）').fill('36.50');
   await editor.getByRole('button', { name: '保存草稿' }).click();
   await expect(editor.getByRole('status')).toContainText('Failed to fetch');
-  await editor.getByRole('button', { name: '保存草稿' }).click();
+  await editor.getByRole('button', { name: '取消' }).click();
+  await page.getByRole('button', { name: '新增图书 / 普通商品草稿' }).click();
+  const restored = page.getByRole('dialog', { name: '新增商品草稿' });
+  await expect(restored.getByRole('status')).toContainText('已恢复上次未确认');
+  await expect(restored.getByLabel('书名（同时作为商品名称）')).toHaveValue('南门合成绘本');
+  await expect(restored.getByLabel('ISBN（可留空；有值时校验格式和全库去重）')).toHaveValue(
+    '9783161484100',
+  );
+  await restored.getByLabel('售价（元）').fill('37.00');
+  await restored.getByRole('button', { name: '保存草稿' }).click();
+  await expect(restored.getByRole('status')).toContainText('恢复原表单');
+  expect(writes).toHaveLength(1);
+  await restored.getByRole('button', { name: '恢复上次提交内容' }).click();
+  await expect(restored.getByLabel('售价（元）')).toHaveValue('36.50');
+  await restored.getByRole('button', { name: '保存草稿' }).click();
   await expect(editor).toHaveCount(0);
   expect(writes).toHaveLength(2);
   expect(writes[0].key).toBeTruthy();

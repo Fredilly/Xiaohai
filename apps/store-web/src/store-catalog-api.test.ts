@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  createStoreDraftProduct,
   getStoreProductGallery,
   listStoreCatalog,
+  StoreDraftRejectedError,
   updateStoreProductGallery,
 } from './store-catalog-api';
 const storeId = '11111111-1111-4111-8111-111111111111';
@@ -82,5 +84,29 @@ describe('Store Web scoped catalog API client', () => {
     ).rejects.toThrow();
     expect(fetchMock).not.toHaveBeenCalled();
     await expect(getStoreProductGallery('token', storeId, productId)).rejects.toThrow('没有权限');
+  });
+
+  it('distinguishes a confirmed draft rejection from an uncertain server failure', async () => {
+    const input = {
+      name: '合成绘本',
+      status: 'DRAFT' as const,
+      sku: { name: '标准', priceMinor: 1200, status: 'ACTIVE' as const, availableForSale: false },
+    };
+    const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 409 });
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(
+      createStoreDraftProduct('token', storeId, input, 'request-key-1'),
+    ).rejects.toBeInstanceOf(StoreDraftRejectedError);
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 503 });
+    await expect(createStoreDraftProduct('token', storeId, input, 'request-key-1')).rejects.toThrow(
+      'HTTP 503',
+    );
+    try {
+      await createStoreDraftProduct('token', storeId, input, 'request-key-1');
+      throw new Error('Expected a rejected request');
+    } catch (error) {
+      expect(error).toBeInstanceOf(StoreDraftRejectedError);
+    }
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 });

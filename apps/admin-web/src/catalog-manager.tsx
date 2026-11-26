@@ -25,6 +25,7 @@ import { loadHqStores } from './hq-operations-api';
 import { isValidIsbn, normalizeIsbn } from '@xiaohai/contracts/commerce';
 import { createBookLookupGate } from './book-lookup-gate';
 import { HqProductImageUploader } from './merchant-image-uploader';
+import { clearHqDraft, pendingHqDraft, reserveHqDraft } from './catalog-draft-retry';
 type Product = Awaited<ReturnType<typeof listAdminProducts>>['products'][number];
 export function parseYuanToMinor(value: string): number | null {
   if (!/^(?:0|[1-9]\d*)(?:\.\d{1,2})?$/.test(value)) return null;
@@ -73,11 +74,23 @@ export function applyCatalogDraftDefaults(input: AdminProductInput, editingExist
   if (editingExisting) return input;
   return { ...input, status: 'DRAFT' as const, sku: { ...input.sku, availableForSale: false } };
 }
-export function CatalogManager({ token }: { token: string }) {
-  return <CatalogSession key={token} token={token} />;
+export function CatalogManager({
+  token,
+  staffAccountId,
+}: {
+  token: string;
+  staffAccountId: string;
+}) {
+  return (
+    <CatalogSession
+      key={`${staffAccountId}:${token}`}
+      token={token}
+      staffAccountId={staffAccountId}
+    />
+  );
 }
 
-function CatalogSession({ token }: { token: string }) {
+function CatalogSession({ token, staffAccountId }: { token: string; staffAccountId: string }) {
   const [products, setProducts] = useState<Product[]>([]);
   const [state, setState] = useState('loading');
   const [q, setQ] = useState('');
@@ -242,6 +255,7 @@ function CatalogSession({ token }: { token: string }) {
               key={editing?.skuId ?? 'new-product'}
               initial={editing ?? blank}
               token={token}
+              staffAccountId={staffAccountId}
               onOpenExisting={async (productId) => {
                 const existing = await getAdminProduct(token, productId);
                 setCreating(false);
@@ -640,6 +654,7 @@ function HqStoreCatalogForm({
 function ProductForm({
   initial,
   token,
+  staffAccountId,
   onOpenExisting,
   onCancel,
   onReload,
@@ -647,6 +662,7 @@ function ProductForm({
 }: {
   initial: Product | AdminProductInput;
   token: string;
+  staffAccountId: string;
   onOpenExisting: (productId: string) => Promise<void>;
   onCancel: () => void;
   onReload: () => void;
@@ -655,8 +671,8 @@ function ProductForm({
     requestKey: string,
   ) => Promise<void>;
 }) {
-  const [requestKey] = useState(() => crypto.randomUUID());
   const [saving, setSaving] = useState(false);
+  const [hasPendingDraft, setHasPendingDraft] = useState(false);
   const editingExisting = 'productVersion' in initial;
   const [v, setV] = useState<AdminProductInput>({
     name: initial.name,
@@ -705,6 +721,37 @@ function ProductForm({
     setLookingUp(false);
   }
 
+  function restoreDraft() {
+    if (editingExisting) return;
+    try {
+      const pending = pendingHqDraft(staffAccountId);
+      if (!pending) {
+        setHasPendingDraft(false);
+        return;
+      }
+      invalidateLookup();
+      setV({
+        ...pending.input,
+        sku: { ...pending.input.sku, code: pending.input.sku.code ?? '' },
+      });
+      setMediaText((pending.input.mediaUrls ?? []).join('\n'));
+      setIsBook(Boolean(pending.input.book));
+      setPriceYuan((pending.input.sku.priceMinor / 100).toFixed(2));
+      setExistingBook(false);
+      setExistingProductId(null);
+      setLookupStatus('');
+      setHasPendingDraft(true);
+      setError('已恢复总部上次未确认的草稿；请核对后使用原请求重试。');
+    } catch (error) {
+      setHasPendingDraft(true);
+      setError(error instanceof Error ? error.message : '总部待确认商品草稿读取失败');
+    }
+  }
+
+  useEffect(() => {
+    if (!editingExisting) restoreDraft();
+  }, [editingExisting, staffAccountId]);
+
   function updateBook(field: 'title' | 'author' | 'isbn' | 'publisher', value: string) {
     invalidateLookup();
     setV((current) => ({
@@ -725,7 +772,7 @@ function ProductForm({
   }
 
   async function lookupBook() {
-    if (!lookupPolicy.canLookUp) return;
+    if (!lookupPolicy.canLookUp || hasPendingDraft) return;
     const request = lookupSequence.current.start();
     const raw = v.book?.isbn ?? '';
     const isbn = normalizeIsbn(raw);
@@ -816,24 +863,47 @@ function ProductForm({
       editingExisting,
     );
     setSaving(true);
+    let draftKey: string | null = null;
     try {
+      const submitProduct = async (input: AdminProductInput) => {
+        if (editingExisting) {
+          await onSave(input, crypto.randomUUID());
+          return;
+        }
+        const pending = reserveHqDraft(staffAccountId, input);
+        draftKey = pending.requestKey;
+        setHasPendingDraft(true);
+        await onSave(pending.input, pending.requestKey);
+        clearHqDraft(staffAccountId, pending.requestKey);
+        setHasPendingDraft(false);
+      };
       if (!isBook) {
         const nonBook = { ...next };
         nonBook.book = null;
         delete nonBook.expectedBookVersion;
         delete nonBook.expectedEditionVersion;
-        await onSave(nonBook, requestKey);
+        await submitProduct(nonBook);
       } else {
         const bookInput = { ...next, name: next.book?.title ?? next.name };
-        await onSave(
-          {
-            ...bookInput,
-            sku: editingExisting ? bookInput.sku : { ...bookInput.sku, code: undefined },
-          },
-          requestKey,
-        );
+        await submitProduct({
+          ...bookInput,
+          sku: editingExisting ? bookInput.sku : { ...bookInput.sku, code: undefined },
+        });
       }
     } catch (reason) {
+      if (
+        draftKey &&
+        reason instanceof CatalogApiError &&
+        [400, 401, 403, 409, 422].includes(reason.status)
+      ) {
+        try {
+          clearHqDraft(staffAccountId, draftKey);
+          setHasPendingDraft(false);
+        } catch {
+          setError('商品创建已被拒绝，但本地待确认记录无法清除，请停止并核对。');
+          return;
+        }
+      }
       if (reason instanceof CatalogApiError && reason.status === 409) {
         setStale(true);
         setError(reason.message || '商品或图书资料冲突，不能覆盖。');
@@ -841,7 +911,9 @@ function ProductForm({
         setError(
           reason instanceof CatalogApiError
             ? reason.message
-            : '保存失败，请检查字段、权限或输入内容。',
+            : reason instanceof Error
+              ? reason.message
+              : '保存结果未确认；原请求已保留，请勿创建新的重复草稿。',
         );
       }
     } finally {
@@ -851,6 +923,14 @@ function ProductForm({
   return (
     <form className="cms-form" onSubmit={(e) => void submit(e)}>
       <h3>{'id' in initial ? '编辑商品' : '新增商品'}</h3>
+      {!editingExisting && hasPendingDraft && (
+        <p>
+          上次草稿创建结果未确认，请勿重新生成请求。
+          <button type="button" disabled={saving} onClick={restoreDraft}>
+            恢复上次提交内容
+          </button>
+        </p>
+      )}
       <label>
         {!(!editingExisting && isBook) && (
           <>

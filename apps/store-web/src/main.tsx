@@ -192,6 +192,7 @@ function Shell({
             <StoreCatalogPanel
               key={currentStore.id}
               token={token}
+              staffAccountId={me.staff.id}
               storeId={currentStore.id}
               storeName={currentStore.name}
             />
