@@ -5,10 +5,14 @@ import { ConsumerAuthService } from '../src/auth/consumer-auth-service.js';
 import { DrizzleConsumerIdentityRepository } from '../src/auth/consumer-repository.js';
 import { ConsumerSessionService } from '../src/auth/session.js';
 import type { WeChatAuthProvider } from '../src/auth/wechat-provider.js';
+import { assertMeipingApplyDisposableDatabase } from './meiping-apply-database-guard.js';
 
-const hasDatabase = Boolean(process.env.DATABASE_URL);
-const database = hasDatabase ? createDatabase(process.env) : null;
-const testSuite = hasDatabase ? describe : describe.skip;
+// This suite TRUNCATEs consumer_users and creates a temporary trigger.
+// Fail closed on the effective connection target BEFORE opening any pool.
+const database = assertMeipingApplyDisposableDatabase(process.env)
+  ? createDatabase(process.env)
+  : null;
+const testSuite = database ? describe : describe.skip;
 
 testSuite('consumer auth PostgreSQL integration', () => {
   beforeEach(async () => {
