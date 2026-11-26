@@ -20,6 +20,12 @@
 - Opening `apps/miniapp/` with the configured local AppID was not executed because the IDE service port is disabled. The official CLI returned the fixed instruction to enable **设置 → 安全设置 → 服务端口**; no project compile, network request, preview, or device session was started.
 - This is an environment prerequisite failure, not a Mini Program runtime result. No AppID, token, request payload, or customer data was logged.
 
+## 2026-11-26 DevTools service port enabled (automation still blocked)
+
+- The official CLI connected to the existing IDE service at `http://127.0.0.1:37215` and `cli auto --trust-project` completed successfully for this project, identifying the configured authorized AppID. The configured development API remains `https://staging-api.pamboo.asia`.
+- Simulator/page automation did not produce a runtime result: the WeChatIDE skill client requested an additional local authorization handshake and timed out before `simulator_open_page`, screenshot, network, or console collection. No page was marked PASS and no real request was initiated by this attempt.
+- This is an automation authorization block, distinct from the previously closed service-port block. A human must complete the local WeChatIDE authorization prompt before the M24 matrix can record page or weak-network results.
+
 ## Evidence fields
 
 For each execution record **device/model, OS, WeChat version, DevTools version, environment/AppID (no secret), date, flow, expected, actual, PASS/FAIL/BLOCKED, screenshot or sanitized log reference, bug commit**. `BLOCKED` means untested, never passed. Do not capture tokens, payment credentials, precise location or customer PII in screenshots.
