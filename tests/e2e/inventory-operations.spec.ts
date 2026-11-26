@@ -490,6 +490,130 @@ test('switching stores discards opening candidates and their selected SKU', asyn
   await expect(page.getByLabel('搜索待建档商品')).toHaveValue('');
 });
 
+test('positive opening stock retries its exact key after lost POST and page reload', async ({
+  page,
+}) => {
+  await page.route('**/api/v1/staff/inventory?*', (route) =>
+    route.fulfill({ json: { items: [] } }),
+  );
+  await page.route('**/opening-candidates?*', (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            skuId,
+            skuCode: 'OPEN-3',
+            skuName: '合成商品',
+            productName: '合成商品',
+            productStatus: 'DRAFT',
+            skuStatus: 'ACTIVE',
+          },
+        ],
+      },
+    }),
+  );
+  const writes: Array<{ key: string; quantity: number }> = [];
+  await page.route('**/api/v1/staff/inventory/opening-stock', (route) => {
+    const body = route.request().postDataJSON() as {
+      idempotencyKey: string;
+      initialQuantity: number;
+    };
+    writes.push({ key: body.idempotencyKey, quantity: body.initialQuantity });
+    if (writes.length === 1) return route.abort('failed');
+    return route.fulfill({ json: { storeId, skuId, onHand: 3, version: 1 } });
+  });
+  await mount(page);
+  const section = page.getByRole('region', { name: '首次库存建档' });
+  await section.getByLabel('搜索待建档商品').fill('合成商品');
+  await section.getByRole('button', { name: '搜索待建档 SKU' }).click();
+  await section.getByLabel('选择待建档 SKU').selectOption(skuId);
+  await section.getByLabel('首次实盘数量（可为 0）').fill('3');
+  await section.getByLabel('建档依据 / 盘点备注').fill('Synthetic count');
+  await section.getByRole('checkbox').check();
+  await section.getByRole('button', { name: '确认首次库存建档' }).click();
+  await expect(section.getByRole('status')).toContainText('结果未确认');
+  await section.getByLabel('首次实盘数量（可为 0）').fill('4');
+  await section.getByRole('button', { name: '确认首次库存建档' }).click();
+  await expect(section.getByRole('status')).toContainText('已阻止新建档');
+  expect(writes).toHaveLength(1);
+  await page.reload();
+  await mount(page);
+  const resumed = page.getByRole('region', { name: '首次库存建档' });
+  await expect(resumed.getByRole('alert')).toContainText('OPEN-3');
+  await resumed.getByRole('button', { name: '使用原首次建档请求重试' }).click();
+  await expect.poll(() => writes.length).toBe(2);
+  expect(writes[0]).toEqual(writes[1]);
+  await expect(resumed.getByRole('alert')).toHaveCount(0);
+});
+
+test('zero opening stock never re-POSTs and clears only after scoped readback', async ({
+  page,
+}) => {
+  let foreignBalance = true;
+  await page.route('**/api/v1/staff/inventory?*', (route) => {
+    const search = new URL(route.request().url()).searchParams.get('q');
+    return route.fulfill({
+      json: {
+        items: search
+          ? [
+              {
+                ...balance,
+                storeId: foreignBalance ? otherStoreId : storeId,
+                skuCode: 'OPEN-0',
+                onHand: 0,
+                available: 0,
+                version: 0,
+              },
+            ]
+          : [],
+      },
+    });
+  });
+  await page.route('**/opening-candidates?*', (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            skuId,
+            skuCode: 'OPEN-0',
+            skuName: '合成商品',
+            productName: '合成商品',
+            productStatus: 'DRAFT',
+            skuStatus: 'ACTIVE',
+          },
+        ],
+      },
+    }),
+  );
+  const writes: unknown[] = [];
+  await page.route('**/api/v1/staff/inventory/opening-stock', (route) => {
+    writes.push(route.request().postDataJSON());
+    return route.abort('failed');
+  });
+  await mount(page);
+  const section = page.getByRole('region', { name: '首次库存建档' });
+  await section.getByLabel('搜索待建档商品').fill('合成商品');
+  await section.getByRole('button', { name: '搜索待建档 SKU' }).click();
+  await section.getByLabel('选择待建档 SKU').selectOption(skuId);
+  await section.getByLabel('首次实盘数量（可为 0）').fill('0');
+  await section.getByLabel('建档依据 / 盘点备注').fill('Synthetic zero count');
+  await section.getByRole('checkbox').check();
+  await section.getByRole('button', { name: '确认首次库存建档' }).click();
+  await expect(section.getByRole('status')).toContainText('禁止直接重发 POST');
+  await page.reload();
+  await mount(page);
+  const resumed = page.getByRole('region', { name: '首次库存建档' });
+  await expect(resumed.getByRole('button', { name: '使用原首次建档请求重试' })).toHaveCount(0);
+  await resumed.getByRole('button', { name: '只读核对 0 件建档状态' }).click();
+  await expect(resumed.getByRole('status')).toContainText('核对失败');
+  await expect(resumed.getByRole('alert')).toContainText('OPEN-0');
+  foreignBalance = false;
+  await resumed.getByRole('button', { name: '只读核对 0 件建档状态' }).click();
+  await expect(resumed.getByRole('alert')).toHaveCount(0);
+  await expect(resumed.getByRole('status')).toContainText('已只读确认本店 SKU 关联存在');
+  expect(writes).toHaveLength(1);
+});
+
 test('a completed preflight for the old store is not displayed in the new store', async ({
   page,
 }) => {
