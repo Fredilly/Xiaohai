@@ -31,6 +31,7 @@ type DetailPage = {
   load(): Promise<void>;
   cancel(): Promise<void>;
   pay(): Promise<void>;
+  onHide(): void;
 };
 let definition: DetailPage;
 function page(): DetailPage {
@@ -78,6 +79,28 @@ describe('consumer order detail transitions', () => {
     expect(detail.data.order).toBeNull();
     expect(detail.data.error).toBe(true);
     expect(detail.visibleSession).toBe('');
+    expect(mocks.getFulfillment).not.toHaveBeenCalled();
+  });
+
+  it('refuses a response for a different order ID before requesting its fulfillment', async () => {
+    mocks.getOrder.mockResolvedValueOnce({ id: 'another-order', status: 'UNPAID' });
+    const detail = page();
+    await detail.load();
+    expect(detail.data.order).toBeNull();
+    expect(detail.data.error).toBe(true);
+    expect(mocks.getFulfillment).not.toHaveBeenCalled();
+  });
+
+  it('does not fetch fulfillment when the order page is hidden during the order request', async () => {
+    let resolveOrder: (value: unknown) => void = () => {};
+    mocks.getOrder.mockImplementationOnce(() => new Promise((resolve) => (resolveOrder = resolve)));
+    const detail = page();
+    const pending = detail.load();
+    detail.onHide();
+    resolveOrder({ id: 'order-a', status: 'UNPAID' });
+    await pending;
+    expect(mocks.getFulfillment).not.toHaveBeenCalled();
+    expect(detail.data.order).toBeNull();
   });
 
   it('blocks payment and cancellation from a stale account-bound order view', async () => {
@@ -118,6 +141,41 @@ describe('consumer order detail transitions', () => {
     expect(detail.data.cancelMessage).toContain('未确认');
     expect(mocks.getOrder).toHaveBeenCalledWith('order-a');
     expect(detail.data.order?.status).toBe('CANCELLED');
+  });
+
+  it('does not reload or display a cancellation result after the page is hidden', async () => {
+    let release: () => void = () => {};
+    mocks.cancelOrder.mockImplementationOnce(
+      () => new Promise<void>((resolve) => (release = resolve)),
+    );
+    const detail = page();
+    const pending = detail.cancel();
+    detail.onHide();
+    release();
+    await pending;
+    expect(mocks.cancelOrder).toHaveBeenCalledTimes(1);
+    expect(mocks.getOrder).not.toHaveBeenCalled();
+    expect(detail.data.order).toBeNull();
+    expect(detail.data.cancelMessage).toBe('');
+    expect(detail.data.cancellingOrder).toBe(false);
+  });
+
+  it('does not reload or display a payment result for an account that changed mid-payment', async () => {
+    let release: () => void = () => {};
+    mocks.payOrder.mockImplementationOnce(
+      () => new Promise<void>((resolve) => (release = resolve)),
+    );
+    const detail = page();
+    const pending = detail.pay();
+    mocks.token.mockReturnValue('account-b');
+    release();
+    await pending;
+    expect(mocks.payOrder).toHaveBeenCalledTimes(1);
+    expect(mocks.getOrder).not.toHaveBeenCalled();
+    expect(detail.data.order).toBeNull();
+    expect(detail.visibleSession).toBe('');
+    expect(detail.data.paymentMessage).toBe('');
+    expect(detail.data.paying).toBe(false);
   });
 
   it('distinguishes legacy missing fulfillment from network errors and wrong-order responses', async () => {
