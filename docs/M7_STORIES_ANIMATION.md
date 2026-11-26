@@ -44,3 +44,5 @@ Automated Mini Program regressions cover the destination, server-backed list sha
 ### Playback follow-up (same integration branch)
 
 The existing episode player now invalidates stale access reads when the page hides or the account changes, clears the previous media URL before reloading, handles missing playback URLs as errors, and reloads upon return to the page. Progress is recorded no more than once per ten-second checkpoint; writes are serialized so a delayed unfinished checkpoint cannot overwrite a completed episode. Pending completion can finish after navigation away only while the original consumer session is still active. New deterministic tests cover these races, preview limits, guest playback, completion ordering and retry. Real-device playback and media CDN behavior remain unverified.
+
+The public animation browser also ignores superseded search responses and errors, prevents late writes after hide/unload, and refreshes its result list when reopened. This is a read-only UI reliability change, without changing content publication, entitlement or billing semantics.
