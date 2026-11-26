@@ -26,6 +26,11 @@ import type { AiQueue } from '../ai/ai-queue.js';
 import type { ImageQueue } from './image-queue.js';
 import { AiBudgetError, reserveImageBudget } from '../ai/budget-service.js';
 import type { MediaPlaybackResolver, PlaybackAsset } from './private-bos-urls.js';
+import {
+  decodeReferencePng,
+  referenceObjectKey,
+  type ReferenceImageStorage,
+} from './reference-image-import.js';
 
 type Db = ReturnType<typeof createDatabase>['db'];
 
@@ -57,6 +62,8 @@ type PictureBookContext = {
   operation: PictureBookTextOperation;
 };
 
+type IllustrationCreationPolicy = 'ALLOW_ACTIVE_REUSE' | 'REQUIRE_NEW';
+
 export class PictureBookError extends Error {
   constructor(
     readonly code:
@@ -83,6 +90,7 @@ export class PictureBookService {
     private readonly config: PictureBookAiConfig,
     private readonly logger?: PictureBookLogger,
     private readonly privateMediaUrl: MediaPlaybackResolver = () => null,
+    private readonly referenceImageStorage?: ReferenceImageStorage,
   ) {}
 
   async generateIllustration(
@@ -90,6 +98,7 @@ export class PictureBookService {
     pictureBookId: string,
     pageId: string,
     regenerate = false,
+    creationPolicy: IllustrationCreationPolicy = 'ALLOW_ACTIVE_REUSE',
   ) {
     if (!this.config.imageEnabled) throw new PictureBookError('FEATURE_DISABLED');
 
@@ -147,6 +156,7 @@ export class PictureBookService {
         .limit(1)
         .for('update');
       if (active) {
+        if (creationPolicy === 'REQUIRE_NEW') throw new PictureBookError('INVALID_STATE');
         return { illustration: active, shouldNotify: active.status === 'QUEUED' };
       }
 
@@ -460,6 +470,134 @@ export class PictureBookService {
       referenceRevisionId: revision.id,
       revisionNumber: revision.revisionNumber,
       status: 'QUEUED' as const,
+    };
+  }
+
+  /**
+   * Imports an existing owner-supplied PNG into the normal immutable reference
+   * revision flow. Available only with an explicitly isolated test BOS uploader.
+   * A real successful BOS PUT + HEAD precedes any READY transaction.
+   */
+  async importCharacterReference(
+    consumerUserId: string,
+    pictureBookId: string,
+    characterId: string,
+    imageBase64: string,
+  ) {
+    if (!this.referenceImageStorage) throw new PictureBookError('FEATURE_DISABLED');
+    const character = await this.requireOwnedCharacter(consumerUserId, pictureBookId, characterId);
+    if (character.locked || character.confirmed) throw new PictureBookError('CHARACTER_LOCKED');
+
+    const image = decodeReferencePng(imageBase64);
+    const objectKey = referenceObjectKey({ consumerUserId, pictureBookId, characterId, image });
+
+    // Storage failures fail closed; no DB revision is created in that case.
+    // A later DB conflict may leave an object ONLY in the dedicated test bucket.
+    const uploaded = await this.referenceImageStorage.upload({ objectKey, body: image });
+    if (
+      uploaded.objectKey !== objectKey ||
+      uploaded.byteSize !== image.byteLength ||
+      !uploaded.playbackUrl.startsWith('https://')
+    ) {
+      throw new PictureBookError('INVALID_STATE');
+    }
+
+    const revision = await this.db.transaction(async (tx) => {
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${characterId}, 0))`);
+      const [owned] = await tx
+        .select({ character: characterProfiles })
+        .from(characterProfiles)
+        .innerJoin(pictureBooks, eq(pictureBooks.id, characterProfiles.pictureBookId))
+        .where(
+          and(
+            eq(characterProfiles.id, characterId),
+            eq(characterProfiles.pictureBookId, pictureBookId),
+            eq(pictureBooks.consumerUserId, consumerUserId),
+          ),
+        )
+        .for('update');
+      if (!owned) throw new PictureBookError('NOT_FOUND');
+      if (owned.character.locked || owned.character.confirmed) {
+        throw new PictureBookError('CHARACTER_LOCKED');
+      }
+      const [active] = await tx
+        .select({ id: characterReferenceImages.id })
+        .from(characterReferenceImages)
+        .where(
+          and(
+            eq(characterReferenceImages.characterProfileId, characterId),
+            inArray(characterReferenceImages.status, ['QUEUED', 'RUNNING']),
+          ),
+        )
+        .limit(1);
+      if (active) throw new PictureBookError('INVALID_STATE');
+
+      const [existingMedia] = await tx
+        .select()
+        .from(mediaAssets)
+        .where(and(eq(mediaAssets.provider, 'BAIDU_BOS'), eq(mediaAssets.objectKey, objectKey)))
+        .limit(1);
+      if (
+        existingMedia &&
+        (existingMedia.status !== 'READY' ||
+          existingMedia.mimeType !== 'image/png' ||
+          existingMedia.byteSize !== image.byteLength ||
+          existingMedia.playbackUrl !== uploaded.playbackUrl)
+      ) {
+        throw new PictureBookError('INVALID_STATE');
+      }
+      let mediaId = existingMedia?.id;
+      if (!mediaId) {
+        const [createdMedia] = await tx
+          .insert(mediaAssets)
+          .values({
+            provider: 'BAIDU_BOS',
+            objectKey,
+            playbackUrl: uploaded.playbackUrl,
+            mimeType: 'image/png',
+            byteSize: image.byteLength,
+            status: 'READY',
+          })
+          .returning({ id: mediaAssets.id });
+        mediaId = createdMedia!.id;
+      }
+      const [sameContent] = await tx
+        .select()
+        .from(characterReferenceImages)
+        .where(
+          and(
+            eq(characterReferenceImages.characterProfileId, characterId),
+            eq(characterReferenceImages.mediaAssetId, mediaId),
+          ),
+        )
+        .limit(1);
+      if (sameContent) return sameContent;
+
+      const [latest] = await tx
+        .select({
+          value: sql<number>`coalesce(max(${characterReferenceImages.revisionNumber}), 0) + 1`,
+        })
+        .from(characterReferenceImages)
+        .where(eq(characterReferenceImages.characterProfileId, characterId));
+      const [created] = await tx
+        .insert(characterReferenceImages)
+        .values({
+          characterProfileId: characterId,
+          revisionNumber: Number(latest!.value),
+          provider: 'IMPORTED',
+          model: 'OWNER_SUPPLIED_PNG',
+          mediaAssetId: mediaId,
+          status: 'READY',
+        })
+        .returning();
+      return created!;
+    });
+    return {
+      pictureBookId,
+      characterId,
+      referenceRevisionId: revision.id,
+      revisionNumber: revision.revisionNumber,
+      status: 'READY' as const,
     };
   }
 
@@ -1172,10 +1310,18 @@ export class PictureBookService {
     keys: string[],
     characters: Array<typeof characterProfiles.$inferSelect>,
   ) {
-    const mapped = keys.map((key) => characters.find((character) => character.name === key)?.id);
-    if (mapped.some((id) => !id) || new Set(mapped).size !== mapped.length)
+    const mapped = keys
+      .map((key) => characters.find((character) => character.name === key)?.id)
+      .filter((id): id is string => Boolean(id));
+
+    // Providers occasionally mention one-off scene characters that are not part
+    // of the locked Character Bible. Keep known recurring characters, but fail
+    // closed if nothing can be mapped or the provider duplicated a known key.
+    if ((keys.length > 0 && mapped.length === 0) || new Set(mapped).size !== mapped.length) {
       throw new PictureBookError('INVALID_JOB_OUTPUT');
-    return mapped as string[];
+    }
+
+    return mapped;
   }
 
   private viewPage(

@@ -27,8 +27,9 @@ Page({
   },
   mediaError(event: WechatMiniprogram.TouchEvent) {
     const index = Number(event.currentTarget.dataset.index);
+    const sectionId = String(event.currentTarget.dataset.id ?? '');
     const failedUrl = String(event.currentTarget.dataset.src ?? '');
-    const sections = clearFailedHeroMedia(this.data.sections, index, failedUrl);
+    const sections = clearFailedHeroMedia(this.data.sections, index, sectionId, failedUrl);
     if (sections !== this.data.sections) this.setData({ sections });
   },
   openAction(event: WechatMiniprogram.TouchEvent) {

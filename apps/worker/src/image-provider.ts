@@ -52,7 +52,8 @@ export class ImageProviderError extends Error {
         | 'TEMPORARY_SIZE_INVALID'
         | 'TEMPORARY_IMAGE_EMPTY'
         | 'INVALID_REFERENCE_ASSET'
-        | 'AI_BUDGET_RESERVATION_REQUIRED';
+        | 'AI_BUDGET_RESERVATION_REQUIRED'
+        | 'I111_PAID_ATTEMPT_STOP';
       httpStatus?: number;
       providerErrorCode?: string;
       safeMessage?: string;

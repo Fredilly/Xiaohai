@@ -4,7 +4,16 @@
 set -euo pipefail
 
 mode="${1:---dry-run}"
-[[ "$mode" == --dry-run || "$mode" == --execute ]] || { echo 'STOP invalid retention mode' >&2; exit 2; }
+[[ "$mode" == --dry-run || "$mode" == --plan || "$mode" == --execute || "$mode" == --recovery-execute || "$mode" == --steady-state-execute ]] || { echo 'STOP invalid retention mode' >&2; exit 2; }
+# --recovery-execute is a separate, manually invoked one-time exception for the
+# Nov 6 failed-post-disk-gate incident. Never wire it into CI or scheduled jobs.
+# It NEVER asserts that the failed historical workflow succeeded.
+deleting=false
+recovery=false
+planning=false
+if [[ "$mode" == --execute || "$mode" == --recovery-execute || "$mode" == --steady-state-execute ]]; then deleting=true; fi
+if [[ "$mode" == --recovery-execute ]]; then recovery=true; fi
+if [[ "$mode" == --plan ]]; then planning=true; fi
 fail() { printf 'STOP retention: %s\n' "$*" >&2; exit 1; }
 valid_revision() { [[ "$1" =~ ^[0-9a-f]{40}$ ]]; }
 
@@ -20,14 +29,85 @@ additional="${STAGING_EXTRA_PROTECTED_REVISION:-}"
 valid_revision "$additional" || fail 'one additional protected historical revision is required'
 [[ "$additional" != "$current" && "$additional" != "$rollback_a" && "$additional" != "$rollback_b" ]] ||
   fail 'additional protected revision must be distinct'
-protected_revisions=("$current" "$rollback_a" "$rollback_b" "$additional")
+# Owner-required Nov 5 provisional HOLD: protect all five API+Worker release pairs.
+# This is a versioned, explicit safety allowlist. No image deletion authorization
+# follows from listing a revision here, and Actions remains dry-run-only.
+# Fixed incident candidate identities are security policy declarations, not
+# references to a deployed release. Check them separately from deployment files.
+known_recovery_a=1138ce2734533ae64e37eaccb2a833d9fa847515
+known_recovery_b=14d59d3cd209a400f397fdff1880b4f02ab26d54
+recent_hold_revisions=(
+  "03f5ee0f3d364597739162ca8661ebc993523ead"
+  "12091f5d8586809ebb5d43308582797d00b3ba79"
+  "662ca971de6cae265d810b7e37e74eb1ce836abc"
+  "ecaea1f231469903e3eaa9dedad437f37d0d78c5"
+  "ecc03badca74669d85f5c7b69915b81967d39825"
+)
+protected_revisions=()
+declare -A protected_revision_set=()
+for rev in "$current" "$rollback_a" "$rollback_b" "$additional" "${recent_hold_revisions[@]}"; do
+  valid_revision "$rev" || fail 'invalid protected HOLD revision'
+  [[ -z "${protected_revision_set[$rev]:-}" ]] || continue
+  protected_revision_set["$rev"]=1
+  protected_revisions+=("$rev")
+done
 
-if [[ "$mode" == --execute ]]; then
+# Normal --execute and --steady-state-execute require a genuine verified success.
+# --steady-state-execute differs only in not stopping when usage drops below
+# the emergency threshold: it keeps the daily obsolete-image count bounded.
+# It is NOT wired into Actions and retains the explicit exact-ID owner plan.
+# The normal --execute route retains its original verified-success requirement.
+# Recovery is NOT an alternate way of providing STAGING_DEPLOY_SUCCEEDED_REVISION.
+if [[ "$deleting" == true ]]; then
   [[ "${STAGING_RETENTION_EXECUTE_ENABLED:-false}" == true ]] || fail 'execution not authorized; use dry-run'
-  [[ "${STAGING_DEPLOY_SUCCEEDED_REVISION:-}" == "$current" ]] || fail 'verified successful deployment revision is required'
-  [[ -f "${STAGING_RETENTION_APPROVED_PLAN:-/nonexistent}" ]] || fail 'preapproved exact-ID plan required'
+  [[ -f "${STAGING_RETENTION_APPROVED_PLAN:-/nonexistent}" && ! -L "$STAGING_RETENTION_APPROVED_PLAN" ]] ||
+    fail 'preapproved exact-ID plan required'
   [[ -n "${STAGING_RETENTION_APPROVAL_ID:-}" ]] || fail 'owner approval reference required'
   [[ -n "${STAGING_EXPECTED_HOSTNAME:-}" && "$(hostname)" == "$STAGING_EXPECTED_HOSTNAME" ]] || fail 'staging host identity unavailable'
+  if [[ "$recovery" == true ]]; then
+    [[ "${STAGING_RECOVERY_EXECUTE_ENABLED:-false}" == true ]] || fail 'one-time recovery execution not enabled'
+    [[ "$current" == e4c1117e99e1d739b002f99be3b97be7ede89121 ]] ||
+      fail 'recovery applies only to the pinned failed-gate revision'
+    [[ "${STAGING_RECOVERY_FAILED_RUN_ID:-}" == 41982285823 ]] ||
+      fail 'exact failed workflow run must be acknowledged'
+    [[ "${STAGING_RECOVERY_RUNTIME_ACCEPTED:-false}" == true ]] ||
+      fail 'separate owner runtime acceptance required'
+    [[ -z "${STAGING_DEPLOY_SUCCEEDED_REVISION:-}" ]] ||
+      fail 'recovery must not claim failed workflow was successful'
+    # Evidence is an independently owner-verified, narrow input file. This
+    # file is an attestation, not a cloud API proof or logical restore test.
+    evidence="${STAGING_RECOVERY_EVIDENCE_FILE:-/nonexistent}"
+    [[ -f "$evidence" && ! -L "$evidence" && "$evidence" == /* ]] ||
+      fail 'owner-verified snapshot/recovery evidence file required'
+    [[ "$(stat -c %s "$evidence")" -le 4096 ]] || fail 'recovery evidence too large'
+    grep -Fxq -- 'snapshot=s-j6ccgk5wyg44gmzqgf5v status=Success' "$evidence" ||
+      fail 'snapshot success evidence missing'
+    grep -Fxq -- 'workflow_run=41982285823 conclusion=failure reason=post_disk_gate' "$evidence" ||
+      fail 'failed deployment acknowledgement missing'
+    grep -Fxq -- "owner_approval=${STAGING_RETENTION_APPROVAL_ID}" "$evidence" ||
+      fail 'owner approval not bound to recovery evidence'
+    # Only the two owner-conditionally-listed release pairs are eligible.
+    # No additional historical, dangling, infra or unknown image is in scope.
+    recovery_a="$known_recovery_a"
+    recovery_b="$known_recovery_b"
+    declare -A recovery_api_ids=(
+      ["$recovery_a"]=sha256:426eca170257042c73941d6920e0828304daa34020f86e3858f375b42b17ea2d
+      ["$recovery_b"]=sha256:7fcd05927e19fe566301516fdce1d3ab2297c8ef88b27454c16299d2e321fb96
+    )
+    declare -A recovery_worker_ids=(
+      ["$recovery_a"]=sha256:80f9bebe35e74e43da0cf49ca03f5abef8229ec179e600c0bbc1767ca9c00001
+      ["$recovery_b"]=sha256:9d2b3678ad02365397724f7ea1a57fac77e6654e45e57c3c0031314fb728fe7f
+    )
+    expected_plan=$(printf '%s\n' \
+      "$recovery_a ${recovery_api_ids[$recovery_a]} ${recovery_worker_ids[$recovery_a]}" \
+      "$recovery_b ${recovery_api_ids[$recovery_b]} ${recovery_worker_ids[$recovery_b]}")
+    [[ "$(LC_ALL=C sort -- "$STAGING_RETENTION_APPROVED_PLAN")" == "$(printf '%s\n' "$expected_plan" | LC_ALL=C sort)" ]] ||
+      fail 'recovery plan must contain exactly two owner-approved revision/image-ID triples'
+    printf 'AUDIT one_time_recovery=true historic_workflow_conclusion=failure run_id=41982285823\n'
+  else
+    [[ "${STAGING_DEPLOY_SUCCEEDED_REVISION:-}" == "$current" ]] ||
+      fail 'verified successful deployment revision is required'
+  fi
 fi
 
 # Shared with staging deployment. Never delete during a deployment.
@@ -35,7 +115,7 @@ fi
 # via a read-only descriptor or run as advisory if no lock file exists.
 lock="${STAGING_DEPLOY_LOCK:-/tmp/xiaohai-staging-deploy.lock}"
 command -v flock >/dev/null || fail 'flock unavailable'
-if [[ "$mode" == --execute ]]; then
+if [[ "$deleting" == true ]]; then
   exec 9>"$lock" || fail 'cannot acquire deployment lock'
   flock -n 9 || fail 'deployment/retention operation already running'
 elif [[ -e "$lock" ]]; then
@@ -71,7 +151,7 @@ done
 # Preserve every unknown/untagged image; the referenced image ID must remain protected.
 protected_ids['sha256:eee6c6e1b0894fa4fe0075eb054af9fd1cf39a35321c2d4110626cfe506411fb']=1
 
-if [[ "$mode" == --execute ]]; then
+if [[ "$deleting" == true || "$planning" == true ]]; then
   for volume in xiaohai-staging_postgres_data xiaohai-staging_redis_data xiaohai-staging_caddy_data xiaohai-staging_caddy_config; do
     docker volume inspect "$volume" >/dev/null || fail "protected volume unavailable: $volume"
   done
@@ -81,6 +161,10 @@ if [[ "$mode" == --execute ]]; then
       fail "running $service revision changed"
     [[ "$(docker inspect --format '{{.State.Running}}' "xiaohai-staging-$service-1")" == true ]] ||
       fail "$service container is not running"
+    expected_id=$(docker image inspect --format '{{.Id}}' "$ref") ||
+      fail "current $service image unavailable"
+    [[ "$(docker inspect --format '{{.Image}}' "xiaohai-staging-$service-1")" == "$expected_id" ]] ||
+      fail "running $service image ID differs from exact current revision"
   done
 fi
 
@@ -145,6 +229,7 @@ init_config_scan() {
     fail 'invalid bounded deployment directory'
   [[ -d "$base" && ! -L "$base" ]] || fail 'deployment directory missing or symlinked'
   config_files=()
+  retention_source_file="$base/staging-image-retention.sh"
   # Derived from staging-remote-deploy.sh and deploy/staging.compose.yml.
   # All must exist: absence means deployment references are not fully known.
   for file in revision.env staging.env staging.compose.yml Caddyfile \
@@ -177,22 +262,45 @@ init_config_scan() {
 init_config_scan
 
 check_config() {
-  local rev="$1" status
-  # Eight or fewer known deployment files, plus at most 16 owner-attested
-  # additional paths; no recursion and no contents or filenames are printed.
-  if timeout --signal=TERM --kill-after=1s 5s sudo -n grep -Fq -- "$rev" "${config_files[@]}"; then
-    return 1 # A deployment reference: protect.
-  else
-    status=$?
-    [[ "$status" -eq 1 ]] || fail "bounded configuration scan failed (exit=$status)"
-  fi
+  local rev="$1" status file matches line
+  # The source script itself embeds two pinned incident SHAs in its audited
+  # allowlist. Those two exact assignment lines are NOT live deployment refs.
+  # Any other occurrence in that source (or ANY occurrence in other known
+  # deployment config paths) remains an unconditional exclusion. Never skip
+  # a whole config file or silently ignore a failed/timeout scan.
+  for file in "${config_files[@]}"; do
+    if [[ "$file" == "$retention_source_file" ]]; then
+      status=0
+      matches=$(timeout --signal=TERM --kill-after=1s 5s sudo -n grep -F -- "$rev" "$file") || status=$?
+      if [[ "$status" -eq 0 ]]; then
+        while IFS= read -r line; do
+          [[ "$line" == "known_recovery_a=$rev" || "$line" == "known_recovery_b=$rev" ]] ||
+            return 1
+        done <<< "$matches"
+      elif [[ "$status" -ne 1 ]]; then
+        fail "bounded configuration scan failed (exit=$status)"
+      fi
+    else
+      if timeout --signal=TERM --kill-after=1s 5s sudo -n grep -Fq -- "$rev" "$file"; then
+        return 1 # Another config still references this old version: protect.
+      else
+        status=$?
+        [[ "$status" -eq 1 ]] || fail "bounded configuration scan failed (exit=$status)"
+      fi
+    fi
+  done
 }
 
 capacity() {
-  local data
+  local data inode_data
   data=$(df -Pk /) || fail 'cannot read available disk'
+  inode_data=$(df -Pi /) || fail 'cannot read inode capacity'
   read -r FREE_KIB USED_PCT < <(printf '%s\n' "$data" | awk 'NR==2 {gsub(/%/, "", $5); print $4,$5}')
-  [[ "$FREE_KIB" =~ ^[0-9]+$ && "$USED_PCT" =~ ^[0-9]+$ ]] || fail 'invalid df output'
+  INODE_PCT=$(printf '%s\n' "$inode_data" | awk 'NR==2 {gsub(/%/, "", $5); print $5}')
+  [[ "$FREE_KIB" =~ ^[0-9]+$ && "$USED_PCT" =~ ^[0-9]+$ && "$INODE_PCT" =~ ^[0-9]+$ ]] ||
+    fail 'invalid disk/inode df output'
+  (( USED_PCT <= 100 && INODE_PCT <= 100 )) || fail 'invalid disk/inode percentage'
+  (( INODE_PCT < 85 )) || fail 'inode usage at or above emergency threshold'
 }
 
 healthy() {
@@ -201,19 +309,45 @@ healthy() {
   redis=$(docker exec xiaohai-staging-redis-1 redis-cli INFO persistence | tr -d '\r') || fail 'Redis persistence read failed'
   printf '%s\n' "$redis" | grep -qx 'rdb_last_bgsave_status:ok' || fail 'Redis RDB unhealthy'
   printf '%s\n' "$redis" | grep -qx 'aof_last_write_status:ok' || fail 'Redis AOF unhealthy'
+  # Health and readiness must pass for EVERY deletion mode, not only
+  # the incident recovery exception.
+  status=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 https://staging-api.pamboo.asia/health) ||
+    fail 'API health probe unavailable'
+  [[ "$status" == 200 ]] || fail 'API health non-200'
   status=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 https://staging-api.pamboo.asia/ready) || fail 'API readiness probe unavailable'
   [[ "$status" == 200 ]] || fail 'API readiness non-200'
 }
 
-if [[ "$mode" == --execute ]]; then healthy; fi
+if [[ "$deleting" == true || "$planning" == true ]]; then
+  healthy
+  capacity
+fi
+
+# A recovery batch is all-or-nothing at preflight: validate BOTH exact pairs
+# before the first removal. If the second pair drifted, do not delete the first.
+if [[ "$recovery" == true ]]; then
+  for rev in "$recovery_a" "$recovery_b"; do
+    refresh_refs
+    ref="$api_repo:$rev"
+    check_candidate "$ref" || fail "recovery API candidate unavailable or referenced: $rev"
+    [[ "$REPLY" == "${recovery_api_ids[$rev]}" ]] || fail 'recovery API image ID differs from owner allowlist'
+    ref="$worker_repo:$rev"
+    check_candidate "$ref" || fail "recovery Worker candidate unavailable or referenced: $rev"
+    [[ "$REPLY" == "${recovery_worker_ids[$rev]}" ]] || fail 'recovery Worker image ID differs from owner allowlist'
+    check_config "$rev" || fail "recovery deployment config still references old release: $rev"
+  done
+  echo 'AUDIT recovery_preflight=all_four_exact_images_passed'
+fi
 
 count=0
 while IFS= read -r rev; do
   [[ -n "$rev" ]] || continue
-  # The additional historical release is never eligible, even if unreferenced.
-  if [[ "$rev" == "$current" || "$rev" == "$rollback_a" ||
-        "$rev" == "$rollback_b" || "$rev" == "$additional" ]]; then
+  # No named protected/HOLD release may ever become a candidate, even if idle.
+  if [[ -n "${protected_revision_set[$rev]:-}" ]]; then
     printf 'PROTECTED_REVISION revision=%s\n' "$rev"
+    continue
+  fi
+  if [[ "$recovery" == true && "$rev" != "$recovery_a" && "$rev" != "$recovery_b" ]]; then
     continue
   fi
   api="$api_repo:$rev"
@@ -225,16 +359,31 @@ while IFS= read -r rev; do
   check_candidate "$worker" || { printf 'SKIP revision=%s reason=worker_unverifiable_or_referenced\n' "$rev"; continue; }
   worker_id="$REPLY"
   check_config "$rev" || { printf 'SKIP revision=%s reason=deployment_config_reference\n' "$rev"; continue; }
+  if [[ "$recovery" == true ]]; then
+    [[ "$api_id" == "${recovery_api_ids[$rev]:-}" && "$worker_id" == "${recovery_worker_ids[$rev]:-}" ]] ||
+      fail 'recovery candidate exact image ID mismatch'
+  fi
   printf 'AUDIT mode=%s revision=%s api=%s api_id=%s worker=%s worker_id=%s\n' \
     "$mode" "$rev" "$api" "$api_id" "$worker" "$worker_id"
-  [[ "$mode" == --execute ]] || continue
+  if [[ "$planning" == true ]]; then
+    [[ "$api_id" != "$worker_id" ]] || fail 'same API and Worker image ID invalid'
+    printf 'PLAN revision=%s api_id=%s worker_id=%s\n' "$rev" "$api_id" "$worker_id"
+    count=$((count + 1))
+    if (( count >= 2 )); then
+      echo 'PLAN maximum_two_pairs=true'
+      break
+    fi
+    continue
+  fi
+  [[ "$deleting" == true ]] || continue
 
   capacity
-  if (( FREE_KIB >= 15728640 || USED_PCT <= 70 )); then
+  if [[ "$mode" != --steady-state-execute ]] && (( FREE_KIB >= 15728640 || USED_PCT <= 70 )); then
     echo 'STOP target reached; no more deletions'
     break
   fi
   before="$FREE_KIB"
+  before_inodes="$INODE_PCT"
   approved=$(grep -Fx -- "$rev $api_id $worker_id" "$STAGING_RETENTION_APPROVED_PLAN") || fail 'approved plan does not match current exact image IDs'
   [[ "$approved" == "$rev $api_id $worker_id" ]] || fail 'ambiguous approved plan'
   healthy
@@ -248,15 +397,39 @@ while IFS= read -r rev; do
     [[ "$REPLY" == "$expected" ]] || fail "image ID changed: $ref"
     docker image rm "$ref" || fail "Docker refused deletion: $ref"
   done
-  capacity
-  (( FREE_KIB > before )) || fail 'no net filesystem space reclaimed'
-  healthy
-  printf 'AUDIT deleted_revision=%s before_kib=%s after_kib=%s used_pct=%s\n' "$rev" "$before" "$FREE_KIB" "$USED_PCT"
+  # The Docker image removals are COMPLETE, regardless of when containerd
+  # asynchronously collects orphaned snapshots/content blobs. Never attribute
+  # pending GC to deletion failure, or continue removing further pairs while
+  # the actual disk benefit is unknown. No prune or direct snapshot deletion.
   count=$((count + 1))
+  printf 'AUDIT deletion_completed=true revision=%s api_id=%s worker_id=%s deleted_pairs=%s\n' \
+    "$rev" "$api_id" "$worker_id" "$count"
+  healthy
+  # Give the normal containerd GC time without forcing it. Max 50 seconds,
+  # checking disk/inode and service health again on each poll.
+  reclaimed=false
+  for gc_observation in 1 2 3 4 5 6; do
+    capacity
+    healthy
+    if (( FREE_KIB > before )); then reclaimed=true; break; fi
+    if (( gc_observation < 6 )); then sleep 10; fi
+  done
+  if [[ "$reclaimed" != true ]]; then
+    printf 'RECLAIM_PENDING deletion_completed=true revision=%s deleted_pairs=%s before_kib=%s after_kib=%s\n' \
+      "$rev" "$count" "$before" "$FREE_KIB"
+    echo 'STOP no more image removals; later read-only df/health reconciliation required'
+    exit 3
+  fi
+  printf 'AUDIT reclaimed_revision=%s deletion_completed=true before_kib=%s after_kib=%s reclaimed_kib=%s disk_used_pct=%s inode_before_pct=%s inode_after_pct=%s\n' \
+    "$rev" "$before" "$FREE_KIB" "$((FREE_KIB - before))" "$USED_PCT" "$before_inodes" "$INODE_PCT"
   if (( count >= 2 )); then
     echo 'STOP batch maximum 2 revision pairs reached'
     break
   fi
 done < <(printf '%s\n' "${!revisions[@]}" | sort)
 
-echo "RETENTION COMPLETE mode=$mode deleted_pairs=$count"
+if [[ "$planning" == true ]]; then
+  echo "PLAN COMPLETE mode=$mode proposed_pairs=$count deleted_pairs=0 approval_status=NOT_GRANTED"
+else
+  echo "RETENTION COMPLETE mode=$mode deleted_pairs=$count"
+fi

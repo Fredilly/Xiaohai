@@ -37,3 +37,14 @@ jobs:
         run: |
           docker run --rm --entrypoint sh xiaohai-api:check -c 'test -f apps/api/dist/server.js'
           docker run --rm --entrypoint sh xiaohai-worker:check -c 'test -f apps/worker/dist/index.js'
+      - name: Verify service-specific production dependencies and DB migration assets
+        run: |
+          for service in api worker; do
+            docker run --rm --entrypoint sh "xiaohai-$service:check" -c "test -f apps/$service/node_modules/@xiaohai/db/dist/src/index.js && test -f apps/$service/node_modules/@xiaohai/db/dist/migrations/meta/_journal.json"
+            docker run --rm --entrypoint sh "xiaohai-$service:check" -c "cd apps/$service && node --input-type=module -e \"await import('@xiaohai/config'); await import('@xiaohai/db'); await import('@xiaohai/contracts')\""
+            docker image inspect --format "runtime_image=$service size_bytes={{.Size}}" "xiaohai-$service:check"
+          done
+          # API alone declares @xiaohai/domain; prove its production import resolves.
+          docker run --rm --entrypoint sh xiaohai-api:check -c "cd apps/api && node --input-type=module -e \"await import('@xiaohai/domain')\""
+          docker run --rm --entrypoint sh xiaohai-api:check -c 'test ! -d /app/benchmarks && test ! -d /app/apps/worker/dist'
+          docker run --rm --entrypoint sh xiaohai-worker:check -c 'test ! -d /app/benchmarks && test ! -d /app/apps/api/dist'

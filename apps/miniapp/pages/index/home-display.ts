@@ -1,14 +1,15 @@
 import type { HomeSection } from '../../services/home';
-import { HOME_EDITORIAL_FALLBACK } from '../../utils/real-visuals';
+import { resolveHomeEditorialFallback } from '../../utils/real-visuals';
 
 // Historical local CMS seeds may still contain internal milestone labels.
 // Keep the CMS badge field for editorial labels while hiding release codes.
-// A media-less HERO uses the curated BOS editorial fallback; explicit CMS media
-// always wins so operators can replace the default artwork without code changes.
+// Only a matching parent-child-reading HERO uses the curated BOS editorial art.
+// Keep unrelated media-less heroes free of mismatched photos, and let CMS media win.
 export function homeDisplaySections(sections: HomeSection[]): HomeSection[] {
   return sections.map((section) => {
     if (section.sectionType === 'HERO' && !section.mediaUrl) {
-      return { ...section, mediaUrl: HOME_EDITORIAL_FALLBACK };
+      const fallback = resolveHomeEditorialFallback(section.title, section.subtitle);
+      return fallback ? { ...section, mediaUrl: fallback } : section;
     }
     if (section.sectionType !== 'FEATURE_GRID' || !Array.isArray(section.config.items))
       return section;
@@ -31,17 +32,25 @@ export function homeDisplaySections(sections: HomeSection[]): HomeSection[] {
 }
 
 /**
- * Ignore stale image errors from a previous CMS load or a recycled list row.
+ * Ignore stale image errors from a previous CMS load or a recycled list row,
+ * including when a new HERO reuses the same image URL at the same list position.
  * Replace the entire matching section to preserve its id, type, title and config.
  */
 export function clearFailedHeroMedia(
   sections: HomeSection[],
   index: number,
+  sectionId: string,
   failedUrl: string,
 ): HomeSection[] {
-  if (!Number.isInteger(index) || index < 0 || !failedUrl) return sections;
+  if (!Number.isInteger(index) || index < 0 || !sectionId || !failedUrl) return sections;
   const current = sections[index];
-  if (current?.sectionType !== 'HERO' || current.mediaUrl !== failedUrl) return sections;
+  if (
+    current?.sectionType !== 'HERO' ||
+    current.id !== sectionId ||
+    current.mediaUrl !== failedUrl
+  ) {
+    return sections;
+  }
   return sections.map((section, position) =>
     position === index ? { ...section, mediaUrl: '' } : section,
   );

@@ -1,19 +1,26 @@
 import { addCartItem, getProduct, type Product } from '../../services/commerce';
+import { detailAccessMessage } from '../../utils/detail-read-error';
 import { resolveEditorialBookCover } from '../../utils/real-visuals';
 
 type DisplayProduct = Product & { displayCoverUrl: string };
 
 Page({
   data: {
+    id: '',
     product: null as DisplayProduct | null,
     loading: true,
     error: false,
+    accessMessage: '',
     message: '',
   },
   onLoad(q: Record<string, string | undefined>) {
-    if (q.id) void this.load(q.id);
+    const id = q.id ?? '';
+    this.setData({ id });
+    if (id) void this.load(id);
+    else this.setData({ loading: false, error: true });
   },
   async load(id: string) {
+    this.setData({ loading: true, error: false, accessMessage: '', message: '' });
     try {
       const product = await getProduct(id);
       this.setData({
@@ -25,10 +32,20 @@ Page({
           ),
         },
         loading: false,
+        error: false,
       });
-    } catch {
-      this.setData({ loading: false, error: true });
+    } catch (error) {
+      this.setData({
+        loading: false,
+        error: true,
+        accessMessage: detailAccessMessage(error),
+        product: null,
+      });
     }
+  },
+  retry() {
+    if (this.data.id && !this.data.loading && !this.data.accessMessage)
+      void this.load(this.data.id);
   },
   async add(e: WechatMiniprogram.TouchEvent) {
     try {
@@ -38,8 +55,13 @@ Page({
       this.setData({ message: '加入失败；请先登录或检查商品状态' });
     }
   },
-  coverError() {
-    if (!this.data.product) return;
+  coverError(event: WechatMiniprogram.TouchEvent) {
+    const product = this.data.product;
+    const id = String(event.currentTarget.dataset.id ?? '');
+    const failedUrl = String(event.currentTarget.dataset.src ?? '');
+    // A previous image may fail after a new product/cover has already loaded.
+    if (!product || product.id !== id || !failedUrl || product.displayCoverUrl !== failedUrl)
+      return;
     this.setData({ 'product.displayCoverUrl': '' });
   },
   openCart() {

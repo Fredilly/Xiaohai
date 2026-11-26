@@ -38,6 +38,10 @@ import { registerStoryRoutes } from './story/story-routes.js';
 import { PictureBookService } from './picture-book/picture-book-service.js';
 import { registerPictureBookRoutes } from './picture-book/picture-book-routes.js';
 import { createPrivateBosPlaybackResolver } from './picture-book/private-bos-urls.js';
+import {
+  createIsolatedReferenceImageStorage,
+  isConnectedToIsolatedReferenceDatabase,
+} from './picture-book/reference-image-import.js';
 import { RedisImageQueue } from './picture-book/image-queue.js';
 import { AnimationService } from './animation/animation-service.js';
 import { registerAnimationRoutes } from './animation/animation-routes.js';
@@ -233,6 +237,19 @@ registerStoryRoutes(app, {
 const imageQueue = new RedisImageQueue(config.REDIS_URL, () =>
   app.log.error({ errorCode: 'REDIS_UNAVAILABLE' }, 'Picture Book image queue Redis error'),
 );
+// Independently verify the connected database, not just the supplied URL. No
+// reference-import route is activated if the database identity cannot be read.
+const isolatedReferenceStorageCandidate = createIsolatedReferenceImageStorage(process.env);
+let isolatedReferenceStorage = undefined;
+if (
+  isolatedReferenceStorageCandidate &&
+  (await isConnectedToIsolatedReferenceDatabase(process.env, () =>
+    pool.query<{ name: string }>('select current_database() as name'),
+  ))
+) {
+  isolatedReferenceStorage = isolatedReferenceStorageCandidate;
+}
+
 const pictureBook = new PictureBookService(
   db,
   aiQueue,
@@ -264,6 +281,7 @@ const pictureBook = new PictureBookService(
   },
   app.log,
   createPrivateBosPlaybackResolver(process.env),
+  isolatedReferenceStorage,
 );
 
 registerPictureBookRoutes(app, {

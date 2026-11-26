@@ -1,13 +1,19 @@
 <view class="page">
-  <text class="page-heading">我的订单</text>
+  <text class="page-heading">{{viewTitle}}</text>
+  <view wx:if="{{viewNote && !unsupported}}" class="demo-note">{{viewNote}}</view>
   <view wx:if="{{loading}}" class="state-card">正在加载订单…</view>
   <view wx:elif="{{needsLogin}}" class="state-card">
     <text class="state-title">登录后查看订单</text>
     <text class="state-copy">订单属于个人账户，请先微信登录。</text>
     <button class="primary-btn" bindtap="goToLogin">去登录</button>
   </view>
+  <view wx:elif="{{unsupported}}" class="state-card">
+    <text class="state-title">暂不能准确筛选</text>
+    <text class="state-copy">{{viewNote}}</text>
+    <button class="primary-btn" bindtap="openAll">查看全部订单</button>
+  </view>
   <view wx:elif="{{error}}" class="state-card"><text class="state-title">订单暂时无法加载</text><button bindtap="load">重试</button></view>
-  <view wx:elif="{{orders.length===0}}" class="state-card"><text class="state-title">还没有订单</text></view>
+  <view wx:elif="{{orders.length===0}}" class="state-card"><text class="state-title">{{view === 'all' ? '还没有订单' : '当前没有符合条件的订单'}}</text></view>
   <view wx:else class="commerce-list"><view class="list-card order-summary" wx:for="{{orders}}" wx:key="id" data-id="{{item.id}}" bindtap="open">
     <view class="list-main"><text class="list-title">订单 {{item.orderNumber}}</text><text class="state-pill {{item.status === 'UNPAID' ? 'pending' : ''}}">{{item.status === 'UNPAID' ? '待付款' : item.status === 'PAID' ? '已付款' : item.status === 'PROCESSING' ? '处理中' : item.status === 'PICKUP_READY' ? '待自提' : item.status === 'DELIVERING' ? '配送中' : item.status === 'CANCELLED' ? '已取消' : item.status === 'COMPLETED' ? '已完成' : item.status === 'REFUNDING' ? '退款中' : '已退款'}}</text></view><text class="price">¥{{item.totalMinor/100}}</text><text class="arrow">›</text>
   </view></view>

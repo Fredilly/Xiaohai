@@ -20,18 +20,18 @@
       "name": "Pip",
       "identity": "small sky-blue bird child",
       "face": "small friendly eyes, short rounded beak",
-      "clothing": "green cap",
+      "clothing": "green cap, yellow striped knit scarf",
       "accessories": "tiny orange satchel",
-      "colors": ["sky-blue", "pale-yellow", "green", "orange"],
+      "colors": ["sky-blue", "pale-yellow", "green", "orange", "yellow"],
       "proportions": "small bird-child proportions, rounded wings and head",
       "referenceSlot": "pip-reference"
     }
   ],
   "visualStyle": {
-    "medium": "warm watercolor storybook illustration",
-    "lighting": "soft warm natural light",
-    "lineAndTexture": "soft edges, visible watercolor texture, child-friendly detail",
-    "composition": "clear readable focal action, no photorealism",
+    "medium": "bright polished cartoon storybook illustration",
+    "lighting": "bright warm sunlit outdoor lighting with clear, cheerful colors",
+    "lineAndTexture": "crisp clean character outlines, detailed colorful painted shading, glossy expressive eyes, child-friendly detail",
+    "composition": "clear readable focal action, rounded childlike proportions, no photorealism",
     "candidateStyleSamples": [
       {
         "source": "benchmarks/image/PER_IMAGE_REVIEW.json",
