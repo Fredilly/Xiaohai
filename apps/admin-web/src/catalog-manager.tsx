@@ -189,7 +189,7 @@ function CatalogSession({ token }: { token: string }) {
                   <td>
                     <button onClick={() => setEditing(p)}>编辑</button>
                     {p.status === 'DRAFT' && (
-                      <button onClick={() => setPhotoProduct(p)}>上传图片</button>
+                      <button onClick={() => setPhotoProduct(p)}>管理商品图片</button>
                     )}
                   </td>
                 </tr>
@@ -284,14 +284,17 @@ function CatalogSession({ token }: { token: string }) {
             className="catalog-editor-dialog"
             role="dialog"
             aria-modal="true"
-            aria-label={`总部上传商品图片：${photoProduct.name}`}
+            aria-label={`总部管理商品图片：${photoProduct.name}`}
           >
             <HqProductImageUploader
               key={photoProduct.id}
               token={token}
               productId={photoProduct.id}
               productVersion={photoProduct.productVersion}
-              onUploaded={() => void load()}
+              onUploaded={() => {
+                setPhotoProduct(null);
+                void load();
+              }}
               onCancel={() => setPhotoProduct(null)}
             />
           </div>

@@ -38,7 +38,7 @@ function InventorySession({ token, storeId, permissions }: InventoryPanelProps) 
   const [openingSearch, setOpeningSearch] = useState('');
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [openingSkuId, setOpeningSkuId] = useState('');
-  const [openingStatus, setOpeningStatus] = useState('搜索总部商品或 SKU，开始本店首次库存建档。');
+  const [openingStatus, setOpeningStatus] = useState('搜索商品或 SKU，开始本店首次库存建档。');
   const [openingBusy, setOpeningBusy] = useState(false);
   const openingKey = useRef(crypto.randomUUID());
   const openingInFlight = useRef(false);
@@ -204,7 +204,7 @@ function InventorySession({ token, storeId, permissions }: InventoryPanelProps) 
         <section aria-label="首次库存建档">
           <h3>首次库存建档</h3>
           <p>
-            总部先建立商品草稿；门店在这里搜索商品并登记首次实盘数量。只登记本店、尚未建档的
+            商品草稿可由总部或获授权的门店创建。门店在这里搜索商品并登记首次实盘数量。只登记本店、尚未建档的
             SKU，已有库存请使用下方调整流程。
           </p>
           <p>首次数量大于 0 时会留下库存流水；数量为 0 时仅建立零库存关联，不会生成收货记录。</p>

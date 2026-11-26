@@ -14,7 +14,8 @@ describe('first stock catalog registration UI', () => {
     );
     expect(html).toContain('首次库存建档');
     expect(html).toContain('搜索待建档 SKU');
-    expect(html).toContain('总部先建立商品草稿');
+    expect(html).toContain('商品草稿可由总部或获授权的门店创建');
+    expect(html).toContain('搜索商品或 SKU');
     expect(html).toContain('库存流水');
   });
 
