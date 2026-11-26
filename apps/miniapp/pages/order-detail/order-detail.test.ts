@@ -149,6 +149,7 @@ describe('consumer order detail transitions', () => {
       () => new Promise<void>((resolve) => (release = resolve)),
     );
     const detail = page();
+    detail.data.paymentMessage = '上一笔支付状态待确认';
     const pending = detail.cancel();
     detail.onHide();
     release();
@@ -157,6 +158,7 @@ describe('consumer order detail transitions', () => {
     expect(mocks.getOrder).not.toHaveBeenCalled();
     expect(detail.data.order).toBeNull();
     expect(detail.data.cancelMessage).toBe('');
+    expect(detail.data.paymentMessage).toBe('');
     expect(detail.data.cancellingOrder).toBe(false);
   });
 

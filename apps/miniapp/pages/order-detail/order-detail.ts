@@ -34,7 +34,7 @@ Page({
   onHide() {
     this.readSequence++;
     this.visibleSession = '';
-    this.setData({ order: null, fulfillment: null });
+    this.setData({ order: null, fulfillment: null, cancelMessage: '', paymentMessage: '' });
   },
   onUnload() {
     this.readSequence++;
