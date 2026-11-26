@@ -16,6 +16,7 @@ type Candidate = Awaited<ReturnType<typeof findOpeningStockCandidates>>['items']
 type InventoryPanelProps = {
   token: string;
   storeId: string;
+  staffAccountId: string;
   permissions: string[];
 };
 
@@ -23,7 +24,7 @@ export function InventoryPanel(props: InventoryPanelProps) {
   return <InventorySession key={`${props.token}:${props.storeId}`} {...props} />;
 }
 
-function InventorySession({ token, storeId, permissions }: InventoryPanelProps) {
+function InventorySession({ token, storeId, staffAccountId, permissions }: InventoryPanelProps) {
   const [items, setItems] = useState<Balance[]>([]);
   const [selectedKey, setSelectedKey] = useState('');
   const [inventoryQuery, setInventoryQuery] = useState('');
@@ -195,7 +196,13 @@ function InventorySession({ token, storeId, permissions }: InventoryPanelProps) 
     <section className="panel inventory-panel">
       <span className="tag">M14 Inventory Operations</span>
       <h2>库存操作</h2>
-      <FoodStockPanel token={token} storeId={storeId} permissions={permissions} items={items} />
+      <FoodStockPanel
+        token={token}
+        storeId={storeId}
+        staffAccountId={staffAccountId}
+        permissions={permissions}
+        items={items}
+      />
       <p>当前门店由 M19 工作台选择器确定；余额、版本、写入权限与 Data Scope 仍由服务端确认。</p>
       {permissions.includes('inventory.receive') && (
         <StoreMeipingPreflightPanel token={token} storeId={storeId} />

@@ -1,30 +1,42 @@
 import { FoodTraceabilityPanel } from './food-traceability-panel';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import {
-  foodStockReadResponseSchema,
+  type foodStockReadResponseSchema,
   foodLotIntakeRequestSchema,
   foodLotDispositionRequestSchema,
   foodBatchMovementRequestSchema,
 } from '@xiaohai/contracts/food';
+import { parseScopedHqFoodStock } from './food-response-scope';
+import {
+  assertFoodOperationResponse,
+  clearFoodOperation,
+  pendingFoodOperation,
+  reserveFoodOperation,
+  type FoodOperationPath,
+  type PendingFoodOperation,
+} from '@xiaohai/contracts/food-operation-retry';
 type Snapshot = ReturnType<typeof foodStockReadResponseSchema.parse>;
 type Props = {
   token: string;
   storeId: string;
+  staffAccountId: string;
   permissions: string[];
   items: { skuId: string; skuName: string }[];
 };
 const env = import.meta.env as { VITE_API_BASE_URL?: string };
 export function FoodStockPanel(props: Props) {
-  return <FoodStockSession key={`${props.token}:${props.storeId}`} {...props} />;
+  return (
+    <FoodStockSession key={`${props.staffAccountId}:${props.token}:${props.storeId}`} {...props} />
+  );
 }
-function FoodStockSession({ token, storeId, permissions, items }: Props) {
+function FoodStockSession({ token, storeId, staffAccountId, permissions, items }: Props) {
   const [skuId, setSkuId] = useState('');
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [status, setStatus] = useState('选择本店 SKU 后读取真实批次及服务端交易开关状态。');
   const [busy, setBusy] = useState(false);
   const requestVersion = useRef(0);
   const inFlight = useRef(false);
-  const retry = useRef<{ fingerprint: string; key: string } | null>(null);
+  const [pending, setPending] = useState<PendingFoodOperation | null>(null);
   async function request(suffix: string, body?: unknown) {
     const response = await fetch(
       `${env.VITE_API_BASE_URL ?? ''}/api/v1/staff/inventory/food-stock${suffix}`,
@@ -40,19 +52,25 @@ function FoodStockSession({ token, storeId, permissions, items }: Props) {
     if (!response.ok) throw new Error(`HTTP_${response.status}`);
     return (await response.json()) as unknown;
   }
-  async function load() {
+  async function load(): Promise<boolean> {
     const version = ++requestVersion.current;
     setSnapshot(null);
-    if (!skuId) return;
+    if (!skuId) return false;
     try {
-      const data = foodStockReadResponseSchema.parse(
+      const data = parseScopedHqFoodStock(
         await request(`?${new URLSearchParams({ storeId, skuId })}`),
+        storeId,
+        skuId,
       );
-      if (version === requestVersion.current) setSnapshot(data);
+      if (version === requestVersion.current) {
+        setSnapshot(data);
+        return true;
+      }
     } catch {
       if (version === requestVersion.current)
         setStatus('批次读取失败，请重新读取；不能据此进行库存操作。');
     }
+    return false;
   }
   useEffect(() => {
     void load();
@@ -60,11 +78,72 @@ function FoodStockSession({ token, storeId, permissions, items }: Props) {
       requestVersion.current++;
     };
   }, [skuId]); // session is remounted on token/store changes
+  useEffect(() => {
+    try {
+      const saved = pendingFoodOperation(staffAccountId, storeId);
+      setPending(saved);
+      if (saved) {
+        setSkuId(saved.input.skuId);
+        setStatus('上次食品批次写入结果未确认；请核对流水，或使用下方按钮重试原请求。');
+      }
+    } catch {
+      setStatus('待确认食品批次记录无法读取，已阻止新的写入；请联系管理员核对流水。');
+    }
+  }, [staffAccountId, storeId]);
+
+  async function postOperation(operation: PendingFoodOperation, formElement?: HTMLFormElement) {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    setBusy(true);
+    let confirmed = false;
+    try {
+      assertFoodOperationResponse(operation, await request(operation.path, operation.input));
+      confirmed = true;
+      clearFoodOperation(staffAccountId, storeId, operation.input.idempotencyKey);
+      setPending(null);
+      formElement?.reset();
+      setStatus('写入已成功响应，正在重新读取批次。');
+      const refreshed = await load();
+      setStatus(
+        refreshed
+          ? '操作已提交，库存与批次已刷新。'
+          : '写入已成功响应，但批次刷新未确认；请先重新读取库存，勿重复提交原操作。',
+      );
+    } catch {
+      setStatus(
+        confirmed
+          ? '写入已成功响应，但无法清除本地待确认记录；请核对库存流水，勿新建相同操作。'
+          : '写入未确认成功；原请求已保存在本标签页。请核对流水或按原请求重试，勿修改后另建一笔。',
+      );
+    } finally {
+      inFlight.current = false;
+      setBusy(false);
+    }
+  }
+
+  async function retryPending() {
+    if (inFlight.current) return;
+    try {
+      const saved = pendingFoodOperation(staffAccountId, storeId);
+      if (!saved) {
+        setPending(null);
+        return;
+      }
+      if (!items.some((item) => item.skuId === saved.input.skuId)) {
+        setStatus('原 SKU 不在当前门店授权库存列表中；请先核对门店与库存流水。');
+        return;
+      }
+      await postOperation(saved);
+    } catch {
+      setStatus('无法安全恢复原食品批次请求；已停止提交，请核对库存流水。');
+    }
+  }
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const formElement = event.currentTarget;
     if (inFlight.current || !snapshot || snapshot.storeId !== storeId || snapshot.skuId !== skuId)
       return;
-    const data = new FormData(event.currentTarget);
+    const data = new FormData(formElement);
     const operation = text(data, 'operation');
     const reason = text(data, 'reason');
     const sourceRef = text(data, 'sourceRef');
@@ -107,34 +186,28 @@ function FoodStockSession({ token, storeId, permissions, items }: Props) {
           .filter((r) => r.quantity > 0),
       };
     }
-    const fingerprint = JSON.stringify([suffix, raw]);
-    if (retry.current?.fingerprint !== fingerprint)
-      retry.current = { fingerprint, key: crypto.randomUUID() };
     const schema =
       operation === 'intake'
         ? foodLotIntakeRequestSchema
         : operation === 'state'
           ? foodLotDispositionRequestSchema
           : foodBatchMovementRequestSchema;
-    const parsed = schema.safeParse({ ...raw, idempotencyKey: retry.current.key });
+    const parsed = schema.safeParse({ ...raw, idempotencyKey: crypto.randomUUID() });
     if (!parsed.success) {
       setStatus('请检查必填项、数量、日期及不含 URL 的凭证编号。');
       return;
     }
-    inFlight.current = true;
-    setBusy(true);
     try {
-      await request(suffix, parsed.data);
-      retry.current = null;
-      setStatus('操作已提交，库存与批次已刷新。');
-      await load();
-    } catch {
-      setStatus(
-        '未确认成功，请保留原输入，先重新读取核对；相同版本和输入保留同一请求编号。写入默认关闭，须在获准环境启用。',
+      const saved = reserveFoodOperation(
+        staffAccountId,
+        storeId,
+        suffix as FoodOperationPath,
+        parsed.data,
       );
-    } finally {
-      inFlight.current = false;
-      setBusy(false);
+      setPending(saved);
+      await postOperation(saved, formElement);
+    } catch {
+      setStatus('上次操作未确认或会话存储不可用，已阻止新写入；先恢复原请求或核对流水。');
     }
   }
   const evidence = (
@@ -161,7 +234,6 @@ function FoodStockSession({ token, storeId, permissions, items }: Props) {
           disabled={busy}
           onChange={(e) => {
             setSnapshot(null);
-            retry.current = null;
             setSkuId(e.target.value);
           }}
         >
@@ -177,6 +249,26 @@ function FoodStockSession({ token, storeId, permissions, items }: Props) {
         重新读取批次
       </button>
       <p role="status">{status}</p>
+      {pending && (
+        <aside role="alert">
+          <p>
+            待确认操作：{pending.path}；SKU {pending.input.skuId}。不可更改数量或批次后生成新请求。
+          </p>
+          <button
+            type="button"
+            disabled={
+              busy ||
+              !items.some((item) => item.skuId === pending.input.skuId) ||
+              !permissions.includes(
+                pending.path === '/intake' ? 'inventory.receive' : 'inventory.adjust',
+              )
+            }
+            onClick={() => void retryPending()}
+          >
+            使用原请求键重试
+          </button>
+        </aside>
+      )}
       {snapshot && (
         <>
           <p>

@@ -73,6 +73,7 @@ async function switchStore(page: Page, selected: string, preflight = false) {
     {
       token: 'synthetic-staff-session',
       storeId: selected,
+      staffAccountId: staffId,
       permissions: ['inventory.read', 'inventory.adjust', 'inventory.issue', 'inventory.receive'],
       preflight,
     },
@@ -553,6 +554,7 @@ test('read-only staff cannot submit inventory writes and single-permission opera
       {
         token: 'synthetic-staff-session',
         storeId,
+        staffAccountId: staffId,
         permissions: ['inventory.read', ...(permission ? [permission] : [])],
       },
     );
@@ -575,7 +577,9 @@ async function ordinaryInventoryFixture(page: Page) {
     route.fulfill({ json: { items: [balance] } }),
   );
 }
-test('food intake network retry retains the original operation key', async ({ page }) => {
+test('food intake persists its original operation through changed input and page reload', async ({
+  page,
+}) => {
   await ordinaryInventoryFixture(page);
   await page.route('**/api/v1/staff/inventory/food-stock?*', (route) =>
     route.fulfill({
@@ -615,7 +619,11 @@ test('food intake network retry retains the original operation key', async ({ pa
     const body = route.request().postDataJSON() as { idempotencyKey: string };
     keys.push(body.idempotencyKey);
     if (keys.length === 1) await route.abort('failed');
-    else await route.fulfill({ status: 201, json: { replayed: true } });
+    else
+      await route.fulfill({
+        status: 201,
+        json: { batchId: foodBatchId, onHandAfter: 7, inventoryVersion: 2, replayed: true },
+      });
   });
   await mount(page);
   await page.getByRole('combobox', { name: '本店 SKU', exact: true }).selectOption(skuId);
@@ -626,10 +634,18 @@ test('food intake network retry retains the original operation key', async ({ pa
   await form.getByLabel('原因', { exact: true }).fill('Synthetic receipt');
   await form.getByLabel('内部凭证编号（不填网址）').fill('synthetic:receipt:1');
   await form.getByRole('button', { name: '入库并冻结' }).click();
-  await expect(page.getByRole('status').filter({ hasText: '未确认成功' })).toHaveCount(1);
+  await expect(page.getByRole('status').filter({ hasText: '写入未确认成功' })).toHaveCount(1);
+  await form.getByLabel('入库数量').fill('3');
   await form.getByRole('button', { name: '入库并冻结' }).click();
+  await expect(page.getByRole('status').filter({ hasText: '已阻止新写入' })).toHaveCount(1);
+  expect(keys).toHaveLength(1);
+  await page.reload();
+  await mount(page);
+  await expect(page.getByRole('alert')).toContainText('待确认操作');
+  await page.getByRole('button', { name: '使用原请求键重试' }).click();
   await expect.poll(() => keys.length).toBe(2);
   expect(keys[0]).toBe(keys[1]);
+  await expect(page.getByRole('alert')).toHaveCount(0);
 });
 test('physical receipt keeps the same key when the post-success refresh fails', async ({
   page,

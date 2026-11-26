@@ -218,6 +218,7 @@ function Shell({
               key={currentStore.id}
               token={token}
               storeId={currentStore.id}
+              staffAccountId={me.staff.id}
               permissions={me.permissions}
             />
           ) : (

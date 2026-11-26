@@ -7,6 +7,7 @@ describe('food operations entry', () => {
       <FoodStockPanel
         token="synthetic"
         storeId="11111111-1111-4111-8111-111111111111"
+        staffAccountId="66666666-6666-4666-8666-666666666666"
         permissions={['inventory.read', 'inventory.receive']}
         items={[{ skuId: '22222222-2222-4222-8222-222222222222', skuName: 'Synthetic bottle' }]}
       />,
