@@ -33,20 +33,20 @@
   color: #285575;
 }
 .brand-note {
-  font-size: 20rpx;
+  font-size: 30rpx;
   color: #87909b;
 }
 .home-search {
   display: flex;
   align-items: center;
   gap: 14rpx;
-  min-height: 76rpx;
+  min-height: 88rpx;
   padding: 0 22rpx;
   margin-bottom: 18rpx;
   border-radius: 24rpx;
   background: #fff;
   color: #858d97;
-  font-size: 24rpx;
+  font-size: 32rpx;
   box-shadow: 0 8rpx 22rpx rgba(74, 80, 96, 0.04);
 }
 .home-search:active,
@@ -62,7 +62,7 @@
 .search-action {
   margin-left: auto;
   color: #8c7ea2;
-  font-size: 22rpx;
+  font-size: 30rpx;
 }
 .hero,
 .section,
@@ -142,13 +142,17 @@
   background: #e8edf3;
 }
 .hero-cta {
+  display: inline-flex;
+  align-items: center;
+  min-height: 88rpx;
+  box-sizing: border-box;
   align-self: flex-start;
   margin-top: 12rpx;
   padding: 12rpx 24rpx;
   border-radius: 999rpx;
   background: #fff;
   color: #806d93;
-  font-size: 24rpx;
+  font-size: 32rpx;
   font-weight: 700;
 }
 .eyebrow {
@@ -166,7 +170,7 @@
 .state-copy,
 .card-subtitle,
 .list-meta {
-  font-size: 24rpx;
+  font-size: 32rpx;
   color: #697581;
   line-height: 1.55;
 }
@@ -177,12 +181,12 @@
   margin-bottom: 20rpx;
 }
 .section-title {
-  font-size: 31rpx;
+  font-size: 36rpx;
   font-weight: 800;
   color: #35404b;
 }
 .section-note {
-  font-size: 22rpx;
+  font-size: 30rpx;
   color: #9099a3;
 }
 .grid {
@@ -244,7 +248,7 @@
 }
 .card-title,
 .list-title {
-  font-size: 27rpx;
+  font-size: 34rpx;
   font-weight: 700;
 }
 .badge {
@@ -324,7 +328,7 @@
 }
 .storybook-blurb {
   color: #42635c;
-  font-size: 22rpx;
+  font-size: 30rpx;
   line-height: 1.5;
 }
 .storybook-scene {

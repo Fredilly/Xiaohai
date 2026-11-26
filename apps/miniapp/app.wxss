@@ -2,6 +2,8 @@
 page {
   background: #f7f8fa;
   color: #35404b;
+  font-size: 32rpx;
+  line-height: 1.5;
   font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif;
 }
 .page {
@@ -27,6 +29,7 @@ page {
 .hero-subtitle {
   color: #647481;
   opacity: 1;
+  font-size: 32rpx;
   line-height: 1.6;
 }
 .eyebrow {
@@ -46,7 +49,7 @@ page {
   margin-bottom: 16rpx;
 }
 .section-title {
-  font-size: 31rpx;
+  font-size: 36rpx;
   color: #35404b;
   font-weight: 800;
 }
@@ -72,12 +75,12 @@ page {
 .card-title {
   display: block;
   margin-bottom: 8rpx;
-  font-size: 28rpx;
+  font-size: 34rpx;
   font-weight: 800;
 }
 .card-subtitle,
 .muted {
-  font-size: 23rpx;
+  font-size: 32rpx;
   line-height: 1.6;
 }
 .list-card {
@@ -92,14 +95,14 @@ page {
 }
 .list-title {
   display: block;
-  font-size: 28rpx;
+  font-size: 34rpx;
   font-weight: 800;
   line-height: 1.4;
 }
 .list-meta {
   display: block;
   margin-top: 7rpx;
-  font-size: 22rpx;
+  font-size: 32rpx;
   line-height: 1.45;
 }
 .book-list,
@@ -133,22 +136,31 @@ page {
   margin-top: 18rpx;
 }
 .chip {
-  padding: 8rpx 13rpx;
+  display: inline-flex;
+  align-items: center;
+  min-height: 88rpx;
+  box-sizing: border-box;
+  padding: 0 18rpx;
   border-radius: 999rpx;
   border: 1rpx solid #e7edf1;
   background: #fff;
-  font-size: 21rpx;
+  font-size: 30rpx;
 }
 .arrow {
   color: #9aa6af;
 }
 .primary-btn {
-  min-height: 80rpx;
-  line-height: 80rpx;
+  min-height: 88rpx;
+  line-height: 88rpx;
   border-radius: 19rpx;
   background: #718da0;
   color: #fff;
-  font-size: 26rpx;
+  font-size: 32rpx;
+}
+button {
+  min-height: 88rpx;
+  box-sizing: border-box;
+  font-size: 32rpx;
 }
 .primary-btn:active,
 button:active {
@@ -161,13 +173,13 @@ button[disabled] {
 input,
 textarea {
   box-sizing: border-box;
-  min-height: 72rpx;
+  min-height: 88rpx;
   padding: 16rpx 20rpx;
   border: 1rpx solid #e8edf1;
   border-radius: 16rpx;
   background: #f9fafb;
   color: #35404b;
-  font-size: 25rpx;
+  font-size: 32rpx;
 }
 textarea {
   width: 100%;
@@ -187,7 +199,7 @@ textarea {
 .state-copy {
   display: block;
   margin-top: 12rpx;
-  font-size: 23rpx;
+  font-size: 32rpx;
   line-height: 1.7;
 }
 .demo-note,
@@ -219,7 +231,7 @@ textarea {
 .profile-status {
   display: block;
   margin-top: 6rpx;
-  font-size: 22rpx;
+  font-size: 30rpx;
   line-height: 1.5;
   color: #75818d;
 }
@@ -251,11 +263,11 @@ textarea {
   gap: 6rpx;
 }
 .menu-title {
-  font-size: 27rpx;
+  font-size: 34rpx;
   font-weight: 700;
 }
 .menu-subtitle {
-  font-size: 21rpx;
+  font-size: 30rpx;
   color: #75818d;
 }
 .price {
@@ -335,10 +347,11 @@ textarea {
 }
 .commerce-toolbar button,
 .search-toolbar button {
+  min-height: 88rpx;
   margin: 0;
   flex: none;
   border-radius: 17rpx;
-  font-size: 23rpx;
+  font-size: 32rpx;
 }
 .page-heading {
   display: block;
