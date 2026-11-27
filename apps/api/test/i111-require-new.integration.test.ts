@@ -38,7 +38,7 @@ const bodyVersionId = '70000000-1111-4111-8111-111111111111';
 const mediaId = '80000000-1111-4111-8111-111111111111';
 const characterId = '90000000-1111-4111-8111-111111111111';
 const budgetKey = 'I111_MAC_PLAN_B_THREE_PAID_IMAGE_CALLS';
-const migrationBaseline = Object.freeze({ count: 42, minimumId: '1', maximumId: '42' });
+const migrationBaseline = Object.freeze({ count: 50, minimumId: '1', maximumId: '50' });
 const seededBaselines = Object.freeze({
   cms_pages: Object.freeze({
     count: 1,
