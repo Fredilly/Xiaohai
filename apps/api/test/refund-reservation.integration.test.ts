@@ -14,6 +14,7 @@ import {
   deliveryZones,
   financeLedgerEntries,
   franchisees,
+  inventoryTransactions,
   orderItems,
   orders,
   paymentCallbacks,
@@ -122,6 +123,9 @@ suite('M6 paid refund and M16 reservation PostgreSQL integration', () => {
       await db.delete(deliveries).where(eq(deliveries.orderId, f.orderId));
       await db.delete(pickupCodes).where(eq(pickupCodes.orderId, f.orderId));
       await db.delete(deliveryZones).where(eq(deliveryZones.storeId, f.storeId));
+      await db
+        .delete(inventoryTransactions)
+        .where(eq(inventoryTransactions.referenceId, f.orderId));
       await db.delete(orderItems).where(eq(orderItems.orderId, f.orderId));
       await db.delete(orders).where(eq(orders.id, f.orderId));
 
@@ -384,6 +388,85 @@ suite('M6 paid refund and M16 reservation PostgreSQL integration', () => {
           .from(deliveryEvents)
           .where(eq(deliveryEvents.deliveryId, delivery!.id));
         expect(events.map((row) => row.eventType)).toEqual(['CREATED', 'CANCELLED']);
+      }
+    });
+  }
+
+  for (const method of ['PICKUP', 'DELIVERY'] as const) {
+    it(`never restocks a completed ${method} sale on refund or callback replay`, async () => {
+      const f = await seed(method);
+      const operator = {
+        staffAccountId: f.staffId,
+        loginIdentifier: 'synthetic-fulfillment-operator',
+        permissions: ['fulfillment.pickup', 'delivery.dispatch'],
+        dataScopes: [{ type: 'STORE' as const, id: f.storeId }],
+      };
+      if (method === 'PICKUP') {
+        await fulfillment.markPickupReady(operator, f.orderId);
+        // Fetch the real code through the owning consumer rather than computing it in the test.
+        const [owner] = await db.select().from(orders).where(eq(orders.id, f.orderId));
+        const pickupView = await fulfillment.getForConsumer(owner!.consumerUserId, f.orderId);
+        expect(pickupView.pickup?.code).toMatch(/^\d{6}$/);
+        await fulfillment.verifyPickup(operator, f.orderId, pickupView.pickup!.code!, randomUUID());
+      } else {
+        await fulfillment.dispatchDelivery(operator, f.orderId, randomUUID());
+        await fulfillment.completeDelivery(operator, f.orderId, randomUUID());
+      }
+
+      const [fulfilled] = await db.select().from(orders).where(eq(orders.id, f.orderId));
+      expect(fulfilled?.status).toBe('COMPLETED');
+      const saleTransactions = await db
+        .select()
+        .from(inventoryTransactions)
+        .where(eq(inventoryTransactions.referenceId, f.orderId));
+      expect(saleTransactions).toHaveLength(1);
+      expect(saleTransactions[0]).toMatchObject({ transactionType: 'SALE', quantityDelta: -1 });
+
+      setupRefund(f);
+      await paymentService.requestRefund(f.payment.id, f.staffId);
+      const [refund] = await db.select().from(refunds).where(eq(refunds.paymentId, f.payment.id));
+      event = {
+        id: randomUUID(),
+        eventType: 'REFUND.SUCCESS',
+        refund: {
+          mchid: provider.merchantId,
+          out_trade_no: f.payment.outTradeNo,
+          transaction_id: f.transaction.transaction_id!,
+          out_refund_no: refund!.outRefundNo,
+          refund_id: 'provider-refund',
+          status: 'SUCCESS',
+          amount: { total: 2500, refund: 2500 },
+        },
+      };
+      await Promise.all([
+        paymentService.callback('fulfilled-refund', {}),
+        paymentService.callback('fulfilled-refund', {}),
+      ]);
+      event = { ...event, id: randomUUID() };
+      await paymentService.callback('fulfilled-refund-replay', {});
+
+      const [balance] = await db
+        .select()
+        .from(storeInventory)
+        .where(and(eq(storeInventory.storeId, f.storeId), eq(storeInventory.skuId, f.skuId)));
+      expect(balance).toMatchObject({ onHand: 2, reserved: 0 });
+      expect((await db.select().from(orders).where(eq(orders.id, f.orderId)))[0]?.status).toBe(
+        'REFUNDED',
+      );
+      expect(
+        await db
+          .select()
+          .from(inventoryTransactions)
+          .where(eq(inventoryTransactions.referenceId, f.orderId)),
+      ).toHaveLength(1);
+      if (method === 'PICKUP') {
+        expect(
+          (await db.select().from(pickupCodes).where(eq(pickupCodes.orderId, f.orderId)))[0],
+        ).toMatchObject({ status: 'VERIFIED' });
+      } else {
+        expect(
+          (await db.select().from(deliveries).where(eq(deliveries.orderId, f.orderId)))[0],
+        ).toMatchObject({ status: 'DELIVERED' });
       }
     });
   }
