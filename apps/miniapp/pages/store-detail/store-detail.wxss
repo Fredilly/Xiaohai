@@ -58,3 +58,73 @@
 .action-row {
   margin-top: 22rpx;
 }
+
+.inventory-panel {
+  padding: 28rpx;
+}
+
+.inventory-help {
+  display: block;
+  margin: 12rpx 0 20rpx;
+  line-height: 1.6;
+}
+
+.inventory-search-row {
+  display: flex;
+  gap: 12rpx;
+  align-items: center;
+  margin-bottom: 20rpx;
+}
+
+.inventory-query {
+  flex: 1;
+  min-width: 0;
+  padding: 18rpx;
+  border: 1rpx solid #d9e1da;
+  border-radius: 12rpx;
+  background: #fff;
+  font-size: 26rpx;
+}
+
+.inventory-search-btn {
+  margin: 0;
+  color: #fff;
+  background: #315d45;
+}
+
+.store-book-list {
+  display: grid;
+  gap: 14rpx;
+}
+
+.store-book-card {
+  display: grid;
+  gap: 8rpx;
+  padding: 20rpx;
+  border: 1rpx solid #eee7dc;
+  border-radius: 16rpx;
+  background: #fff;
+}
+
+.store-book-title {
+  color: #293d32;
+  font-size: 28rpx;
+  font-weight: 700;
+}
+
+.store-book-footer {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12rpx;
+  margin-top: 6rpx;
+}
+
+.store-book-footer button {
+  margin: 0 0 0 auto;
+}
+
+.stock-label {
+  color: #315d45;
+  font-size: 24rpx;
+}

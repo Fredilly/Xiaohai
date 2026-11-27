@@ -48,6 +48,34 @@
       </view>
     </view>
 
+    <view class="section card inventory-panel">
+      <text class="section-title">本店有货图书</text>
+      <text class="muted inventory-help">读取本店实时可用库存，最多显示 30 条。可输入书名、作者或 ISBN 查找；最终以结算或预约确认时的库存为准。</text>
+      <view class="inventory-search-row">
+        <input class="inventory-query" value="{{inventoryQuery}}" maxlength="120" placeholder="书名 / 作者 / ISBN" confirm-type="search" bindinput="onInventoryQueryInput" bindconfirm="searchStoreBooks" />
+        <button size="mini" class="inventory-search-btn" bindtap="searchStoreBooks" loading="{{inventoryLoading}}">查询</button>
+      </view>
+      <view wx:if="{{inventoryLoading}}" class="state-copy">正在查询本店库存…</view>
+      <view wx:elif="{{inventoryError}}" class="state-copy">
+        库存暂时无法获取，请重试。
+        <button size="mini" bindtap="searchStoreBooks">重试查询</button>
+      </view>
+      <view wx:elif="{{!inventoryItems.length}}" class="state-copy">当前条件下没有查到本店有货图书。</view>
+      <view wx:else class="store-book-list">
+        <view class="store-book-card" wx:for="{{inventoryItems}}" wx:key="key">
+          <text class="store-book-title">{{item.title}}</text>
+          <text class="muted">{{item.author}}</text>
+          <text wx:if="{{item.isbn}}" class="muted">ISBN {{item.isbn}}</text>
+          <view class="store-book-footer">
+            <text class="stock-label">可用 {{item.available}} 本</text>
+            <text wx:if="{{item.sellAvailable}}" class="stock-label">可购买 · {{item.priceText}}</text>
+            <text wx:if="{{item.rentAvailable}}" class="stock-label">可租借</text>
+            <button wx:if="{{item.sellAvailable}}" size="mini" data-id="{{item.productId}}" bindtap="openInventoryProduct">查看商品</button>
+          </view>
+        </view>
+      </view>
+    </view>
+
     <view class="action-row">
       <button class="primary-btn action-btn" bindtap="navigate">地图导航</button>
       <button wx:if="{{store.phone}}" class="secondary-btn action-btn" bindtap="callStore">联系门店</button>
