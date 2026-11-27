@@ -93,13 +93,12 @@
           <button size="mini" class="action-btn" data-id="{{item.store.id}}" bindtap="openStore">门店</button>
           <button wx:if="{{item.sellAvailable}}" size="mini" class="action-btn primary" data-id="{{item.product.id}}" bindtap="openProduct">购买</button>
           <button wx:if="{{item.rentAvailable}}" size="mini" class="action-btn" disabled="{{reserving}}" data-store-id="{{item.store.id}}" data-sku-id="{{item.sku.id}}" bindtap="reserveRental">租借</button>
-          <button size="mini" class="action-btn" data-flow="自提/配送" bindtap="showDeferredFlow">自提/配送</button>
         </view>
       </view>
     </view>
   </view>
 
   <view class="demo-note">
-    租借请以当前门店可租状态为准；自提与配送请在结算时确认是否可选。
+    租借请以当前门店可租状态为准；购买商品并加入购物车后，可在结算页选择门店和自提/配送方式。
   </view>
 </view>

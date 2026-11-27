@@ -23,6 +23,7 @@ type SearchPage = {
     errorMessage: string;
     selectedAvailabilityIndex: number;
     nearbyMode: boolean;
+    locationPending: boolean;
     latitude: number | null;
     longitude: number | null;
     items: Array<{
@@ -91,6 +92,7 @@ function page(): SearchPage {
       errorMessage: '',
       selectedAvailabilityIndex: 0,
       nearbyMode: false,
+      locationPending: false,
       latitude: null,
       longitude: null,
       items: [],
@@ -290,7 +292,9 @@ describe('inventory book-search weak-network and permission recovery (#32/#70)',
     });
     const search = page();
     const pending = search.useNearby();
+    expect(search.data.locationPending).toBe(true);
     await search.disableNearby();
+    expect(search.data.locationPending).toBe(false);
     locationReady({ latitude: 30.6, longitude: 104.1 });
     await pending;
 
@@ -298,6 +302,29 @@ describe('inventory book-search weak-network and permission recovery (#32/#70)',
     expect(search.data.latitude).toBeNull();
     expect(search.data.longitude).toBeNull();
     expect(search.data.loading).toBe(false);
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  it('shows a cancellable location state, ignores double taps and recovers after permission denial', async () => {
+    let rejectLocation: (error: Error) => void = () => {};
+    const getLocation = vi.fn((options: { fail: typeof rejectLocation }) => {
+      rejectLocation = options.fail;
+    });
+    vi.stubGlobal('wx', { getLocation });
+    const search = page();
+
+    const pending = search.useNearby();
+    expect(search.data.locationPending).toBe(true);
+    expect(search.data.loading).toBe(true);
+    await search.useNearby();
+    expect(getLocation).toHaveBeenCalledTimes(1);
+
+    rejectLocation(new Error('getLocation:fail auth deny'));
+    await pending;
+    expect(search.data.locationPending).toBe(false);
+    expect(search.data.loading).toBe(false);
+    expect(search.data.nearbyMode).toBe(false);
+    expect(search.data.errorMessage).toBe('无法获取位置，请检查微信定位权限。');
     expect(read).not.toHaveBeenCalled();
   });
 

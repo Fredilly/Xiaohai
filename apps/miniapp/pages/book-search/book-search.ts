@@ -26,6 +26,7 @@ Page({
     availabilityNames: ['全部有货', '可购买', '可租借'],
     selectedAvailabilityIndex: 0,
     nearbyMode: false,
+    locationPending: false,
     latitude: null as number | null,
     longitude: null as number | null,
     items: [] as InventoryViewItem[],
@@ -57,7 +58,7 @@ Page({
     this.locationRequestVersion++;
     this.reservationViewVersion++;
     if (this.rentalWritePending) this.reservationNeedsReview = true;
-    this.setData({ items: [], loading: false });
+    this.setData({ items: [], loading: false, locationPending: false });
   },
 
   onUnload() {
@@ -66,7 +67,7 @@ Page({
     this.searchRequestVersion += 1;
     this.locationRequestVersion += 1;
     this.reservationViewVersion += 1;
-    this.setData({ items: [] });
+    this.setData({ items: [], locationPending: false });
   },
 
   onLoad(query: Record<string, string | undefined>) {
@@ -113,10 +114,10 @@ Page({
   },
 
   async useNearby() {
-    if (this.pageClosed || this.wasHidden) return;
+    if (this.pageClosed || this.wasHidden || this.data.locationPending) return;
     const locationVersion = ++this.locationRequestVersion;
     let searchStarted = false;
-    this.setData({ loading: true, errorMessage: '' });
+    this.setData({ loading: true, locationPending: true, errorMessage: '' });
     try {
       const location = await new Promise<WechatMiniprogram.GetLocationSuccessCallbackResult>(
         (resolve, reject) =>
@@ -130,6 +131,7 @@ Page({
         return;
       this.setData({
         nearbyMode: true,
+        locationPending: false,
         latitude: location.latitude,
         longitude: location.longitude,
       });
@@ -138,7 +140,7 @@ Page({
     } catch {
       if (this.pageClosed || this.wasHidden || locationVersion !== this.locationRequestVersion)
         return;
-      this.setData({ errorMessage: '无法获取位置，请检查微信定位权限。' });
+      this.setData({ locationPending: false, errorMessage: '无法获取位置，请检查微信定位权限。' });
     } finally {
       if (
         !searchStarted &&
@@ -154,7 +156,7 @@ Page({
   async disableNearby() {
     if (this.pageClosed || this.wasHidden) return;
     this.locationRequestVersion += 1;
-    this.setData({ nearbyMode: false, latitude: null, longitude: null });
+    this.setData({ nearbyMode: false, locationPending: false, latitude: null, longitude: null });
     if (this.data.searched) await this.submitSearch();
     else this.setData({ loading: false });
   },
@@ -329,8 +331,4 @@ Page({
     }
   },
 
-  showDeferredFlow(event: WechatMiniprogram.TouchEvent) {
-    const flow = String(event.currentTarget.dataset.flow ?? '该功能');
-    void wx.showToast({ title: `${flow}将在后续里程碑开放`, icon: 'none' });
-  },
 });
