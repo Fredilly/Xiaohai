@@ -27,6 +27,8 @@ const valid = {
   FOOD_CHECKOUT_ENABLED: 'false',
   STORY_AI_ENABLED: 'false',
   PICTURE_BOOK_AI_ENABLED: 'false',
+  PICTURE_BOOK_IMAGE_ENABLED: 'false',
+  AI_MOCK_ENABLED: 'false',
   ANIMATION_AI_ENABLED: 'false',
   ANIMATION_VIDEO_ENABLED: 'false',
   ANIMATION_COMPOSITION_ENABLED: 'false',
@@ -65,6 +67,8 @@ test('cold cutover configuration is fail-closed without explicit approval and ev
     'STAFF_SESSION_SECRET',
     'PICKUP_CODE_SECRET',
     'STORY_AI_ENABLED',
+    'PICTURE_BOOK_IMAGE_ENABLED',
+    'AI_MOCK_ENABLED',
     'WECHAT_PAY_ENABLED',
     'FOOD_STOCK_WRITES_ENABLED',
     'FOOD_CHECKOUT_ENABLED',
@@ -121,4 +125,32 @@ test('cold cutover owns one TLS ingress and isolates all persistent data from St
   assert.match(caddy, /reverse_proxy api:3000/u);
   assert.match(caddy, /reverse_proxy web:8080/u);
   assert.doesNotMatch(caddy, /import \/etc\/caddy\/Caddyfile\.staging|staging-api\.pamboo/u);
+});
+
+test('cutover template declares every gated value and stays closed by default', async () => {
+  const template = await readFile(
+    new URL('../deploy/production-cutover.env.example', import.meta.url),
+    'utf8',
+  );
+  const fields = new Set(
+    template
+      .split('\n')
+      .filter((line) => /^[A-Z][A-Z0-9_]*=/u.test(line))
+      .map((line) => line.split('=')[0]),
+  );
+  for (const field of Object.keys(valid)) assert.ok(fields.has(field), field);
+  const flags = Object.fromEntries(
+    template
+      .split('\n')
+      .filter((line) => /^[A-Z][A-Z0-9_]*=/u.test(line))
+      .map((line) => {
+        const split = line.indexOf('=');
+        return [line.slice(0, split), line.slice(split + 1)];
+      }),
+  );
+  assert.notDeepEqual(validateProductionCutoverEnvironment(flags), []);
+  for (const field of Object.keys(valid).filter((key) => key.startsWith('CUTOVER_'))) {
+    assert.equal(flags[field], 'false');
+  }
+  assert.equal(flags.AI_MOCK_ENABLED, 'false');
 });

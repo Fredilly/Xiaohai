@@ -81,11 +81,15 @@ export function validateProductionCutoverEnvironment(env) {
   for (const key of [
     'STORY_AI_ENABLED',
     'PICTURE_BOOK_AI_ENABLED',
+    'PICTURE_BOOK_IMAGE_ENABLED',
     'ANIMATION_AI_ENABLED',
     'ANIMATION_VIDEO_ENABLED',
     'ANIMATION_COMPOSITION_ENABLED',
   ]) {
     if (env[key] !== 'false') failures.push(`${key} must remain false for limited launch`);
+  }
+  if (env.AI_MOCK_ENABLED !== 'false') {
+    failures.push('AI_MOCK_ENABLED must remain false in production');
   }
   for (const key of ['POSTGRES', 'REDIS', 'API', 'WORKER', 'WEB', 'EDGE']) {
     if (!/^[1-9][0-9]*(?:m|g)$/u.test(env[`PRODUCTION_${key}_MEM_LIMIT`] ?? '')) {
