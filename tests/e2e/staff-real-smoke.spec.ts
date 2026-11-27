@@ -175,9 +175,20 @@ test('Store and HQ login use the real API and persisted staff session', async ({
     body: JSON.stringify(updateInput),
   });
   expect(updated.status).toBe(200);
+  // A new preview with consumed versions must fail before token verification.
+  // A PUT missing its token would also return 409, but prove nothing about versions.
+  const stalePreview = await api(`/api/v1/staff/catalog/products/${created.id}/preview`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(updateInput),
+  });
+  expect(stalePreview.status).toBe(409);
   const stale = await api(`/api/v1/staff/catalog/products/${created.id}`, {
     method: 'PUT',
-    headers: { 'content-type': 'application/json' },
+    headers: {
+      'content-type': 'application/json',
+      'x-catalog-preview-token': preview.body.previewToken,
+    },
     body: JSON.stringify(updateInput),
   });
   expect(stale.status).toBe(409);
