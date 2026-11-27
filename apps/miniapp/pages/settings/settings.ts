@@ -1,7 +1,4 @@
-import {
-  clearLocalConsumerAvatar,
-  CONSUMER_AVATAR_STORAGE_KEY,
-} from '../../services/consumer-avatar';
+import { clearLocalConsumerAvatar, getLocalConsumerAvatar } from '../../services/consumer-avatar';
 import { clearConsumerSession, storedConsumerId } from '../../services/consumer-session';
 
 Page({
@@ -16,7 +13,7 @@ Page({
     this.setData({
       isLoggedIn: Boolean(userId),
       consumerDisplayId: userId ? `${userId.slice(0, 8)}…` : '',
-      avatarSaved: Boolean(wx.getStorageSync(CONSUMER_AVATAR_STORAGE_KEY)),
+      avatarSaved: Boolean(getLocalConsumerAvatar(userId)),
       notice: '',
     });
   },

@@ -1,6 +1,6 @@
 import { loginWithWeChat } from '../../services/auth';
 import { storedConsumerId } from '../../services/consumer-session';
-import { CONSUMER_AVATAR_STORAGE_KEY } from '../../services/consumer-avatar';
+import { getLocalConsumerAvatar, saveLocalConsumerAvatar } from '../../services/consumer-avatar';
 
 type ChooseAvatarEvent = { detail: { avatarUrl?: string } };
 
@@ -42,7 +42,7 @@ Page({
   onShow() {
     try {
       const consumerUserId = storedConsumerId();
-      const avatarUrl = String(wx.getStorageSync(CONSUMER_AVATAR_STORAGE_KEY) || '');
+      const avatarUrl = getLocalConsumerAvatar(consumerUserId);
       this.setData({
         consumerUserId,
         consumerDisplayId: shortId(consumerUserId),
@@ -85,15 +85,18 @@ Page({
   },
   chooseAvatar(event: ChooseAvatarEvent) {
     const tempFilePath = String(event.detail.avatarUrl || '');
-    if (!tempFilePath) return;
+    const ownerId = storedConsumerId();
+    if (!tempFilePath || !ownerId) return;
     wx.saveFile({
       tempFilePath,
       success: ({ savedFilePath }) => {
-        wx.setStorageSync(CONSUMER_AVATAR_STORAGE_KEY, savedFilePath);
+        if (storedConsumerId() !== ownerId) return;
+        saveLocalConsumerAvatar(ownerId, savedFilePath);
         this.setData({ avatarUrl: savedFilePath });
       },
       fail: () => {
-        wx.setStorageSync(CONSUMER_AVATAR_STORAGE_KEY, tempFilePath);
+        if (storedConsumerId() !== ownerId) return;
+        saveLocalConsumerAvatar(ownerId, tempFilePath);
         this.setData({ avatarUrl: tempFilePath });
       },
     });

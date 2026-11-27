@@ -42,7 +42,9 @@ afterAll(() => vi.unstubAllGlobals());
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.storedConsumerId.mockReturnValue('consumer-123456789');
-  mocks.getStorageSync.mockReturnValue('wxfile://user/avatar.png');
+  mocks.getStorageSync.mockImplementation((key: string) =>
+    key === 'xiaohai.consumer.avatar.owner' ? 'consumer-123456789' : 'wxfile://user/avatar.png',
+  );
   vi.stubGlobal('wx', {
     getStorageSync: mocks.getStorageSync,
     removeStorageSync: mocks.removeStorageSync,
@@ -120,7 +122,8 @@ describe('Device-local consumer settings', () => {
     page.logout();
     respondToConfirmation(true);
     expect(mocks.clearConsumerSession).toHaveBeenCalledOnce();
-    expect(mocks.removeStorageSync).toHaveBeenCalledExactlyOnceWith('xiaohai.consumer.avatar');
+    expect(mocks.removeStorageSync).toHaveBeenCalledWith('xiaohai.consumer.avatar');
+    expect(mocks.removeStorageSync).toHaveBeenCalledWith('xiaohai.consumer.avatar.owner');
     expect(mocks.removeSavedFile).toHaveBeenCalledWith(
       expect.objectContaining({ filePath: 'wxfile://user/avatar.png' }),
     );
@@ -138,7 +141,8 @@ describe('Device-local consumer settings', () => {
     page.clearAvatar();
     respondToConfirmation(true);
     expect(mocks.clearConsumerSession).not.toHaveBeenCalled();
-    expect(mocks.removeStorageSync).toHaveBeenCalledExactlyOnceWith('xiaohai.consumer.avatar');
+    expect(mocks.removeStorageSync).toHaveBeenCalledWith('xiaohai.consumer.avatar');
+    expect(mocks.removeStorageSync).toHaveBeenCalledWith('xiaohai.consumer.avatar.owner');
     expect(mocks.removeSavedFile).toHaveBeenCalledWith(
       expect.objectContaining({ filePath: 'wxfile://user/avatar.png' }),
     );
