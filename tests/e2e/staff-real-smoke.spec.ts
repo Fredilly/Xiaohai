@@ -9,7 +9,9 @@ const adminPassword = process.env.REAL_E2E_ADMIN_PASSWORD;
 const storeId = process.env.REAL_E2E_STORE_ID;
 const otherStoreId = process.env.REAL_E2E_OTHER_STORE_ID;
 const seededSkuId = process.env.REAL_E2E_SKU_ID;
+const consumerSkuId = process.env.REAL_E2E_CONSUMER_SKU_ID;
 const seededSupplierId = process.env.REAL_E2E_SUPPLIER_ID;
+const consumerToken = process.env.REAL_E2E_CONSUMER_TOKEN;
 
 function requireLocalUrl(value: string | undefined, name: string): string {
   if (!value) throw new Error(`${name} is required for real staff E2E`);
@@ -26,7 +28,14 @@ test('Store and HQ login use the real API and persisted staff session', async ({
   if (!storeLogin || !storePassword || !adminLogin || !adminPassword) {
     throw new Error('Real staff E2E credentials are required through process environment');
   }
-  if (!storeId || !otherStoreId || !seededSkuId || !seededSupplierId)
+  if (
+    !storeId ||
+    !otherStoreId ||
+    !seededSkuId ||
+    !consumerSkuId ||
+    !seededSupplierId ||
+    !consumerToken
+  )
     throw new Error('Real E2E store/catalog IDs are required');
 
   async function api(path: string, init?: RequestInit) {
@@ -40,6 +49,19 @@ test('Store and HQ login use the real API and persisted staff session', async ({
         return { status: response.status, body: await response.json().catch(() => null) };
       },
       { path, init },
+    );
+  }
+
+  async function consumerApi(path: string, init?: RequestInit) {
+    return page.evaluate(
+      async ({ path, init, token }) => {
+        const response = await fetch(path, {
+          ...init,
+          headers: { ...(init?.headers ?? {}), authorization: `Bearer ${token}` },
+        });
+        return { status: response.status, body: await response.json().catch(() => null) };
+      },
+      { path, init, token: consumerToken },
     );
   }
 
@@ -294,6 +316,63 @@ test('Store and HQ login use the real API and persisted staff session', async ({
     ).toBe(200);
   }
 
+  // Consumer commerce uses a signed synthetic session and the same API/database.
+  const cart = await consumerApi('/api/v1/commerce/cart/items', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ skuId: consumerSkuId, quantity: 1 }),
+  });
+  expect(cart.status).toBe(200);
+  const address = await consumerApi('/api/v1/commerce/addresses', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      recipientName: 'Synthetic E2E Recipient',
+      phone: '13800000000',
+      region: '四川省',
+      city: '成都市',
+      district: '高新区',
+      addressLine: 'Synthetic E2E address',
+      postalCode: '610000',
+      isDefault: true,
+    }),
+  });
+  expect(address.status).toBe(201);
+  const addressId = (address.body as { id: string }).id;
+  expect(
+    (
+      await consumerApi('/api/v1/commerce/checkout/preview', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ addressId }),
+      })
+    ).status,
+  ).toBe(200);
+  const order = await consumerApi('/api/v1/commerce/orders', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ addressId, clientRequestId: `e2e-order-${Date.now()}` }),
+  });
+  expect(order.status).toBe(201);
+  const orderId = (order.body as { id: string }).id;
+  expect(
+    (await consumerApi(`/api/v1/commerce/orders/${orderId}/cancel`, { method: 'POST' })).status,
+  ).toBe(200);
+
+  // Rental reserve -> staff borrow -> staff return, all against synthetic stock.
+  const rental = await consumerApi('/api/v1/rentals', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      storeId,
+      items: [{ skuId: seededSkuId, quantity: 1 }],
+      idempotencyKey: crypto.randomUUID(),
+    }),
+  });
+  expect(rental.status).toBe(201);
+  const rentalBody = rental.body as { id: string; pickupCode: string | null };
+  expect(rentalBody.pickupCode).toMatch(/^\d{6}$/);
+
   // Store staff must not escalate to HQ-only catalog, staff, finance or payment APIs.
   await page.goto(store);
   await page.evaluate(() => sessionStorage.clear());
@@ -302,6 +381,21 @@ test('Store and HQ login use the real API and persisted staff session', async ({
   await page.getByLabel('密码').fill(storePassword);
   await page.getByRole('button', { name: '进入工作台' }).click();
   await expect(page.getByLabel('登录账号')).toBeHidden();
+  const borrow = await api(`/api/v1/staff/rentals/${rentalBody.id}/borrow`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      idempotencyKey: crypto.randomUUID(),
+      pickupCode: rentalBody.pickupCode,
+    }),
+  });
+  expect(borrow.status).toBe(200);
+  const returned = await api(`/api/v1/staff/rentals/${rentalBody.id}/return`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ idempotencyKey: crypto.randomUUID() }),
+  });
+  expect(returned.status).toBe(200);
   for (const path of [
     '/api/v1/staff/admin/accounts',
     '/api/v1/staff/finance/summary',

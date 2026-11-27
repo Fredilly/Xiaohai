@@ -8,7 +8,7 @@
  * resource created by this invocation. No shared project, volume, network,
  * credential file, or production endpoint is used.
  */
-import { randomUUID } from 'node:crypto';
+import { createHmac, randomUUID } from 'node:crypto';
 import { spawn, spawnSync } from 'node:child_process';
 import process from 'node:process';
 import net from 'node:net';
@@ -26,6 +26,7 @@ const otherRegionId = randomUUID();
 const dbPassword = `e2e-${randomUUID()}`;
 const hqPassword = `Hq-${randomUUID()}-pass`;
 const storePassword = `Store-${randomUUID()}-pass`;
+const consumerSecret = `consumer-${randomUUID()}-secret`;
 const databaseUrl = `postgresql://e2e_user:${encodeURIComponent(dbPassword)}@127.0.0.1:${pgPort}/xiaohai_e2e`;
 const redisUrl = `redis://127.0.0.1:${redisPort}`;
 const children = [];
@@ -125,8 +126,10 @@ function seedStore() {
   const edition = randomUUID();
   const product = randomUUID();
   const sku = randomUUID();
+  const consumerSku = randomUUID();
   const supplier = randomUUID();
-  const sql = `INSERT INTO regions (id, code, name, country_code, country_name) VALUES ('${region}', 'E2E-${runId}', 'Disposable E2E Region', 'CN', 'China'), ('${otherRegionId}', 'E2E-OTHER-${runId}', 'Disposable E2E Other Region', 'CN', 'China'); INSERT INTO stores (id, code, region_id, name, country_code, country_name, city, timezone, address_line, latitude, longitude) VALUES ('${store}', 'E2E-${runId}', '${region}', '胖竹书店南门店', 'CN', 'China', '成都', 'Asia/Shanghai', 'Synthetic E2E address', 30.67, 104.06), ('${otherStoreId}', 'E2E-OTHER-${runId}', '${otherRegionId}', '胖竹书店东门店', 'CN', 'China', '成都', 'Asia/Shanghai', 'Synthetic E2E other address', 30.68, 104.07); INSERT INTO books (id, title, author) VALUES ('${book}', 'Disposable E2E Book', 'Synthetic Author'); INSERT INTO book_editions (id, book_id, publisher) VALUES ('${edition}', '${book}', 'Synthetic Publisher'); INSERT INTO products (id, book_edition_id, name, status) VALUES ('${product}', '${edition}', 'Disposable E2E Product', 'ACTIVE'); INSERT INTO skus (id, product_id, code, name, price_minor, status, available_for_sale) VALUES ('${sku}', '${product}', 'E2E-SKU-${runId}', 'Standard', 1200, 'ACTIVE', true); INSERT INTO store_inventory (store_id, sku_id, on_hand) VALUES ('${store}', '${sku}', 10), ('${otherStoreId}', '${sku}', 4); INSERT INTO suppliers (id, code, name, status) VALUES ('${supplier}', 'E2E-SUP-${runId}', 'Disposable E2E Supplier', 'ACTIVE');`;
+  const consumer = randomUUID();
+  const sql = `INSERT INTO regions (id, code, name, country_code, country_name) VALUES ('${region}', 'E2E-${runId}', 'Disposable E2E Region', 'CN', 'China'), ('${otherRegionId}', 'E2E-OTHER-${runId}', 'Disposable E2E Other Region', 'CN', 'China'); INSERT INTO stores (id, code, region_id, name, country_code, country_name, city, timezone, address_line, latitude, longitude) VALUES ('${store}', 'E2E-${runId}', '${region}', '胖竹书店南门店', 'CN', 'China', '成都', 'Asia/Shanghai', 'Synthetic E2E address', 30.67, 104.06), ('${otherStoreId}', 'E2E-OTHER-${runId}', '${otherRegionId}', '胖竹书店东门店', 'CN', 'China', '成都', 'Asia/Shanghai', 'Synthetic E2E other address', 30.68, 104.07); INSERT INTO books (id, title, author) VALUES ('${book}', 'Disposable E2E Book', 'Synthetic Author'); INSERT INTO book_editions (id, book_id, publisher) VALUES ('${edition}', '${book}', 'Synthetic Publisher'); INSERT INTO products (id, book_edition_id, name, status) VALUES ('${product}', '${edition}', 'Disposable E2E Product', 'ACTIVE'); INSERT INTO skus (id, product_id, code, name, price_minor, status, available_for_sale) VALUES ('${sku}', '${product}', 'E2E-SKU-${runId}', 'Standard', 1200, 'ACTIVE', true), ('${consumerSku}', '${product}', 'E2E-CONSUMER-SKU-${runId}', 'Consumer Standard', 1200, 'ACTIVE', true); INSERT INTO store_inventory (store_id, sku_id, on_hand) VALUES ('${store}', '${sku}', 10), ('${otherStoreId}', '${sku}', 4); INSERT INTO suppliers (id, code, name, status) VALUES ('${supplier}', 'E2E-SUP-${runId}', 'Disposable E2E Supplier', 'ACTIVE'); INSERT INTO consumer_users (id) VALUES ('${consumer}');`;
   docker([
     'exec',
     pgName,
@@ -140,7 +143,16 @@ function seedStore() {
     '-c',
     sql,
   ]);
-  return { store, sku, supplier };
+  return { store, sku, consumerSku, supplier, consumer };
+}
+
+function issueConsumerToken(consumerId) {
+  const issuedAt = Math.floor(Date.now() / 1000);
+  const payload = Buffer.from(
+    JSON.stringify({ v: 1, sub: consumerId, iat: issuedAt, exp: issuedAt + 3600 }),
+  ).toString('base64url');
+  const signature = createHmac('sha256', consumerSecret).update(payload).digest('base64url');
+  return `${payload}.${signature}`;
 }
 
 async function cleanup() {
@@ -195,7 +207,7 @@ try {
     PORT: '3000',
     WECHAT_APP_ID: 'synthetic-e2e-app',
     WECHAT_APP_SECRET: 'synthetic-e2e-secret',
-    CONSUMER_SESSION_SECRET: `consumer-${randomUUID()}-secret`,
+    CONSUMER_SESSION_SECRET: consumerSecret,
     STAFF_SESSION_SECRET: `staff-${randomUUID()}-secret`,
     PICKUP_CODE_SECRET: `pickup-${randomUUID()}-secret`,
     DELIVERY_PROVIDER: 'MANUAL',
@@ -261,7 +273,9 @@ try {
       REAL_E2E_STORE_ID: seeded.store,
       REAL_E2E_OTHER_STORE_ID: otherStoreId,
       REAL_E2E_SKU_ID: seeded.sku,
+      REAL_E2E_CONSUMER_SKU_ID: seeded.consumerSku,
       REAL_E2E_SUPPLIER_ID: seeded.supplier,
+      REAL_E2E_CONSUMER_TOKEN: issueConsumerToken(seeded.consumer),
     },
   });
   console.log('REAL_STAFF_E2E_PASS');
