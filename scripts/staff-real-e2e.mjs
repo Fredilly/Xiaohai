@@ -110,7 +110,7 @@ async function cleanup() {
   for (const child of children) {
     if (!child.killed) child.kill('SIGTERM');
   }
-  await new Promise((resolve) => setTimeout(resolve, 500));
+  await new Promise((resolve) => setTimeout(resolve, 1500));
   for (const child of children) {
     if (!child.killed) child.kill('SIGKILL');
   }

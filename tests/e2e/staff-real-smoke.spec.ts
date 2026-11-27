@@ -24,7 +24,7 @@ test('Store and HQ login use the real API and persisted staff session', async ({
   }
 
   for (const [baseUrl, login, password, heading, button] of [
-    [store, storeLogin, storePassword, '胖竹门店工作台', '进入工作台'],
+    [store, storeLogin, storePassword, '胖竹书店门店工作台', '进入工作台'],
     [admin, adminLogin, adminPassword, '总部运营后台', '登录后台'],
   ] as const) {
     const apiResponses: number[] = [];
