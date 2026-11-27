@@ -42,6 +42,8 @@ test('checked-in cohost environment template remains non-deployable and disables
   for (const flag of ['WECHAT_PAY_ENABLED', 'FOOD_STOCK_WRITES_ENABLED', 'FOOD_CHECKOUT_ENABLED']) {
     assert.equal(values[flag], 'false');
   }
+  assert.equal(values.AI_PROVIDER, 'REPLACE_WITH_APPROVED_PROVIDER');
+  assert.equal(values.AI_MOCK_ENABLED, 'false');
   for (const flag of [
     'COHOST_ARCHITECTURE_APPROVED',
     'COHOST_INGRESS_EVIDENCE_VERIFIED',
