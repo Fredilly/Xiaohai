@@ -165,7 +165,7 @@ test('registered manual workflow packages only the pinned integration candidate 
   assert.ok(packageJob, 'candidate packaging must be an explicitly separate job');
   assert.match(packageJob, /github\.event_name == 'workflow_dispatch'/u);
   assert.match(packageJob, /github\.ref == 'refs\/heads\/codex\/local-release-integration'/u);
-  assert.match(packageJob, /21b5220849e975227e4079edb50b3cb738006c08/u);
+  assert.match(packageJob, /253f47ccc9b008b571d49db9a9443746e5f2c532/u);
   assert.match(packageJob, /packages: write/u);
   assert.match(packageJob, /password: \$\{\{ secrets\.GITHUB_TOKEN \}\}/u);
   assert.match(packageJob, /ref: \$\{\{ inputs\.package_candidate_sha \}\}/u);
