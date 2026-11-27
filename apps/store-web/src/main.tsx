@@ -291,24 +291,42 @@ function App() {
   const [token, setToken] = useState(() => sessionStorage.getItem(tokenKey));
   const [me, setMe] = useState<StaffMeResponse | null>(null);
   const [checking, setChecking] = useState(Boolean(token));
+  const [authError, setAuthError] = useState(false);
+  const [retryKey, setRetryKey] = useState(0);
   useEffect(() => {
     if (!token) {
       setChecking(false);
       setMe(null);
+      setAuthError(false);
       return;
     }
+    let cancelled = false;
     setChecking(true);
+    setAuthError(false);
     void getStaffMe(token)
       .then((result) => {
+        if (cancelled) return;
         if (!result) {
           sessionStorage.removeItem(tokenKey);
           sessionStorage.removeItem(selectedStoreKey);
           setToken(null);
-        } else setMe(result);
+          setMe(null);
+        } else {
+          setMe(result);
+        }
       })
-      .catch(() => setMe(null))
-      .finally(() => setChecking(false));
-  }, [token]);
+      .catch(() => {
+        if (cancelled) return;
+        setMe(null);
+        setAuthError(true);
+      })
+      .finally(() => {
+        if (!cancelled) setChecking(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [token, retryKey]);
   const logout = () => {
     sessionStorage.removeItem(tokenKey);
     sessionStorage.removeItem(selectedStoreKey);
@@ -316,6 +334,19 @@ function App() {
     setMe(null);
   };
   if (checking) return <main className="center">正在验证 Staff Session…</main>;
+  if (token && !me && authError)
+    return (
+      <main className="login-page">
+        <section className="login-card">
+          <h1>暂时无法进入门店工作台</h1>
+          <p>无法确认登录状态，请检查网络后重试。</p>
+          <div className="button-row">
+            <button onClick={() => setRetryKey((value) => value + 1)}>重试</button>
+            <button onClick={logout}>退出登录</button>
+          </div>
+        </section>
+      </main>
+    );
   if (!token || !me) return <Login onSignedIn={setToken} />;
   return <Shell me={me} token={token} onLogout={logout} />;
 }

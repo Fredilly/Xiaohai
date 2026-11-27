@@ -22,7 +22,8 @@
         <view class="filter-pill">{{availabilityNames[selectedAvailabilityIndex]}}</view>
       </picker>
       <button class="filter-pill button-pill" size="mini" bindtap="scanBookCode">扫码</button>
-      <button wx:if="{{!nearbyMode}}" class="filter-pill button-pill" size="mini" bindtap="useNearby">附近有货</button>
+      <button wx:if="{{locationPending}}" class="filter-pill button-pill" size="mini" bindtap="disableNearby">取消定位</button>
+      <button wx:elif="{{!nearbyMode}}" class="filter-pill button-pill" size="mini" bindtap="useNearby">附近有货</button>
       <button wx:else class="filter-pill button-pill active" size="mini" bindtap="disableNearby">退出附近</button>
     </view>
   </view>

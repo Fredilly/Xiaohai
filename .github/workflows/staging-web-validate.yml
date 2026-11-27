@@ -1,0 +1,103 @@
+name: Validate staging Store + HQ Web candidate
+
+on:
+  pull_request:
+    paths:
+      - 'deploy/staging-web.Caddyfile'
+      - 'deploy/staging-web.compose.yml'
+      - 'scripts/staging-web-config.test.mjs'
+      - 'docs/STAGING_WEB_RELEASE.md'
+      - 'apps/store-web/**'
+      - 'apps/admin-web/**'
+      - '.github/workflows/staging-web-validate.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate-hosting:
+    name: Caddy, Compose and safety checks (offline)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify opt-in configuration boundaries
+        run: node --test scripts/staging-web-config.test.mjs
+      - name: Validate Compose overlay, without starting containers
+        run: |
+          set -euo pipefail
+          # Compose resolves service.env_file paths relative to the first YAML file.
+          # This is an untracked synthetic fixture; it contains NO real credentials.
+          trap 'rm -f deploy/staging.env' EXIT
+          printf 'POSTGRES_DB=test\nPOSTGRES_USER=test\nPOSTGRES_PASSWORD=fixture\nREVISION=%040d\n' 0 > deploy/staging.env
+          docker compose --env-file deploy/staging.env \
+            -f deploy/staging.compose.yml -f deploy/staging-web.compose.yml config --quiet
+          docker compose --env-file deploy/staging.env \
+            -f deploy/staging.compose.yml -f deploy/staging-web.compose.yml config --format json \
+            > "$RUNNER_TEMP/staging-web-compose.json"
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { readFileSync } from 'node:fs';
+          import { resolve } from 'node:path';
+
+          const config = JSON.parse(
+            readFileSync(process.env.RUNNER_TEMP + '/staging-web-compose.json', 'utf8'),
+          );
+          const services = config.services;
+          assert.deepEqual(
+            Object.keys(services).sort(),
+            ['postgres', 'redis', 'api', 'worker', 'proxy'].sort(),
+            'overlay must not add or remove staging services',
+          );
+          const mounts = services.proxy.volumes;
+          for (const [source, target] of [
+            ['deploy/staging-web.Caddyfile', '/etc/caddy/Caddyfile'],
+            ['deploy/web', '/srv/xiaohai-web'],
+          ]) {
+            const matches = mounts.filter((mount) => mount.target === target);
+            assert.equal(matches.length, 1, 'expected exactly one proxy mount: ' + target);
+            assert.equal(matches[0].source, resolve(source));
+            assert.equal(matches[0].read_only, true);
+          }
+          for (const name of ['api', 'worker', 'postgres', 'redis']) {
+            assert.equal(services[name].ports, undefined, name + ' must not expose ports');
+          }
+          NODE
+      - name: Validate candidate Caddy config without deploying
+        run: |
+          docker run --rm \
+            --mount "type=bind,source=$PWD/deploy/staging-web.Caddyfile,target=/etc/caddy/Caddyfile,readonly" \
+            caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+
+  build-web:
+    name: Build approved staging static candidates (${{ matrix.site }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        site: [store-web, admin-web]
+    env:
+      # Empty => fetch('/api/v1/...'), same-origin through the candidate Caddy.
+      # Never embed production or separate staging API hostnames in browser JS.
+      VITE_API_BASE_URL: ''
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # Turbo builds the client workspace dependencies first (contracts/domain/etc).
+      # --env-mode=loose explicitly forwards the same-origin Vite variable.
+      - run: pnpm exec turbo run build --filter="@xiaohai/${{ matrix.site }}" --env-mode=loose
+      - name: Check static output exists; report bounded size
+        run: |
+          set -euo pipefail
+          test -s "apps/${{ matrix.site }}/dist/index.html"
+          du -sh "apps/${{ matrix.site }}/dist"
+          test "$(du -sm "apps/${{ matrix.site }}/dist" | cut -f1)" -le 30
+      - uses: actions/upload-artifact@v4
+        with:
+          name: staging-${{ matrix.site }}-candidate
+          path: apps/${{ matrix.site }}/dist/
+          if-no-files-found: error
+          retention-days: 7
