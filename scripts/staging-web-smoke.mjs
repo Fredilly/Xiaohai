@@ -29,6 +29,9 @@ const SAFE_FAILURE_CODES = new Set([
   'SPA_ROUTE_NOT_HTML',
   'ASSET_NOT_404',
   'STAFF_NO_TOKEN_NOT_401',
+  'ADMIN_HEALTH_NOT_200',
+  'ADMIN_HEALTH_NOT_JSON',
+  'ADMIN_HEALTH_RESPONSE_INVALID',
   'HEADER_PROBE_NOT_200',
   'NOINDEX_MISSING',
   'NOSNIFF_MISSING',
@@ -143,6 +146,19 @@ export async function inspectStagingWeb({
       const response = await get(portal.host, '/api/v1/staff/me');
       if (response.status !== 401) fail('STAFF_NO_TOKEN_NOT_401');
     });
+    if (portal.name === 'admin') {
+      await check('admin:health', async () => {
+        const response = await get(portal.host, '/health');
+        if (response.status !== 200) fail('ADMIN_HEALTH_NOT_200');
+        if (!response.headers.get('content-type')?.toLowerCase().includes('application/json')) {
+          fail('ADMIN_HEALTH_NOT_JSON');
+        }
+        const payload = await response.json().catch(() => null);
+        if (!payload || payload.status !== 'ok' || payload.service !== 'api') {
+          fail('ADMIN_HEALTH_RESPONSE_INVALID');
+        }
+      });
+    }
     await check(`${portal.name}:security-headers`, async () => {
       const response = await get(portal.host, '/');
       const headers = response.headers;

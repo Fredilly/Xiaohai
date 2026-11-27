@@ -42,6 +42,13 @@ function fixture({ dnsBad = false, broken = '', fetchFailure = false } = {}) {
     if (url.pathname === '/api/v1/staff/me') {
       return new Response('{}', { status: broken === label + ':unauthorized' ? 200 : 401 });
     }
+    if (label === 'admin' && url.pathname === '/health') {
+      const html = broken === 'admin:health-html';
+      return new Response(html ? page(label) : JSON.stringify({ status: 'ok', service: 'api' }), {
+        status: broken === 'admin:health-unavailable' ? 503 : 200,
+        headers: { 'content-type': html ? 'text/html' : 'application/json' },
+      });
+    }
     if (url.pathname === '/assets/__xiaohai_readonly_nonexistent__.js') {
       return new Response('', { status: broken === label + ':asset' ? 200 : 404 });
     }
@@ -82,11 +89,11 @@ function fixture({ dnsBad = false, broken = '', fetchFailure = false } = {}) {
   return { resolver, fetcher, visited };
 }
 
-test('healthy Store/HQ probes verify 16 GET-only checks and actual entry JS assets', async () => {
+test('healthy Store/HQ probes verify 17 GET-only checks and actual entry JS assets', async () => {
   const environment = fixture();
   const result = await inspectStagingWeb(environment);
   assert.equal(result.failed, 0);
-  assert.equal(result.passed, 16);
+  assert.equal(result.passed, 17);
   for (const portal of PORTALS) {
     assert.ok(
       environment.visited.some(
@@ -104,6 +111,8 @@ test('healthy Store/HQ probes verify 16 GET-only checks and actual entry JS asse
 for (const [broken, reason] of [
   ['store:asset', 'ASSET_NOT_404'],
   ['admin:unauthorized', 'STAFF_NO_TOKEN_NOT_401'],
+  ['admin:health-html', 'ADMIN_HEALTH_NOT_JSON'],
+  ['admin:health-unavailable', 'ADMIN_HEALTH_NOT_200'],
   ['store:deep', 'SPA_ROUTE_NOT_200'],
   ['admin:redirect', 'INDEX_NOT_200'],
   ['admin:headers', 'NOINDEX_MISSING'],

@@ -41,6 +41,12 @@ staging-admin.pamboo.asia {
   handle @api {
     reverse_proxy api:3000
   }
+  # The HQ system panel checks /health. Keep this exact path on the API,
+  # rather than serving the SPA index.html as a successful HTML response.
+  @health path /health
+  handle @health {
+    reverse_proxy api:3000
+  }
   @assets path /assets/*
   handle @assets {
     root * /srv/xiaohai-web/admin/current
