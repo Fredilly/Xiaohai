@@ -43,7 +43,8 @@
     "preflight:production-unified": "node scripts/production-unified-preflight.mjs",
     "preflight:production-cohost": "node scripts/production-cohost-preflight.mjs",
     "preflight:production-cutover": "node scripts/production-cutover-preflight.mjs",
-    "test:production-cutover": "node --test scripts/production-cutover-preflight.test.mjs"
+    "test:production-cutover": "node --test scripts/production-cutover-preflight.test.mjs scripts/production-cutover-verify.test.mjs",
+    "verify:production-cutover": "node --env-file=deploy/production.env scripts/production-cutover-verify.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.35.0",
