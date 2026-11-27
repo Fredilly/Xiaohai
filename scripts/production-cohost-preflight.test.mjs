@@ -24,6 +24,31 @@ const valid = {
   FOOD_CHECKOUT_ENABLED: 'false',
 };
 
+test('checked-in cohost environment template remains non-deployable and disables paid writes', async () => {
+  const template = await readFile(
+    new URL('../deploy/production-cohost.env.example', import.meta.url),
+    'utf8',
+  );
+  const values = Object.fromEntries(
+    template.split('\n').filter((line) => line && !line.startsWith('#')).map((line) => {
+      const index = line.indexOf('=');
+      return [line.slice(0, index), line.slice(index + 1)];
+    }),
+  );
+  assert.ok(validateProductionCohostEnvironment(values).length > 0);
+  for (const flag of ['WECHAT_PAY_ENABLED', 'FOOD_STOCK_WRITES_ENABLED', 'FOOD_CHECKOUT_ENABLED']) {
+    assert.equal(values[flag], 'false');
+  }
+  for (const flag of [
+    'COHOST_ARCHITECTURE_APPROVED',
+    'COHOST_INGRESS_EVIDENCE_VERIFIED',
+    'COHOST_CAPACITY_EVIDENCE_VERIFIED',
+    'PRODUCTION_BACKUP_RESTORE_VERIFIED',
+  ]) {
+    assert.equal(values[flag], 'false');
+  }
+});
+
 test('cohost preflight accepts only isolated synthetic production configuration with evidence flags', () => {
   assert.deepEqual(validateProductionCohostEnvironment(valid), []);
   for (const [key, value] of [
