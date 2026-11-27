@@ -212,7 +212,11 @@ export class InventoryOperationsService {
             previous.storeId !== input.storeId ||
             previous.skuId !== input.skuId ||
             previous.quantityDelta !== input.initialQuantity ||
+            previous.balanceAfter !== input.initialQuantity ||
+            previous.transactionType !== 'ADJUSTMENT_IN' ||
+            previous.referenceType !== 'INVENTORY_ADJUSTMENT' ||
             previous.reason !== input.reason ||
+            previous.createdByStaffAccountId !== context.staffAccountId ||
             previous.metadata?.source !== 'STORE_OPENING_COUNT'
           )
             throw new InventoryOperationsError('CONFLICT');
@@ -582,7 +586,10 @@ export class InventoryOperationsService {
           existing.referenceType !== (type === 'ISSUE' ? 'STOCK_ISSUE' : 'INVENTORY_ADJUSTMENT') ||
           existing.reason !== input.reason ||
           existing.createdByStaffAccountId !== context.staffAccountId ||
-          existing.metadata?.source === 'STORE_OPENING_COUNT'
+          (existing.metadata?.source !== undefined &&
+            existing.metadata.source !== 'STORE_MANUAL_STOCK') ||
+          (existing.metadata?.source === 'STORE_MANUAL_STOCK' &&
+            existing.metadata.expectedVersion !== input.expectedVersion)
         )
           throw new InventoryOperationsError('CONFLICT');
         return existing;
@@ -626,6 +633,7 @@ export class InventoryOperationsService {
           referenceId,
           idempotencyKey: input.idempotencyKey,
           reason: input.reason,
+          metadata: { source: 'STORE_MANUAL_STOCK', expectedVersion: input.expectedVersion },
           createdByStaffAccountId: context.staffAccountId,
         })
         .returning();

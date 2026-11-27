@@ -25,18 +25,35 @@ type SearchPage = {
     nearbyMode: boolean;
     latitude: number | null;
     longitude: number | null;
-    items: Array<{ key: string; displayCoverUrl: string }>;
+    items: Array<{
+      key: string;
+      displayCoverUrl: string;
+      sku: { id: string };
+      store: { id: string };
+      product: { id: string };
+      sellAvailable: boolean;
+      rentAvailable: boolean;
+    }>;
     reserving: boolean;
   };
   searchRequestVersion: number;
   locationRequestVersion: number;
   pageClosed: boolean;
+  wasHidden: boolean;
   rentalReservationInFlight: boolean;
+  rentalWritePending: boolean;
+  reservationViewVersion: number;
+  reservationNeedsReview: boolean;
   setData(changes: Record<string, unknown>): void;
+  onShow(): void;
+  onHide(): void;
   submitSearch(): Promise<void>;
   useNearby(): Promise<void>;
   disableNearby(): Promise<void>;
   onUnload(): void;
+  openStore(event: WechatMiniprogram.TouchEvent): void;
+  openProduct(event: WechatMiniprogram.TouchEvent): void;
+  coverError(event: WechatMiniprogram.TouchEvent): void;
   reserveRental(event: WechatMiniprogram.TouchEvent): Promise<void>;
 };
 
@@ -47,8 +64,20 @@ function inventoryItem(id: string, cover: string) {
   return {
     sku: { id: `sku-${id}`, priceMinor: 1200 },
     book: { title: id },
-    product: { coverUrl: cover },
+    product: { id: `product-${id}`, coverUrl: cover },
     store: { id: `store-${id}`, distanceKm: null },
+    sellAvailable: true,
+    rentAvailable: true,
+  };
+}
+
+function reservationItem() {
+  return {
+    ...inventoryItem('reservation', 'https://bos.invalid/rental.jpg'),
+    key: `${rentalSku}:${rentalStore}`,
+    displayCoverUrl: 'https://bos.invalid/rental.jpg',
+    sku: { id: rentalSku, priceMinor: 1200 },
+    store: { id: rentalStore, distanceKm: null },
   };
 }
 
@@ -70,7 +99,11 @@ function page(): SearchPage {
     searchRequestVersion: 0,
     locationRequestVersion: 0,
     pageClosed: false,
+    wasHidden: false,
     rentalReservationInFlight: false,
+    rentalWritePending: false,
+    reservationViewVersion: 0,
+    reservationNeedsReview: false,
     setData(changes: Record<string, unknown>) {
       Object.assign(this.data, changes);
     },
@@ -114,6 +147,7 @@ describe('inventory book-search weak-network and permission recovery (#32/#70)',
       currentTarget: { dataset: { storeId: rentalStore, skuId: rentalSku } },
     } as never;
     const search = page();
+    search.data.items = [reservationItem()];
     const first = search.reserveRental(event);
     await search.reserveRental(event);
     expect(showModal).toHaveBeenCalledTimes(1);
@@ -155,6 +189,7 @@ describe('inventory book-search weak-network and permission recovery (#32/#70)',
       currentTarget: { dataset: { storeId: rentalStore, skuId: rentalSku } },
     } as never;
     const search = page();
+    search.data.items = [reservationItem()];
     await search.reserveRental(event);
     expect(createRental).toHaveBeenCalledWith(rentalStore, rentalSku, rentalKey);
     expect(storage.size).toBe(1);
@@ -192,6 +227,7 @@ describe('inventory book-search weak-network and permission recovery (#32/#70)',
       items: [{ skuId: rentalSku, quantity: 1 }],
     } as never);
     const search = page();
+    search.data.items = [reservationItem()];
     await search.reserveRental({
       currentTarget: { dataset: { storeId: rentalStore, skuId: rentalSku } },
     } as never);
@@ -307,5 +343,117 @@ describe('inventory book-search weak-network and permission recovery (#32/#70)',
 
     expect(search.pageClosed).toBe(true);
     expect(search.data.items).toEqual([]);
+  });
+
+  it('discards hidden search results and fetches fresh inventory on return', async () => {
+    const search = page();
+    search.data.searched = true;
+    let releaseOld: (value: Awaited<ReturnType<typeof searchInventory>>) => void = () => {};
+    read.mockImplementationOnce(() => new Promise((resolve) => (releaseOld = resolve)));
+    read.mockResolvedValueOnce([inventoryItem('fresh', 'https://bos.invalid/fresh.jpg')] as never);
+    const oldRequest = search.submitSearch();
+    search.onHide();
+    expect(search.data.items).toEqual([]);
+    search.onShow();
+    await vi.waitFor(() => expect(search.data.items[0]?.key).toBe('sku-fresh:store-fresh'));
+    releaseOld([inventoryItem('old', 'https://bos.invalid/old.jpg')] as never);
+    await oldRequest;
+    expect(search.data.items[0]?.key).toBe('sku-fresh:store-fresh');
+    expect(read).toHaveBeenCalledTimes(2);
+  });
+
+  it('only opens loaded, currently visible store and sale product rows', () => {
+    const navigateTo = vi.fn();
+    vi.stubGlobal('wx', { navigateTo });
+    const search = page();
+    search.data.items = [reservationItem()];
+    search.openStore({ currentTarget: { dataset: { id: 'other-store' } } } as never);
+    search.openProduct({ currentTarget: { dataset: { id: 'other-product' } } } as never);
+    expect(navigateTo).not.toHaveBeenCalled();
+    search.openStore({ currentTarget: { dataset: { id: rentalStore } } } as never);
+    search.openProduct({
+      currentTarget: { dataset: { id: 'product-reservation' } },
+    } as never);
+    expect(navigateTo).toHaveBeenCalledTimes(2);
+    search.data.loading = true;
+    search.openStore({ currentTarget: { dataset: { id: rentalStore } } } as never);
+    expect(navigateTo).toHaveBeenCalledTimes(2);
+    search.onHide();
+    search.openProduct({
+      currentTarget: { dataset: { id: 'product-reservation' } },
+    } as never);
+    expect(navigateTo).toHaveBeenCalledTimes(2);
+  });
+
+  it('rejects an invented rental row and a stale confirmation after search changes', async () => {
+    const storage = new Map<string, unknown>();
+    let confirm: (result: { confirm: boolean }) => void = () => {};
+    const showModal = vi.fn((options: { success: typeof confirm }) => {
+      confirm = options.success;
+    });
+    vi.stubGlobal('wx', {
+      getStorageSync: (key: string) => storage.get(key),
+      setStorageSync: (key: string, value: unknown) => storage.set(key, value),
+      removeStorageSync: (key: string) => storage.delete(key),
+      showModal,
+      showToast: vi.fn(),
+    });
+    vi.mocked(consumerToken).mockReturnValue('consumer-session');
+    vi.mocked(storedConsumerId).mockReturnValue(rentalConsumer);
+    const search = page();
+    const event = {
+      currentTarget: { dataset: { storeId: rentalStore, skuId: rentalSku } },
+    } as never;
+    await search.reserveRental(event);
+    expect(showModal).not.toHaveBeenCalled();
+    search.data.items = [reservationItem()];
+    const pending = search.reserveRental(event);
+    expect(showModal).toHaveBeenCalledTimes(1);
+    read.mockResolvedValueOnce([inventoryItem('other', 'https://bos.invalid/other.jpg')] as never);
+    await search.submitSearch();
+    confirm({ confirm: true });
+    await pending;
+    expect(createRental).not.toHaveBeenCalled();
+    expect(storage.size).toBe(0);
+  });
+
+  it('never navigates after a hidden rental write and requires review on returning', async () => {
+    const storage = new Map<string, unknown>();
+    const navigateTo = vi.fn();
+    vi.stubGlobal('wx', {
+      getStorageSync: (key: string) => storage.get(key),
+      setStorageSync: (key: string, value: unknown) => storage.set(key, value),
+      removeStorageSync: (key: string) => storage.delete(key),
+      showModal: (options: { success: (result: { confirm: boolean }) => void }) =>
+        options.success({ confirm: true }),
+      navigateTo,
+      showToast: vi.fn(),
+    });
+    vi.mocked(consumerToken).mockReturnValue('consumer-session');
+    vi.mocked(storedConsumerId).mockReturnValue(rentalConsumer);
+    vi.mocked(randomId).mockReturnValue(rentalKey);
+    let releaseWrite: (value: Awaited<ReturnType<typeof createRental>>) => void = () => {};
+    vi.mocked(createRental).mockImplementationOnce(
+      () => new Promise((resolve) => (releaseWrite = resolve)),
+    );
+    const search = page();
+    search.data.items = [reservationItem()];
+    const pending = search.reserveRental({
+      currentTarget: { dataset: { storeId: rentalStore, skuId: rentalSku } },
+    } as never);
+    await vi.waitFor(() => expect(createRental).toHaveBeenCalledOnce());
+    search.onHide();
+    search.onShow();
+    releaseWrite({
+      id: '55555555-5555-4555-8555-555555555555',
+      consumerUserId: rentalConsumer,
+      storeId: rentalStore,
+      items: [{ skuId: rentalSku, quantity: 1 }],
+    } as never);
+    await pending;
+    expect(navigateTo).not.toHaveBeenCalled();
+    expect(search.data.errorMessage).toContain('核对');
+    expect(search.reservationNeedsReview).toBe(true);
+    expect(storage.size).toBe(0);
   });
 });

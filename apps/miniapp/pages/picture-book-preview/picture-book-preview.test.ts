@@ -1,9 +1,11 @@
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PictureBookDetail } from '@xiaohai/contracts/picture-book';
 import { getPictureBook } from '../../services/picture-book';
+import { consumerToken } from '../../services/consumer-session';
 import type { PictureBookPreviewPage } from '../../services/picture-book-preview';
 
 vi.mock('../../services/picture-book', () => ({ getPictureBook: vi.fn() }));
+vi.mock('../../services/consumer-session', () => ({ consumerToken: vi.fn() }));
 
 type PreviewInstance = {
   data: {
@@ -12,9 +14,12 @@ type PreviewInstance = {
     imageErrors: Record<string, boolean>;
     loading: boolean;
     detail: PictureBookDetail | null;
+    error: string;
   };
   requestVersion: number;
   refreshAfterHide: boolean;
+  pageClosed: boolean;
+  visibleSession: string;
   imageRefreshInProgress: boolean;
   imageRefreshAttempted: Record<string, boolean>;
   setData: (changes: Record<string, unknown>) => void;
@@ -27,21 +32,24 @@ type PreviewInstance = {
 
 let definition: PreviewInstance;
 const read = vi.mocked(getPictureBook);
+const token = vi.mocked(consumerToken);
 const oldUrl = 'https://private.example.invalid/cover.png?signature=old-secret';
 const newUrl = 'https://private.example.invalid/cover.png?signature=new-secret';
 
 function detail(urls: string[]): PictureBookDetail {
   return {
-    pictureBook: { title: '测试绘本' },
+    pictureBook: { id: 'owned-book', title: '测试绘本' },
     characters: [],
     pages: urls.map((url, index) => ({
       id: `page-${index + 1}`,
+      pictureBookId: 'owned-book',
       pageKind: index === 0 ? 'COVER' : 'CONTENT',
       pageNumber: index,
       storyText: null,
       illustrations: [
         {
           id: `illustration-${index + 1}`,
+          pageId: `page-${index + 1}`,
           revisionNumber: 1,
           status: 'READY',
           provider: 'BAILIAN',
@@ -59,6 +67,8 @@ function instance(): PreviewInstance {
     data: { ...definition.data, pages: [], imageErrors: {}, detail: null },
     requestVersion: 0,
     refreshAfterHide: false,
+    pageClosed: false,
+    visibleSession: '',
     imageRefreshInProgress: false,
     imageRefreshAttempted: {},
     setData(changes: Record<string, unknown>) {
@@ -89,6 +99,7 @@ beforeAll(async () => {
 });
 afterAll(() => vi.unstubAllGlobals());
 afterEach(() => vi.resetAllMocks());
+beforeEach(() => token.mockReturnValue('session-a'));
 
 describe('private BOS picture-book preview metadata refresh (#187)', () => {
   it('refreshes a failed image from the owner GET without regenerating', async () => {
@@ -138,6 +149,9 @@ describe('private BOS picture-book preview metadata refresh (#187)', () => {
     page.onShow();
     expect(read).toHaveBeenCalledTimes(1);
     page.onHide();
+    expect(page.data.detail).toBeNull();
+    expect(page.data.pages).toEqual([]);
+    expect(page.visibleSession).toBe('');
     page.onShow();
     await vi.waitFor(() => expect(page.data.pages[0]?.imageUrl).toBe(newUrl));
     expect(read).toHaveBeenCalledTimes(2);
@@ -164,6 +178,65 @@ describe('private BOS picture-book preview metadata refresh (#187)', () => {
     page.onUnload();
     release(detail([newUrl]));
     await vi.waitFor(() => expect(page.imageRefreshInProgress).toBe(false));
-    expect(page.data.pages[0]?.imageUrl).toBe(oldUrl);
+    expect(page.data.pages).toEqual([]);
+    expect(page.data.detail).toBeNull();
+  });
+
+  it('drops an old account GET response without rendering private signed media links', async () => {
+    let release: (value: PictureBookDetail) => void = () => {};
+    read.mockImplementationOnce(() => new Promise((resolve) => (release = resolve)));
+    const page = instance();
+    const pending = page.load();
+    token.mockReturnValue('session-b');
+    release(detail([oldUrl]));
+    await pending;
+    expect(page.data.pages).toEqual([]);
+    expect(page.data.detail).toBeNull();
+    expect(page.data.error).toContain('登录状态已变化');
+  });
+
+  it('rejects wrong book or nested illustration ownership before showing signed URLs', async () => {
+    read.mockResolvedValueOnce({
+      ...detail([oldUrl]),
+      pictureBook: { ...detail([oldUrl]).pictureBook, id: 'another-book' },
+    });
+    const page = instance();
+    await page.load();
+    expect(page.data.pages).toEqual([]);
+    expect(page.data.error).toContain('加载失败');
+
+    const wrong = detail([newUrl]);
+    wrong.pages[0]!.illustrations[0]!.pageId = 'different-page';
+    read.mockResolvedValueOnce(wrong);
+    await page.load();
+    expect(page.data.pages).toEqual([]);
+    expect(page.visibleSession).toBe('');
+  });
+
+  it('clears a signed preview if the account changes during image refresh', async () => {
+    let release: (value: PictureBookDetail) => void = () => {};
+    read
+      .mockResolvedValueOnce(detail([oldUrl]))
+      .mockImplementationOnce(() => new Promise((resolve) => (release = resolve)));
+    const page = instance();
+    await page.load();
+    const refresh = page.onImageError(imageError('page-1'));
+    token.mockReturnValue('session-b');
+    release(detail([newUrl]));
+    await refresh;
+    expect(page.data.pages).toEqual([]);
+    expect(page.data.detail).toBeNull();
+    expect(page.visibleSession).toBe('');
+    expect(page.data.error).toContain('登录状态已变化');
+    expect(read).toHaveBeenCalledTimes(2);
+  });
+
+  it('never starts a private detail read without an authenticated consumer session', async () => {
+    token.mockReturnValue('');
+    const page = instance();
+    await page.load();
+    expect(read).not.toHaveBeenCalled();
+    expect(page.data.pages).toEqual([]);
+    expect(page.data.error).toContain('请先登录');
   });
 });

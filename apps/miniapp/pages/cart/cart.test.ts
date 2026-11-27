@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { getCart, updateCartItem } from '../../services/commerce';
+import { deleteCartItem, getCart, updateCartItem } from '../../services/commerce';
 import { consumerToken } from '../../services/consumer-session';
 
 vi.mock('../../services/commerce', () => ({
@@ -12,6 +12,10 @@ vi.mock('../../services/consumer-session', () => ({ consumerToken: vi.fn() }));
 type CartPage = {
   readSequence: number;
   mutationInFlight: boolean;
+  loadedSession: string;
+  wasHidden: boolean;
+  pageClosed: boolean;
+  reloadAfterMutation: boolean;
   data: {
     cart: { items: Array<{ id: string; quantity: number }> } | null;
     loading: boolean;
@@ -22,8 +26,12 @@ type CartPage = {
   };
   setData(patch: Record<string, unknown>): void;
   load(): Promise<void>;
+  onShow(): void;
+  onHide(): void;
+  onUnload(): void;
   plus(event: { currentTarget: { dataset: { id: string } } }): Promise<void>;
   minus(event: { currentTarget: { dataset: { id: string } } }): Promise<void>;
+  remove(event: { currentTarget: { dataset: { id: string } } }): Promise<void>;
   checkout(): void;
   goToLogin(): void;
 };
@@ -34,6 +42,10 @@ function page(): CartPage {
     ...definition,
     readSequence: 0,
     mutationInFlight: false,
+    loadedSession: 'account-a',
+    wasHidden: false,
+    pageClosed: false,
+    reloadAfterMutation: false,
     data: {
       cart: { items: [{ id: 'line-a', quantity: 2 }] },
       loading: false,
@@ -60,6 +72,7 @@ afterAll(() => vi.unstubAllGlobals());
 beforeEach(() => {
   vi.mocked(getCart).mockReset();
   vi.mocked(updateCartItem).mockReset();
+  vi.mocked(deleteCartItem).mockReset();
   vi.mocked(consumerToken).mockReturnValue('account-a');
 });
 
@@ -169,5 +182,90 @@ describe('miniapp cart mutations', () => {
     expect(cart.data.cart?.items[0]?.quantity).toBe(2);
     expect(cart.data.mutating).toBe(false);
     expect(getCart).toHaveBeenCalledTimes(1);
+  });
+
+  it('clears cart on hide and ignores a late load even if visible again', async () => {
+    let release: (value: Awaited<ReturnType<typeof getCart>>) => void = () => {};
+    vi.mocked(getCart).mockImplementationOnce(() => new Promise((resolve) => (release = resolve)));
+    const cart = page();
+    const older = cart.load();
+    cart.onHide();
+    expect(cart.data.cart).toBeNull();
+    vi.mocked(getCart).mockResolvedValueOnce({ items: [{ id: 'fresh', quantity: 1 }] } as never);
+    cart.onShow();
+    await vi.waitFor(() => expect(cart.data.cart?.items[0]?.id).toBe('fresh'));
+    release({ items: [{ id: 'private', quantity: 1 }] } as never);
+    await older;
+    expect(cart.data.cart?.items[0]?.id).toBe('fresh');
+  });
+
+  it('does not mutate or navigate with cart loaded for a previous account', async () => {
+    const cart = page();
+    vi.mocked(consumerToken).mockReturnValue('account-b');
+    const navigate = vi.fn();
+    vi.stubGlobal('wx', { navigateTo: navigate });
+    await cart.plus(event);
+    await cart.remove(event);
+    cart.checkout();
+    expect(updateCartItem).not.toHaveBeenCalled();
+    expect(deleteCartItem).not.toHaveBeenCalled();
+    expect(navigate).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
+
+  it('never removes an item that was not in the verified cart', async () => {
+    const cart = page();
+    await cart.remove({ currentTarget: { dataset: { id: 'invented-item' } } });
+    expect(deleteCartItem).not.toHaveBeenCalled();
+  });
+
+  it('does not publish a write result after hide and refreshes on the next show', async () => {
+    let releaseWrite: () => void = () => {};
+    vi.mocked(updateCartItem).mockImplementationOnce(
+      () => new Promise<void>((resolve) => (releaseWrite = resolve)),
+    );
+    vi.mocked(getCart).mockResolvedValueOnce({ items: [{ id: 'new-line', quantity: 1 }] } as never);
+    const cart = page();
+    const writing = cart.plus(event);
+    cart.onHide();
+    releaseWrite();
+    await writing;
+    expect(cart.data.cart).toBeNull();
+    expect(getCart).not.toHaveBeenCalled();
+    cart.onShow();
+    await vi.waitFor(() => expect(cart.data.cart?.items[0]?.id).toBe('new-line'));
+  });
+
+  it('defers refresh while a write resolves after the page returns', async () => {
+    let releaseWrite: () => void = () => {};
+    vi.mocked(updateCartItem).mockImplementationOnce(
+      () => new Promise<void>((resolve) => (releaseWrite = resolve)),
+    );
+    vi.mocked(getCart).mockResolvedValueOnce({
+      items: [{ id: 'after-return', quantity: 3 }],
+    } as never);
+    const cart = page();
+    const writing = cart.plus(event);
+    cart.onHide();
+    cart.onShow();
+    expect(getCart).not.toHaveBeenCalled();
+    releaseWrite();
+    await writing;
+    expect(getCart).toHaveBeenCalledTimes(1);
+    expect(cart.data.cart?.items[0]?.id).toBe('after-return');
+  });
+
+  it('does not update a disposed page from a pending mutation', async () => {
+    let releaseWrite: () => void = () => {};
+    vi.mocked(updateCartItem).mockImplementationOnce(
+      () => new Promise<void>((resolve) => (releaseWrite = resolve)),
+    );
+    const cart = page();
+    const writing = cart.plus(event);
+    cart.onUnload();
+    releaseWrite();
+    await writing;
+    expect(cart.data.cart).toBeNull();
+    expect(getCart).not.toHaveBeenCalled();
   });
 });

@@ -23,6 +23,7 @@ import {
 Page({
   readSequence: 0,
   accountUserId: '',
+  accountSession: '',
   data: {
     loading: true,
     accountStatus: 'loading' as CommissionAccountStatus,
@@ -49,6 +50,7 @@ Page({
   onHide() {
     this.readSequence++;
     this.accountUserId = '';
+    this.accountSession = '';
     this.setData({
       frozenMinor: 0,
       availableMinor: 0,
@@ -59,11 +61,38 @@ Page({
       pendingWithdrawal: false,
     });
   },
+  onUnload() {
+    this.readSequence++;
+    this.accountUserId = '';
+    this.accountSession = '';
+  },
+  actionContextMatches(session: string, userId: string) {
+    if (this.accountUserId !== userId || this.accountSession !== session) return false;
+    if (consumerToken() === session && storedConsumerId() === userId) return true;
+    // An operation started on the previously visible account must never leave
+    // balances or a pending withdrawal form visible to a changed session.
+    this.readSequence++;
+    this.accountUserId = '';
+    this.accountSession = '';
+    this.setData({
+      accountStatus: 'unauthenticated',
+      error: '登录状态已变化，请重新进入佣金页面。',
+      frozenMinor: 0,
+      availableMinor: 0,
+      entries: [],
+      links: [],
+      withdrawals: [],
+      amountYuan: '',
+      pendingWithdrawal: false,
+    });
+    return false;
+  },
   async load() {
     const sequence = ++this.readSequence;
     const session = consumerToken();
     const userId = storedConsumerId();
     this.accountUserId = '';
+    this.accountSession = '';
     this.setData({
       loading: true,
       accountStatus: 'loading',
@@ -110,6 +139,7 @@ Page({
       );
       if (pending && resolved) clearPendingWithdrawal(userId, pending.clientRequestId);
       this.accountUserId = userId;
+      this.accountSession = session;
       this.setData({
         ...account,
         links: links.links,
@@ -145,14 +175,23 @@ Page({
   },
   async createLink() {
     if (this.data.busy || !canUseCommissionActions(this.data.accountStatus)) return;
-    if (!this.accountUserId || storedConsumerId() !== this.accountUserId) return;
+    const userId = this.accountUserId as string;
+    const session = this.accountSession as string;
+    if (!userId || !session) return;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+    if (!this.actionContextMatches(session, userId)) return;
     this.setData({ busy: true, error: '' });
     try {
       await createReferralLink('我的分享');
       // eslint-disable-next-line @typescript-eslint/no-unsafe-call
-      await this.load();
+      if (this.actionContextMatches(session, userId)) {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+        await this.load();
+      }
     } catch (error) {
-      this.setData(commissionActionFailure(error, '分享链接创建失败。'));
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+      if (this.actionContextMatches(session, userId))
+        this.setData(commissionActionFailure(error, '分享链接创建失败。'));
     } finally {
       this.setData({ busy: false });
     }
@@ -163,8 +202,10 @@ Page({
   },
   async withdraw() {
     if (!canUseCommissionActions(this.data.accountStatus)) return;
-    const userId = storedConsumerId();
-    if (!userId || userId !== this.accountUserId) {
+    const userId = this.accountUserId as string;
+    const session = this.accountSession as string;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+    if (!userId || !session || !this.actionContextMatches(session, userId)) {
       this.setData({ error: '登录状态已变化，请重新进入佣金页面。' });
       return;
     }
@@ -196,22 +237,14 @@ Page({
       if (result.clientRequestId !== pending.clientRequestId || result.amountMinor !== amountMinor)
         throw new Error('WITHDRAWAL_RESPONSE_MISMATCH');
       clearPendingWithdrawal(userId, pending.clientRequestId);
-      if (storedConsumerId() !== userId || this.accountUserId !== userId) return;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+      if (!this.actionContextMatches(session, userId)) return;
       this.setData({ amountYuan: '', pendingWithdrawal: false });
       // eslint-disable-next-line @typescript-eslint/no-unsafe-call
       await this.load();
     } catch (error) {
-      if (storedConsumerId() !== userId) {
-        this.setData({
-          accountStatus: 'unauthenticated',
-          frozenMinor: 0,
-          availableMinor: 0,
-          entries: [],
-          links: [],
-          withdrawals: [],
-          error: '登录状态已变化，请重新进入佣金页面。',
-        });
-      } else {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+      if (this.actionContextMatches(session, userId)) {
         this.setData(
           commissionActionFailure(
             error,
@@ -224,7 +257,14 @@ Page({
     }
   },
   copyLink(event: WechatMiniprogram.TouchEvent) {
-    if (!this.accountUserId || storedConsumerId() !== this.accountUserId) return;
+    if (
+      !canUseCommissionActions(this.data.accountStatus) ||
+      !this.accountUserId ||
+      !this.accountSession ||
+      consumerToken() !== this.accountSession ||
+      storedConsumerId() !== this.accountUserId
+    )
+      return;
     const code = String(event.currentTarget.dataset.code || '');
     if (code) void wx.setClipboardData({ data: code });
   },
@@ -232,6 +272,8 @@ Page({
     if (
       !canUseCommissionActions(this.data.accountStatus) ||
       !this.accountUserId ||
+      !this.accountSession ||
+      consumerToken() !== this.accountSession ||
       storedConsumerId() !== this.accountUserId
     ) {
       return { title: '来小海童话发现好书', path: '/pages/index/index' };

@@ -12,6 +12,9 @@ Page({
   readSequence: 0,
   visibleSession: '',
   mutationInFlight: false,
+  wasHidden: false,
+  pageClosed: false,
+  reloadAfterMutation: false,
   data: {
     addresses: [] as Address[],
     loading: true,
@@ -20,18 +23,34 @@ Page({
     mutating: false,
   },
   onShow() {
+    if (this.pageClosed) return;
+    this.wasHidden = false;
+    if (this.mutationInFlight) {
+      this.reloadAfterMutation = true;
+      this.setData({ loading: true });
+      return;
+    }
     void this.load();
   },
   onHide() {
+    this.wasHidden = true;
+    this.readSequence++;
+    this.visibleSession = '';
+    this.setData({ addresses: [], loading: false });
+  },
+  onUnload() {
+    this.pageClosed = true;
+    this.wasHidden = true;
     this.readSequence++;
     this.visibleSession = '';
     this.setData({ addresses: [] });
   },
-  onUnload() {
-    this.readSequence++;
-    this.visibleSession = '';
-  },
   async load() {
+    if (this.wasHidden || this.pageClosed) return;
+    if (this.mutationInFlight) {
+      this.reloadAfterMutation = true;
+      return;
+    }
     const sequence = ++this.readSequence;
     const session = consumerToken();
     this.visibleSession = '';
@@ -41,7 +60,7 @@ Page({
     }
     this.setData({ addresses: [], loading: true, error: false, needsLogin: false });
     const acceptResponse = () => {
-      if (sequence !== this.readSequence) return false;
+      if (sequence !== this.readSequence || this.wasHidden || this.pageClosed) return false;
       const currentSession = consumerToken();
       if (currentSession !== session) {
         this.setData({ addresses: [], loading: false, error: false, needsLogin: !currentSession });
@@ -74,29 +93,38 @@ Page({
   goToLogin() {
     void wx.switchTab({ url: '/pages/me/me' });
   },
-  async mutate(action: (session: string) => Promise<boolean>) {
+  async mutate(action: (session: string, isCurrent: () => boolean) => Promise<boolean>) {
     const session = consumerToken();
-    if (this.mutationInFlight) return;
+    if (this.mutationInFlight || this.wasHidden || this.pageClosed) return;
     if (!session || session !== this.visibleSession) {
       this.setData({ addresses: [], error: Boolean(session), needsLogin: !session });
       return;
     }
     this.mutationInFlight = true;
-    this.readSequence++;
+    const sequence = ++this.readSequence;
+    const isCurrent = () =>
+      !this.wasHidden &&
+      !this.pageClosed &&
+      this.readSequence === sequence &&
+      this.visibleSession === session &&
+      consumerToken() === session;
+    let refresh = false;
     this.setData({ mutating: true, error: false });
     try {
-      const changed = await action(session);
-      if (consumerToken() !== session || this.visibleSession !== session) {
+      const changed = await action(session, isCurrent);
+      if (this.wasHidden || this.pageClosed || sequence !== this.readSequence) {
+        // A hidden or replaced form cannot publish its previous result.
+      } else if (!isCurrent()) {
         this.setData({
           addresses: [],
           needsLogin: !consumerToken(),
           error: Boolean(consumerToken()),
         });
-        return;
-      }
-      if (changed) await this.load();
+      } else refresh = changed;
     } catch {
-      if (consumerToken() === session) this.setData({ error: true });
+      if (this.wasHidden || this.pageClosed || sequence !== this.readSequence) {
+        // Do not surface a stale failure after leaving the address page.
+      } else if (isCurrent()) this.setData({ error: true });
       else
         this.setData({
           addresses: [],
@@ -105,16 +133,18 @@ Page({
         });
     } finally {
       this.mutationInFlight = false;
-      this.setData({ mutating: false });
+      if (!this.pageClosed) this.setData({ mutating: false });
+    }
+    if (this.wasHidden || this.pageClosed) return;
+    if (this.reloadAfterMutation || refresh) {
+      this.reloadAfterMutation = false;
+      await this.load();
     }
   },
   async add() {
-    await this.mutate(async (session) => {
-      const input = await collect(
-        undefined,
-        () => consumerToken() === session && this.visibleSession === session,
-      );
-      if (!input || consumerToken() !== session || this.visibleSession !== session) return false;
+    await this.mutate(async (_session, isCurrent) => {
+      const input = await collect(undefined, isCurrent);
+      if (!input || !isCurrent()) return false;
       await createAddress({ ...input, isDefault: this.data.addresses.length === 0 });
       return true;
     });
@@ -122,19 +152,18 @@ Page({
   async edit(e: WechatMiniprogram.TouchEvent) {
     const current = this.data.addresses.find((a) => a.id === e.currentTarget.dataset.id);
     if (!current) return;
-    await this.mutate(async (session) => {
-      const input = await collect(
-        current,
-        () => consumerToken() === session && this.visibleSession === session,
-      );
-      if (!input || consumerToken() !== session || this.visibleSession !== session) return false;
+    await this.mutate(async (_session, isCurrent) => {
+      const input = await collect(current, isCurrent);
+      if (!input || !isCurrent()) return false;
       await updateAddress(current.id, input);
       return true;
     });
   },
   async remove(e: WechatMiniprogram.TouchEvent) {
+    const id = String(e.currentTarget.dataset.id || '');
+    if (!this.data.addresses.some((address) => address.id === id)) return;
     await this.mutate(async () => {
-      await deleteAddress(String(e.currentTarget.dataset.id));
+      await deleteAddress(id);
       return true;
     });
   },

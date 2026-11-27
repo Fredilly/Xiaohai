@@ -39,6 +39,19 @@ const balance = {
   available: 5,
   version: 1,
 };
+const inventoryIssueLedger = {
+  id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+  storeId,
+  skuId,
+  transactionType: 'ISSUE',
+  quantityDelta: -2,
+  balanceAfter: 3,
+  referenceType: 'STOCK_ISSUE',
+  referenceId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+  reason: '实盘出库',
+  createdByStaffAccountId: staffId,
+  createdAt: '2026-11-26T00:00:00.000Z',
+};
 const report = {
   sourceType: 'MEIPING_XLS',
   sourceStoreId: storeId,
@@ -73,6 +86,7 @@ async function switchStore(page: Page, selected: string, preflight = false) {
     {
       token: 'synthetic-staff-session',
       storeId: selected,
+      staffAccountId: staffId,
       permissions: ['inventory.read', 'inventory.adjust', 'inventory.issue', 'inventory.receive'],
       preflight,
     },
@@ -109,7 +123,13 @@ async function mountCatalog(page: Page) {
     (props) => {
       window.dispatchEvent(new CustomEvent('inventory-props', { detail: props }));
     },
-    { catalog: true, token: 'synthetic-staff-session', storeId, storeName: '南门' },
+    {
+      catalog: true,
+      token: 'synthetic-staff-session',
+      staffAccountId: staffId,
+      storeId,
+      storeName: '南门',
+    },
   );
 }
 
@@ -171,7 +191,21 @@ test('store book draft creates an unsellable zero-stock product and reuses its r
   await editor.getByLabel('售价（元）').fill('36.50');
   await editor.getByRole('button', { name: '保存草稿' }).click();
   await expect(editor.getByRole('status')).toContainText('Failed to fetch');
-  await editor.getByRole('button', { name: '保存草稿' }).click();
+  await editor.getByRole('button', { name: '取消' }).click();
+  await page.getByRole('button', { name: '新增图书 / 普通商品草稿' }).click();
+  const restored = page.getByRole('dialog', { name: '新增商品草稿' });
+  await expect(restored.getByRole('status')).toContainText('已恢复上次未确认');
+  await expect(restored.getByLabel('书名（同时作为商品名称）')).toHaveValue('南门合成绘本');
+  await expect(restored.getByLabel('ISBN（可留空；有值时校验格式和全库去重）')).toHaveValue(
+    '9783161484100',
+  );
+  await restored.getByLabel('售价（元）').fill('37.00');
+  await restored.getByRole('button', { name: '保存草稿' }).click();
+  await expect(restored.getByRole('status')).toContainText('恢复原表单');
+  expect(writes).toHaveLength(1);
+  await restored.getByRole('button', { name: '恢复上次提交内容' }).click();
+  await expect(restored.getByLabel('售价（元）')).toHaveValue('36.50');
+  await restored.getByRole('button', { name: '保存草稿' }).click();
   await expect(editor).toHaveCount(0);
   expect(writes).toHaveLength(2);
   expect(writes[0].key).toBeTruthy();
@@ -416,7 +450,13 @@ test('lost write response retries the identical request and duplicate submit is 
       arrived.resolve();
       await pending.promise;
       await route.abort('failed');
-    } else await route.fulfill({ json: { id: 'synthetic-ledger-entry' } });
+    } else
+      await route.fulfill({
+        json: {
+          ...inventoryIssueLedger,
+          idempotencyKey: (writes[1] as { idempotencyKey: string }).idempotencyKey,
+        },
+      });
   });
   await mount(page);
   const form = page
@@ -433,11 +473,48 @@ test('lost write response retries the identical request and duplicate submit is 
   await expect(form.locator('[name=quantity]')).toBeDisabled();
   expect(writes).toHaveLength(1);
   pending.resolve();
-  await expect(page.getByRole('status').last()).toContainText('操作失败');
+  await expect(page.getByRole('status').last()).toContainText('结果未确认');
   await form.getByRole('button', { name: '提交库存操作' }).click();
   await expect.poll(() => writes.length).toBe(2);
   expect(writes[1]).toEqual(writes[0]);
   await expect(form.locator('[name=quantity]')).toHaveValue('');
+});
+
+test('inventory issue lost response survives reload and rejects a changed count', async ({
+  page,
+}) => {
+  await page.route('**/api/v1/staff/inventory?*', (route) =>
+    route.fulfill({ json: { items: [balance] } }),
+  );
+  const writes: Array<{ idempotencyKey: string; quantity: number }> = [];
+  await page.route('**/api/v1/staff/inventory/issues', (route) => {
+    const body = route.request().postDataJSON() as { idempotencyKey: string; quantity: number };
+    writes.push(body);
+    if (writes.length === 1) return route.abort('failed');
+    return route.fulfill({
+      json: { ...inventoryIssueLedger, idempotencyKey: body.idempotencyKey },
+    });
+  });
+  await mount(page);
+  const form = page
+    .locator('form.operation-form')
+    .filter({ has: page.locator('[name=operation]') });
+  await form.locator('select').first().selectOption(`${storeId}:${skuId}`);
+  await form.locator('[name=quantity]').fill('2');
+  await form.locator('[name=reason]').fill('实盘出库');
+  await form.getByRole('button', { name: '提交库存操作' }).click();
+  await expect(page.getByRole('status').last()).toContainText('结果未确认');
+  await form.locator('[name=quantity]').fill('3');
+  await form.getByRole('button', { name: '提交库存操作' }).click();
+  await expect(page.getByRole('status').last()).toContainText('已阻止新操作');
+  expect(writes).toHaveLength(1);
+  await page.reload();
+  await mount(page);
+  await expect(page.getByRole('alert')).toContainText('待确认库存操作');
+  await page.getByRole('button', { name: '按原库存请求键重试' }).click();
+  await expect.poll(() => writes.length).toBe(2);
+  expect(writes[1]).toEqual(writes[0]);
+  await expect(page.getByRole('alert')).toHaveCount(0);
 });
 
 test('switching stores discards opening candidates and their selected SKU', async ({ page }) => {
@@ -467,6 +544,130 @@ test('switching stores discards opening candidates and their selected SKU', asyn
   await switchStore(page, otherStoreId);
   await expect(page.getByLabel('选择待建档 SKU')).toHaveCount(0);
   await expect(page.getByLabel('搜索待建档商品')).toHaveValue('');
+});
+
+test('positive opening stock retries its exact key after lost POST and page reload', async ({
+  page,
+}) => {
+  await page.route('**/api/v1/staff/inventory?*', (route) =>
+    route.fulfill({ json: { items: [] } }),
+  );
+  await page.route('**/opening-candidates?*', (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            skuId,
+            skuCode: 'OPEN-3',
+            skuName: '合成商品',
+            productName: '合成商品',
+            productStatus: 'DRAFT',
+            skuStatus: 'ACTIVE',
+          },
+        ],
+      },
+    }),
+  );
+  const writes: Array<{ key: string; quantity: number }> = [];
+  await page.route('**/api/v1/staff/inventory/opening-stock', (route) => {
+    const body = route.request().postDataJSON() as {
+      idempotencyKey: string;
+      initialQuantity: number;
+    };
+    writes.push({ key: body.idempotencyKey, quantity: body.initialQuantity });
+    if (writes.length === 1) return route.abort('failed');
+    return route.fulfill({ json: { storeId, skuId, onHand: 3, version: 1 } });
+  });
+  await mount(page);
+  const section = page.getByRole('region', { name: '首次库存建档' });
+  await section.getByLabel('搜索待建档商品').fill('合成商品');
+  await section.getByRole('button', { name: '搜索待建档 SKU' }).click();
+  await section.getByLabel('选择待建档 SKU').selectOption(skuId);
+  await section.getByLabel('首次实盘数量（可为 0）').fill('3');
+  await section.getByLabel('建档依据 / 盘点备注').fill('Synthetic count');
+  await section.getByRole('checkbox').check();
+  await section.getByRole('button', { name: '确认首次库存建档' }).click();
+  await expect(section.getByRole('status')).toContainText('结果未确认');
+  await section.getByLabel('首次实盘数量（可为 0）').fill('4');
+  await section.getByRole('button', { name: '确认首次库存建档' }).click();
+  await expect(section.getByRole('status')).toContainText('已阻止新建档');
+  expect(writes).toHaveLength(1);
+  await page.reload();
+  await mount(page);
+  const resumed = page.getByRole('region', { name: '首次库存建档' });
+  await expect(resumed.getByRole('alert')).toContainText('OPEN-3');
+  await resumed.getByRole('button', { name: '使用原首次建档请求重试' }).click();
+  await expect.poll(() => writes.length).toBe(2);
+  expect(writes[0]).toEqual(writes[1]);
+  await expect(resumed.getByRole('alert')).toHaveCount(0);
+});
+
+test('zero opening stock never re-POSTs and clears only after scoped readback', async ({
+  page,
+}) => {
+  let foreignBalance = true;
+  await page.route('**/api/v1/staff/inventory?*', (route) => {
+    const search = new URL(route.request().url()).searchParams.get('q');
+    return route.fulfill({
+      json: {
+        items: search
+          ? [
+              {
+                ...balance,
+                storeId: foreignBalance ? otherStoreId : storeId,
+                skuCode: 'OPEN-0',
+                onHand: 0,
+                available: 0,
+                version: 0,
+              },
+            ]
+          : [],
+      },
+    });
+  });
+  await page.route('**/opening-candidates?*', (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            skuId,
+            skuCode: 'OPEN-0',
+            skuName: '合成商品',
+            productName: '合成商品',
+            productStatus: 'DRAFT',
+            skuStatus: 'ACTIVE',
+          },
+        ],
+      },
+    }),
+  );
+  const writes: unknown[] = [];
+  await page.route('**/api/v1/staff/inventory/opening-stock', (route) => {
+    writes.push(route.request().postDataJSON());
+    return route.abort('failed');
+  });
+  await mount(page);
+  const section = page.getByRole('region', { name: '首次库存建档' });
+  await section.getByLabel('搜索待建档商品').fill('合成商品');
+  await section.getByRole('button', { name: '搜索待建档 SKU' }).click();
+  await section.getByLabel('选择待建档 SKU').selectOption(skuId);
+  await section.getByLabel('首次实盘数量（可为 0）').fill('0');
+  await section.getByLabel('建档依据 / 盘点备注').fill('Synthetic zero count');
+  await section.getByRole('checkbox').check();
+  await section.getByRole('button', { name: '确认首次库存建档' }).click();
+  await expect(section.getByRole('status')).toContainText('禁止直接重发 POST');
+  await page.reload();
+  await mount(page);
+  const resumed = page.getByRole('region', { name: '首次库存建档' });
+  await expect(resumed.getByRole('button', { name: '使用原首次建档请求重试' })).toHaveCount(0);
+  await resumed.getByRole('button', { name: '只读核对 0 件建档状态' }).click();
+  await expect(resumed.getByRole('status')).toContainText('核对失败');
+  await expect(resumed.getByRole('alert')).toContainText('OPEN-0');
+  foreignBalance = false;
+  await resumed.getByRole('button', { name: '只读核对 0 件建档状态' }).click();
+  await expect(resumed.getByRole('alert')).toHaveCount(0);
+  await expect(resumed.getByRole('status')).toContainText('已只读确认本店 SKU 关联存在');
+  expect(writes).toHaveLength(1);
 });
 
 test('a completed preflight for the old store is not displayed in the new store', async ({
@@ -533,6 +734,7 @@ test('read-only staff cannot submit inventory writes and single-permission opera
       {
         token: 'synthetic-staff-session',
         storeId,
+        staffAccountId: staffId,
         permissions: ['inventory.read', ...(permission ? [permission] : [])],
       },
     );
@@ -555,7 +757,9 @@ async function ordinaryInventoryFixture(page: Page) {
     route.fulfill({ json: { items: [balance] } }),
   );
 }
-test('food intake network retry retains the original operation key', async ({ page }) => {
+test('food intake persists its original operation through changed input and page reload', async ({
+  page,
+}) => {
   await ordinaryInventoryFixture(page);
   await page.route('**/api/v1/staff/inventory/food-stock?*', (route) =>
     route.fulfill({
@@ -595,7 +799,11 @@ test('food intake network retry retains the original operation key', async ({ pa
     const body = route.request().postDataJSON() as { idempotencyKey: string };
     keys.push(body.idempotencyKey);
     if (keys.length === 1) await route.abort('failed');
-    else await route.fulfill({ status: 201, json: { replayed: true } });
+    else
+      await route.fulfill({
+        status: 201,
+        json: { batchId: foodBatchId, onHandAfter: 7, inventoryVersion: 2, replayed: true },
+      });
   });
   await mount(page);
   await page.getByRole('combobox', { name: '本店 SKU', exact: true }).selectOption(skuId);
@@ -606,12 +814,20 @@ test('food intake network retry retains the original operation key', async ({ pa
   await form.getByLabel('原因', { exact: true }).fill('Synthetic receipt');
   await form.getByLabel('内部凭证编号（不填网址）').fill('synthetic:receipt:1');
   await form.getByRole('button', { name: '入库并冻结' }).click();
-  await expect(page.getByRole('status').filter({ hasText: '未确认成功' })).toHaveCount(1);
+  await expect(page.getByRole('status').filter({ hasText: '写入未确认成功' })).toHaveCount(1);
+  await form.getByLabel('入库数量').fill('3');
   await form.getByRole('button', { name: '入库并冻结' }).click();
+  await expect(page.getByRole('status').filter({ hasText: '已阻止新写入' })).toHaveCount(1);
+  expect(keys).toHaveLength(1);
+  await page.reload();
+  await mount(page);
+  await expect(page.getByRole('alert')).toContainText('待确认操作');
+  await page.getByRole('button', { name: '使用原请求键重试' }).click();
   await expect.poll(() => keys.length).toBe(2);
   expect(keys[0]).toBe(keys[1]);
+  await expect(page.getByRole('alert')).toHaveCount(0);
 });
-test('physical receipt keeps the same key when the post-success refresh fails', async ({
+test('physical receipt does not retry a confirmed POST when the subsequent read fails', async ({
   page,
 }) => {
   await ordinaryInventoryFixture(page);
@@ -655,11 +871,65 @@ test('physical receipt keeps the same key when the post-success refresh fails', 
   await form.getByLabel('原因', { exact: true }).fill('Synthetic physical receipt');
   await form.getByLabel('内部接收凭证').fill('synthetic:return:1');
   await form.getByRole('button', { name: '接收为冻结批次' }).click();
-  await expect(panel.getByRole('status')).toContainText('未确认成功');
+  await expect(panel.getByRole('status')).toContainText('写入已成功响应，但订单批次读回失败');
+  await expect(form).toHaveCount(0);
+  await expect(panel.getByRole('alert')).toHaveCount(0);
+  expect(keys).toHaveLength(1);
+});
+
+test('physical return abort, reload and changed quantity never generate a second request key', async ({
+  page,
+}) => {
+  await ordinaryInventoryFixture(page);
+  await page.route(`**/api/v1/staff/inventory/food-stock/order/${orderId}`, (route) =>
+    route.fulfill({
+      json: {
+        orderId,
+        storeId,
+        status: 'COMPLETED',
+        allocations: [
+          {
+            id: allocationId,
+            skuId,
+            batchId: foodBatchId,
+            lotCode: 'SYNTHETIC',
+            quantity: 2,
+            status: 'SOLD',
+            returnedQuantity: 0,
+          },
+        ],
+      },
+    }),
+  );
+  const keys: string[] = [];
+  await page.route('**/api/v1/staff/inventory/food-stock/physical-returns', (route) => {
+    keys.push((route.request().postDataJSON() as { idempotencyKey: string }).idempotencyKey);
+    if (keys.length === 1) return route.abort('failed');
+    return route.fulfill({ json: { returnedBatchId: foodBatchId, replayed: true } });
+  });
+  await mount(page);
+  const panel = page.getByRole('region', { name: '食品退货与溯源' });
+  await panel.getByLabel('原订单 ID').fill(orderId);
+  await panel.getByRole('button', { name: '读取原订单批次' }).click();
+  const form = panel.getByRole('group', { name: '确认收到实物（与退款分开）' });
+  await form.getByLabel('实际收到数量').fill('1');
+  await form.getByLabel('原因', { exact: true }).fill('Synthetic physical receipt');
+  await form.getByLabel('内部接收凭证').fill('synthetic:return:1');
   await form.getByRole('button', { name: '接收为冻结批次' }).click();
-  await expect(panel.getByRole('status')).toContainText('没有自动退款');
-  expect(keys).toHaveLength(2);
+  await expect(panel.getByRole('status')).toContainText('实物接收结果未确认');
+  await form.getByLabel('实际收到数量').fill('2');
+  await form.getByRole('button', { name: '接收为冻结批次' }).click();
+  await expect(panel.getByRole('status')).toContainText('未确认或会话存储不可用');
+  expect(keys).toHaveLength(1);
+  await page.reload();
+  await mount(page);
+  const restored = page.getByRole('region', { name: '食品退货与溯源' });
+  await expect(restored.getByRole('alert')).toContainText(orderId);
+  await restored.getByRole('button', { name: '使用原实物接收请求重试' }).click();
+  await expect.poll(() => keys.length).toBe(2);
   expect(keys[0]).toBe(keys[1]);
+  await expect(restored.getByRole('alert')).toHaveCount(0);
+  await expect(restored.getByRole('status')).toContainText('没有自动退款');
 });
 test('a mismatched store trace response is never displayed', async ({ page }) => {
   await ordinaryInventoryFixture(page);

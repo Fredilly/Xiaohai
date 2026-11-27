@@ -1,20 +1,77 @@
 import { AnimationApiError, createAnimation } from '../../services/animation';
+import { consumerToken } from '../../services/consumer-session';
 
 type InputEvent = { detail: { value?: string } };
+
 Page({
-  data: { workId: '', versionId: '', title: '', submitting: false, error: '' },
+  sourceSession: '',
+  wasHidden: false,
+  pageClosed: false,
+  navigating: false,
+  data: {
+    workId: '',
+    versionId: '',
+    title: '',
+    submitting: false,
+    creationUnknown: false,
+    createdId: '',
+    error: '',
+  },
   onLoad(query: Record<string, string | undefined>) {
+    this.sourceSession = consumerToken();
     this.setData({
       workId: String(query.workId || ''),
       versionId: String(query.versionId || ''),
       title: `${String(query.title || '我的故事')}动画`,
     });
   },
+  onShow() {
+    this.wasHidden = false;
+    if (!this.sourceSession || this.sourceSession !== consumerToken()) {
+      this.invalidateSource();
+      return;
+    }
+    if (this.data.createdId) this.openCreated();
+  },
+  onHide() {
+    this.wasHidden = true;
+  },
+  onUnload() {
+    this.pageClosed = true;
+  },
+  invalidateSource() {
+    this.sourceSession = '';
+    this.setData({
+      workId: '',
+      versionId: '',
+      title: '',
+      createdId: '',
+      submitting: false,
+      creationUnknown: false,
+      error: '登录状态已变化，请返回我的故事重新选择正文版本。',
+    });
+  },
   inputTitle(event: InputEvent) {
+    if (this.pageClosed || this.sourceSession !== consumerToken()) return;
     this.setData({ title: String(event.detail.value || '') });
   },
   async submit() {
-    if (!this.data.workId || !this.data.versionId || !this.data.title.trim()) return;
+    if (
+      this.pageClosed ||
+      this.data.submitting ||
+      this.data.creationUnknown ||
+      this.data.createdId ||
+      !this.data.workId ||
+      !this.data.versionId ||
+      !this.data.title.trim()
+    )
+      return;
+
+    const session = this.sourceSession;
+    if (!session || session !== consumerToken()) {
+      this.invalidateSource();
+      return;
+    }
     this.setData({ submitting: true, error: '' });
     try {
       const animation = await createAnimation({
@@ -22,16 +79,55 @@ Page({
         sourceStoryVersionId: this.data.versionId,
         title: this.data.title.trim(),
       });
-      void wx.redirectTo({ url: `/pages/animation-detail/animation-detail?id=${animation.id}` });
+      if (this.pageClosed) return;
+      if (session !== consumerToken() || session !== this.sourceSession) {
+        this.invalidateSource();
+        return;
+      }
+      this.setData({ createdId: animation.id });
+      if (!this.wasHidden) this.openCreated();
     } catch (error) {
+      if (this.pageClosed) return;
+      if (session !== consumerToken() || session !== this.sourceSession) {
+        this.invalidateSource();
+        return;
+      }
+      // A lost POST response can still represent a successfully created animation.
+      // Do not resend before checking the owned list for the new work.
+      const creationUnknown =
+        !(error instanceof AnimationApiError) || (error.status >= 500 && error.status !== 503);
       this.setData({
-        error:
-          error instanceof AnimationApiError && error.status === 503
+        creationUnknown,
+        error: creationUnknown
+          ? '创建结果暂时无法确认，请先到“我的动画”检查，避免重复创建。'
+          : error instanceof AnimationApiError && error.status === 503
             ? '动画 AI 尚未开启（安全关闭）'
             : '创建失败，请确认故事正文仍然有效。',
       });
     } finally {
-      this.setData({ submitting: false });
+      if (!this.pageClosed && session === this.sourceSession) this.setData({ submitting: false });
     }
+  },
+  openCreated() {
+    if (
+      this.pageClosed ||
+      this.wasHidden ||
+      this.navigating ||
+      !this.data.createdId ||
+      !this.sourceSession ||
+      this.sourceSession !== consumerToken()
+    )
+      return;
+    this.navigating = true;
+    void wx.redirectTo({
+      url: `/pages/animation-detail/animation-detail?id=${encodeURIComponent(this.data.createdId)}`,
+      fail: () => {
+        this.navigating = false;
+      },
+    });
+  },
+  viewExisting() {
+    if (this.pageClosed || this.sourceSession !== consumerToken()) return;
+    void wx.redirectTo({ url: '/pages/animations/animations' });
   },
 });

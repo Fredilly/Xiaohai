@@ -28,6 +28,7 @@ type TestPage = {
   data: State;
   readSequence: number;
   wasHidden: boolean;
+  pageClosed: boolean;
   loadedSession: string;
   setData(changes: Partial<State>): void;
   onShow(): void;
@@ -59,6 +60,7 @@ function page(): TestPage {
     ...definition,
     readSequence: 0,
     wasHidden: false,
+    pageClosed: false,
     loadedSession: '',
     data: { animations: [], loading: true, needsLogin: false, error: '' },
     setData(changes) {
@@ -100,6 +102,8 @@ describe('AI animation list: private work isolation', () => {
     expect(mocks.navigateTo).toHaveBeenCalledWith({
       url: '/pages/animation-detail/animation-detail?id=animation%2Fid',
     });
+    instance.open({ currentTarget: { dataset: { id: 'invented-id' } } } as never);
+    expect(mocks.navigateTo).toHaveBeenCalledOnce();
     mocks.token.mockReturnValue('account-B');
     instance.open(tap);
     expect(mocks.navigateTo).toHaveBeenCalledOnce();
@@ -166,5 +170,25 @@ describe('AI animation list: private work isolation', () => {
     await vi.waitFor(() => expect(instance.data.animations).toEqual([{ id: 'current' }]));
     instance.onUnload();
     expect(instance.loadedSession).toBe('');
+  });
+
+  it('never reloads or opens a disposed animation list after a late response', async () => {
+    const old = deferred<{ animations: State['animations'] }>();
+    mocks.token.mockReturnValue('account-A');
+    mocks.listAnimations.mockReturnValueOnce(old.promise);
+    const instance = page();
+    const pending = instance.load();
+    instance.onUnload();
+    old.resolve({ animations: [{ id: 'old-private' }] });
+    await pending;
+    instance.onShow();
+    await instance.load();
+    instance.open({ currentTarget: { dataset: { id: 'old-private' } } } as never);
+    instance.goToLogin();
+    expect(instance.data.animations).toEqual([]);
+    expect(instance.data.loading).toBe(false);
+    expect(mocks.listAnimations).toHaveBeenCalledOnce();
+    expect(mocks.navigateTo).not.toHaveBeenCalled();
+    expect(mocks.switchTab).not.toHaveBeenCalled();
   });
 });

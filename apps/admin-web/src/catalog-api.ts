@@ -1,7 +1,10 @@
 import {
   merchantProductImageUploadSchema,
   merchantProductImageUploadResultSchema,
+  merchantProductGalleryResponseSchema,
+  merchantProductGalleryUpdateSchema,
   type MerchantProductImageUpload,
+  type MerchantProductGalleryUpdate,
   adminProductCreateInputSchema,
   bookLookupResponseSchema,
   adminProductUpdateInputSchema,
@@ -194,4 +197,30 @@ export async function uploadHqDraftProductImage(
       merchantProductImageUploadSchema.parse(input),
     ),
   );
+}
+
+/** The HQ editor operates on the same shared product gallery as Store Web. */
+export async function getHqProductGallery(token: string, productId: string) {
+  const gallery = merchantProductGalleryResponseSchema.parse(
+    await call(`/api/v1/staff/catalog/products/${encodeURIComponent(productId)}/images`, token),
+  );
+  if (gallery.productId !== productId) throw new Error('总部商品图库身份不一致，请重新加载');
+  return gallery;
+}
+
+export async function updateHqProductGallery(
+  token: string,
+  productId: string,
+  input: MerchantProductGalleryUpdate,
+) {
+  const gallery = merchantProductGalleryResponseSchema.parse(
+    await call(
+      `/api/v1/staff/catalog/products/${encodeURIComponent(productId)}/images`,
+      token,
+      'PATCH',
+      merchantProductGalleryUpdateSchema.parse(input),
+    ),
+  );
+  if (gallery.productId !== productId) throw new Error('保存结果所属商品不一致，请重新加载');
+  return gallery;
 }

@@ -6,6 +6,7 @@ vi.mock('../../services/content', () => ({ listSeries: mocks.listSeries }));
 type StoriesPage = {
   requestVersion: number;
   wasHidden: boolean;
+  pageClosed: boolean;
   data: {
     q: string;
     category: string;
@@ -46,6 +47,7 @@ function page(): StoriesPage {
     ...definition,
     requestVersion: 0,
     wasHidden: false,
+    pageClosed: false,
     data: { ...definition.data, series: [] },
     setData(changes: Partial<StoriesPage['data']>) {
       Object.assign(instance.data, changes);
@@ -133,8 +135,13 @@ describe('Published animation search on weak networks', () => {
 
   it('opens only a selected series using an encoded ID', () => {
     const instance = page();
+    instance.data.series = [{ id: 'series/1', title: 'A series' }];
     instance.open({
       currentTarget: { dataset: { id: '' } },
+    } as unknown as WechatMiniprogram.TouchEvent);
+    expect(mocks.navigateTo).not.toHaveBeenCalled();
+    instance.open({
+      currentTarget: { dataset: { id: 'invented-series' } },
     } as unknown as WechatMiniprogram.TouchEvent);
     expect(mocks.navigateTo).not.toHaveBeenCalled();
     instance.open({
@@ -143,5 +150,29 @@ describe('Published animation search on weak networks', () => {
     expect(mocks.navigateTo).toHaveBeenCalledExactlyOnceWith({
       url: '/pages/story-detail/story-detail?id=series%2F1',
     });
+    instance.onHide();
+    instance.open({
+      currentTarget: { dataset: { id: 'series/1' } },
+    } as unknown as WechatMiniprogram.TouchEvent);
+    expect(mocks.navigateTo).toHaveBeenCalledOnce();
+  });
+
+  it('does not reopen disposed story pages or publish a late search result', async () => {
+    const old = deferred<ReturnType<typeof series>>();
+    mocks.listSeries.mockReturnValueOnce(old.promise);
+    const instance = page();
+    const pending = instance.load();
+    instance.onUnload();
+    old.resolve(series('old-content'));
+    await pending;
+    instance.onShow();
+    instance.search();
+    await instance.load();
+    instance.open({
+      currentTarget: { dataset: { id: 'old-content' } },
+    } as unknown as WechatMiniprogram.TouchEvent);
+    expect(instance.data.series).toEqual([]);
+    expect(mocks.listSeries).toHaveBeenCalledOnce();
+    expect(mocks.navigateTo).not.toHaveBeenCalled();
   });
 });

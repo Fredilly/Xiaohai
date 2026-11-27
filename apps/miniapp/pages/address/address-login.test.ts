@@ -33,9 +33,15 @@ type PageDef = {
   readSequence: number;
   visibleSession: string;
   mutationInFlight: boolean;
+  wasHidden: boolean;
+  pageClosed: boolean;
+  reloadAfterMutation: boolean;
   data: State;
   setData(changes: Partial<State>): void;
   load(): Promise<void>;
+  onShow(): void;
+  onHide(): void;
+  onUnload(): void;
   goToLogin(): void;
   add(): Promise<void>;
   remove(event: WechatMiniprogram.TouchEvent): Promise<void>;
@@ -184,5 +190,83 @@ describe('address protected UI', () => {
     await p.remove({ currentTarget: { dataset: { id: 'fake' } } } as never);
     expect(mocks.createAddress).not.toHaveBeenCalled();
     expect(mocks.deleteAddress).not.toHaveBeenCalled();
+  });
+
+  it('refuses a delete event for an address not in the verified account list', async () => {
+    mocks.token.mockReturnValue('account-a');
+    const p = page();
+    p.visibleSession = 'account-a';
+    p.data.addresses = [{ id: 'address-1' }];
+    await p.remove({ currentTarget: { dataset: { id: 'old-account-address' } } } as never);
+    expect(mocks.deleteAddress).not.toHaveBeenCalled();
+  });
+
+  it('clears private addresses on hide and discards late pre-hide responses', async () => {
+    mocks.token.mockReturnValue('account-a');
+    let release: (value: { addresses: Array<{ id: string }> }) => void = () => {};
+    mocks.listAddresses.mockImplementationOnce(() => new Promise((resolve) => (release = resolve)));
+    const p = page();
+    const older = p.load();
+    p.onHide();
+    expect(p.data.addresses).toEqual([]);
+    mocks.listAddresses.mockResolvedValueOnce({ addresses: [{ id: 'new-address' }] });
+    p.onShow();
+    await vi.waitFor(() => expect(p.data.addresses).toEqual([{ id: 'new-address' }]));
+    release({ addresses: [{ id: 'private-address' }] });
+    await older;
+    expect(p.data.addresses).toEqual([{ id: 'new-address' }]);
+  });
+
+  it('defers the address refresh until an in-flight delete finishes after return', async () => {
+    mocks.token.mockReturnValue('account-a');
+    let release: () => void = () => {};
+    mocks.deleteAddress.mockImplementationOnce(
+      () => new Promise<void>((resolve) => (release = resolve)),
+    );
+    mocks.listAddresses.mockResolvedValueOnce({ addresses: [{ id: 'remaining' }] });
+    const p = page();
+    p.visibleSession = 'account-a';
+    p.data.addresses = [{ id: 'address-1' }];
+    const pending = p.remove({ currentTarget: { dataset: { id: 'address-1' } } } as never);
+    p.onHide();
+    p.onShow();
+    expect(mocks.listAddresses).not.toHaveBeenCalled();
+    release();
+    await pending;
+    expect(mocks.listAddresses).toHaveBeenCalledOnce();
+    expect(p.data.addresses).toEqual([{ id: 'remaining' }]);
+  });
+
+  it('never submits a previously opened address form after hide and return', async () => {
+    mocks.token.mockReturnValue('account-a');
+    let answer: (value: { confirm: boolean; content: string }) => void = () => {};
+    vi.stubGlobal('wx', {
+      switchTab: mocks.switchTab,
+      showModal: vi.fn((options: { success: typeof answer }) => (answer = options.success)),
+    });
+    mocks.listAddresses.mockResolvedValue({ addresses: [] });
+    const p = page();
+    p.visibleSession = 'account-a';
+    const pending = p.add();
+    p.onHide();
+    p.onShow();
+    answer({ confirm: true, content: 'stale recipient' });
+    await pending;
+    expect(mocks.createAddress).not.toHaveBeenCalled();
+    expect(p.data.addresses).toEqual([]);
+  });
+
+  it('does not update an unloaded address page from pending data', async () => {
+    mocks.token.mockReturnValue('account-a');
+    let release: (value: { addresses: Array<{ id: string }> }) => void = () => {};
+    mocks.listAddresses.mockImplementationOnce(() => new Promise((resolve) => (release = resolve)));
+    const p = page();
+    const pending = p.load();
+    p.onUnload();
+    release({ addresses: [{ id: 'private-address' }] });
+    await pending;
+    expect(p.data.addresses).toEqual([]);
+    p.onShow();
+    expect(mocks.listAddresses).toHaveBeenCalledOnce();
   });
 });

@@ -1,6 +1,10 @@
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PictureBookDetail } from '@xiaohai/contracts/picture-book';
+import { consumerToken } from '../../services/consumer-session';
 import {
+  applyPictureBookJob,
+  generatePictureBookPlan,
+  getPictureBookJob,
   generateCharacterReference,
   generateIllustration,
   getPictureBook,
@@ -9,6 +13,9 @@ import {
 } from '../../services/picture-book';
 
 vi.mock('../../services/picture-book', () => ({
+  generatePictureBookPlan: vi.fn(),
+  getPictureBookJob: vi.fn(),
+  applyPictureBookJob: vi.fn(),
   getPictureBook: vi.fn(),
   listCharacterReferences: vi.fn(),
   generateCharacterReference: vi.fn(),
@@ -19,6 +26,7 @@ vi.mock('../../services/picture-book', () => ({
     }
   },
 }));
+vi.mock('../../services/consumer-session', () => ({ consumerToken: vi.fn() }));
 
 type DetailPage = {
   data: {
@@ -30,11 +38,17 @@ type DetailPage = {
     error: string;
     imageError: boolean;
     loading: boolean;
+    planNeedsReview: boolean;
   };
   refreshAfterHide: boolean;
   pageClosed: boolean;
   loadRevision: number;
   pollingToken: number;
+  planRevision: number;
+  visibleSession: string;
+  planNeedsReview: boolean;
+  planPendingSession: string;
+  planReviewSession: string;
   setData: (changes: Record<string, unknown>) => void;
   load: () => Promise<void>;
   onHide: () => void;
@@ -43,26 +57,32 @@ type DetailPage = {
   onImageError: (event: WechatMiniprogram.CustomEvent<{ errMsg?: string }>) => void;
   reference: (event: WechatMiniprogram.TouchEvent) => Promise<void>;
   illustrate: (event: WechatMiniprogram.TouchEvent) => Promise<void>;
+  generatePlan: (event: WechatMiniprogram.TouchEvent) => Promise<void>;
 };
 
 const readDetail = vi.mocked(getPictureBook);
 const readReferences = vi.mocked(listCharacterReferences);
 const submitReference = vi.mocked(generateCharacterReference);
 const submitIllustration = vi.mocked(generateIllustration);
+const submitPlan = vi.mocked(generatePictureBookPlan);
+const readJob = vi.mocked(getPictureBookJob);
+const applyPlan = vi.mocked(applyPictureBookJob);
+const token = vi.mocked(consumerToken);
 const oldUrl = 'https://private.invalid/cover.png?authorization=old-secret';
 const newUrl = 'https://private.invalid/cover.png?authorization=new-secret';
 let definition: DetailPage;
 
 function book(url: string, withCharacter = true): PictureBookDetail {
   return {
-    pictureBook: { title: '已保存的绘本' },
+    pictureBook: { id: 'owned-book', title: '已保存的绘本' },
     characters: withCharacter
-      ? [{ characterId: 'character-1', confirmed: true, locked: true }]
+      ? [{ characterId: 'character-1', pictureBookId: 'owned-book', confirmed: true, locked: true }]
       : [],
     pages: [
       {
         id: 'page-1',
-        illustrations: [{ playbackUrl: url }],
+        pictureBookId: 'owned-book',
+        illustrations: [{ id: 'illustration-1', pageId: 'page-1', playbackUrl: url }],
       },
     ],
   } as unknown as PictureBookDetail;
@@ -74,7 +94,7 @@ function instance(): DetailPage {
     data: {
       ...definition.data,
       id: 'owned-book',
-      detail: null,
+      detail: book(oldUrl),
       references: {},
       busy: false,
       polling: false,
@@ -84,6 +104,11 @@ function instance(): DetailPage {
     pageClosed: false,
     loadRevision: 0,
     pollingToken: 0,
+    planRevision: 0,
+    visibleSession: 'session-a',
+    planNeedsReview: false,
+    planPendingSession: '',
+    planReviewSession: '',
     setData(changes: Record<string, unknown>) {
       Object.assign(this.data, changes);
     },
@@ -106,6 +131,7 @@ afterEach(() => {
   vi.restoreAllMocks();
   vi.resetAllMocks();
 });
+beforeEach(() => token.mockReturnValue('session-a'));
 
 afterAll(() => vi.unstubAllGlobals());
 
@@ -130,21 +156,15 @@ describe('picture-book detail owner-scoped media refresh (#189)', () => {
     expect(page.data.imageError).toBe(false);
   });
 
-  it('keeps pending refresh during busy or polling actions', async () => {
+  it('refreshes private content on return even if a prior action was busy', async () => {
     readDetail.mockResolvedValue(book(oldUrl, false));
     const page = instance();
     await page.load();
     page.onHide();
     page.data.busy = true;
     page.onShow();
-    expect(readDetail).toHaveBeenCalledTimes(1);
-    page.data.busy = false;
-    page.data.polling = true;
-    page.onShow();
-    expect(readDetail).toHaveBeenCalledTimes(1);
-    page.data.polling = false;
-    page.onShow();
     await vi.waitFor(() => expect(readDetail).toHaveBeenCalledTimes(2));
+    expect(page.data.busy).toBe(false);
   });
 
   it('never logs raw WeChat image errors or signed bearer URLs', () => {
@@ -157,7 +177,7 @@ describe('picture-book detail owner-scoped media refresh (#189)', () => {
     expect(info).not.toHaveBeenCalled();
   });
 
-  it('keeps the error visible if a refreshed owner GET returns an unchanged URL', async () => {
+  it('clears stale image errors and bearer links when returning from a hidden page', async () => {
     readDetail.mockResolvedValue(book(oldUrl, false));
     const page = instance();
     await page.load();
@@ -165,7 +185,7 @@ describe('picture-book detail owner-scoped media refresh (#189)', () => {
     page.onHide();
     page.onShow();
     await vi.waitFor(() => expect(readDetail).toHaveBeenCalledTimes(2));
-    expect(page.data.imageError).toBe(true);
+    expect(page.data.imageError).toBe(false);
   });
 
   it('ignores older loads after a newer resume load succeeds', async () => {
@@ -205,6 +225,52 @@ describe('picture-book detail owner-scoped media refresh (#189)', () => {
     await pending;
     expect(page.data.detail).toBeNull();
     expect(page.pageClosed).toBe(true);
+  });
+
+  it('clears private media on hide and does not republish a late prior-account read', async () => {
+    let release: (detail: PictureBookDetail) => void = () => {};
+    readDetail.mockImplementationOnce(() => new Promise((resolve) => (release = resolve)));
+    const page = instance();
+    const pending = page.load();
+    page.onHide();
+    expect(page.data.detail).toBeNull();
+    expect(page.data.references).toEqual({});
+    token.mockReturnValue('session-b');
+    release(book(newUrl));
+    await pending;
+    expect(page.data.detail).toBeNull();
+    expect(page.visibleSession).toBe('');
+  });
+
+  it('rejects a wrong book and an illustration associated with another page', async () => {
+    readDetail.mockResolvedValueOnce({
+      ...book(oldUrl, false),
+      pictureBook: { ...book(oldUrl, false).pictureBook, id: 'foreign-book' },
+    });
+    const page = instance();
+    await page.load();
+    expect(page.data.detail).toBeNull();
+    expect(page.data.error).toBe('绘本加载失败');
+
+    const invalid = book(newUrl, false);
+    invalid.pages[0]!.illustrations[0]!.pageId = 'another-page';
+    readDetail.mockResolvedValueOnce(invalid);
+    await page.load();
+    expect(page.data.detail).toBeNull();
+    expect(page.visibleSession).toBe('');
+  });
+
+  it('does not show signed media returned by a former account request', async () => {
+    let release: (detail: PictureBookDetail) => void = () => {};
+    readDetail.mockImplementationOnce(() => new Promise((resolve) => (release = resolve)));
+    const page = instance();
+    const pending = page.load();
+    token.mockReturnValue('session-b');
+    release(book(oldUrl));
+    await pending;
+    expect(page.data.detail).toBeNull();
+    expect(page.data.error).toContain('登录状态已变化');
+    expect(page.visibleSession).toBe('');
   });
 });
 
@@ -251,6 +317,7 @@ describe('picture-book background image job recovery (#112)', () => {
           illustrations: [
             {
               id: 'revision-2',
+              pageId: 'page-1',
               status: 'FAILED',
               errorCode: 'IMAGE_PROVIDER_UNAVAILABLE',
             },
@@ -375,4 +442,150 @@ describe('picture-book background image job recovery (#112)', () => {
       expect(page.data.error).toContain('登录状态已失效');
     },
   );
+
+  it('preserves an accepted planning job after hiding but never restores the hidden book', async () => {
+    submitPlan.mockResolvedValue({
+      pictureBookId: 'owned-book',
+      jobId: 'job-1',
+      operation: 'STORYBOARD',
+      status: 'QUEUED',
+    });
+    readJob.mockResolvedValue({
+      pictureBookId: 'owned-book',
+      jobId: 'job-1',
+      operation: 'STORYBOARD',
+      status: 'SUCCEEDED',
+    } as never);
+    let apply: (detail: PictureBookDetail) => void = () => {};
+    applyPlan.mockImplementationOnce(() => new Promise((resolve) => (apply = resolve)));
+    const page = instance();
+    const pending = page.generatePlan(touch({ operation: 'STORYBOARD' }));
+    await vi.waitFor(() => expect(applyPlan).toHaveBeenCalledOnce());
+    page.onHide();
+    apply(book(newUrl));
+    await pending;
+    expect(applyPlan).toHaveBeenCalledWith('owned-book', 'job-1');
+    expect(page.data.detail).toBeNull();
+    expect(page.data.busy).toBe(false);
+  });
+
+  it('rejects an accepted planning job belonging to another book before polling', async () => {
+    submitPlan.mockResolvedValue({
+      pictureBookId: 'foreign-book',
+      jobId: 'job-1',
+      operation: 'STORYBOARD',
+      status: 'QUEUED',
+    });
+    const page = instance();
+    await page.generatePlan(touch({ operation: 'STORYBOARD' }));
+    expect(readJob).not.toHaveBeenCalled();
+    expect(applyPlan).not.toHaveBeenCalled();
+    expect(page.data.error).toContain('勿重复提交');
+    expect(page.data.planNeedsReview).toBe(true);
+  });
+
+  it('does not start a second paid planning job when the first result is uncertain', async () => {
+    submitPlan.mockResolvedValue({
+      pictureBookId: 'owned-book',
+      jobId: 'job-1',
+      operation: 'STORYBOARD',
+      status: 'QUEUED',
+    });
+    readJob.mockRejectedValueOnce(new Error('network:timeout'));
+    const page = instance();
+    await page.generatePlan(touch({ operation: 'STORYBOARD' }));
+    expect(page.data.planNeedsReview).toBe(true);
+    expect(page.data.error).toContain('勿重复提交');
+    await page.generatePlan(touch({ operation: 'STORYBOARD' }));
+    expect(submitPlan).toHaveBeenCalledOnce();
+    readDetail.mockResolvedValueOnce(book(newUrl, false));
+    await page.load();
+    expect(page.data.planNeedsReview).toBe(true);
+    expect(page.data.error).toContain('勿重复提交');
+  });
+
+  it('continues one accepted planning job after hide/show without starting a second', async () => {
+    submitPlan.mockResolvedValue({
+      pictureBookId: 'owned-book',
+      jobId: 'job-1',
+      operation: 'STORYBOARD',
+      status: 'QUEUED',
+    });
+    let finish: (status: Awaited<ReturnType<typeof getPictureBookJob>>) => void = () => {};
+    readJob.mockImplementationOnce(() => new Promise((resolve) => (finish = resolve)));
+    applyPlan.mockResolvedValue(book(newUrl));
+    readDetail.mockResolvedValue(book(oldUrl));
+    readReferences.mockResolvedValue({ references: [] });
+    const page = instance();
+    const pending = page.generatePlan(touch({ operation: 'STORYBOARD' }));
+    await vi.waitFor(() => expect(readJob).toHaveBeenCalledOnce());
+    page.onHide();
+    page.onShow();
+    await vi.waitFor(() => expect(page.visibleSession).toBe('session-a'));
+    await page.generatePlan(touch({ operation: 'STORYBOARD' }));
+    expect(submitPlan).toHaveBeenCalledOnce();
+    finish({
+      pictureBookId: 'owned-book',
+      jobId: 'job-1',
+      operation: 'STORYBOARD',
+      status: 'SUCCEEDED',
+    } as never);
+    await pending;
+    expect(applyPlan).toHaveBeenCalledOnce();
+    expect(page.data.detail?.pages[0]?.illustrations[0]?.playbackUrl).toBe(newUrl);
+  });
+
+  it('never applies a completed planning job after the user switches accounts', async () => {
+    submitPlan.mockResolvedValue({
+      pictureBookId: 'owned-book',
+      jobId: 'job-1',
+      operation: 'STORYBOARD',
+      status: 'QUEUED',
+    });
+    let finish: (status: Awaited<ReturnType<typeof getPictureBookJob>>) => void = () => {};
+    readJob.mockImplementationOnce(() => new Promise((resolve) => (finish = resolve)));
+    const page = instance();
+    const pending = page.generatePlan(touch({ operation: 'STORYBOARD' }));
+    await vi.waitFor(() => expect(readJob).toHaveBeenCalledOnce());
+    token.mockReturnValue('session-b');
+    finish({
+      pictureBookId: 'owned-book',
+      jobId: 'job-1',
+      operation: 'STORYBOARD',
+      status: 'SUCCEEDED',
+    } as never);
+    await pending;
+    expect(applyPlan).not.toHaveBeenCalled();
+    expect(page.data.detail).toBeNull();
+    expect(page.visibleSession).toBe('');
+  });
+
+  it('does not start new paid image jobs after the page has hidden its private data', async () => {
+    const page = instance();
+    page.onHide();
+    await page.illustrate(touch({ pageId: 'page-1' }));
+    await page.reference(touch({ characterId: 'character-1' }));
+    expect(submitIllustration).not.toHaveBeenCalled();
+    expect(submitReference).not.toHaveBeenCalled();
+  });
+
+  it('stops paid-image polling after a session switch and clears the prior book', async () => {
+    let accepted: (value: Awaited<ReturnType<typeof generateIllustration>>) => void = () => {};
+    submitIllustration.mockImplementationOnce(() => new Promise((resolve) => (accepted = resolve)));
+    const page = instance();
+    const pending = page.illustrate(touch({ pageId: 'page-1' }));
+    token.mockReturnValue('session-b');
+    accepted({
+      pictureBookId: 'owned-book',
+      pageId: 'page-1',
+      illustrationId: 'revision-1',
+      revisionNumber: 1,
+      status: 'QUEUED',
+    });
+    await pending;
+    expect(submitIllustration).toHaveBeenCalledOnce();
+    expect(readDetail).not.toHaveBeenCalled();
+    expect(page.data.detail).toBeNull();
+    expect(page.visibleSession).toBe('');
+  });
 });

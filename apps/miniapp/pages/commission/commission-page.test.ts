@@ -1,6 +1,10 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CommerceApiError } from '../../services/commerce';
-import { createReferralLink, createWithdrawal } from '../../services/commission';
+import {
+  createReferralLink,
+  createWithdrawal,
+  getCommissionAccount,
+} from '../../services/commission';
 import { consumerToken, storedConsumerId } from '../../services/consumer-session';
 import { persistPendingWithdrawal, readPendingWithdrawal } from './withdrawal-retry';
 import { canUseCommissionActions, type CommissionAccountStatus } from './commission-state';
@@ -37,10 +41,13 @@ type CommissionTestData = {
 
 type CommissionTestPage = {
   accountUserId: string;
+  accountSession: string;
   data: CommissionTestData;
   setData(update: Partial<CommissionTestData>): void;
   createLink(): Promise<void>;
   withdraw(): Promise<void>;
+  onHide(): void;
+  onUnload(): void;
 };
 
 let pageDefinition: CommissionTestPage;
@@ -75,6 +82,7 @@ function readyPage(): CommissionTestPage {
   const page: CommissionTestPage = {
     ...pageDefinition,
     accountUserId: consumerId,
+    accountSession: 'session-a',
     data: { ...pageDefinition.data },
     setData(update) {
       Object.assign(this.data, update);
@@ -91,6 +99,94 @@ function readyPage(): CommissionTestPage {
 }
 
 describe('commission action failures', () => {
+  it('rejects a withdrawal after a same-user token rotation without posting', async () => {
+    const page = readyPage();
+    vi.mocked(consumerToken).mockReturnValue('session-new');
+    await page.withdraw();
+    expect(createWithdrawal).not.toHaveBeenCalled();
+    expect(readPendingWithdrawal(consumerId)).toBeNull();
+    expect(page.data.accountStatus).toBe('unauthenticated');
+    expect(page.data.availableMinor).toBe(0);
+    expect(page.accountSession).toBe('');
+  });
+  it('does not reload a hidden account when a referral request completes', async () => {
+    let resolveLink: () => void = () => {};
+    vi.mocked(createReferralLink).mockImplementationOnce(
+      () => new Promise((resolve) => (resolveLink = () => resolve({} as never))),
+    );
+    const page = readyPage();
+    const pending = page.createLink();
+    page.onHide();
+    resolveLink();
+    await pending;
+    expect(getCommissionAccount).not.toHaveBeenCalled();
+    expect(page.data.availableMinor).toBe(0);
+    expect(page.data.links).toEqual([]);
+    expect(page.data.busy).toBe(false);
+  });
+
+  it('retains an ambiguous withdrawal key without showing old error data after hiding', async () => {
+    let rejectWithdrawal: () => void = () => {};
+    vi.mocked(createWithdrawal).mockImplementationOnce(
+      () => new Promise((_, reject) => (rejectWithdrawal = () => reject(new Error('offline')))),
+    );
+    const page = readyPage();
+    const pending = page.withdraw();
+    page.onHide();
+    rejectWithdrawal();
+    await pending;
+    expect(readPendingWithdrawal(consumerId)?.amountMinor).toBe(1000);
+    expect(page.data.availableMinor).toBe(0);
+    expect(page.data.error).toBe('');
+    expect(getCommissionAccount).not.toHaveBeenCalled();
+  });
+
+  it('confirms the original withdrawal result while hidden without reloading private data', async () => {
+    let resolveWithdrawal: () => void = () => {};
+    vi.mocked(createWithdrawal).mockImplementationOnce(
+      (amountMinor, clientRequestId) =>
+        new Promise((resolve) => {
+          resolveWithdrawal = () =>
+            resolve({
+              id: '11111111-1111-4111-8111-111111111111',
+              amountMinor,
+              clientRequestId,
+              status: 'REQUESTED',
+              version: 1,
+              createdAt: '2026-11-26T00:00:00Z',
+              paidAt: null,
+            });
+        }),
+    );
+    const page = readyPage();
+    const pending = page.withdraw();
+    const saved = readPendingWithdrawal(consumerId)!;
+    expect(saved.amountMinor).toBe(1000);
+    page.onHide();
+    resolveWithdrawal();
+    await pending;
+    expect(readPendingWithdrawal(consumerId)).toBeNull();
+    expect(page.data.availableMinor).toBe(0);
+    expect(page.data.withdrawals).toEqual([]);
+    expect(getCommissionAccount).not.toHaveBeenCalled();
+  });
+
+  it('invalidates visible financial data after an account changes during referral creation', async () => {
+    let resolveLink: () => void = () => {};
+    vi.mocked(createReferralLink).mockImplementationOnce(
+      () => new Promise((resolve) => (resolveLink = () => resolve({} as never))),
+    );
+    const page = readyPage();
+    const pending = page.createLink();
+    vi.mocked(consumerToken).mockReturnValue('session-b');
+    vi.mocked(storedConsumerId).mockReturnValue('22222222-2222-4222-8222-222222222222');
+    resolveLink();
+    await pending;
+    expect(page.data.accountStatus).toBe('unauthenticated');
+    expect(page.data.availableMinor).toBe(0);
+    expect(page.data.links).toEqual([]);
+    expect(getCommissionAccount).not.toHaveBeenCalled();
+  });
   it('surfaces failed referral-link creation while preserving the verified account', async () => {
     const page = readyPage();
     vi.mocked(createReferralLink).mockRejectedValueOnce(new CommerceApiError(503));

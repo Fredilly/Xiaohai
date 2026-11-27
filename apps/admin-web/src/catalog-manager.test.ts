@@ -9,8 +9,13 @@ import {
 
 describe('HQ catalog session scope', () => {
   it('remounts product and store editors when the login session changes', () => {
-    expect(CatalogManager({ token: 'staff-session-a' }).key).toBe('staff-session-a');
-    expect(CatalogManager({ token: 'staff-session-b' }).key).toBe('staff-session-b');
+    const staffAccountId = '11111111-1111-4111-8111-111111111111';
+    expect(CatalogManager({ token: 'staff-session-a', staffAccountId }).key).toBe(
+      `${staffAccountId}:staff-session-a`,
+    );
+    expect(CatalogManager({ token: 'staff-session-b', staffAccountId }).key).toBe(
+      `${staffAccountId}:staff-session-b`,
+    );
   });
 });
 

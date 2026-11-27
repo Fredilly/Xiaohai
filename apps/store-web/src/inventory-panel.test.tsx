@@ -5,6 +5,7 @@ import { InventoryPanel } from './inventory-panel';
 const props = {
   token: 'test',
   storeId: '11111111-1111-4111-8111-111111111111',
+  staffAccountId: '66666666-6666-4666-8666-666666666666',
 };
 
 describe('first stock catalog registration UI', () => {
@@ -14,7 +15,8 @@ describe('first stock catalog registration UI', () => {
     );
     expect(html).toContain('首次库存建档');
     expect(html).toContain('搜索待建档 SKU');
-    expect(html).toContain('总部先建立商品草稿');
+    expect(html).toContain('商品草稿可由总部或获授权的门店创建');
+    expect(html).toContain('搜索商品或 SKU');
     expect(html).toContain('库存流水');
   });
 

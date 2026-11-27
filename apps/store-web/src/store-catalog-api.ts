@@ -93,6 +93,8 @@ export async function updateStoreCatalog(
 }
 
 /** New Store merchandise stays DRAFT and starts with zero physical stock. */
+export class StoreDraftRejectedError extends Error {}
+
 export async function createStoreDraftProduct(
   token: string,
   storeId: string,
@@ -116,10 +118,19 @@ export async function createStoreDraftProduct(
     },
   );
   if (!response.ok) {
-    if (response.status === 401) throw new Error('登录已过期，请重新登录');
-    if (response.status === 403) throw new Error('没有本店商品创建权限');
-    if (response.status === 409) throw new Error('商品或条码已存在，或当前请求与上次录入不一致');
-    throw new Error('创建商品草稿失败（HTTP ' + response.status + '）');
+    // These responses definitively reject this attempt. A timeout, 5xx or
+    // malformed success body might follow a committed create and must keep its key.
+    const rejected = [400, 401, 403, 409, 422].includes(response.status);
+    const failure =
+      response.status === 401
+        ? '登录已过期，请重新登录'
+        : response.status === 403
+          ? '没有本店商品创建权限'
+          : response.status === 409
+            ? '商品或条码已存在，或当前请求与上次录入不一致'
+            : '创建商品草稿失败（HTTP ' + response.status + '）';
+    if (rejected) throw new StoreDraftRejectedError(failure);
+    throw new Error(failure);
   }
   return adminProductSchema.parse(await response.json());
 }

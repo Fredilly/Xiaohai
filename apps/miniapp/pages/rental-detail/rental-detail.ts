@@ -135,16 +135,24 @@ Page({
       )
         throw new Error('RENTAL_CANCEL_CONTEXT_MISMATCH');
       clearCancellationKey(userId, rentalId, key);
-      if (
-        consumerToken() === session &&
-        storedConsumerId() === userId &&
-        this.visibleSession === session &&
-        this.visibleUserId === userId
-      )
-        await this.load();
+      if (this.visibleSession === session && this.visibleUserId === userId) {
+        if (consumerToken() === session && storedConsumerId() === userId) await this.load();
+        else {
+          this.visibleSession = '';
+          this.visibleUserId = '';
+          this.setData({ rental: null, error: '登录状态已变化，请重新读取租借记录。' });
+        }
+      }
     } catch {
-      if (consumerToken() === session && storedConsumerId() === userId)
-        this.setData({ error: '取消结果未确认，请刷新记录；再次提交会沿用原请求。' });
+      if (this.visibleSession === session && this.visibleUserId === userId) {
+        if (consumerToken() === session && storedConsumerId() === userId)
+          this.setData({ error: '取消结果未确认，请刷新记录；再次提交会沿用原请求。' });
+        else {
+          this.visibleSession = '';
+          this.visibleUserId = '';
+          this.setData({ rental: null, error: '登录状态已变化，请重新读取租借记录。' });
+        }
+      }
     } finally {
       this.setData({ busy: false });
     }

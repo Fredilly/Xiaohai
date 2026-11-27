@@ -62,12 +62,13 @@
       />
 
       <view wx:if="{{errorMessage}}" class="error-note">{{errorMessage}}</view>
+      <button wx:if="{{createdWorkId}}" class="secondary-btn" bindtap="openCreated">查看已创建的故事</button>
 
       <text class="step-label">03　开始创作</text>
       <button
         class="primary-btn"
         loading="{{loading}}"
-        disabled="{{loading}}"
+        disabled="{{loading || creationUnknown || createdWorkId}}"
         bindtap="submit"
       >
         创建故事

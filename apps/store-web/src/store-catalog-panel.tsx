@@ -10,8 +10,14 @@ import {
   createStoreDraftProduct,
   listStoreCatalog,
   previewStoreCatalogEdit,
+  StoreDraftRejectedError,
   updateStoreCatalog,
 } from './store-catalog-api';
+import {
+  clearStoreDraftRequest,
+  pendingStoreDraft,
+  reserveStoreDraftRequest,
+} from './store-draft-retry';
 
 const limit = 30;
 
@@ -26,6 +32,7 @@ export function parseStorePriceToMinor(value: string): number | null {
 
 type StoreCatalogProps = {
   token: string;
+  staffAccountId: string;
   storeId: string;
   storeName: string;
 };
@@ -34,10 +41,15 @@ type StoreCatalogProps = {
 // image uploads. Shared SKUs can exist at both stores, so retaining an editor
 // would otherwise risk applying an old store's values to the new selection.
 export function StoreCatalogPanel(props: StoreCatalogProps) {
-  return <StoreCatalogSession key={`${props.token}:${props.storeId}`} {...props} />;
+  return (
+    <StoreCatalogSession
+      key={`${props.staffAccountId}:${props.token}:${props.storeId}`}
+      {...props}
+    />
+  );
 }
 
-function StoreCatalogSession({ token, storeId, storeName }: StoreCatalogProps) {
+function StoreCatalogSession({ token, staffAccountId, storeId, storeName }: StoreCatalogProps) {
   const [query, setQuery] = useState('');
   const [applied, setApplied] = useState('');
   const [offset, setOffset] = useState(0);
@@ -241,6 +253,7 @@ function StoreCatalogSession({ token, storeId, storeName }: StoreCatalogProps) {
             </button>
             <StoreCatalogDraftCreateForm
               token={token}
+              staffAccountId={staffAccountId}
               storeId={storeId}
               onCancel={() => setCreating(false)}
               onSaved={() => {
@@ -294,16 +307,17 @@ function StoreCatalogSession({ token, storeId, storeName }: StoreCatalogProps) {
 
 export function StoreCatalogDraftCreateForm({
   token,
+  staffAccountId,
   storeId,
   onCancel,
   onSaved,
 }: {
   token: string;
+  staffAccountId: string;
   storeId: string;
   onCancel: () => void;
   onSaved: () => void;
 }) {
-  const [idempotencyKey] = useState(() => crypto.randomUUID());
   const [kind, setKind] = useState<'BOOK' | 'OTHER'>('BOOK');
   const [name, setName] = useState('');
   const [bookTitle, setBookTitle] = useState('');
@@ -316,7 +330,40 @@ export function StoreCatalogDraftCreateForm({
   const [description, setDescription] = useState('');
   const [coverUrl, setCoverUrl] = useState('');
   const [saving, setSaving] = useState(false);
+  const [hasPending, setHasPending] = useState(false);
   const [status, setStatus] = useState('仅创建未上架草稿，不自动录入真实库存。');
+
+  function restorePending() {
+    try {
+      const record = pendingStoreDraft(staffAccountId, storeId);
+      if (!record) {
+        setHasPending(false);
+        return;
+      }
+      const input = record.input;
+      setKind(input.book ? 'BOOK' : 'OTHER');
+      setName(input.name);
+      setBookTitle(input.book?.title ?? '');
+      setAuthor(input.book?.author ?? '');
+      setPublisher(input.book?.publisher ?? '');
+      setIsbn(input.book?.isbn ?? '');
+      setSkuName(input.sku.name);
+      setSkuCode(input.sku.code ?? '');
+      setPriceYuan((input.sku.priceMinor / 100).toFixed(2));
+      setDescription(input.description ?? '');
+      setCoverUrl(input.coverUrl ?? '');
+      setHasPending(true);
+      setStatus('已恢复上次未确认的商品草稿，请核对原资料并使用同一请求重试。');
+    } catch (error) {
+      setHasPending(true);
+      setStatus(error instanceof Error ? error.message : '待确认的商品草稿读取失败');
+    }
+  }
+
+  useEffect(() => {
+    restorePending();
+    // The component is keyed by staff and store; this only restores on mount.
+  }, [staffAccountId, storeId]);
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -373,12 +420,28 @@ export function StoreCatalogDraftCreateForm({
     };
     setSaving(true);
     setStatus('正在创建本店草稿并核对门店关联…');
+    let requestKey: string | null = null;
     try {
-      await createStoreDraftProduct(token, storeId, input, idempotencyKey);
+      const pending = reserveStoreDraftRequest(staffAccountId, storeId, input);
+      requestKey = pending.requestKey;
+      setHasPending(true);
+      await createStoreDraftProduct(token, storeId, pending.input, requestKey);
+      clearStoreDraftRequest(staffAccountId, storeId, requestKey);
+      setHasPending(false);
       onSaved();
     } catch (error) {
-      // Keep the same request key so a network retry cannot duplicate a draft.
-      setStatus(error instanceof Error ? error.message : '创建失败');
+      if (error instanceof StoreDraftRejectedError && requestKey) {
+        try {
+          clearStoreDraftRequest(staffAccountId, storeId, requestKey);
+          setHasPending(false);
+        } catch {
+          setStatus('本次创建已被拒绝，但本地待确认记录无法清除，请停止重试并核对。');
+          return;
+        }
+      }
+      setStatus(
+        error instanceof Error ? error.message : '创建结果未确认；原请求已保留，请勿重新建档。',
+      );
     } finally {
       setSaving(false);
     }
@@ -388,6 +451,14 @@ export function StoreCatalogDraftCreateForm({
     <form className="catalog-correction-form" onSubmit={(event) => void save(event)}>
       <h3>新增商品草稿</h3>
       <p>可先录入真实商品资料，但默认不会公开上架或产生任何库存数量。</p>
+      {hasPending && (
+        <div className="meiping-store-actions">
+          <strong>存在未确认的草稿创建请求</strong>
+          <button type="button" disabled={saving} onClick={restorePending}>
+            恢复上次提交内容
+          </button>
+        </div>
+      )}
       <label>
         商品类型
         <select

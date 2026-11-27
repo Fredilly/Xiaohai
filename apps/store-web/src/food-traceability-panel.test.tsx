@@ -7,6 +7,7 @@ describe('physical food return and provenance entry', () => {
       <FoodTraceabilityPanel
         token="synthetic"
         storeId="11111111-1111-4111-8111-111111111111"
+        staffAccountId="66666666-6666-4666-8666-666666666666"
         permissions={['inventory.read']}
       />,
     );

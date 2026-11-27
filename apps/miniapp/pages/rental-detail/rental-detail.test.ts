@@ -163,6 +163,41 @@ describe('rental detail identity and cancellation retry', () => {
     expect(p.visibleSession).toBe('');
   });
 
+  it('keeps the original retry key without posting an error to a hidden page', async () => {
+    const p = page();
+    await p.load();
+    let rejectCancel: () => void = () => {};
+    vi.mocked(cancelRental).mockImplementationOnce(
+      () => new Promise((_, reject) => (rejectCancel = () => reject(new Error('timeout')))),
+    );
+    const pending = p.cancel();
+    p.onHide();
+    rejectCancel();
+    await pending;
+    expect(pendingCancellationKey(consumer, rentalId)).toBe(requestKey);
+    expect(p.data.rental).toBeNull();
+    expect(p.data.error).toBe('');
+    expect(p.data.busy).toBe(false);
+  });
+
+  it('clears visible rental details when the account changes during cancellation', async () => {
+    const p = page();
+    await p.load();
+    let rejectCancel: () => void = () => {};
+    vi.mocked(cancelRental).mockImplementationOnce(
+      () => new Promise((_, reject) => (rejectCancel = () => reject(new Error('timeout')))),
+    );
+    const pending = p.cancel();
+    vi.mocked(consumerToken).mockReturnValue('account-b');
+    vi.mocked(storedConsumerId).mockReturnValue(other);
+    rejectCancel();
+    await pending;
+    expect(pendingCancellationKey(consumer, rentalId)).toBe(requestKey);
+    expect(p.data.rental).toBeNull();
+    expect(p.visibleSession).toBe('');
+    expect(p.data.error).toContain('登录状态已变化');
+  });
+
   it('never backfills an old account after a session switch', async () => {
     let resolve: (value: Awaited<ReturnType<typeof getRental>>) => void = () => {};
     vi.mocked(getRental)

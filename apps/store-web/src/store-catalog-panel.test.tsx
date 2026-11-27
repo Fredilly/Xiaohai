@@ -14,13 +14,16 @@ describe('Store catalog direct-edit module', () => {
   it('remounts the entire editor session on a store or login switch', () => {
     const props = {
       token: 'session-a',
+      staffAccountId: '22222222-2222-4222-8222-222222222222',
       storeId: '11111111-1111-4111-8111-111111111111',
       storeName: '东门',
     };
     const east = StoreCatalogPanel(props);
     const south = StoreCatalogPanel({ ...props, storeId: '33333333-3333-4333-8333-333333333333' });
     const anotherLogin = StoreCatalogPanel({ ...props, token: 'session-b' });
-    expect(east.key).toBe('session-a:11111111-1111-4111-8111-111111111111');
+    expect(east.key).toBe(
+      '22222222-2222-4222-8222-222222222222:session-a:11111111-1111-4111-8111-111111111111',
+    );
     expect(south.key).not.toBe(east.key);
     expect(anotherLogin.key).not.toBe(east.key);
   });
@@ -29,6 +32,7 @@ describe('Store catalog direct-edit module', () => {
     const html = renderToStaticMarkup(
       <StoreCatalogPanel
         token="mock"
+        staffAccountId="22222222-2222-4222-8222-222222222222"
         storeId="11111111-1111-4111-8111-111111111111"
         storeName="虚拟门店"
       />,
@@ -68,6 +72,7 @@ describe('Store catalog direct-edit module', () => {
     const html = renderToStaticMarkup(
       <StoreCatalogDraftCreateForm
         token="synthetic"
+        staffAccountId="22222222-2222-4222-8222-222222222222"
         storeId="11111111-1111-4111-8111-111111111111"
         onCancel={() => {}}
         onSaved={() => {}}

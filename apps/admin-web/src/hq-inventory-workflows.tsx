@@ -256,6 +256,7 @@ export function HqInventoryWorkflows({
       <FoodStockPanel
         token={token}
         storeId={storeId}
+        staffAccountId={me.staff.id}
         permissions={me.permissions}
         items={balances}
       />

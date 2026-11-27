@@ -190,7 +190,7 @@ function Shell({
         ) : current === 'payments' ? (
           <PaymentsManager token={token} />
         ) : current === 'catalog' ? (
-          <CatalogManager token={token} />
+          <CatalogManager token={token} staffAccountId={me.staff.id} />
         ) : current === 'content' ? (
           <ContentManager token={token} />
         ) : current === 'ai' ? (

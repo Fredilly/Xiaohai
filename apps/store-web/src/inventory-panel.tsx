@@ -9,6 +9,20 @@ import {
   registerOpeningStock,
 } from './inventory-api';
 import { StoreMeipingPreflightPanel } from './store-meiping-preflight-panel';
+import {
+  assertOpeningStockResponse,
+  clearOpeningStock,
+  pendingOpeningStock,
+  reserveOpeningStock,
+  type PendingOpeningStock,
+} from './opening-stock-retry';
+import {
+  assertInventoryMutationResponse,
+  clearInventoryMutation,
+  pendingInventoryMutation,
+  reserveInventoryMutation,
+  type PendingInventoryMutation,
+} from './inventory-mutation-retry';
 
 type Balance = Awaited<ReturnType<typeof loadInventory>>['items'][number];
 type Candidate = Awaited<ReturnType<typeof findOpeningStockCandidates>>['items'][number];
@@ -16,21 +30,24 @@ type Candidate = Awaited<ReturnType<typeof findOpeningStockCandidates>>['items']
 type InventoryPanelProps = {
   token: string;
   storeId: string;
+  staffAccountId: string;
   permissions: string[];
 };
 
 export function InventoryPanel(props: InventoryPanelProps) {
-  return <InventorySession key={`${props.token}:${props.storeId}`} {...props} />;
+  return (
+    <InventorySession key={`${props.staffAccountId}:${props.token}:${props.storeId}`} {...props} />
+  );
 }
 
-function InventorySession({ token, storeId, permissions }: InventoryPanelProps) {
+function InventorySession({ token, storeId, staffAccountId, permissions }: InventoryPanelProps) {
   const [items, setItems] = useState<Balance[]>([]);
   const [selectedKey, setSelectedKey] = useState('');
   const [inventoryQuery, setInventoryQuery] = useState('');
   const [appliedInventoryQuery, setAppliedInventoryQuery] = useState('');
   const [status, setStatus] = useState('正在加载库存…');
   const [busy, setBusy] = useState(false);
-  const mutation = useRef<{ fingerprint: string; idempotencyKey: string } | null>(null);
+  const [pendingMutation, setPendingMutation] = useState<PendingInventoryMutation | null>(null);
   const mutationInFlight = useRef(false);
   const inventoryRead = useRef(0);
   const currentQuery = useRef(appliedInventoryQuery);
@@ -38,9 +55,9 @@ function InventorySession({ token, storeId, permissions }: InventoryPanelProps) 
   const [openingSearch, setOpeningSearch] = useState('');
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [openingSkuId, setOpeningSkuId] = useState('');
-  const [openingStatus, setOpeningStatus] = useState('搜索总部商品或 SKU，开始本店首次库存建档。');
+  const [openingStatus, setOpeningStatus] = useState('搜索商品或 SKU，开始本店首次库存建档。');
   const [openingBusy, setOpeningBusy] = useState(false);
-  const openingKey = useRef(crypto.randomUUID());
+  const [pendingOpening, setPendingOpening] = useState<PendingOpeningStock | null>(null);
   const openingInFlight = useRef(false);
   const canOpen =
     permissions.includes('inventory.read') && permissions.includes('inventory.adjust');
@@ -70,6 +87,31 @@ function InventorySession({ token, storeId, permissions }: InventoryPanelProps) 
     setSelectedKey('');
   }, [storeId]);
 
+  useEffect(() => {
+    try {
+      const previous = pendingInventoryMutation(staffAccountId, storeId);
+      setPendingMutation(previous);
+      if (previous) setStatus('上次出库／调整结果未确认；请先按原键恢复或核对库存流水。');
+    } catch {
+      setStatus('待确认库存操作记录损坏或存储不可用，已停止新库存写入；请人工核对流水。');
+    }
+  }, [staffAccountId, storeId]);
+
+  useEffect(() => {
+    try {
+      const previous = pendingOpeningStock(staffAccountId, storeId);
+      setPendingOpening(previous);
+      if (previous)
+        setOpeningStatus(
+          previous.input.initialQuantity === 0
+            ? '上次 0 件首次建档未确认；不能重发 POST，请先只读核对本店 SKU 关联。'
+            : '上次首次库存建档结果未确认；可核对流水或使用原请求键重试。',
+        );
+    } catch {
+      setOpeningStatus('待确认建档记录无法安全读取，已停止新的建档写入；请核对真实库存。');
+    }
+  }, [staffAccountId, storeId]);
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (mutationInFlight.current) return;
@@ -82,49 +124,93 @@ function InventorySession({ token, storeId, permissions }: InventoryPanelProps) 
     if ((operation === 'ISSUE' && !canIssue) || (operation === 'ADJUST' && !canAdjust)) return;
     if (operation !== 'ISSUE' && operation !== 'ADJUST') return;
     const reasonValue = form.get('reason');
-    const reason = typeof reasonValue === 'string' ? reasonValue : '门店库存操作';
-    if (!Number.isSafeInteger(quantity) || quantity === 0 || Math.abs(quantity) > 1_000_000) return;
-    const fingerprint = JSON.stringify([
-      storeId,
-      row.skuId,
-      row.version,
-      operation,
-      quantity,
-      reason,
-    ]);
-    if (mutation.current?.fingerprint !== fingerprint)
-      mutation.current = { fingerprint, idempotencyKey: crypto.randomUUID() };
+    const reason = typeof reasonValue === 'string' ? reasonValue.trim() : '';
+    if (
+      !Number.isSafeInteger(quantity) ||
+      quantity === 0 ||
+      Math.abs(quantity) > 1_000_000 ||
+      (operation === 'ISSUE' && quantity < 0) ||
+      !reason
+    )
+      return;
     const base: InventoryMutationRequest = {
       storeId: row.storeId,
       skuId: row.skuId,
       quantity: Math.abs(quantity),
       expectedVersion: row.version,
-      idempotencyKey: mutation.current.idempotencyKey,
+      idempotencyKey: crypto.randomUUID(),
       reason,
     };
-    setBusy(true);
-    mutationInFlight.current = true;
     try {
-      if (operation === 'ISSUE') await issueInventory(token, base);
-      else
-        await adjustInventory(token, {
-          storeId: base.storeId,
-          skuId: base.skuId,
-          expectedVersion: base.expectedVersion,
-          idempotencyKey: base.idempotencyKey,
-          reason: base.reason,
-          quantityDelta: quantity,
-        });
-      setStatus('操作成功，库存与流水已同步更新');
-      mutation.current = null;
+      const saved = reserveInventoryMutation(
+        staffAccountId,
+        storeId,
+        operation,
+        operation === 'ISSUE'
+          ? base
+          : {
+              storeId: base.storeId,
+              skuId: base.skuId,
+              expectedVersion: base.expectedVersion,
+              idempotencyKey: base.idempotencyKey,
+              reason: base.reason,
+              quantityDelta: quantity,
+            },
+      );
+      setPendingMutation(saved);
+      await postMutation(saved, formElement);
+    } catch {
+      setStatus('上次库存操作未确认或请求键无法保存；已阻止新操作，请先恢复原键或核对流水。');
+    }
+  }
+
+  async function postMutation(saved: PendingInventoryMutation, form?: HTMLFormElement) {
+    if (mutationInFlight.current) return;
+    mutationInFlight.current = true;
+    setBusy(true);
+    setStatus('按保存的原请求键执行库存操作…');
+    let confirmed = false;
+    try {
+      const result =
+        saved.operation === 'ISSUE'
+          ? await issueInventory(token, saved.input)
+          : await adjustInventory(token, saved.input);
+      assertInventoryMutationResponse(saved, staffAccountId, result);
+      confirmed = true;
+      clearInventoryMutation(staffAccountId, storeId, saved.input.idempotencyKey);
+      setPendingMutation(null);
+      setStatus('操作成功，服务端已确认原请求的库存流水');
       await refresh();
-      formElement.reset();
+      form?.reset();
       setSelectedKey('');
-    } catch (error) {
-      setStatus(error instanceof Error ? `操作失败：${error.message}` : '操作失败');
+    } catch {
+      setStatus(
+        confirmed
+          ? '库存流水已确认，但本地待确认记录无法清除，请核对后处理。'
+          : '出库／调整结果未确认，原请求已保留；禁止更换参数生成新操作。',
+      );
     } finally {
       mutationInFlight.current = false;
       setBusy(false);
+    }
+  }
+
+  async function retryPendingMutation() {
+    if (mutationInFlight.current) return;
+    try {
+      const saved = pendingInventoryMutation(staffAccountId, storeId);
+      if (!saved) {
+        setPendingMutation(null);
+        return;
+      }
+      if (
+        (saved.operation === 'ISSUE' && !canIssue) ||
+        (saved.operation === 'ADJUST' && !canAdjust)
+      )
+        throw new Error('INVENTORY_PERMISSION_CHANGED');
+      await postMutation(saved);
+    } catch {
+      setStatus('无法安全恢复原操作或当前权限不足；请核对库存流水。');
     }
   }
 
@@ -166,25 +252,103 @@ function InventorySession({ token, storeId, permissions }: InventoryPanelProps) 
       !reason.trim()
     )
       return;
-    openingInFlight.current = true;
-    setOpeningBusy(true);
-    setOpeningStatus('正在建立库存记录并写入首次库存流水…');
     try {
-      await registerOpeningStock(token, {
+      const pending = pendingOpeningStock(staffAccountId, storeId);
+      if (pending?.input.initialQuantity === 0) {
+        setOpeningStatus('0 件首次建档结果未确认，禁止重发；请只读核对本店 SKU 关联。');
+        return;
+      }
+      const candidate = candidates.find((item) => item.skuId === openingSkuId);
+      if (!candidate) return;
+      const saved = reserveOpeningStock(staffAccountId, storeId, candidate.skuCode, {
         storeId,
         skuId: openingSkuId,
         initialQuantity: quantity,
         reason: reason.trim(),
-        idempotencyKey: openingKey.current,
+        idempotencyKey: crypto.randomUUID(),
       });
-      openingKey.current = crypto.randomUUID();
-      setCandidates((value) => value.filter((item) => item.skuId !== openingSkuId));
+      setPendingOpening(saved);
+      await postOpening(saved, form);
+    } catch {
+      setOpeningStatus(
+        '上次建档结果未确认或本地会话存储不可用，已阻止新建档；请先恢复原请求或核对流水。',
+      );
+    }
+  }
+
+  async function postOpening(saved: PendingOpeningStock, form?: HTMLFormElement) {
+    if (openingInFlight.current) return;
+    openingInFlight.current = true;
+    setOpeningBusy(true);
+    setOpeningStatus('正在按已保存的原请求建立本店首次库存记录…');
+    let confirmed = false;
+    try {
+      assertOpeningStockResponse(saved.input, await registerOpeningStock(token, saved.input));
+      confirmed = true;
+      clearOpeningStock(staffAccountId, storeId, saved.input.idempotencyKey);
+      setPendingOpening(null);
+      setCandidates((current) => current.filter((item) => item.skuId !== saved.input.skuId));
       setOpeningSkuId('');
-      form.reset();
-      setOpeningStatus('首次建档成功；有数量的商品已记入库存流水。草稿商品仍不可对外销售。');
+      form?.reset();
+      setOpeningStatus('首次库存建档已由服务端确认；正数库存有独立流水，草稿仍不可售。');
       await refresh();
-    } catch (error) {
-      setOpeningStatus(error instanceof Error ? `建档失败：${error.message}` : '建档失败');
+    } catch {
+      setOpeningStatus(
+        confirmed
+          ? '建档写入已成功确认，但本地待确认记录未能清理；请核对库存流水。'
+          : saved.input.initialQuantity === 0
+            ? '0 件建档结果未确认；只能只读核对关联是否存在，禁止直接重发 POST。'
+            : '首次建档结果未确认，原请求已保留；请核对库存流水或原键重试。',
+      );
+    } finally {
+      openingInFlight.current = false;
+      setOpeningBusy(false);
+    }
+  }
+
+  async function retryPendingOpening() {
+    if (openingInFlight.current) return;
+    try {
+      const saved = pendingOpeningStock(staffAccountId, storeId);
+      if (!saved) {
+        setPendingOpening(null);
+        return;
+      }
+      if (saved.input.initialQuantity === 0) {
+        setOpeningStatus('0 件建档没有可重放的唯一流水；只允许核对已建档状态。');
+        return;
+      }
+      await postOpening(saved);
+    } catch {
+      setOpeningStatus('无法安全恢复原建档请求，已停止写入；请核对库存流水。');
+    }
+  }
+
+  async function reconcileZeroOpening() {
+    if (openingInFlight.current) return;
+    openingInFlight.current = true;
+    setOpeningBusy(true);
+    try {
+      const saved = pendingOpeningStock(staffAccountId, storeId);
+      if (!saved || saved.input.initialQuantity !== 0) return;
+      const read = await loadInventory(token, storeId, saved.skuCode);
+      if (read.items.some((item) => item.storeId !== storeId))
+        throw new Error('INVENTORY_STORE_MISMATCH');
+      const found = read.items.find(
+        (item) => item.storeId === storeId && item.skuId === saved.input.skuId,
+      );
+      if (!found) {
+        setOpeningStatus('当前只读库存中未找到原 SKU；无法确定原 0 件写入是否成功，已保持阻塞。');
+        return;
+      }
+      clearOpeningStock(staffAccountId, storeId, saved.input.idempotencyKey);
+      setPendingOpening(null);
+      setOpeningStatus(
+        `已只读确认本店 SKU 关联存在（当前数量 ${found.onHand}）；不代表原请求必然成功，请按库存流水核对。`,
+      );
+      await refresh();
+    } catch {
+      setOpeningStatus('只读核对失败或返回对象不匹配；未再次 POST，待确认记录保留。');
     } finally {
       openingInFlight.current = false;
       setOpeningBusy(false);
@@ -195,7 +359,13 @@ function InventorySession({ token, storeId, permissions }: InventoryPanelProps) 
     <section className="panel inventory-panel">
       <span className="tag">M14 Inventory Operations</span>
       <h2>库存操作</h2>
-      <FoodStockPanel token={token} storeId={storeId} permissions={permissions} items={items} />
+      <FoodStockPanel
+        token={token}
+        storeId={storeId}
+        staffAccountId={staffAccountId}
+        permissions={permissions}
+        items={items}
+      />
       <p>当前门店由 M19 工作台选择器确定；余额、版本、写入权限与 Data Scope 仍由服务端确认。</p>
       {permissions.includes('inventory.receive') && (
         <StoreMeipingPreflightPanel token={token} storeId={storeId} />
@@ -204,10 +374,35 @@ function InventorySession({ token, storeId, permissions }: InventoryPanelProps) 
         <section aria-label="首次库存建档">
           <h3>首次库存建档</h3>
           <p>
-            总部先建立商品草稿；门店在这里搜索商品并登记首次实盘数量。只登记本店、尚未建档的
+            商品草稿可由总部或获授权的门店创建。门店在这里搜索商品并登记首次实盘数量。只登记本店、尚未建档的
             SKU，已有库存请使用下方调整流程。
           </p>
           <p>首次数量大于 0 时会留下库存流水；数量为 0 时仅建立零库存关联，不会生成收货记录。</p>
+          {pendingOpening && (
+            <aside role="alert">
+              <p>
+                待确认首次建档：SKU {pendingOpening.skuCode}，数量{' '}
+                {pendingOpening.input.initialQuantity}。 不允许更换原 SKU 或数量后建立第二笔操作。
+              </p>
+              {pendingOpening.input.initialQuantity > 0 ? (
+                <button
+                  type="button"
+                  disabled={openingBusy}
+                  onClick={() => void retryPendingOpening()}
+                >
+                  使用原首次建档请求重试
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  disabled={openingBusy}
+                  onClick={() => void reconcileZeroOpening()}
+                >
+                  只读核对 0 件建档状态
+                </button>
+              )}
+            </aside>
+          )}
           <form className="operation-form" onSubmit={(event) => void searchOpening(event)}>
             <label>
               商品名称 / SKU 编码
@@ -233,7 +428,6 @@ function InventorySession({ token, storeId, permissions }: InventoryPanelProps) 
                     value={openingSkuId}
                     onChange={(event) => {
                       setOpeningSkuId(event.target.value);
-                      openingKey.current = crypto.randomUUID();
                     }}
                   >
                     <option value="" disabled>
@@ -256,9 +450,6 @@ function InventorySession({ token, storeId, permissions }: InventoryPanelProps) 
                     max="1000000"
                     step="1"
                     required
-                    onChange={() => {
-                      openingKey.current = crypto.randomUUID();
-                    }}
                   />
                 </label>
                 <label>
@@ -268,9 +459,6 @@ function InventorySession({ token, storeId, permissions }: InventoryPanelProps) 
                     maxLength={120}
                     required
                     placeholder="如：门店首次实盘核对"
-                    onChange={() => {
-                      openingKey.current = crypto.randomUUID();
-                    }}
                   />
                 </label>
                 <label>
@@ -383,6 +571,21 @@ function InventorySession({ token, storeId, permissions }: InventoryPanelProps) 
             <button disabled={busy}>{busy ? '提交中…' : '提交库存操作'}</button>
           </fieldset>
         </form>
+      )}
+      {pendingMutation && (canIssue || canAdjust) && (
+        <aside role="alert">
+          <p>
+            待确认库存操作：{pendingMutation.operation === 'ISSUE' ? '出库' : '调整'}，SKU{' '}
+            {pendingMutation.input.skuId}，数量{' '}
+            {pendingMutation.operation === 'ISSUE'
+              ? pendingMutation.input.quantity
+              : pendingMutation.input.quantityDelta}
+            。 仅允许原请求键重试，不能另建操作。
+          </p>
+          <button type="button" disabled={busy} onClick={() => void retryPendingMutation()}>
+            按原库存请求键重试
+          </button>
+        </aside>
       )}
       <p role="status">{status}</p>
     </section>

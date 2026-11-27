@@ -1,22 +1,38 @@
-import { useRef, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import {
   type foodOrderAllocationsResponseSchema,
   foodPhysicalReturnRequestSchema,
 } from '@xiaohai/contracts/food';
 import { parseScopedFoodOrder, parseScopedFoodTrace } from './food-response-scope';
-type Props = { token: string; storeId: string; permissions: string[] };
+import {
+  assertFoodReturnResponse,
+  clearFoodReturn,
+  pendingFoodReturn,
+  reserveFoodReturn,
+  type PendingFoodReturn,
+} from '@xiaohai/contracts/food-return-retry';
+type Props = { token: string; storeId: string; staffAccountId: string; permissions: string[] };
 const env = import.meta.env as { VITE_API_BASE_URL?: string };
 export function FoodTraceabilityPanel(props: Props) {
-  return <Session key={`${props.token}:${props.storeId}`} {...props} />;
+  return <Session key={`${props.staffAccountId}:${props.token}:${props.storeId}`} {...props} />;
 }
-function Session({ token, storeId, permissions }: Props) {
+function Session({ token, storeId, staffAccountId, permissions }: Props) {
   const [order, setOrder] = useState<ReturnType<
     typeof foodOrderAllocationsResponseSchema.parse
   > | null>(null);
   const [status, setStatus] = useState('退款仅处理金额；实物退回需单独接收，默认冻结。');
   const [busy, setBusy] = useState(false);
   const inFlight = useRef(false);
-  const retry = useRef<{ fingerprint: string; key: string } | null>(null);
+  const [pending, setPending] = useState<PendingFoodReturn | null>(null);
+  useEffect(() => {
+    try {
+      const previous = pendingFoodReturn(staffAccountId, storeId);
+      setPending(previous);
+      if (previous) setStatus('存在未确认的食品实物接收，请核对退货流水或重放下方原请求。');
+    } catch {
+      setStatus('待确认实物接收记录无效；已阻止新的实物写入，请核对库存流水。');
+    }
+  }, [staffAccountId, storeId]);
   async function request(path: string, body?: unknown) {
     const r = await fetch(
       `${env.VITE_API_BASE_URL ?? ''}/api/v1/staff/inventory/food-stock${path}`,
@@ -66,34 +82,83 @@ function Session({ token, storeId, permissions }: Props) {
     if (!order || order.storeId !== storeId) return;
     const data = new FormData(event.currentTarget);
     const reservationId = text(data, 'reservationId');
-    if (!order.allocations.some((r) => r.id === reservationId && r.status === 'SOLD')) return;
     const raw = {
       reservationId,
       quantity: Number(data.get('quantity')),
       reason: text(data, 'reason'),
       sourceRef: text(data, 'sourceRef'),
     };
-    const fingerprint = JSON.stringify(raw);
-    if (retry.current?.fingerprint !== fingerprint)
-      retry.current = { fingerprint, key: crypto.randomUUID() };
+    const selected = order.allocations.find((r) => r.id === reservationId);
+    if (
+      !selected ||
+      selected.status !== 'SOLD' ||
+      raw.quantity > selected.quantity - selected.returnedQuantity
+    ) {
+      setStatus('实际接收数量不能超过原售出批次未退回数量。');
+      return;
+    }
     const parsed = foodPhysicalReturnRequestSchema.safeParse({
       ...raw,
-      idempotencyKey: retry.current.key,
+      idempotencyKey: crypto.randomUUID(),
     });
     if (!parsed.success) {
       setStatus('请核对数量、原因和内部凭证编号。');
       return;
     }
-    await run(async () => {
-      await request('/physical-returns', parsed.data);
-      const next = parseScopedFoodOrder(
-        await request(`/order/${order.orderId}`),
-        storeId,
-        order.orderId,
+    try {
+      const saved = reserveFoodReturn(staffAccountId, storeId, order.orderId, parsed.data);
+      setPending(saved);
+      await submitReturn(saved);
+    } catch {
+      setStatus('上次实物退货结果未确认或会话存储不可用；请先恢复原请求、核对流水。');
+    }
+  }
+  async function submitReturn(saved: PendingFoodReturn) {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    setBusy(true);
+    let confirmed = false;
+    try {
+      assertFoodReturnResponse(await request('/physical-returns', saved.input));
+      confirmed = true;
+      clearFoodReturn(staffAccountId, storeId, saved.input.idempotencyKey);
+      setPending(null);
+      setOrder(null);
+      setStatus('实物接收已成功响应，正在核对原订单批次。');
+      try {
+        const next = parseScopedFoodOrder(
+          await request(`/order/${encodeURIComponent(saved.orderId)}`),
+          storeId,
+          saved.orderId,
+        );
+        setOrder(next);
+        setStatus('实物已按原批次接收为新的冻结批次；没有自动退款或恢复可售。');
+      } catch {
+        setStatus('实物接收写入已成功响应，但订单批次读回失败；请重新读取，勿重复登记。');
+      }
+    } catch {
+      setStatus(
+        confirmed
+          ? '实物接收已成功响应，但本地待确认记录清理失败；请核对流水。'
+          : '实物接收结果未确认；原请求已保存，可在同标签页刷新后使用原键重试。',
       );
-      setOrder(next);
-      setStatus('实物已按原批次接收为新的冻结批次；没有自动退款或恢复可售。');
-    });
+    } finally {
+      inFlight.current = false;
+      setBusy(false);
+    }
+  }
+  async function retryPending() {
+    if (inFlight.current) return;
+    try {
+      const saved = pendingFoodReturn(staffAccountId, storeId);
+      if (!saved) {
+        setPending(null);
+        return;
+      }
+      await submitReturn(saved);
+    } catch {
+      setStatus('原实物退货请求无法安全恢复，已停止提交；请核对流水。');
+    }
   }
   async function trace(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -114,6 +179,21 @@ function Session({ token, storeId, permissions }: Props) {
     <section aria-label="食品退货与溯源">
       <h3>食品实物退货与批次溯源</h3>
       <p role="status">{status}</p>
+      {pending && (
+        <aside role="alert">
+          <p>
+            待确认原订单 {pending.orderId}、原售出批次 {pending.input.reservationId}
+            。不要重复登记实物。
+          </p>
+          <button
+            type="button"
+            disabled={busy || !permissions.includes('inventory.receive')}
+            onClick={() => void retryPending()}
+          >
+            使用原实物接收请求重试
+          </button>
+        </aside>
+      )}
       <form onSubmit={(e) => void loadOrder(e)}>
         <label>
           原订单 ID
