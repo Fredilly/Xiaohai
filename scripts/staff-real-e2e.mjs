@@ -47,6 +47,7 @@ function spawnProcess(command, args, env) {
     cwd: root,
     env: { ...process.env, ...env },
     stdio: ['ignore', 'inherit', 'inherit'],
+    detached: true,
   });
   children.push(child);
   return child;
@@ -108,11 +109,23 @@ async function cleanup() {
   if (cleaned) return;
   cleaned = true;
   for (const child of children) {
-    if (!child.killed) child.kill('SIGTERM');
+    if (child.pid) {
+      try {
+        process.kill(-child.pid, 'SIGTERM');
+      } catch {
+        // The process group may already have exited.
+      }
+    }
   }
   await new Promise((resolve) => setTimeout(resolve, 1500));
   for (const child of children) {
-    if (!child.killed) child.kill('SIGKILL');
+    if (child.pid) {
+      try {
+        process.kill(-child.pid, 'SIGKILL');
+      } catch {
+        // The process group may already have exited.
+      }
+    }
   }
   for (const name of [pgName, redisName]) {
     spawnSync('docker', ['rm', '-f', name], { cwd: root, stdio: 'ignore' });
