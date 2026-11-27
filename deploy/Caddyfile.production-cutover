@@ -1,0 +1,30 @@
+# Dedicated TLS entrypoint after explicitly stopping Staging's public proxy.
+# This file never imports Staging routes and never falls back to Staging.
+api.pamboo.asia {
+  encode zstd gzip
+  reverse_proxy api:3000
+}
+
+(production_cutover_web) {
+  encode zstd gzip
+  header {
+    X-Content-Type-Options "nosniff"
+    X-Frame-Options "DENY"
+    Referrer-Policy "strict-origin-when-cross-origin"
+  }
+  @api path /api /api/* /health /ready
+  handle @api {
+    reverse_proxy api:3000
+  }
+  handle {
+    reverse_proxy web:8080
+  }
+}
+
+store.pamboo.asia {
+  import production_cutover_web
+}
+
+admin.pamboo.asia {
+  import production_cutover_web
+}

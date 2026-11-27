@@ -1,0 +1,96 @@
+# Manual cold cutover ONLY: Staging must be stopped after approved backups.
+# Do not compose this stack alongside Staging. Never migrate or seed automatically.
+name: xiaohai-production-cutover
+
+x-production-logging: &production-logging
+  driver: json-file
+  options:
+    max-size: '10m'
+    max-file: '3'
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    mem_limit: ${PRODUCTION_POSTGRES_MEM_LIMIT:?Reviewed PostgreSQL cap required}
+    logging: *production-logging
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?Production database required}
+      POSTGRES_USER: ${POSTGRES_USER:?Production user required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Production password required}
+    volumes:
+      - production_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 10s
+      retries: 10
+    networks: [data]
+  redis:
+    image: redis:7.4-alpine
+    command: ['redis-server', '--appendonly', 'yes']
+    restart: unless-stopped
+    mem_limit: ${PRODUCTION_REDIS_MEM_LIMIT:?Reviewed Redis cap required}
+    logging: *production-logging
+    volumes:
+      - production_redis_data:/data
+    networks: [data]
+  api:
+    image: ghcr.io/fredilly/xiaohai-api:${API_REVISION:?Reviewed SHA required}@${API_IMAGE_DIGEST:?Immutable digest required}
+    restart: unless-stopped
+    mem_limit: ${PRODUCTION_API_MEM_LIMIT:?Reviewed API cap required}
+    logging: *production-logging
+    env_file: production.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks: [data, outbound, edge]
+  worker:
+    # Start only after separately confirming background jobs/provider policy.
+    profiles: [worker-approved]
+    image: ghcr.io/fredilly/xiaohai-worker:${API_REVISION:?Reviewed SHA required}@${WORKER_IMAGE_DIGEST:?Immutable digest required}
+    restart: unless-stopped
+    mem_limit: ${PRODUCTION_WORKER_MEM_LIMIT:?Reviewed Worker cap required}
+    logging: *production-logging
+    env_file: production.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks: [data, outbound]
+  web:
+    image: ghcr.io/fredilly/xiaohai-production-web:${WEB_REVISION:?Reviewed SHA required}@${WEB_IMAGE_DIGEST:?Immutable digest required}
+    restart: unless-stopped
+    mem_limit: ${PRODUCTION_WEB_MEM_LIMIT:?Reviewed Web cap required}
+    logging: *production-logging
+    volumes:
+      - ./Caddyfile.production-cohost-web:/etc/caddy/Caddyfile:ro
+    networks: [edge]
+  edge:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    mem_limit: ${PRODUCTION_EDGE_MEM_LIMIT:?Reviewed edge cap required}
+    logging: *production-logging
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./Caddyfile.production-cutover:/etc/caddy/Caddyfile:ro
+      - production_caddy_data:/data
+      - production_caddy_config:/config
+    depends_on: [api, web]
+    networks: [edge]
+
+networks:
+  data:
+    internal: true
+  outbound: {}
+  edge: {}
+
+volumes:
+  production_postgres_data:
+  production_redis_data:
+  production_caddy_data:
+  production_caddy_config:
