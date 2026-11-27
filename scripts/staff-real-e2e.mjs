@@ -21,6 +21,8 @@ const pgPort = 43000 + (Number.parseInt(runId.slice(0, 4), 16) % 1000);
 const redisPort = pgPort + 1;
 const storePort = pgPort + 2;
 const adminPort = pgPort + 3;
+const otherStoreId = randomUUID();
+const otherRegionId = randomUUID();
 const dbPassword = `e2e-${randomUUID()}`;
 const hqPassword = `Hq-${randomUUID()}-pass`;
 const storePassword = `Store-${randomUUID()}-pass`;
@@ -119,7 +121,7 @@ function startContainers() {
 function seedStore() {
   const region = randomUUID();
   const store = randomUUID();
-  const sql = `INSERT INTO regions (id, code, name, country_code, country_name) VALUES ('${region}', 'E2E-${runId}', 'Disposable E2E Region', 'CN', 'China'); INSERT INTO stores (id, code, region_id, name, country_code, country_name, city, timezone, address_line, latitude, longitude) VALUES ('${store}', 'E2E-${runId}', '${region}', '胖竹书店南门店', 'CN', 'China', '成都', 'Asia/Shanghai', 'Synthetic E2E address', 30.67, 104.06);`;
+  const sql = `INSERT INTO regions (id, code, name, country_code, country_name) VALUES ('${region}', 'E2E-${runId}', 'Disposable E2E Region', 'CN', 'China'), ('${otherRegionId}', 'E2E-OTHER-${runId}', 'Disposable E2E Other Region', 'CN', 'China'); INSERT INTO stores (id, code, region_id, name, country_code, country_name, city, timezone, address_line, latitude, longitude) VALUES ('${store}', 'E2E-${runId}', '${region}', '胖竹书店南门店', 'CN', 'China', '成都', 'Asia/Shanghai', 'Synthetic E2E address', 30.67, 104.06), ('${otherStoreId}', 'E2E-OTHER-${runId}', '${otherRegionId}', '胖竹书店东门店', 'CN', 'China', '成都', 'Asia/Shanghai', 'Synthetic E2E other address', 30.68, 104.07);`;
   docker([
     'exec',
     pgName,
@@ -133,6 +135,7 @@ function seedStore() {
     '-c',
     sql,
   ]);
+  return store;
 }
 
 async function cleanup() {
@@ -205,7 +208,7 @@ try {
     FOOD_STOCK_WRITES_ENABLED: 'false',
   };
   run('pnpm', ['--filter', '@xiaohai/db', 'exec', 'tsx', 'src/migrate.ts'], { env });
-  seedStore();
+  const seededStoreId = seedStore();
   run('pnpm', ['--filter', '@xiaohai/api', 'exec', 'tsx', 'src/dev/seed-local-staff-cli.ts'], {
     env: { ...env, LOCAL_HQ_STAFF_PASSWORD: hqPassword, LOCAL_STORE_STAFF_PASSWORD: storePassword },
   });
@@ -250,6 +253,8 @@ try {
       REAL_E2E_STORE_PASSWORD: storePassword,
       REAL_E2E_ADMIN_LOGIN: 'hq.admin',
       REAL_E2E_ADMIN_PASSWORD: hqPassword,
+      REAL_E2E_STORE_ID: seededStoreId,
+      REAL_E2E_OTHER_STORE_ID: otherStoreId,
     },
   });
   console.log('REAL_STAFF_E2E_PASS');

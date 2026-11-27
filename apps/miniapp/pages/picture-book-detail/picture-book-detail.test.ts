@@ -18,6 +18,7 @@ vi.mock('../../services/picture-book', () => ({
   applyPictureBookJob: vi.fn(),
   getPictureBook: vi.fn(),
   listCharacterReferences: vi.fn(),
+  updatePictureBookCharacter: vi.fn(),
   generateCharacterReference: vi.fn(),
   generateIllustration: vi.fn(),
   PictureBookApiError: class PictureBookApiError extends Error {
@@ -39,6 +40,7 @@ type DetailPage = {
     imageError: boolean;
     loading: boolean;
     planNeedsReview: boolean;
+    unsavedCharacterIds: Record<string, boolean>;
   };
   refreshAfterHide: boolean;
   pageClosed: boolean;
@@ -58,6 +60,8 @@ type DetailPage = {
   reference: (event: WechatMiniprogram.TouchEvent) => Promise<void>;
   illustrate: (event: WechatMiniprogram.TouchEvent) => Promise<void>;
   generatePlan: (event: WechatMiniprogram.TouchEvent) => Promise<void>;
+  editCharacterField: (event: WechatMiniprogram.TouchEvent) => void;
+  saveCharacter: (event: WechatMiniprogram.TouchEvent) => Promise<void>;
 };
 
 const readDetail = vi.mocked(getPictureBook);
@@ -99,6 +103,7 @@ function instance(): DetailPage {
       busy: false,
       polling: false,
       imageError: false,
+      unsavedCharacterIds: {},
     },
     refreshAfterHide: false,
     pageClosed: false,
@@ -154,6 +159,21 @@ describe('picture-book detail owner-scoped media refresh (#189)', () => {
     expect(readDetail).toHaveBeenCalledTimes(2);
     expect(readReferences).toHaveBeenCalledTimes(2);
     expect(page.data.imageError).toBe(false);
+  });
+
+  it('blocks a refresh while a character edit is unsaved', async () => {
+    readDetail.mockResolvedValue(book(oldUrl));
+    const page = instance();
+    await page.load();
+    page.data.detail!.characters[0]!.locked = false;
+    page.editCharacterField({
+      currentTarget: { dataset: { index: '0', field: 'name' } },
+      detail: { value: '新名字' },
+    } as never);
+    expect(page.data.unsavedCharacterIds['character-1']).toBe(true);
+    await page.load();
+    expect(readDetail).toHaveBeenCalledTimes(1);
+    expect(page.data.error).toContain('尚未保存');
   });
 
   it('refreshes private content on return even if a prior action was busy', async () => {

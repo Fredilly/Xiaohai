@@ -27,6 +27,7 @@ const IMAGE_POLL_TIMEOUT_MS = 620_000;
 const IMAGE_POLL_INTERVAL_MS = 1_000;
 
 type PlaybackReference = { playbackUrl: string | null };
+const emptyUnsavedCharacterIds: Record<string, boolean> = {};
 
 export function assertPictureBookDetailContext(
   detail: PictureBookDetail,
@@ -71,6 +72,7 @@ Page({
     error: '',
     imageError: false,
     planNeedsReview: false,
+    unsavedCharacterIds: emptyUnsavedCharacterIds,
   },
   // A short-lived BOS GET signature must be reissued by the owned read API,
   // not logged, cached locally, or regenerated using a paid AI endpoint.
@@ -102,6 +104,7 @@ Page({
       imageError: false,
       busy: false,
       polling: false,
+      unsavedCharacterIds: emptyUnsavedCharacterIds,
       error,
     });
   },
@@ -143,6 +146,10 @@ Page({
   pollingToken: 0,
   async load() {
     if (this.pageClosed || this.refreshAfterHide || !this.data.id) return;
+    if (Object.values(this.data.unsavedCharacterIds).some(Boolean)) {
+      this.setData({ error: '角色设定尚未保存，请先保存修改后再刷新。' });
+      return;
+    }
     const revision = ++this.loadRevision;
     const session = consumerToken();
     const id = this.data.id;
@@ -427,7 +434,13 @@ Page({
     const characters = detail.characters.map((character, characterIndex) =>
       characterIndex === index ? { ...character, [field]: value } : character,
     );
-    this.setData({ detail: { ...detail, characters } });
+    this.setData({
+      detail: { ...detail, characters },
+      unsavedCharacterIds: {
+        ...this.data.unsavedCharacterIds,
+        [detail.characters[index]!.characterId]: true,
+      },
+    });
   },
   async saveCharacter(event: WechatMiniprogram.TouchEvent) {
     const id = this.data.id;
@@ -447,7 +460,14 @@ Page({
         id,
       );
       this.clearIfSessionChanged(session);
-      if (this.active(session, id)) this.setData({ detail });
+      if (this.active(session, id))
+        this.setData({
+          detail,
+          unsavedCharacterIds: {
+            ...this.data.unsavedCharacterIds,
+            [character.characterId]: false,
+          },
+        });
     } catch {
       this.clearIfSessionChanged(session);
       if (this.active(session, id)) this.setData({ error: '角色设定保存失败，请重试。' });
