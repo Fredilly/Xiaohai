@@ -30,10 +30,13 @@ test('checked-in cohost environment template remains non-deployable and disables
     'utf8',
   );
   const values = Object.fromEntries(
-    template.split('\n').filter((line) => line && !line.startsWith('#')).map((line) => {
-      const index = line.indexOf('=');
-      return [line.slice(0, index), line.slice(index + 1)];
-    }),
+    template
+      .split('\n')
+      .filter((line) => line && !line.startsWith('#'))
+      .map((line) => {
+        const index = line.indexOf('=');
+        return [line.slice(0, index), line.slice(index + 1)];
+      }),
   );
   assert.ok(validateProductionCohostEnvironment(values).length > 0);
   for (const flag of ['WECHAT_PAY_ENABLED', 'FOOD_STOCK_WRITES_ENABLED', 'FOOD_CHECKOUT_ENABLED']) {
