@@ -131,6 +131,7 @@ try {
     throw new Error('real staff E2E refuses production environment');
   }
   if (await isOpen(3000)) throw new Error('refusing to reuse an existing API on port 3000');
+  run('pnpm', ['build']);
   startContainers();
   await waitForPort(pgPort);
   await waitForPort(redisPort);
@@ -157,8 +158,8 @@ try {
   });
   spawnProcess('pnpm', ['--filter', '@xiaohai/api', 'exec', 'tsx', 'src/server.ts'], env);
   await waitForPort(3000);
-  spawnProcess('pnpm', ['--filter', '@xiaohai/store-web', 'dev', '--', '--host', '127.0.0.1', '--port', String(storePort)], env);
-  spawnProcess('pnpm', ['--filter', '@xiaohai/admin-web', 'dev', '--', '--host', '127.0.0.1', '--port', String(adminPort)], env);
+  spawnProcess('pnpm', ['--filter', '@xiaohai/store-web', 'exec', 'vite', '--host', '127.0.0.1', '--port', String(storePort)], env);
+  spawnProcess('pnpm', ['--filter', '@xiaohai/admin-web', 'exec', 'vite', '--host', '127.0.0.1', '--port', String(adminPort)], env);
   await waitForPort(storePort);
   await waitForPort(adminPort);
   run('pnpm', ['exec', 'playwright', 'test', '--config', 'playwright.real.config.ts'], {
