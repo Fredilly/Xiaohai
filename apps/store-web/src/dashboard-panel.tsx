@@ -5,7 +5,7 @@ import { loadFulfillment } from './fulfillment-api';
 import { loadInventory } from './inventory-api';
 import { loadInventoryAlerts } from './operations-api';
 import { loadRentals } from './rental-api';
-import { storeModules } from './mock-data';
+import { visibleStoreModules } from './mock-data';
 import { summarizeDashboard, type DashboardSummary } from './dashboard-summary';
 
 type Props = {
@@ -33,7 +33,6 @@ export function DashboardPanel({ token, me, currentStore }: Props) {
   const canInventory = me.permissions.includes('inventory.read');
   const canFulfillment = me.permissions.includes('fulfillment.read');
   const canRental = me.permissions.includes('rental.read');
-  const canManageStore = me.permissions.includes('stores.manage');
 
   useEffect(() => {
     if (!currentStore) {
@@ -108,8 +107,12 @@ export function DashboardPanel({ token, me, currentStore }: Props) {
   );
 
   const visibleModules = useMemo(
-    () => storeModules.slice(1).filter((item) => item.key !== 'manager' || canManageStore),
-    [canManageStore],
+    () => visibleStoreModules(me.permissions).filter((item) => item.key !== 'dashboard'),
+    [me.permissions],
+  );
+  const visibleTargets = useMemo(
+    () => new Set<string>(visibleModules.map((item) => item.key)),
+    [visibleModules],
   );
 
   return (
@@ -138,6 +141,8 @@ export function DashboardPanel({ token, me, currentStore }: Props) {
         {metrics.map((metric) => (
           <button
             key={metric.label}
+            disabled={!visibleTargets.has(metric.target)}
+            title={!visibleTargets.has(metric.target) ? '当前账号没有此模块的访问权限' : undefined}
             onClick={() => {
               window.location.hash = `#/${metric.target}`;
             }}
