@@ -50,6 +50,7 @@ case "$1" in
     echo '{}' > "$DOCKER_CONFIG/config.json"
     ;;
   logout) echo logout >> "$MOCK_EVENTS" ;;
+  ps) : ;;
   compose)
     case " $* " in
       *" pull "*) echo "pull:$*" >> "$MOCK_EVENTS" ;;

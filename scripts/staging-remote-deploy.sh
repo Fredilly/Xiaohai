@@ -67,15 +67,10 @@ if [[ -f cohost.enabled ]]; then
     caddy:2-alpine validate --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null ||
     fail 'cohost Caddy configuration syntax invalid'
 else
-  # A deployment bundle that carries the cohost files must prove that no
-  # protected cohost stack is running without its marker. Minimal API-only
-  # bundles do not carry those files and need no cohost inspection.
-  if [[ -e staging-cohost.override.yml || -e Caddyfile.cohost || -e Caddyfile.preserved ]]; then
-    cohost_containers=$(docker ps --format '{{.Names}}' --filter label=com.docker.compose.project=xiaohai-production-cohost) ||
-      fail 'cannot enumerate production cohost containers'
-    [[ -z "$cohost_containers" ]] ||
-      fail 'production cohost containers exist but ingress marker is missing; stop to protect routing'
-  fi
+  cohost_containers=$(docker ps --format '{{.Names}}' --filter label=com.docker.compose.project=xiaohai-production-cohost) ||
+    fail 'cannot enumerate production cohost containers'
+  [[ -z "$cohost_containers" ]] ||
+    fail 'production cohost containers exist but ingress marker is missing; stop to protect routing'
 fi
 
 # When ON, require two immutable, human-approved main-SHA web releases and
