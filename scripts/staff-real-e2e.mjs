@@ -150,12 +150,12 @@ try {
     AI_PROVIDER: 'MOCK', AI_MOCK_ENABLED: 'true',
     FOOD_CHECKOUT_ENABLED: 'false', FOOD_STOCK_WRITES_ENABLED: 'false',
   };
-  run('pnpm', ['exec', 'tsx', 'packages/db/src/migrate.ts'], { env });
+  run('pnpm', ['--filter', '@xiaohai/db', 'exec', 'tsx', 'src/migrate.ts'], { env });
   seedStore();
-  run('pnpm', ['exec', 'tsx', 'apps/api/src/dev/seed-local-staff-cli.ts'], {
+  run('pnpm', ['--filter', '@xiaohai/api', 'exec', 'tsx', 'src/dev/seed-local-staff-cli.ts'], {
     env: { ...env, LOCAL_HQ_STAFF_PASSWORD: hqPassword, LOCAL_STORE_STAFF_PASSWORD: storePassword },
   });
-  spawnProcess('pnpm', ['exec', 'tsx', 'apps/api/src/server.ts'], env);
+  spawnProcess('pnpm', ['--filter', '@xiaohai/api', 'exec', 'tsx', 'src/server.ts'], env);
   await waitForPort(3000);
   spawnProcess('pnpm', ['--filter', '@xiaohai/store-web', 'dev', '--', '--host', '127.0.0.1', '--port', String(storePort)], env);
   spawnProcess('pnpm', ['--filter', '@xiaohai/admin-web', 'dev', '--', '--host', '127.0.0.1', '--port', String(adminPort)], env);
