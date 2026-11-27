@@ -16,7 +16,11 @@ describe('Mini Program M15 rental service', () => {
       });
       return {} as WechatMiniprogram.RequestTask;
     });
-    storageMock = vi.fn(() => 'consumer-token');
+    storageMock = vi.fn((key: string) =>
+      key === 'consumer_session_expires_at'
+        ? new Date(Date.now() + 60_000).toISOString()
+        : 'consumer-token',
+    );
     (globalThis as typeof globalThis & { wx: WechatMiniprogram.Wx }).wx = {
       request: requestMock,
       getStorageSync: storageMock,

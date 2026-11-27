@@ -7,7 +7,10 @@ describe('Mini Program Animation boundary', () => {
   it('never sends provider, model, status, media or cost controls', async () => {
     const requests: Array<Record<string, unknown>> = [];
     vi.stubGlobal('wx', {
-      getStorageSync: () => 'consumer-token',
+      getStorageSync: (key: string) =>
+        key === 'consumer_session_expires_at'
+          ? new Date(Date.now() + 60_000).toISOString()
+          : 'consumer-token',
       getAccountInfoSync: () => ({ miniProgram: { envVersion: 'develop' } }),
       request: (input: Record<string, unknown> & { success: (value: unknown) => void }) => {
         requests.push(input);

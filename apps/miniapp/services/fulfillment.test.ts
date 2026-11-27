@@ -18,7 +18,11 @@ describe('Mini Program M16 fulfillment service', () => {
     });
     (globalThis as typeof globalThis & { wx: WechatMiniprogram.Wx }).wx = {
       request: requestMock,
-      getStorageSync: vi.fn(() => 'consumer-token'),
+      getStorageSync: vi.fn((key: string) =>
+        key === 'consumer_session_expires_at'
+          ? new Date(Date.now() + 60_000).toISOString()
+          : 'consumer-token',
+      ),
       getAccountInfoSync: vi.fn(() => ({ miniProgram: { envVersion: 'develop' } })),
     } as unknown as WechatMiniprogram.Wx;
   });

@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { loginWithWeChat } from '../../services/auth';
 
 const mocks = vi.hoisted(() => ({
   storedConsumerId: vi.fn(),
@@ -17,6 +18,7 @@ vi.mock('../../services/auth', () => ({
 
 type State = {
   status: string;
+  isLoading: boolean;
   isLoggedIn: boolean;
   consumerUserId: string;
   consumerDisplayId: string;
@@ -27,10 +29,11 @@ type TestPage = {
   data: State;
   setData(changes: Partial<State>): void;
   onShow(): void;
+  login(): Promise<void>;
   chooseAvatar(event: { detail: { avatarUrl: string } }): void;
 };
 
-let definition: Pick<TestPage, 'onShow' | 'chooseAvatar'>;
+let definition: Pick<TestPage, 'onShow' | 'login' | 'chooseAvatar'>;
 
 beforeAll(async () => {
   vi.stubGlobal('Page', (page: typeof definition) => {
@@ -43,6 +46,7 @@ afterAll(() => vi.unstubAllGlobals());
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(loginWithWeChat).mockReset();
   vi.stubGlobal('wx', {
     getStorageSync: mocks.getStorageSync,
     setStorageSync: mocks.setStorageSync,
@@ -54,6 +58,7 @@ function createPage(): TestPage {
   const page: TestPage = {
     data: {
       status: '欢迎回来',
+      isLoading: false,
       isLoggedIn: true,
       consumerUserId: 'stale-user',
       consumerDisplayId: 'stale-us…',
@@ -64,6 +69,9 @@ function createPage(): TestPage {
     },
     onShow() {
       definition.onShow.call(page);
+    },
+    login() {
+      return definition.login.call(page);
     },
     chooseAvatar(event) {
       definition.chooseAvatar.call(page, event);
@@ -133,5 +141,52 @@ describe('Me page session display consistency', () => {
     callback?.({ savedFilePath: 'wxfile://saved-A' });
     expect(mocks.setStorageSync).not.toHaveBeenCalled();
     expect(page.data.avatarUrl).toBe('');
+  });
+
+  it('shows the active account avatar after a successful login', async () => {
+    mocks.storedConsumerId.mockReturnValue('account-B');
+    mocks.getStorageSync.mockImplementation((key: string) =>
+      key === 'xiaohai.consumer.avatar.owner' ? 'account-B' : 'wxfile://avatar-B',
+    );
+    vi.mocked(loginWithWeChat).mockResolvedValue({
+      consumer: { id: 'account-B' },
+      session: { token: 'session-B', expiresAt: new Date(Date.now() + 60_000).toISOString() },
+    });
+    const page = createPage();
+
+    await page.login();
+
+    expect(page.data).toMatchObject({
+      isLoggedIn: true,
+      isLoading: false,
+      consumerUserId: 'account-B',
+      avatarUrl: 'wxfile://avatar-B',
+      status: '欢迎回来',
+    });
+  });
+
+  it('does not blank the new account when an older login attempt fails', async () => {
+    mocks.storedConsumerId.mockReturnValue('');
+    let rejectOld: (error: Error) => void = () => {};
+    vi.mocked(loginWithWeChat).mockImplementation(
+      () => new Promise((_, reject) => (rejectOld = reject)),
+    );
+    const page = createPage();
+    const pending = page.login();
+
+    mocks.storedConsumerId.mockReturnValue('account-B');
+    mocks.getStorageSync.mockImplementation((key: string) =>
+      key === 'xiaohai.consumer.avatar.owner' ? 'account-B' : 'wxfile://avatar-B',
+    );
+    rejectOld(new Error('CONSUMER_SESSION_CHANGED'));
+    await pending;
+
+    expect(page.data).toMatchObject({
+      isLoggedIn: true,
+      isLoading: false,
+      consumerUserId: 'account-B',
+      avatarUrl: 'wxfile://avatar-B',
+      status: '欢迎回来',
+    });
   });
 });

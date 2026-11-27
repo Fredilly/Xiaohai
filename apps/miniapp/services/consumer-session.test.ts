@@ -37,6 +37,18 @@ describe('Consumer session on weak networks and expiry', () => {
     expect(app.globalData.consumerUserId).toBe('');
   });
 
+  it('fails closed when cached session expiration is missing or malformed', () => {
+    const { values, app } = storage();
+    for (const expiry of ['', 'not-a-date']) {
+      saveConsumerSession('stale-token', new Date(Date.now() + 60_000).toISOString(), 'user');
+      if (expiry) values.set('consumer_session_expires_at', expiry);
+      else values.delete('consumer_session_expires_at');
+      expect(storedConsumerId()).toBe('');
+      expect(values.has('consumer_session_token')).toBe(false);
+      expect(app.globalData.consumerUserId).toBe('');
+    }
+  });
+
   it('clears a rejected session on 401 and preserves a network error for retry', async () => {
     const { values, requestMock } = storage();
     saveConsumerSession('token', new Date(Date.now() + 60_000).toISOString(), 'user');

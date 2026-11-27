@@ -13,7 +13,10 @@ describe('Mini Program Picture Book boundary', () => {
   it('never sends provider or model for planning and illustration generation', async () => {
     const requests: Array<Record<string, unknown>> = [];
     vi.stubGlobal('wx', {
-      getStorageSync: () => 'consumer-token',
+      getStorageSync: (key: string) =>
+        key === 'consumer_session_expires_at'
+          ? new Date(Date.now() + 60_000).toISOString()
+          : 'consumer-token',
       getAccountInfoSync: () => ({ miniProgram: { envVersion: 'develop' } }),
       request: (input: Record<string, unknown> & { success: (value: unknown) => void }) => {
         requests.push(input);
@@ -33,7 +36,10 @@ describe('Mini Program Picture Book boundary', () => {
   it('supports Character Bible edit, confirm, and reopen actions', async () => {
     const requests: Array<Record<string, unknown>> = [];
     vi.stubGlobal('wx', {
-      getStorageSync: () => 'consumer-token',
+      getStorageSync: (key: string) =>
+        key === 'consumer_session_expires_at'
+          ? new Date(Date.now() + 60_000).toISOString()
+          : 'consumer-token',
       getAccountInfoSync: () => ({ miniProgram: { envVersion: 'develop' } }),
       request: (input: Record<string, unknown> & { success: (value: unknown) => void }) => {
         requests.push(input);

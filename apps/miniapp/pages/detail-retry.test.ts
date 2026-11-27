@@ -60,9 +60,11 @@ beforeEach(() => {
     getStorageSync: (key: string) =>
       key === 'consumer_session_token'
         ? 'test-consumer-session'
-        : key === 'consumer_user_id'
-          ? rentalConsumerId
-          : '',
+        : key === 'consumer_session_expires_at'
+          ? new Date(Date.now() + 60_000).toISOString()
+          : key === 'consumer_user_id'
+            ? rentalConsumerId
+            : '',
   });
 });
 

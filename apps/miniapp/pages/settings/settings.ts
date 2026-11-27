@@ -1,5 +1,9 @@
 import { clearLocalConsumerAvatar, getLocalConsumerAvatar } from '../../services/consumer-avatar';
-import { clearConsumerSession, consumerToken, storedConsumerId } from '../../services/consumer-session';
+import {
+  clearConsumerSession,
+  consumerToken,
+  storedConsumerId,
+} from '../../services/consumer-session';
 
 Page({
   data: {

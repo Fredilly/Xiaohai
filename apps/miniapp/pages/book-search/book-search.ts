@@ -330,5 +330,4 @@ Page({
       if (!this.pageClosed) this.setData({ reserving: false });
     }
   },
-
 });

@@ -65,19 +65,24 @@ Page({
     this.setData({ isLoading: true, status: '登录中…' });
     try {
       const result = await loginWithWeChat();
-      getApp<IAppOption>().globalData.consumerUserId = result.consumer.id;
+      if (storedConsumerId() !== result.consumer.id) throw new Error('CONSUMER_SESSION_CHANGED');
       this.setData({
         consumerUserId: result.consumer.id,
         consumerDisplayId: shortId(result.consumer.id),
+        avatarUrl: getLocalConsumerAvatar(result.consumer.id),
         isLoggedIn: true,
         status: '欢迎回来',
       });
     } catch {
+      // Another login can finish while an older attempt is still awaiting wx.login/request.
+      // A rejected old attempt must not blank the currently authenticated account.
+      const consumerUserId = storedConsumerId();
       this.setData({
-        consumerUserId: '',
-        consumerDisplayId: '',
-        isLoggedIn: false,
-        status: '登录失败，请检查网络后重试',
+        consumerUserId,
+        consumerDisplayId: shortId(consumerUserId),
+        avatarUrl: getLocalConsumerAvatar(consumerUserId),
+        isLoggedIn: Boolean(consumerUserId),
+        status: consumerUserId ? '欢迎回来' : '登录失败，请检查网络后重试',
       });
     } finally {
       this.setData({ isLoading: false });

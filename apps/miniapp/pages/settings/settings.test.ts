@@ -177,7 +177,11 @@ describe('Device-local consumer settings', () => {
     expect(mocks.clearConsumerSession).not.toHaveBeenCalled();
     expect(mocks.removeStorageSync).not.toHaveBeenCalled();
     expect(mocks.removeSavedFile).not.toHaveBeenCalled();
-    expect(page.data).toMatchObject({ isLoggedIn: true, consumerDisplayId: 'consumer…', avatarSaved: true });
+    expect(page.data).toMatchObject({
+      isLoggedIn: true,
+      consumerDisplayId: 'consumer…',
+      avatarSaved: true,
+    });
   });
 
   it('cannot delete account B avatar from an account A confirmation dialog', () => {

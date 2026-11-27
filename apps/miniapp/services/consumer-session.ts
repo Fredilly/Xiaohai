@@ -1,8 +1,15 @@
 const tokenKey = 'consumer_session_token';
 const expiryKey = 'consumer_session_expires_at';
 const userKey = 'consumer_user_id';
+let sessionRevision = 0;
+
+/** In-memory fence for login responses started before a logout/account change. */
+export function consumerSessionRevision(): number {
+  return sessionRevision;
+}
 
 export function clearConsumerSession() {
+  sessionRevision += 1;
   wx.removeStorageSync(tokenKey);
   wx.removeStorageSync(expiryKey);
   wx.removeStorageSync(userKey);
@@ -14,7 +21,8 @@ export function consumerToken(): string {
   if (!token) return '';
   const expiresAt = String(wx.getStorageSync(expiryKey) || '');
   const expiry = Date.parse(expiresAt);
-  if (Number.isFinite(expiry) && expiry <= Date.now()) {
+  // Missing or malformed expiration is not an authenticated session.
+  if (!Number.isFinite(expiry) || expiry <= Date.now()) {
     clearConsumerSession();
     return '';
   }
@@ -28,6 +36,7 @@ export function checkConsumerResponse(requestToken: string, statusCode: number):
 }
 
 export function saveConsumerSession(token: string, expiresAt: string, userId: string) {
+  sessionRevision += 1;
   wx.setStorageSync(tokenKey, token);
   wx.setStorageSync(expiryKey, expiresAt);
   wx.setStorageSync(userKey, userId);

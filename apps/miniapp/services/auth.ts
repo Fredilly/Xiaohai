@@ -1,13 +1,23 @@
 import { getApiBaseUrl } from '../config';
-import { saveConsumerSession } from './consumer-session';
+import { consumerSessionRevision, saveConsumerSession } from './consumer-session';
 
 interface LoginResponse {
   consumer: { id: string };
   session: { token: string; expiresAt: string };
 }
 
+let latestLoginAttempt = 0;
+
 export async function loginWithWeChat(): Promise<LoginResponse> {
+  const attempt = ++latestLoginAttempt;
+  const startingRevision = consumerSessionRevision();
+  const checkAttempt = () => {
+    if (attempt !== latestLoginAttempt || startingRevision !== consumerSessionRevision()) {
+      throw new Error('CONSUMER_SESSION_CHANGED');
+    }
+  };
   const login = await wx.login();
+  checkAttempt();
   if (!login.code) throw new Error('wx.login did not return a code');
 
   const response = await new Promise<WechatMiniprogram.RequestSuccessCallbackResult>(
@@ -22,6 +32,7 @@ export async function loginWithWeChat(): Promise<LoginResponse> {
       });
     },
   );
+  checkAttempt();
   if (response.statusCode !== 200 || !isLoginResponse(response.data)) {
     throw new Error('Consumer login failed');
   }
@@ -38,7 +49,11 @@ function isLoginResponse(value: unknown): value is LoginResponse {
   const response = value as Partial<LoginResponse>;
   return (
     typeof response.consumer?.id === 'string' &&
+    response.consumer.id.length > 0 &&
     typeof response.session?.token === 'string' &&
-    typeof response.session.expiresAt === 'string'
+    response.session.token.length > 0 &&
+    typeof response.session.expiresAt === 'string' &&
+    Number.isFinite(Date.parse(response.session.expiresAt)) &&
+    Date.parse(response.session.expiresAt) > Date.now()
   );
 }
