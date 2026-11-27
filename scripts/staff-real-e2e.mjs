@@ -17,7 +17,7 @@ const root = process.cwd();
 const runId = randomUUID().replaceAll('-', '').slice(0, 12);
 const pgName = `xiaohai-real-e2e-pg-${runId}`;
 const redisName = `xiaohai-real-e2e-redis-${runId}`;
-const pgPort = 43000 + Number.parseInt(runId.slice(0, 4), 16) % 1000;
+const pgPort = 43000 + (Number.parseInt(runId.slice(0, 4), 16) % 1000);
 const redisPort = pgPort + 1;
 const storePort = pgPort + 2;
 const adminPort = pgPort + 3;
@@ -82,19 +82,37 @@ function docker(args) {
 function startContainers() {
   // Explicitly reject collisions before creating anything.
   for (const name of [pgName, redisName]) {
-    const exists = spawnSync('docker', ['container', 'inspect', name], { stdio: 'ignore' }).status === 0;
+    const exists =
+      spawnSync('docker', ['container', 'inspect', name], { stdio: 'ignore' }).status === 0;
     if (exists) throw new Error(`refusing to reuse existing container ${name}`);
   }
   docker([
-    'run', '-d', '--name', pgName,
-    '--tmpfs', '/var/lib/postgresql/data:rw,size=1g',
-    '-e', 'POSTGRES_USER=e2e_user', '-e', `POSTGRES_PASSWORD=${dbPassword}`,
-    '-e', 'POSTGRES_DB=xiaohai_e2e', '-p', `127.0.0.1:${pgPort}:5432`, 'postgres:17-alpine',
+    'run',
+    '-d',
+    '--name',
+    pgName,
+    '--tmpfs',
+    '/var/lib/postgresql/data:rw,size=1g',
+    '-e',
+    'POSTGRES_USER=e2e_user',
+    '-e',
+    `POSTGRES_PASSWORD=${dbPassword}`,
+    '-e',
+    'POSTGRES_DB=xiaohai_e2e',
+    '-p',
+    `127.0.0.1:${pgPort}:5432`,
+    'postgres:17-alpine',
   ]);
   docker([
-    'run', '-d', '--name', redisName,
-    '--tmpfs', '/data:rw,size=256m',
-    '-p', `127.0.0.1:${redisPort}:6379`, 'redis:7.4-alpine',
+    'run',
+    '-d',
+    '--name',
+    redisName,
+    '--tmpfs',
+    '/data:rw,size=256m',
+    '-p',
+    `127.0.0.1:${redisPort}:6379`,
+    'redis:7.4-alpine',
   ]);
 }
 
@@ -102,7 +120,19 @@ function seedStore() {
   const region = randomUUID();
   const store = randomUUID();
   const sql = `INSERT INTO regions (id, code, name, country_code, country_name) VALUES ('${region}', 'E2E-${runId}', 'Disposable E2E Region', 'CN', 'China'); INSERT INTO stores (id, code, region_id, name, country_code, country_name, city, timezone, address_line, latitude, longitude) VALUES ('${store}', 'E2E-${runId}', '${region}', '胖竹书店南门店', 'CN', 'China', '成都', 'Asia/Shanghai', 'Synthetic E2E address', 30.67, 104.06);`;
-  docker(['exec', pgName, 'psql', '-v', 'ON_ERROR_STOP=1', '-U', 'e2e_user', '-d', 'xiaohai_e2e', '-c', sql]);
+  docker([
+    'exec',
+    pgName,
+    'psql',
+    '-v',
+    'ON_ERROR_STOP=1',
+    '-U',
+    'e2e_user',
+    '-d',
+    'xiaohai_e2e',
+    '-c',
+    sql,
+  ]);
 }
 
 async function cleanup() {
@@ -151,18 +181,28 @@ try {
   const env = {
     DATABASE_URL: databaseUrl,
     REDIS_URL: redisUrl,
-    APP_ENV: 'dev', NODE_ENV: 'development', HOST: '127.0.0.1', PORT: '3000',
-    WECHAT_APP_ID: 'synthetic-e2e-app', WECHAT_APP_SECRET: 'synthetic-e2e-secret',
+    APP_ENV: 'dev',
+    NODE_ENV: 'development',
+    HOST: '127.0.0.1',
+    PORT: '3000',
+    WECHAT_APP_ID: 'synthetic-e2e-app',
+    WECHAT_APP_SECRET: 'synthetic-e2e-secret',
     CONSUMER_SESSION_SECRET: `consumer-${randomUUID()}-secret`,
     STAFF_SESSION_SECRET: `staff-${randomUUID()}-secret`,
     PICKUP_CODE_SECRET: `pickup-${randomUUID()}-secret`,
     DELIVERY_PROVIDER: 'MANUAL',
-    STORY_AI_PROVIDER: 'MOCK', STORY_AI_ENABLED: 'false',
-    PICTURE_BOOK_AI_PROVIDER: 'MOCK', PICTURE_BOOK_AI_ENABLED: 'false',
-    ANIMATION_AI_PROVIDER: 'MOCK', ANIMATION_AI_ENABLED: 'false',
-    ANIMATION_VIDEO_PROVIDER: 'MOCK', ANIMATION_COMPOSITION_PROVIDER: 'MOCK',
-    AI_PROVIDER: 'MOCK', AI_MOCK_ENABLED: 'true',
-    FOOD_CHECKOUT_ENABLED: 'false', FOOD_STOCK_WRITES_ENABLED: 'false',
+    STORY_AI_PROVIDER: 'MOCK',
+    STORY_AI_ENABLED: 'false',
+    PICTURE_BOOK_AI_PROVIDER: 'MOCK',
+    PICTURE_BOOK_AI_ENABLED: 'false',
+    ANIMATION_AI_PROVIDER: 'MOCK',
+    ANIMATION_AI_ENABLED: 'false',
+    ANIMATION_VIDEO_PROVIDER: 'MOCK',
+    ANIMATION_COMPOSITION_PROVIDER: 'MOCK',
+    AI_PROVIDER: 'MOCK',
+    AI_MOCK_ENABLED: 'true',
+    FOOD_CHECKOUT_ENABLED: 'false',
+    FOOD_STOCK_WRITES_ENABLED: 'false',
   };
   run('pnpm', ['--filter', '@xiaohai/db', 'exec', 'tsx', 'src/migrate.ts'], { env });
   seedStore();
@@ -171,8 +211,34 @@ try {
   });
   spawnProcess('pnpm', ['--filter', '@xiaohai/api', 'exec', 'tsx', 'src/server.ts'], env);
   await waitForPort(3000);
-  spawnProcess('pnpm', ['--filter', '@xiaohai/store-web', 'exec', 'vite', '--host', '127.0.0.1', '--port', String(storePort)], env);
-  spawnProcess('pnpm', ['--filter', '@xiaohai/admin-web', 'exec', 'vite', '--host', '127.0.0.1', '--port', String(adminPort)], env);
+  spawnProcess(
+    'pnpm',
+    [
+      '--filter',
+      '@xiaohai/store-web',
+      'exec',
+      'vite',
+      '--host',
+      '127.0.0.1',
+      '--port',
+      String(storePort),
+    ],
+    env,
+  );
+  spawnProcess(
+    'pnpm',
+    [
+      '--filter',
+      '@xiaohai/admin-web',
+      'exec',
+      'vite',
+      '--host',
+      '127.0.0.1',
+      '--port',
+      String(adminPort),
+    ],
+    env,
+  );
   await waitForPort(storePort);
   await waitForPort(adminPort);
   run('pnpm', ['exec', 'playwright', 'test', '--config', 'playwright.real.config.ts'], {
@@ -180,8 +246,10 @@ try {
       ...env,
       REAL_E2E_STORE_URL: `http://127.0.0.1:${storePort}`,
       REAL_E2E_ADMIN_URL: `http://127.0.0.1:${adminPort}`,
-      REAL_E2E_STORE_LOGIN: 'store.manager', REAL_E2E_STORE_PASSWORD: storePassword,
-      REAL_E2E_ADMIN_LOGIN: 'hq.admin', REAL_E2E_ADMIN_PASSWORD: hqPassword,
+      REAL_E2E_STORE_LOGIN: 'store.manager',
+      REAL_E2E_STORE_PASSWORD: storePassword,
+      REAL_E2E_ADMIN_LOGIN: 'hq.admin',
+      REAL_E2E_ADMIN_PASSWORD: hqPassword,
     },
   });
   console.log('REAL_STAFF_E2E_PASS');
