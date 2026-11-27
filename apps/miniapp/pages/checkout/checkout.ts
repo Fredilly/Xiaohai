@@ -376,6 +376,18 @@ Page({
     if (this.pageClosed) return;
     void wx.navigateTo({ url: '/pages/orders/orders' });
   },
+  goToAddress() {
+    if (this.wasHidden || this.pageClosed || this.data.creating || this.data.orderAttempted) return;
+    if (!this.loadedSession || consumerToken() !== this.loadedSession) {
+      this.setData({
+        addresses: [],
+        quote: null,
+        errorMessage: '登录状态已变化，请重新进入结算。',
+      });
+      return;
+    }
+    void wx.navigateTo({ url: '/pages/address/address' });
+  },
   goToLogin() {
     void wx.switchTab({ url: '/pages/me/me' });
   },

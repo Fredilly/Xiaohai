@@ -42,10 +42,16 @@
           <text class="muted">{{addresses[addressIndex].region}}{{addresses[addressIndex].city}}{{addresses[addressIndex].district}}{{addresses[addressIndex].addressLine}}</text>
         </view>
       </picker>
-      <text wx:else class="muted">请先在“我的 → 地址”添加配送地址</text>
+      <text wx:else class="muted">暂无配送地址；加载成功后可在下方直接添加。</text>
     </view>
 
-    <view wx:if="{{errorMessage}}" class="demo-note">{{errorMessage}}<button wx:if="{{needsLogin}}" bindtap="goToLogin">去登录</button><button wx:elif="{{orderAttempted}}" bindtap="openOrders">查看我的订单</button><button wx:elif="{{!quote}}" bindtap="load">重试加载</button></view>
+    <view wx:if="{{errorMessage}}" class="demo-note">
+      {{errorMessage}}
+      <button wx:if="{{needsLogin}}" bindtap="goToLogin">去登录</button>
+      <button wx:elif="{{orderAttempted}}" bindtap="openOrders">查看我的订单</button>
+      <button wx:elif="{{method === 'DELIVERY' && stores.length > 0 && !addresses.length}}" bindtap="goToAddress">添加配送地址</button>
+      <button wx:elif="{{!quote}}" bindtap="load">重试加载</button>
+    </view>
     <button wx:if="{{createdOrderId}}" class="primary-btn" bindtap="openCreatedOrder">查看已创建订单</button>
 
     <view wx:if="{{quote}}" class="section card order-amount">

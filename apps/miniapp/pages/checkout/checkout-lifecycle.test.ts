@@ -59,6 +59,7 @@ type CheckoutPage = {
   onUnload(): void;
   create(): Promise<void>;
   preview(): Promise<void>;
+  goToAddress(): void;
 };
 
 let definition: CheckoutPage;
@@ -208,5 +209,47 @@ describe('Checkout order submission lifecycle and account isolation', () => {
     expect(current.data.quote).toBeNull();
     expect(current.data.quoting).toBe(false);
     expect(current.data.addresses).toEqual([]);
+  });
+
+  it('opens address management from delivery checkout and re-quotes after returning', async () => {
+    const current = page();
+    current.data.method = 'DELIVERY';
+    current.data.quote = null;
+    current.data.errorMessage = '请先添加配送地址，或改为到店自提。';
+
+    current.goToAddress();
+    expect(navigateTo).toHaveBeenCalledExactlyOnceWith({ url: '/pages/address/address' });
+    current.onHide();
+    addresses.mockResolvedValueOnce({ addresses: [{ id: 'address-a', isDefault: true }] } as never);
+    quote.mockResolvedValueOnce({
+      ...priced,
+      method: 'DELIVERY',
+      deliveryFeeMinor: 200,
+      totalMinor: 1200,
+    } as never);
+
+    current.onShow();
+    await vi.waitFor(() =>
+      expect(quote).toHaveBeenCalledExactlyOnceWith('DELIVERY', 'store-a', 'address-a'),
+    );
+    await vi.waitFor(() => expect(current.data.quote?.method).toBe('DELIVERY'));
+    expect(current.data.addressId).toBe('address-a');
+    expect(current.data.clientRequestId).toBe('original-request-key');
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it('never opens address management for a changed account or an attempted order', () => {
+    const current = page();
+    current.data.method = 'DELIVERY';
+    token.mockReturnValue('account-b');
+    current.goToAddress();
+    expect(navigateTo).not.toHaveBeenCalled();
+    expect(current.data.quote).toBeNull();
+    expect(current.data.errorMessage).toContain('登录状态已变化');
+
+    token.mockReturnValue('account-a');
+    current.data.orderAttempted = true;
+    current.goToAddress();
+    expect(navigateTo).not.toHaveBeenCalled();
   });
 });
